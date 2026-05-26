@@ -1,6 +1,6 @@
 # Service Manager Implementation
 
-This document describes the service manager architecture for managing Docker Compose and Helm deployments in the nv-ingest test harness.
+This document describes the service manager architecture for managing Docker Compose and Helm deployments in the NeMo Retriever integration test harness.
 
 ## Status: ✅ Implemented
 
@@ -212,10 +212,8 @@ The service manager automatically captures logs from managed services to the art
 #### Docker Compose
 ```
 service_logs/
-├── container_nv-ingest-1.log
-├── container_nv-ingest-1_env.txt
-├── container_redis-1.log
-├── container_redis-1_env.txt
+├── container_example-release-1.log
+├── container_example-release-1_env.txt
 ├── container_milvus-standalone-1.log
 ├── container_milvus-standalone-1_env.txt
 ├── container_embedding-1.log
@@ -226,11 +224,9 @@ service_logs/
 #### Helm (Kubernetes)
 ```
 service_logs/
-├── pod_nv-ingest-ms-runtime-abc123_nv-ingest.log
-├── pod_nv-ingest-ms-runtime-abc123_nv-ingest_env.txt
-├── pod_nv-ingest-ms-runtime-abc123_nv-ingest_previous.log
-├── pod_redis-master-0_redis.log
-├── pod_redis-master-0_redis_env.txt
+├── pod_ingest-ms-runtime-abc123_example-release.log
+├── pod_ingest-ms-runtime-abc123_example-release_env.txt
+├── pod_ingest-ms-runtime-abc123_example-release_previous.log
 ├── pod_milvus-standalone-xyz789_milvus.log
 ├── pod_milvus-standalone-xyz789_milvus_env.txt
 ├── pod_status.txt
@@ -310,10 +306,10 @@ active:
   # Helm-specific settings
   helm_bin: helm  # Helm binary (e.g., "helm", "microk8s helm", "k3s helm")
   helm_sudo: false  # Use sudo for Helm commands (set to true if needed)
-  helm_chart: nim-nvstaging/nv-ingest  # Remote chart (set to null for local ./helm)
+  helm_chart: <registry>/<ingestion-chart>  # Remote chart (set to null for local ./helm)
   helm_chart_version: 26.1.0-RC7  # Chart version (required for remote charts)
-  helm_release: nv-ingest  # Helm release name
-  helm_namespace: nv-ingest  # Kubernetes namespace
+  helm_release: example-release  # Helm release name
+  helm_namespace: example-namespace  # Kubernetes namespace
   helm_values_file: .helm-env  # Optional: path to values file
   # helm_values:  # Optional: inline Helm values (dict)
   #   api:
@@ -325,10 +321,10 @@ active:
   
   # Port forwarding configuration
   helm_port_forwards:
-    - service: nv-ingest  # Service name (supports wildcards)
+    - service: example-release  # Service name (supports wildcards)
       local_port: 7670
       remote_port: 7670
-    - service: nv-ingest-milvus
+    - service: example-release-milvus
       local_port: 19530
       remote_port: 19530
     - service: "*embed*"  # Wildcard: matches any service with "embed" in name
@@ -358,19 +354,19 @@ The service manager is controlled via CLI flags:
 
 ```bash
 # Default behavior uses Docker Compose (no need to specify deployment type)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed
 
 # Explicitly specify Docker Compose (same as default)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-type=compose
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --deployment-type=compose
 
 # With GPU-specific settings (SKU override)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --sku=a10g
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --sku=a10g
 
 # Skip rebuilding images
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --no-build
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --no-build
 
 # Keep services running after test
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --keep-up
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --keep-up
 ```
 
 ### Helm with Remote Chart
@@ -378,7 +374,7 @@ uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --keep-up
 **Option 1: CLI flag (no YAML changes needed)**
 ```bash
 # Override deployment type via CLI
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-type=helm
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --deployment-type=helm
 ```
 
 **Option 2: Set default in YAML**
@@ -388,16 +384,16 @@ uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-t
    active:
      deployment_type: helm  # Set Helm as default
      helm_bin: helm  # Use "microk8s helm" for MicroK8s, "k3s helm" for K3s
-     helm_chart: nim-nvstaging/nv-ingest
+     helm_chart: <registry>/<ingestion-chart>
      helm_chart_version: 26.1.0-RC7
-     helm_release: nv-ingest
-     helm_namespace: nv-ingest
+     helm_release: example-release
+     helm_namespace: example-namespace
      helm_values_file: .helm-env
    ```
 
 2. Run tests (uses Helm from YAML config):
    ```bash
-   uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed
+   uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed
    ```
 
 ### Helm with Local Chart
@@ -407,18 +403,18 @@ Configure for local chart in `test_configs.yaml`:
 active:
   deployment_type: helm  # Optional: set as default
   helm_chart: null  # Use local ./helm chart
-  helm_release: nv-ingest
-  helm_namespace: nv-ingest
+  helm_release: example-release
+  helm_namespace: example-namespace
   helm_values_file: .helm-env
 ```
 
 Run tests:
 ```bash
 # Use YAML config default
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed
 
 # Or explicitly override to Helm
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-type=helm
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --deployment-type=helm
 ```
 
 ### Multiple Datasets
@@ -426,7 +422,7 @@ uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-t
 Run tests across multiple datasets sequentially (services start once):
 
 ```bash
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767,earnings --managed
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767,earnings --managed
 ```
 
 ## Benefits
@@ -548,7 +544,7 @@ You can also set these via environment variables (useful for CI/CD):
 export HELM_BIN="microk8s helm"
 export HELM_SUDO="true"
 export KUBECTL_BIN="microk8s kubectl"
-uv run nv-ingest-harness-run --dataset=bo20 --case=e2e --managed --deployment-type=helm
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --dataset=bo20 --case=e2e --managed --deployment-type=helm
 ```
 
 The commands are split on spaces, so multi-word commands like `microk8s helm` work correctly.
@@ -577,8 +573,6 @@ helm_values_file: .helm-env
 helm_values:
   api:
     enabled: true
-  redis:
-    enabled: true
   yolox:
     enabled: true
 ```
@@ -594,12 +588,12 @@ The Helm manager automatically sets up **resilient** `kubectl port-forward` for 
 ```yaml
 helm_port_forwards:
   # Simple service forward
-  - service: nv-ingest
+  - service: example-release
     local_port: 7670
     remote_port: 7670
   
   # Milvus vector database
-  - service: nv-ingest-milvus
+  - service: example-release-milvus
     local_port: 19530
     remote_port: 19530
   
@@ -614,7 +608,7 @@ helm_port_forwards:
 If `helm_port_forwards` is not specified, the manager defaults to forwarding only the main service:
 ```yaml
 helm_port_forwards:
-  - service: nv-ingest  # Uses helm_release value
+  - service: example-release  # Uses helm_release value
     local_port: 7670
     remote_port: 7670
 ```
@@ -623,8 +617,8 @@ helm_port_forwards:
 
 Port-forwards support wildcards (`*`) in service names to match dynamic service names:
 
-- `"*embed*"` - Matches any service with "embed" in the name (e.g., `nv-ingest-embed-nim`, `embed-service`)
-- `"nv-ingest-*"` - Matches services starting with "nv-ingest-"
+- `"*embed*"` - Matches any service with "embed" in the name (e.g., `example-release-embed-nim`, `embed-service`)
+- `"example-release-*"` - Matches services starting with "example-release-"
 - `"*-milvus"` - Matches services ending with "-milvus"
 
 The manager queries `kubectl get services` to find matches and starts port-forward for each matching service.
@@ -653,9 +647,9 @@ This ensures port-forwards automatically recover from:
 
 1. **After Helm install**: Automatically starts port-forward for all configured services
    ```bash
-   $ kubectl port-forward -n nv-ingest service/nv-ingest 7670:7670 (background, auto-restart)
-   Waiting for nv-ingest pod to be ready (timeout: 120s)...
-   Port forwarding started for nv-ingest (7670:7670) (PID: 12345, auto-restart enabled)
+   $ kubectl port-forward -n example-namespace service/example-release 7670:7670 (background, auto-restart)
+   Waiting for example-release pod to be ready (timeout: 120s)...
+   Port forwarding started for example-release (7670:7670) (PID: 12345, auto-restart enabled)
    ```
 
 2. **Retry logic**: If pods are not ready yet (Pending status), retries every 5 seconds for up to 120 seconds
@@ -681,7 +675,7 @@ Port-forwards are **always** cleaned up at the end to prevent orphaned processes
 If port-forwards are not properly tracked, the manager performs a fallback cleanup:
 
 ```bash
-Checking for orphaned port-forward processes in namespace 'nv-ingest'...
+Checking for orphaned port-forward processes in namespace 'example-release'...
   Found 2 orphaned port-forward process(es), cleaning up...
     Killing PID 12345...
     Killing PID 12346...
@@ -708,15 +702,15 @@ This uses `pgrep -f "port-forward.*-n <namespace>"` to find and terminate any or
 ### Example with `--keep-up`
 
 ```bash
-uv run nv-ingest-harness-run --case=e2e --dataset=bo20 --managed --deployment-type=helm --keep-up
+uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo20 --managed --deployment-type=helm --keep-up
 ```
 
 Output at the end:
 ```
 Stopping 3 port forward(s)...
-  Stopping nv-ingest (7670:7670) (PID: 12345)...
-  Stopping nv-ingest-milvus (19530:19530) (PID: 12346)...
-  Stopping nv-ingest-embed-nim (8012:8000) (PID: 12347)...
+  Stopping example-release (7670:7670) (PID: 12345)...
+  Stopping example-release-milvus (19530:19530) (PID: 12346)...
+  Stopping example-release-embed-nim (8012:8000) (PID: 12347)...
 
 ============================================================
 Services are kept running (--keep-up enabled)
@@ -724,14 +718,14 @@ Port forwards have been cleaned up to prevent orphaned processes.
 
 To manually recreate port forwards (with auto-restart), run:
 ============================================================
-  # Auto-restarting port-forward for nv-ingest:
-  while true; do kubectl port-forward -n nv-ingest service/nv-ingest 7670:7670; sleep 5; done &
+  # Auto-restarting port-forward for example-release:
+  while true; do kubectl port-forward -n example-namespace service/example-release 7670:7670; sleep 5; done &
 
-  # Auto-restarting port-forward for nv-ingest-milvus:
-  while true; do kubectl port-forward -n nv-ingest service/nv-ingest-milvus 19530:19530; sleep 5; done &
+  # Auto-restarting port-forward for example-release-milvus:
+  while true; do kubectl port-forward -n example-namespace service/example-release-milvus 19530:19530; sleep 5; done &
 
-  # Auto-restarting port-forward for nv-ingest-embed-nim:
-  while true; do kubectl port-forward -n nv-ingest service/nv-ingest-embed-nim 8012:8000; sleep 5; done &
+  # Auto-restarting port-forward for example-release-embed-nim:
+  while true; do kubectl port-forward -n example-namespace service/example-release-embed-nim 8012:8000; sleep 5; done &
 
 ============================================================
 ```
@@ -757,17 +751,17 @@ You can forward multiple ports from the same service:
 
 ```yaml
 helm_port_forwards:
-  - service: nv-ingest
+  - service: example-release
     local_port: 7670
     remote_port: 7670
-  - service: nv-ingest  # Same service, different port
+  - service: example-release  # Same service, different port
     local_port: 8080
     remote_port: 8080
 ```
 
 The implementation consolidates these into a single port-forward command:
 ```bash
-kubectl port-forward -n nv-ingest service/nv-ingest 7670:7670 8080:8080
+kubectl port-forward -n example-namespace service/example-release 7670:7670 8080:8080
 ```
 
 ### Readiness Checks
@@ -800,17 +794,17 @@ If you see timeout errors during port-forward setup:
 
 1. **Check pod status**:
    ```bash
-   kubectl get pods -n nv-ingest
+   kubectl get pods -n example-namespace
    ```
 
 2. **Check service exists**:
    ```bash
-   kubectl get services -n nv-ingest
+   kubectl get services -n example-namespace
    ```
 
 3. **Manually test port-forward**:
    ```bash
-   kubectl port-forward -n nv-ingest service/nv-ingest 7670:7670
+   kubectl port-forward -n example-namespace service/example-release 7670:7670
    ```
 
 4. **Check permissions** (if using sudo):
@@ -823,12 +817,12 @@ If `check_readiness()` times out:
 
 1. **Check pod logs**:
    ```bash
-   kubectl logs -n nv-ingest -l app=nv-ingest
+   kubectl logs -n example-namespace -l app=example-release
    ```
 
 2. **Check pod events**:
    ```bash
-   kubectl describe pod -n nv-ingest
+   kubectl describe pod -n example-namespace
    ```
 
 3. **Increase timeout**:
@@ -847,7 +841,7 @@ If you see port conflicts on subsequent runs:
 
 2. **Kill manually**:
    ```bash
-   pkill -f "port-forward.*nv-ingest"
+   pkill -f "port-forward.*example-release"
    ```
 
 The manager automatically attempts cleanup, but manual intervention may be needed in rare cases.

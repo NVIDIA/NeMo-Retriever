@@ -16,15 +16,19 @@ from pathlib import Path
 from typing import Annotated, Any, Optional
 
 from nemo_retriever.graph.designer import Param, designer_component
+from nemo_retriever.harness.config import VALID_BEIR_DOC_ID_FIELDS, VALID_BEIR_LOADERS
 
 logger = logging.getLogger(__name__)
+
+_BEIR_LOADER_CHOICES = sorted(VALID_BEIR_LOADERS)
+_BEIR_DOC_ID_FIELD_CHOICES = sorted(VALID_BEIR_DOC_ID_FIELDS)
 
 
 @designer_component(
     name="Recall Evaluator",
     category="Evaluation",
     compute="cpu",
-    description="Runs recall or BEIR evaluation against a LanceDB table and prints the standard run summary",
+    description="Runs audio recall or BEIR evaluation against a LanceDB table and prints the standard run summary",
     category_color="#42d6a4",
     component_type="pipeline_evaluator",
 )
@@ -33,26 +37,26 @@ class RecallEvaluatorActor:
 
     Assumes vectors were already written (for example via
     :class:`~nemo_retriever.vdb.operators.IngestVdbOperator` or the ``retriever
-    pipeline`` upload path). Supports ``recall`` (ground-truth query CSV) and
-    ``beir`` (HuggingFace BEIR dataset) modes, then calls
+    pipeline`` upload path). Supports ``audio_recall`` (ground-truth query CSV)
+    and ``beir`` (HuggingFace BEIR dataset) modes, then calls
     ``print_run_summary`` like the batch pipeline.
     """
 
     def __init__(
         self,
-        evaluation_mode: Annotated[str, Param(label="Evaluation Mode", choices=["recall", "beir"])] = "recall",
+        evaluation_mode: Annotated[
+            str, Param(label="Evaluation Mode", choices=["audio_recall", "beir"])
+        ] = "audio_recall",
         lancedb_uri: Annotated[str, Param(label="LanceDB URI", placeholder="/path/to/lancedb")] = "lancedb",
         lancedb_table: Annotated[str, Param(label="Table Name")] = "nv-ingest",
         query_csv: Annotated[str, Param(label="Query CSV", placeholder="/path/to/query_gt.csv")] = "",
         embedding_model: Annotated[str, Param(label="Embedding Model")] = "nvidia/llama-nemotron-embed-1b-v2",
         recall_required: Annotated[bool, Param(label="Recall Required")] = True,
-        match_mode: Annotated[str, Param(label="Match Mode", choices=["pdf_page", "pdf_only"])] = "pdf_page",
-        recall_adapter: Annotated[
-            str, Param(label="Recall Adapter", choices=["none", "page_plus_one", "financebench_json"])
-        ] = "none",
+        match_mode: Annotated[str, Param(label="Match Mode", choices=["audio_segment"])] = "audio_segment",
+        recall_adapter: Annotated[str, Param(label="Recall Adapter", choices=["none"])] = "none",
         ks: Annotated[str, Param(label="K Values", placeholder="1,3,5,10")] = "1,3,5,10",
         hybrid: Annotated[bool, Param(label="Hybrid Search")] = False,
-        beir_loader: Annotated[str, Param(label="BEIR Loader", choices=["vidore_hf"])] = "vidore_hf",
+        beir_loader: Annotated[str, Param(label="BEIR Loader", choices=_BEIR_LOADER_CHOICES)] = "vidore_hf",
         beir_dataset_name: Annotated[
             str, Param(label="BEIR Dataset Name", placeholder="e.g. vidore_v3_computer_science")
         ] = "",
@@ -60,7 +64,7 @@ class RecallEvaluatorActor:
         beir_query_language: Annotated[str, Param(label="Query Language", placeholder="Optional (e.g. en, fr)")] = "",
         beir_doc_id_field: Annotated[
             str,
-            Param(label="Doc ID Field", choices=["pdf_basename", "pdf_page", "source_id", "path"]),
+            Param(label="Doc ID Field", choices=_BEIR_DOC_ID_FIELD_CHOICES),
         ] = "pdf_basename",
     ) -> None:
         self.evaluation_mode = evaluation_mode
@@ -94,7 +98,7 @@ class RecallEvaluatorActor:
 
         resolved_model = resolve_embed_model(self.embedding_model)
 
-        evaluation_label = "Recall"
+        evaluation_label = "Audio Recall"
         evaluation_total_time = 0.0
         evaluation_metrics: dict[str, float] = {}
         evaluation_query_count: Optional[int] = None
@@ -122,12 +126,15 @@ class RecallEvaluatorActor:
             beir_dataset, _raw_hits, _run, evaluation_metrics = evaluate_lancedb_beir(beir_cfg)
             evaluation_total_time = time.perf_counter() - eval_start
             evaluation_query_count = len(beir_dataset.query_ids)
-        else:
+        elif self.evaluation_mode == "audio_recall":
+            if self.match_mode != "audio_segment" or self.recall_adapter != "none":
+                raise ValueError("Audio recall evaluation is only supported for audio_segment runs")
+
             from nemo_retriever.recall.core import RecallConfig, retrieve_and_score
 
             query_csv_path = Path(self.query_csv)
             if not query_csv_path.exists():
-                logger.warning("Query CSV not found at %s; skipping recall evaluation.", query_csv_path)
+                logger.warning("Query CSV not found at %s; skipping audio recall evaluation.", query_csv_path)
                 return {}
 
             recall_cfg = RecallConfig(
@@ -147,6 +154,8 @@ class RecallEvaluatorActor:
 
             recall_metrics = dict(evaluation_metrics)
             recall_total_time = evaluation_total_time
+        else:
+            raise ValueError(f"Unsupported evaluation_mode: {self.evaluation_mode!r}")
 
         summary_dict = print_run_summary(
             processed_pages=-1,

@@ -4,6 +4,7 @@
 
 """Unit tests for Node, Graph, >> chaining (including auto-wrap), and Executors."""
 
+import logging
 from typing import Any
 
 import pandas as pd
@@ -16,7 +17,9 @@ from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.params import ASRParams
 from nemo_retriever.params import ExtractParams
+from nemo_retriever.params import VideoFrameTextDedupParams
 from nemo_retriever.utils.ray_resource_hueristics import Resources
 
 
@@ -609,7 +612,6 @@ class TestMultiTypeExtractOperator:
             "/folder/page.html",
             "/folder/audio.mp3",
             "/folder/video.mp4",
-            "/folder/unknown.xyz",
         ]
 
         grouped = op.preprocess(files)
@@ -620,6 +622,71 @@ class TestMultiTypeExtractOperator:
         assert grouped["html"] == ["/folder/page.html"]
         assert grouped["audio"] == ["/folder/audio.mp3"]
         assert grouped["video"] == ["/folder/video.mp4"]
+
+    def test_default_media_params_match_root_ingest_defaults(self, monkeypatch):
+        """Mixed auto uses the same audio/video defaults as root CLI typed media ingest."""
+        import nemo_retriever.graph.multi_type_extract_operator as multitype
+
+        monkeypatch.setattr(
+            multitype,
+            "asr_params_from_env",
+            lambda: ASRParams(audio_endpoints=("grpc.example:443", None), segment_audio=True),
+        )
+
+        op = multitype.MultiTypeExtractCPUActor()
+
+        assert op.audio_chunk_params.split_type == "size"
+        assert op.audio_chunk_params.split_interval == 500000
+        assert op.asr_params.audio_endpoints == ("grpc.example:443", None)
+        assert op.asr_params.segment_audio is False
+        assert op.video_frame_params.enabled is True
+        assert op.video_frame_params.fps == 0.5
+        assert op.video_frame_params.dedup is True
+        assert op.video_text_dedup_params.enabled is True
+        assert op.video_text_dedup_params.max_dropped_frames == 2
+        assert op.av_fuse_params.enabled is True
+
+    def test_build_graph_forwards_video_text_dedup_params_to_multitype(self):
+        from nemo_retriever.graph.ingestor_runtime import build_graph
+
+        text_dedup_params = VideoFrameTextDedupParams(enabled=False, max_dropped_frames=7)
+
+        graph = build_graph(
+            extraction_mode="auto",
+            extract_params=ExtractParams(),
+            video_text_dedup_params=text_dedup_params,
+        )
+
+        op = graph.roots[0].operator
+        assert isinstance(op, MultiTypeExtractOperator)
+        assert op.video_text_dedup_params is text_dedup_params
+
+    def test_auto_mode_logs_and_skips_unsupported_extension_in_file_list(self, caplog):
+        op = MultiTypeExtractOperator(extraction_mode="auto")
+
+        with caplog.at_level(logging.WARNING, logger="nemo_retriever.graph.multi_type_extract_operator"):
+            grouped = op.preprocess(["/folder/known.txt", "/folder/unknown.xyz"])
+
+        assert grouped["text"] == ["/folder/known.txt"]
+        assert grouped["pdf"] == []
+        assert grouped["image"] == []
+        assert grouped["html"] == []
+        assert grouped["audio"] == []
+        assert grouped["video"] == []
+        assert "Unsupported file extension '.xyz'" in caplog.text
+
+    def test_auto_mode_logs_and_skips_unsupported_extension_in_dataframe_batch(self, caplog):
+        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+
+        op = MultiTypeExtractCPUActor(extraction_mode="auto")
+        batch = pd.DataFrame({"path": ["/folder/unknown.xyz"], "bytes": [b"unsupported"]})
+
+        with caplog.at_level(logging.WARNING, logger="nemo_retriever.graph.multi_type_extract_operator"):
+            result = op.process(batch)
+
+        assert isinstance(result, pd.DataFrame)
+        assert result.empty
+        assert "Unsupported file extension '.xyz'" in caplog.text
 
     def test_preprocess_folder_path(self):
         """Test preprocessing with folder path."""
@@ -688,7 +755,7 @@ class TestMultiTypeExtractOperator:
             "PageElementDetectionActor",
             "TableStructureActor",
             "GraphicElementsActor",
-            "OCRV2Actor",
+            "OCRActor",
         ]
         assert len({id(resources) for _name, resources in calls}) == 1
 
@@ -903,6 +970,132 @@ class TestRayDataExecutor:
         assert captured["paths"] == [str(pdf_path)]
         assert captured["include_paths"] is True
 
+    def test_ingest_rejects_directory_paths_before_ray_read(self, tmp_path, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        nested_dir = tmp_path / "nested"
+        nested_dir.mkdir()
+
+        class _FakeDataset:
+            pass
+
+        def _fake_read_binary_files(paths, include_paths=True):
+            raise AssertionError("read_binary_files should not be called for directory paths")
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset,
+            read_binary_files=_fake_read_binary_files,
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+
+        executor = RayDataExecutor(Graph())
+
+        with pytest.raises(IsADirectoryError) as exc:
+            executor.ingest([str(tmp_path)])
+        assert str(exc.value) == (
+            f"Input path is a directory: {tmp_path}. "
+            "Pass a file path or a glob pattern such as '<dir>/**/*.pdf' or '<dir>/**/*' "
+            "to select files inside the directory."
+        )
+
+    def test_ingest_rejects_missing_input_path_before_ray_read(self, tmp_path, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        class _FakeDataset:
+            pass
+
+        def _fake_read_binary_files(paths, include_paths=True):
+            raise AssertionError("read_binary_files should not be called for missing local paths")
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset,
+            read_binary_files=_fake_read_binary_files,
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+
+        missing_path = tmp_path / "missing.pdf"
+        executor = RayDataExecutor(Graph())
+
+        with pytest.raises(FileNotFoundError) as exc:
+            executor.ingest([str(missing_path)])
+        assert str(exc.value) == f"Input path does not exist: {missing_path}"
+
+    def test_ingest_rejects_remote_uri_before_ray_read(self, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        remote_uri = "s3://my-bucket/docs/file.pdf"
+
+        class _FakeDataset:
+            pass
+
+        def _fake_read_binary_files(paths, include_paths=True):
+            raise AssertionError("read_binary_files should not be called for unsupported remote URIs")
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset,
+            read_binary_files=_fake_read_binary_files,
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+
+        executor = RayDataExecutor(Graph())
+
+        with pytest.raises(FileNotFoundError) as exc:
+            executor.ingest([remote_uri])
+        assert str(exc.value).startswith("Input path does not exist: s3:")
+
+    def test_ingest_normalizes_ray_file_not_found(self, tmp_path, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        class _FakeDataset:
+            pass
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        def _fake_read_binary_files(paths, include_paths=True):
+            raise FileNotFoundError(paths[0])
+
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset,
+            DataContext=_FakeDataContext,
+            read_binary_files=_fake_read_binary_files,
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda ray: SimpleNamespace(available_gpu_count=lambda: 0),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        input_path = tmp_path / "sample.pdf"
+        input_path.write_bytes(b"pdf")
+        executor = RayDataExecutor(Graph())
+
+        with pytest.raises(FileNotFoundError) as exc:
+            executor.ingest([str(input_path)])
+        assert str(exc.value) == (f"Input path does not exist: ['{input_path}']. Reader error: {input_path}")
+
 
 # ---------------------------------------------------------------------------
 # InprocessExecutor tests
@@ -1010,6 +1203,34 @@ class TestInprocessExecutor:
         with pytest.raises(TypeError, match="data must be"):
             executor.ingest(12345)
 
+    def test_ingest_rejects_missing_input_path(self, tmp_path):
+        missing_path = tmp_path / "missing.pdf"
+        executor = InprocessExecutor(Graph())
+
+        with pytest.raises(FileNotFoundError) as exc:
+            executor.ingest([str(missing_path)])
+        assert str(exc.value) == f"Input path does not exist: {missing_path}"
+
+    def test_ingest_allows_unmatched_glob_pattern(self, tmp_path):
+        executor = InprocessExecutor(Graph())
+
+        result = executor.ingest([str(tmp_path / "*.pdf")])
+
+        assert isinstance(result, pd.DataFrame)
+        assert result.empty
+
+    def test_ingest_glob_pattern_ignores_matched_directories(self, tmp_path):
+        nested_dir = tmp_path / "nested"
+        nested_dir.mkdir()
+        (nested_dir / "a.txt").write_text("aaa")
+
+        executor = InprocessExecutor(Graph())
+        result = executor.ingest([str(tmp_path / "**")])
+
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 1
+        assert result.iloc[0]["path"] == str((nested_dir / "a.txt").resolve())
+
     def test_ingest_file_paths(self, tmp_path):
         """Test ingest loads files from paths into a DataFrame with bytes/path columns."""
         import pandas as pd
@@ -1110,6 +1331,24 @@ class TestInprocessExecutor:
 
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 2
+
+    def test_ingest_rejects_directory_paths(self, tmp_path):
+        nested_dir = tmp_path / "nested"
+        nested_dir.mkdir()
+        top_level_file = tmp_path / "a.txt"
+        nested_file = nested_dir / "b.txt"
+        top_level_file.write_text("aaa")
+        nested_file.write_text("bbb")
+
+        executor = InprocessExecutor(Graph())
+
+        with pytest.raises(IsADirectoryError) as exc:
+            executor.ingest([str(tmp_path)])
+        assert str(exc.value) == (
+            f"Input path is a directory: {tmp_path}. "
+            "Pass a file path or a glob pattern such as '<dir>/**/*.pdf' or '<dir>/**/*' "
+            "to select files inside the directory."
+        )
 
     def test_uses_operator_kwargs_for_construction(self):
         """Test that InprocessExecutor constructs operators from operator_kwargs, not the instance."""

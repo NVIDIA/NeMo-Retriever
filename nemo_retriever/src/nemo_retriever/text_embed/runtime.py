@@ -31,6 +31,8 @@ def _embed_group(
     output_column: str,
     resolved_model_name: str,
     nim_http_max_concurrent: int = 32,
+    input_type: str = "passage",
+    request_timeout_s: float = 600.0,
 ) -> pd.DataFrame:
     """Embed a single modality group via ``create_text_embeddings_for_df``."""
     embedder = None
@@ -43,8 +45,11 @@ def _embed_group(
             skip_prefix = hasattr(model, "embed_queries")
 
             def embedder(texts: Sequence[str]) -> Sequence[Sequence[float]]:  # noqa
-                batch = texts if skip_prefix else [f"passage: {text}" for text in texts]
-                vectors = model.embed(batch, batch_size=int(inference_batch_size))
+                if str(input_type).strip().lower() == "query" and skip_prefix:
+                    vectors = model.embed_queries(texts, batch_size=int(inference_batch_size))
+                else:
+                    batch = texts if skip_prefix else [f"passage: {text}" for text in texts]
+                    vectors = model.embed(batch, batch_size=int(inference_batch_size))
                 tolist = getattr(vectors, "tolist", None)
                 if callable(tolist):
                     return tolist()
@@ -66,7 +71,7 @@ def _embed_group(
         metadata_column="metadata",
         batch_size=int(effective_batch_size),
         encoding_format="float",
-        input_type="passage",
+        input_type=str(input_type),
         truncate="END",
         dimensions=None,
         embedding_nim_endpoint=endpoint or "http://localhost:8012/v1",
@@ -84,6 +89,7 @@ def _embed_group(
             "endpoint_url": endpoint,
             "local_batch_size": int(effective_batch_size),
             "nim_http_max_concurrent": max(1, int(nim_http_max_concurrent)),
+            "request_timeout_s": float(request_timeout_s),
         },
         transform_config=cfg,
     )
@@ -105,13 +111,18 @@ def embed_text_main_text_embed(
     has_embedding_column: str = "text_embeddings_1b_v2_has_embedding",
     embed_modality: str = "text",
     nim_http_max_concurrent: int = 32,
-    **_: Any,
+    input_type: str = "passage",
+    request_timeout_s: float | None = None,
+    **_extras: Any,
 ) -> Any:
     """Embed graph batches while preserving the legacy output columns."""
     if not isinstance(batch_df, pd.DataFrame):
         raise NotImplementedError("embed_text_main_text_embed currently only supports pandas.DataFrame input.")
     if inference_batch_size <= 0:
         raise ValueError("inference_batch_size must be > 0")
+
+    if request_timeout_s is None:
+        request_timeout_s = float(_extras.get("request_timeout_s", 600.0))
 
     endpoint = (embedding_endpoint or embed_invoke_url or "").strip() or None
     if endpoint is None and model is None:
@@ -138,6 +149,8 @@ def embed_text_main_text_embed(
                 output_column=output_column,
                 resolved_model_name=resolved_model_name,
                 nim_http_max_concurrent=nim_http_max_concurrent,
+                input_type=input_type,
+                request_timeout_s=float(request_timeout_s),
             )
         else:
             parts: List[pd.DataFrame] = []
@@ -157,6 +170,8 @@ def embed_text_main_text_embed(
                     output_column=output_column,
                     resolved_model_name=resolved_model_name,
                     nim_http_max_concurrent=nim_http_max_concurrent,
+                    input_type=input_type,
+                    request_timeout_s=float(request_timeout_s),
                 )
                 parts.append(part)
             out_df = pd.concat(parts).sort_index()

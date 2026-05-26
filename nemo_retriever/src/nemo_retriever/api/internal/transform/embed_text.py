@@ -497,8 +497,8 @@ def _cleanup_source_images(row):
     Removes source_image from text_metadata to reduce metadata size.
 
     The source_image field is used during embedding for text_image modality
-    but should be removed afterward to avoid exceeding storage limits
-    (e.g., Milvus JSON field 64KB limit).
+    but should be removed afterward to avoid exceeding downstream storage
+    limits on metadata payloads.
 
     Parameters
     ----------
@@ -955,7 +955,7 @@ def transform_create_text_embeddings_internal(
             _add_custom_embeddings, embeddings=custom_embeddings_dict, result_target_field=result_target_field, axis=1
         )
 
-    # Clean up source_image from text_metadata to avoid exceeding Milvus JSON field limits.
+    # Clean up source_image from text_metadata to avoid exceeding downstream metadata size limits.
     # The source_image is only needed during embedding and can be safely removed afterward.
     combined_df = combined_df.apply(_cleanup_source_images, axis=1)
 

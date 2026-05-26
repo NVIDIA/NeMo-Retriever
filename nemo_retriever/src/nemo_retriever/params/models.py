@@ -106,6 +106,7 @@ class IngestorCreateParams(_ParamsModel):
     base_url: str = "http://localhost:7670"
     allow_no_gpu: bool = False
     api_key: Optional[str] = None
+    error_policy: Literal["raise", "collect"] = "raise"
     # service run mode: maximum number of concurrent page uploads.  Lower
     # values (e.g. 2-4) reduce burst pressure on Kubernetes NodePort /
     # kube-proxy paths that otherwise reset connections under heavy load.
@@ -251,15 +252,20 @@ class BatchTuningParams(_ParamsModel):
     detect_workers: Optional[int] = None
     page_elements_cpus_per_actor: float = 1
     ocr_cpus_per_actor: float = 1
+    table_structure_workers: Optional[int] = None
+    table_structure_batch_size: Optional[int] = None
+    table_structure_cpus_per_actor: float = 1
     embed_workers: Optional[int] = None
     embed_batch_size: int = 32
     embed_cpus_per_actor: float = 1
     gpu_page_elements: Optional[float] = None
     gpu_ocr: Optional[float] = None
+    gpu_table_structure: Optional[float] = None
     gpu_embed: Optional[float] = None
     nemotron_parse_workers: Optional[int] = None
     gpu_nemotron_parse: Optional[float] = None
     nemotron_parse_batch_size: Optional[int] = None
+    store_workers: Optional[int] = None
     inference_batch_size: int = 8
 
 
@@ -286,6 +292,9 @@ class ExtractParams(_ParamsModel):
 
     # Extraction options
     method: str = "pdfium"
+    # Run PageElementDetection (layout/yolox). Required by TableStructure,
+    # GraphicElements, and OCR. Safe to disable for text-only ingests.
+    use_page_elements: bool = True
     use_table_structure: bool = False
     table_output_format: Optional[Literal["pseudo_markdown", "markdown"]] = None
     use_graphic_elements: bool = False
@@ -296,6 +305,7 @@ class ExtractParams(_ParamsModel):
     inference_batch_size: int = 8
     ocr_model_dir: Optional[str] = None
     ocr_version: Literal["v1", "v2"] = "v2"
+    ocr_lang: Optional[Literal["multi", "english"]] = None
 
     # Service endpoints
     invoke_url: Optional[str] = None
@@ -337,6 +347,16 @@ class ExtractParams(_ParamsModel):
             self.use_table_structure = True
         if self.table_output_format is None:
             self.table_output_format = "markdown" if self.use_table_structure else "pseudo_markdown"
+        if self.ocr_version == "v1" and self.ocr_lang is not None:
+            raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
+        if not self.use_page_elements:
+            consumers = [
+                ("use_table_structure", self.use_table_structure and self.extract_tables),
+                ("use_graphic_elements", self.use_graphic_elements and self.extract_charts),
+            ]
+            enabled = [name for name, on in consumers if on]
+            if enabled:
+                raise ValueError(f"use_page_elements=False is incompatible with: {', '.join(enabled)}")
         return self
 
 
@@ -366,10 +386,12 @@ class EmbedParams(_ParamsModel):
     local_ingest_embed_backend: str = (
         "vllm"  # "vllm" or "hf" — selects ingest-time embedder backend for both text and VL models
     )
+    query_max_length: int = 128
     dimensions: Optional[int] = None
 
     # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
     nim_http_max_concurrent: int = 32
+    request_timeout_s: float = 600.0
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
@@ -413,9 +435,48 @@ class EmbedParams(_ParamsModel):
         return self
 
 
+MetaJoinKey = Literal["auto", "source_id", "source_name"]
+
+
 class VdbUploadParams(_ParamsModel):
+    """Post-graph vector DB upload configuration.
+
+    Sidecar metadata (``meta_*``) matches ``nv_ingest_client`` / ``metadata_and_filtered_search.ipynb``:
+    all three fields must be set together to merge columns into each chunk's ``content_metadata``.
+    """
+
     vdb_op: str = "lancedb"
     vdb_kwargs: dict[str, Any] = Field(default_factory=dict)
+    meta_dataframe: Optional[Any] = None
+    """Path to csv/json/parquet or an in-memory :class:`pandas.DataFrame`."""
+    meta_source_field: Optional[str] = None
+    meta_fields: Optional[list[str]] = None
+    meta_join_key: MetaJoinKey = "auto"
+    """How to match rows to documents: ``source_id`` (full path), ``source_name`` (basename), or ``auto`` (try both)."""
+
+    @model_validator(mode="after")
+    def _validate_sidecar_triplet(self) -> "VdbUploadParams":
+        trio = (self.meta_dataframe, self.meta_source_field, self.meta_fields)
+        if all(x is None for x in trio):
+            return self
+        if any(x is None for x in trio):
+            raise ValueError(
+                "meta_dataframe, meta_source_field, and meta_fields must all be set together "
+                "when attaching sidecar metadata."
+            )
+        if not self.meta_fields:
+            raise ValueError("meta_fields must be a non-empty list when sidecar metadata is enabled.")
+        return self
+
+    def to_ingest_operator_kwargs(self) -> dict[str, Any]:
+        """Flatten into kwargs for :class:`~nemo_retriever.vdb.IngestVdbOperator`."""
+        out = dict(self.vdb_kwargs or {})
+        if self.meta_dataframe is not None:
+            out["meta_dataframe"] = self.meta_dataframe
+            out["meta_source_field"] = self.meta_source_field
+            out["meta_fields"] = list(self.meta_fields or [])
+            out["meta_join_key"] = self.meta_join_key
+        return out
 
 
 class StoreParams(_ParamsModel):
@@ -423,6 +484,7 @@ class StoreParams(_ParamsModel):
     storage_options: dict[str, Any] = Field(default_factory=dict)
     image_format: str = "png"
     strip_base64: bool = True
+    batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
 
     @model_validator(mode="after")
     def _resolve_local_storage_uri(self) -> "StoreParams":
@@ -553,6 +615,7 @@ class CaptionParams(LLMInferenceParams):
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.5
     caption_infographics: bool = False
+    extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
 class WebhookParams(_ParamsModel):

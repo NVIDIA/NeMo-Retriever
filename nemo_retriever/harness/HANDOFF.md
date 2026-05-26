@@ -24,7 +24,7 @@ Operator-oriented notes for `nemo_retriever` benchmark runs. Implementation deta
 
 ## Defaults (`test_configs.yaml`)
 
-- Default dataset: `jp20` (recall workflow with query CSV).
+- Default dataset: `jp20` (BEIR evaluation workflow with query CSV).
 - Default run mode: `batch`.
 - `bo20`: ingestion-oriented (`recall_required: false`, no query CSV).
 - Presets: `single_gpu`, `dgx_8gpu`.
@@ -69,8 +69,8 @@ Prefer **`summary_metrics`** for dashboards (small set: pages, ingest timing, re
 
 - `recall_required: true` without recall metrics → harness failure (`missing_recall_metrics`).
 - Relative `query_csv` resolves next to the YAML file, then repo root.
-- Dataset paths under `/datasets/nv-ingest/...` may resolve to `/raid/$USER/...` when the former is missing.
-- Optional **store** options (`store_images_uri`, `store_text`, `strip_base64`) map to graph CLI flags; relative `store_images_uri` is resolved under the run artifact directory. See `config.py` for env overrides (`HARNESS_STORE_*`).
+- Dataset paths under `/datasets/retrieval-eval/...` may resolve to `/raid/$USER/...` when the former is missing.
+- Store is not configured through the harness. Use `retriever pipeline run --store-images-uri <uri>` for local or object-storage image assets.
 
 ## Backlog (maintainers / agents)
 
@@ -87,7 +87,7 @@ Ideas not committed to code; pick up or trim as priorities change.
 
 1. `config.py` + defaults in `test_configs.yaml` (and env keys if any).
 2. `run.py` and artifact payloads (`results.json` / `session_summary.json` shape).
-3. Unit tests under `nemo_retriever/tests/test_harness_*.py` and graph coverage via `test_batch_pipeline.py`.
+3. Unit tests under `nemo_retriever/tests/test_harness_*.py` and graph coverage via `test_graph_pipeline_cli.py`.
 4. `nemo_retriever/README.md` harness section if user-facing commands changed.
 5. At least one local run or `--dry-run` on the affected CLI path.
 
@@ -100,8 +100,7 @@ pytest -q nemo_retriever/tests/test_harness_run.py \
   nemo_retriever/tests/test_harness_config.py \
   nemo_retriever/tests/test_harness_reporting.py \
   nemo_retriever/tests/test_harness_nightly.py \
-  nemo_retriever/tests/test_harness_recall_adapters.py \
-  nemo_retriever/tests/test_batch_pipeline.py
+  nemo_retriever/tests/test_graph_pipeline_cli.py
 ```
 
 See `nemo_retriever/README.md` for broader retriever documentation.

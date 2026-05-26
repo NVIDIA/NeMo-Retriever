@@ -16,13 +16,31 @@ REPO_ROOT = NEMO_RETRIEVER_ROOT.parent
 DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
 DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.yaml"
 VALID_RUN_MODES = {"batch", "inprocess", "service"}
-VALID_EVALUATION_MODES = {"recall", "beir"}
-VALID_RECALL_ADAPTERS = {"none", "page_plus_one", "financebench_json"}
-VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "vidore_hf"}
+VALID_EVALUATION_MODES = {"none", "audio_recall", "beir"}
+VALID_RECALL_ADAPTERS = {"none"}
+VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"}
 VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
 VALID_EMBED_MODALITIES = {"text", "image", "text_image"}
 VALID_EMBED_GRANULARITIES = {"element", "page"}
-REMOVED_HARNESS_KEYS = {"image_elements_modality"}
+VALID_OCR_LANGS = {"multi", "english"}
+# The harness should eventually integrate these pipeline storage settings directly.
+REMOVED_HARNESS_KEY_MESSAGES = {
+    "image_elements_modality": (
+        "image_elements_modality is no longer supported by the harness; use embed_modality instead"
+    ),
+    "store_images_uri": (
+        "store_images_uri is no longer supported by the harness; use the pipeline CLI store flags instead"
+    ),
+    "store_text": "store_text is no longer supported by the harness; use the pipeline CLI store flags instead",
+    "strip_base64": "strip_base64 is no longer supported by the harness; use the pipeline CLI store flags instead",
+}
+REMOVED_HARNESS_KEYS = set(REMOVED_HARNESS_KEY_MESSAGES)
+REMOVED_HARNESS_ENV_KEYS = {
+    "HARNESS_IMAGE_ELEMENTS_MODALITY": "image_elements_modality",
+    "HARNESS_STORE_IMAGES_URI": "store_images_uri",
+    "HARNESS_STORE_TEXT": "store_text",
+    "HARNESS_STRIP_BASE64": "strip_base64",
+}
 DEFAULT_NIGHTLY_SLACK_METRIC_KEYS = [
     "pages",
     "ingest_secs",
@@ -60,12 +78,15 @@ class HarnessConfig:
     query_csv: str | None = None
     input_type: str = "pdf"
     recall_required: bool = True
-    recall_match_mode: str = "pdf_page"
+    # Audio recall fields only apply when evaluation_mode="audio_recall".
+    recall_match_mode: str = "audio_segment"
     recall_adapter: str = "none"
     audio_match_tolerance_secs: float = 2.0
     segment_audio: bool = False
     audio_split_type: str = "size"
     audio_split_interval: int = 500000
+    evaluation_mode: str = "none"
+    beir_loader: str | None = None
     video_extract_audio: bool = True
     video_extract_frames: bool = True
     video_frame_fps: float = 1.0
@@ -73,8 +94,6 @@ class HarnessConfig:
     video_frame_text_dedup: bool = True
     video_frame_text_dedup_max_dropped_frames: int = 2
     video_av_fuse: bool = True
-    evaluation_mode: str = "recall"
-    beir_loader: str | None = None
     beir_dataset_name: str | None = None
     beir_split: str = "test"
     beir_query_language: str | None = None
@@ -84,17 +103,17 @@ class HarnessConfig:
     artifacts_dir: str | None = None
     ray_address: str | None = None
     lancedb_uri: str = "lancedb"
+    lancedb_table_name: str = "nv-ingest"
     hybrid: bool = False
     embed_model_name: str = "nvidia/llama-nemotron-embed-1b-v2"
     embed_modality: str = "text"
     embed_granularity: str = "element"
+    ocr_version: str | None = None
+    ocr_lang: str | None = None
     extract_page_as_image: bool = True
     extract_infographics: bool = False
     write_detection_file: bool = False
     use_heuristics: bool = False
-    store_images_uri: str | None = None
-    store_text: bool = False
-    strip_base64: bool = True
 
     service_url: str | None = None
     service_max_concurrency: int = 8
@@ -147,29 +166,32 @@ class HarnessConfig:
         if self.evaluation_mode not in VALID_EVALUATION_MODES:
             errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
 
-        if self.evaluation_mode == "recall" and self.recall_required and not self.query_csv:
+        if self.evaluation_mode == "audio_recall" and self.recall_required and not self.query_csv:
             errors.append("recall_required=true requires query_csv")
 
         if self.input_type not in {"pdf", "txt", "html", "doc", "audio", "video"}:
             errors.append(f"input_type must be one of pdf/txt/html/doc/audio/video, got '{self.input_type}'")
 
-        if self.evaluation_mode == "recall":
-            if self.recall_match_mode not in {"pdf_page", "pdf_only", "audio_segment"}:
-                errors.append("recall_match_mode must be one of pdf_page/pdf_only/audio_segment")
+        if self.evaluation_mode == "audio_recall":
+            if self.input_type != "audio":
+                errors.append("evaluation_mode=audio_recall is only supported for input_type=audio")
+            else:
+                if self.recall_match_mode != "audio_segment":
+                    errors.append("recall_match_mode must be audio_segment when evaluation_mode=audio_recall")
 
-            if self.recall_adapter not in VALID_RECALL_ADAPTERS:
-                errors.append(f"recall_adapter must be one of {sorted(VALID_RECALL_ADAPTERS)}")
-            if float(self.audio_match_tolerance_secs) < 0.0:
-                errors.append("audio_match_tolerance_secs must be >= 0.0")
-            if self.audio_split_type not in {"size", "time", "frame"}:
-                errors.append("audio_split_type must be one of size/time/frame")
-            if int(self.audio_split_interval) < 1:
-                errors.append("audio_split_interval must be >= 1")
-            if float(self.video_frame_fps) <= 0.0:
-                errors.append("video_frame_fps must be > 0.0")
-            if int(self.video_frame_text_dedup_max_dropped_frames) < 0:
-                errors.append("video_frame_text_dedup_max_dropped_frames must be >= 0")
-        else:
+                if self.recall_adapter not in VALID_RECALL_ADAPTERS:
+                    errors.append(f"recall_adapter must be one of {sorted(VALID_RECALL_ADAPTERS)}")
+                if float(self.audio_match_tolerance_secs) < 0.0:
+                    errors.append("audio_match_tolerance_secs must be >= 0.0")
+                if self.audio_split_type not in {"size", "time", "frame"}:
+                    errors.append("audio_split_type must be one of size/time/frame")
+                if int(self.audio_split_interval) < 1:
+                    errors.append("audio_split_interval must be >= 1")
+                if float(self.video_frame_fps) <= 0.0:
+                    errors.append("video_frame_fps must be > 0.0")
+                if int(self.video_frame_text_dedup_max_dropped_frames) < 0:
+                    errors.append("video_frame_text_dedup_max_dropped_frames must be >= 0")
+        elif self.evaluation_mode == "beir":
             if self.beir_loader not in VALID_BEIR_LOADERS:
                 errors.append(f"beir_loader must be one of {sorted(VALID_BEIR_LOADERS)}")
             if self.beir_doc_id_field not in VALID_BEIR_DOC_ID_FIELDS:
@@ -195,6 +217,16 @@ class HarnessConfig:
 
         if self.embed_granularity not in VALID_EMBED_GRANULARITIES:
             errors.append(f"embed_granularity must be one of {sorted(VALID_EMBED_GRANULARITIES)}")
+
+        if self.ocr_version is not None and self.ocr_version not in {"v1", "v2"}:
+            errors.append("ocr_version must be one of ['v1', 'v2'] when provided")
+        if self.ocr_lang is not None and self.ocr_lang not in VALID_OCR_LANGS:
+            errors.append(f"ocr_lang must be one of {sorted(VALID_OCR_LANGS)} when provided")
+        if self.ocr_version == "v1" and self.ocr_lang is not None:
+            errors.append("ocr_lang is only supported when ocr_version='v2'")
+
+        if not str(self.lancedb_table_name).strip():
+            errors.append("lancedb_table_name must be a non-empty string")
 
         _ZERO_ALLOWED_WORKERS = {f for f in TUNING_FIELDS if f.endswith("_workers")} if self.use_heuristics else set()
         for name in TUNING_FIELDS:
@@ -292,8 +324,9 @@ def _resolve_query_csv_path(value: str | None, *, config_path: Path) -> str | No
 
 
 def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
-    if os.getenv("HARNESS_IMAGE_ELEMENTS_MODALITY") not in {None, ""}:
-        raise ValueError("image_elements_modality is no longer supported by the harness; use embed_modality instead")
+    for env_key, removed_key in REMOVED_HARNESS_ENV_KEYS.items():
+        if os.getenv(env_key) not in {None, ""}:
+            raise ValueError(REMOVED_HARNESS_KEY_MESSAGES[removed_key])
 
     env_map: dict[str, tuple[str, Any]] = {
         "HARNESS_DATASET": ("dataset", str),
@@ -328,17 +361,17 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_ARTIFACTS_DIR": ("artifacts_dir", str),
         "HARNESS_RAY_ADDRESS": ("ray_address", str),
         "HARNESS_LANCEDB_URI": ("lancedb_uri", str),
+        "HARNESS_LANCEDB_TABLE_NAME": ("lancedb_table_name", str),
         "HARNESS_HYBRID": ("hybrid", _parse_bool),
         "HARNESS_EMBED_MODEL_NAME": ("embed_model_name", str),
         "HARNESS_EMBED_MODALITY": ("embed_modality", str),
         "HARNESS_EMBED_GRANULARITY": ("embed_granularity", str),
+        "HARNESS_OCR_VERSION": ("ocr_version", str),
+        "HARNESS_OCR_LANG": ("ocr_lang", str),
         "HARNESS_EXTRACT_PAGE_AS_IMAGE": ("extract_page_as_image", _parse_bool),
         "HARNESS_EXTRACT_INFOGRAPHICS": ("extract_infographics", _parse_bool),
         "HARNESS_WRITE_DETECTION_FILE": ("write_detection_file", _parse_bool),
         "HARNESS_USE_HEURISTICS": ("use_heuristics", _parse_bool),
-        "HARNESS_STORE_IMAGES_URI": ("store_images_uri", str),
-        "HARNESS_STORE_TEXT": ("store_text", _parse_bool),
-        "HARNESS_STRIP_BASE64": ("strip_base64", _parse_bool),
         "HARNESS_SERVICE_URL": ("service_url", str),
         "HARNESS_SERVICE_MAX_CONCURRENCY": ("service_max_concurrency", _parse_number),
         "HARNESS_API_KEY": ("api_key", str),
@@ -371,7 +404,7 @@ def _parse_cli_overrides(overrides: list[str] | None) -> dict[str, Any]:
         if not key:
             raise ValueError(f"Invalid override key in: {item}")
         if key in REMOVED_HARNESS_KEYS:
-            raise ValueError(f"{key} is no longer supported by the harness; use embed_modality instead")
+            raise ValueError(REMOVED_HARNESS_KEY_MESSAGES[key])
 
         low = raw_val.lower()
         if low in {"true", "false"}:
@@ -459,9 +492,13 @@ def load_harness_config(
     merged["preset"] = str(merged.get("preset") or "single_gpu")
     if merged.get("evaluation_mode") == "beir" and merged.get("beir_dataset_name") is None:
         merged["beir_dataset_name"] = merged["dataset_label"]
+    if merged.get("evaluation_mode") != "beir":
+        merged["beir_loader"] = None
+        merged["beir_dataset_name"] = None
+        merged["beir_query_language"] = None
     for removed_key in sorted(REMOVED_HARNESS_KEYS):
         if removed_key in merged:
-            raise ValueError(f"{removed_key} is no longer supported by the harness; use embed_modality instead")
+            raise ValueError(REMOVED_HARNESS_KEY_MESSAGES[removed_key])
 
     if "query_csv" not in merged:
         merged["query_csv"] = None

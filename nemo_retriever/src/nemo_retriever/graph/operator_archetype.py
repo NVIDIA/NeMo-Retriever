@@ -59,6 +59,15 @@ class ArchetypeOperator(AbstractOperator):
             return gpu_variant
         return cls
 
+    @classmethod
+    def variant_operator_kwargs(
+        cls,
+        operator_class: type[AbstractOperator],
+        operator_kwargs: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return constructor kwargs for the resolved concrete operator."""
+        return dict(operator_kwargs or {})
+
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return self._resolve_delegate().preprocess(data, **kwargs)
 
@@ -88,7 +97,8 @@ class ArchetypeOperator(AbstractOperator):
         if operator_class is type(self):
             raise RuntimeError(f"{type(self).__name__} could not resolve a concrete hardware-specific operator.")
 
-        delegate = operator_class(**operator_kwargs)
+        resolved_kwargs = type(self).variant_operator_kwargs(operator_class, operator_kwargs)
+        delegate = operator_class(**resolved_kwargs)
         self._resolved_delegate = delegate
         self._resolved_delegate_key = cache_key
         return delegate

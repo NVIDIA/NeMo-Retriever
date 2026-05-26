@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -14,11 +15,11 @@ import pandas as pd
 
 from nemo_retriever.audio import ASRActor
 from nemo_retriever.audio import MediaChunkActor
+from nemo_retriever.audio import asr_params_from_env
 from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.html.ray_data import HtmlSplitActor
 from nemo_retriever.image.ray_data import ImageLoadActor
-from nemo_retriever.image.load import SUPPORTED_IMAGE_EXTENSIONS
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
@@ -48,19 +49,44 @@ from nemo_retriever.video import VideoFrameOCRActor
 from nemo_retriever.video import VideoFrameTextDedup
 from nemo_retriever.video import dedup_video_frames
 from nemo_retriever.graph.designer import designer_component
+from nemo_retriever.utils.input_files import INPUT_TYPE_EXTENSIONS
 from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
 
+logger = logging.getLogger(__name__)
+
 # Define file type mappings
-PDF_EXTENSIONS = {".pdf", ".docx", ".pptx"}
-TEXT_EXTENSIONS = {".txt"}
-HTML_EXTENSIONS = {".html"}
-AUDIO_EXTENSIONS = {".mp3", ".wav"}
-IMAGE_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv"}
+PDF_EXTENSIONS = INPUT_TYPE_EXTENSIONS["pdf"] | INPUT_TYPE_EXTENSIONS["doc"]
+TEXT_EXTENSIONS = INPUT_TYPE_EXTENSIONS["txt"]
+HTML_EXTENSIONS = INPUT_TYPE_EXTENSIONS["html"]
+AUDIO_EXTENSIONS = INPUT_TYPE_EXTENSIONS["audio"]
+IMAGE_EXTENSIONS = INPUT_TYPE_EXTENSIONS["image"]
+VIDEO_EXTENSIONS = INPUT_TYPE_EXTENSIONS["video"]
+DEFAULT_AUDIO_SPLIT_INTERVAL = 500000
+DEFAULT_VIDEO_FRAME_FPS = 0.5
+
+
+def _unsupported_extension_message(ext: str) -> str:
+    display_ext = ext or "<none>"
+    return (
+        f"Unsupported file extension '{display_ext}' for extraction_mode='auto'. "
+        "Provide a supported extension or set extraction_mode explicitly."
+    )
 
 
 def _has_endpoint(*values: Any) -> bool:
     return any(bool(str(value or "").strip()) for value in values)
+
+
+def _default_asr_params() -> ASRParams:
+    return asr_params_from_env().model_copy(update={"segment_audio": False})
+
+
+def _default_audio_chunk_params() -> AudioChunkParams:
+    return AudioChunkParams(split_type="size", split_interval=DEFAULT_AUDIO_SPLIT_INTERVAL)
+
+
+def _default_video_frame_params() -> VideoFrameParams:
+    return VideoFrameParams(enabled=True, fps=DEFAULT_VIDEO_FRAME_FPS, dedup=True)
 
 
 def _parse_mode_enabled(extract_params: ExtractParams) -> bool:
@@ -140,11 +166,14 @@ class _MultiTypeExtractBase(AbstractOperator):
         self.extract_params = extract_params or ExtractParams()
         self.text_params = text_params or TextChunkParams()
         self.html_params = html_params or HtmlChunkParams()
-        self.audio_chunk_params = audio_chunk_params or AudioChunkParams()
-        self.asr_params = asr_params or ASRParams()
+        self.audio_chunk_params = audio_chunk_params or _default_audio_chunk_params()
+        self.asr_params = asr_params or _default_asr_params()
         self.caption_params = caption_params
-        self.video_frame_params = video_frame_params or VideoFrameParams()
-        self.video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams()
+        self.video_frame_params = video_frame_params or _default_video_frame_params()
+        self.video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams(
+            enabled=True,
+            max_dropped_frames=2,
+        )
         self.av_fuse_params = av_fuse_params or AudioVisualFuseParams()
         self._split_config: dict[str, Any] = split_config if split_config is not None else resolve_split_params(None)
         self._resolved_resources = None
@@ -196,6 +225,12 @@ class _MultiTypeExtractBase(AbstractOperator):
             path = str(row.get("path") or "")
             ext = Path(path).suffix.lower()
             target = explicit_mode if explicit_mode != "auto" else self._mode_for_extension(ext)
+            if explicit_mode == "auto" and target == "":
+                logger.warning(
+                    _unsupported_extension_message(ext),
+                    extra={"path": path},
+                )
+                continue
             if target in grouped:
                 grouped[target].append(idx)
 
@@ -237,6 +272,12 @@ class _MultiTypeExtractBase(AbstractOperator):
         for path in files:
             ext = Path(path).suffix.lower()
             target = explicit_mode if explicit_mode != "auto" else self._mode_for_extension(ext)
+            if explicit_mode == "auto" and target == "":
+                logger.warning(
+                    _unsupported_extension_message(ext),
+                    extra={"path": path},
+                )
+                continue
             if target in grouped:
                 grouped[target].append(path)
 
@@ -303,6 +344,8 @@ class _MultiTypeExtractBase(AbstractOperator):
         ep = self.extract_params
         return {
             "ocr_invoke_url": ep.ocr_invoke_url,
+            "ocr_version": getattr(ep, "ocr_version", "v2"),
+            "ocr_lang": getattr(ep, "ocr_lang", None),
             "api_key": ep.ocr_api_key or ep.api_key,
             "inference_batch_size": int(ep.inference_batch_size),
             "request_timeout_s": float(ep.ocr_request_timeout_s or ep.request_timeout_s),
@@ -317,7 +360,7 @@ class _MultiTypeExtractBase(AbstractOperator):
 
         Branch B: ``VideoFrameActor`` extracts frames at
         ``video_frame_params.fps``; optional content-hash dedup;
-        ``VideoFrameOCRActor`` (Nemotron OCR v1) runs full-frame OCR
+        ``VideoFrameOCRActor`` (Nemotron OCR) runs full-frame OCR
         directly — no page-elements detection; ``VideoFrameTextDedup``
         then collapses time-adjacent runs of identical OCR text per
         ``source_path`` (mirrors the Ray graph in ``build_graph``).
@@ -366,7 +409,8 @@ class _MultiTypeExtractBase(AbstractOperator):
     def _run_detection_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         extract_params = self.extract_params
         tuning = getattr(extract_params, "batch_tuning", None)
-        load_ocr_v2 = getattr(extract_params, "ocr_version", "v2") == "v2"
+        ocr_version = getattr(extract_params, "ocr_version", "v2")
+        ocr_lang = getattr(extract_params, "ocr_lang", None)
 
         detect_kwargs: dict[str, Any] = {}
         if extract_params.page_elements_invoke_url:
@@ -381,7 +425,9 @@ class _MultiTypeExtractBase(AbstractOperator):
         batch_df = self._instantiate_resolved(PageElementDetectionActor, **detect_kwargs).run(batch_df)
 
         if extract_params.use_table_structure and extract_params.extract_tables:
-            table_kwargs: dict[str, Any] = {"load_ocr_v2": load_ocr_v2}
+            table_kwargs: dict[str, Any] = {"ocr_version": ocr_version}
+            if ocr_lang is not None:
+                table_kwargs["ocr_lang"] = ocr_lang
             if extract_params.table_structure_invoke_url:
                 table_kwargs["table_structure_invoke_url"] = extract_params.table_structure_invoke_url
             if extract_params.ocr_invoke_url:
@@ -393,7 +439,9 @@ class _MultiTypeExtractBase(AbstractOperator):
             batch_df = self._instantiate_resolved(TableStructureActor, **table_kwargs).run(batch_df)
 
         if extract_params.use_graphic_elements and extract_params.extract_charts:
-            graphic_kwargs: dict[str, Any] = {"load_ocr_v2": load_ocr_v2}
+            graphic_kwargs: dict[str, Any] = {"ocr_version": ocr_version}
+            if ocr_lang is not None:
+                graphic_kwargs["ocr_lang"] = ocr_lang
             if extract_params.graphic_elements_invoke_url:
                 graphic_kwargs["graphic_elements_invoke_url"] = extract_params.graphic_elements_invoke_url
             if extract_params.ocr_invoke_url:
@@ -405,7 +453,10 @@ class _MultiTypeExtractBase(AbstractOperator):
         ocr_kwargs: dict[str, Any] = {
             "use_graphic_elements": extract_params.use_graphic_elements,
             "use_table_structure": extract_params.use_table_structure,
+            "ocr_version": ocr_version,
         }
+        if ocr_lang is not None:
+            ocr_kwargs["ocr_lang"] = ocr_lang
         if extract_params.method in ("pdfium_hybrid", "ocr") and extract_params.extract_text:
             ocr_kwargs["extract_text"] = True
         if extract_params.extract_tables:
@@ -467,6 +518,8 @@ class _MultiTypeExtractBase(AbstractOperator):
         resolved_class = resolve_operator_class(
             operator_class, self._local_resources(), operator_kwargs=operator_kwargs
         )
+        if issubclass(operator_class, ArchetypeOperator):
+            operator_kwargs = operator_class.variant_operator_kwargs(resolved_class, operator_kwargs)
         return resolved_class(**operator_kwargs)
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:

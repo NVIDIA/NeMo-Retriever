@@ -11,6 +11,7 @@ import logging
 import math
 from pathlib import Path
 from typing import Any, Iterable, Sequence
+import unicodedata
 
 from nemo_retriever.retriever import Retriever
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BEIR_KS: tuple[int, ...] = (1, 3, 5, 10)
 VALID_BEIR_LOADERS: frozenset[str] = frozenset(
-    {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "vidore_hf"}
+    {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"}
 )
 VALID_BEIR_DOC_ID_FIELDS: frozenset[str] = frozenset(
     {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
@@ -28,6 +29,79 @@ BO767_ANNOTATIONS_PATH = REPO_ROOT / "data" / "bo767_annotations.csv"
 BO10K_ANNOTATIONS_PATH = REPO_ROOT / "data" / "digital_corpora_10k_annotations.csv"
 EARNINGS_ANNOTATIONS_PATH = REPO_ROOT / "data" / "earnings_consulting_multimodal.csv"
 FINANCEBENCH_ANNOTATIONS_PATH = REPO_ROOT / "data" / "financebench_train.json"
+JP20_ANNOTATIONS_PATH = REPO_ROOT / "data" / "jp20_query_gt.csv"
+
+
+@dataclass(frozen=True)
+class BeirDatasetOptions:
+    """Resolved BEIR dataset defaults: loader, dataset identifier/path, doc-id field, and metric cutoffs."""
+
+    loader: str | None = None
+    dataset_name: str | None = None
+    doc_id_field: str | None = None
+    ks: tuple[int, ...] = DEFAULT_BEIR_KS
+
+
+_FIRST_CLASS_BEIR_DATASETS: dict[str, BeirDatasetOptions] = {
+    "bo767": BeirDatasetOptions(
+        loader="bo767_csv",
+        dataset_name=str(BO767_ANNOTATIONS_PATH),
+        doc_id_field="pdf_page",
+    ),
+    "bo10k": BeirDatasetOptions(
+        loader="bo10k_csv",
+        dataset_name=str(BO10K_ANNOTATIONS_PATH),
+        doc_id_field="pdf_page",
+    ),
+    "jp20": BeirDatasetOptions(
+        loader="jp20_csv",
+        dataset_name=str(JP20_ANNOTATIONS_PATH),
+        doc_id_field="pdf_page",
+    ),
+    "earnings": BeirDatasetOptions(
+        loader="earnings_csv",
+        dataset_name=str(EARNINGS_ANNOTATIONS_PATH),
+        doc_id_field="pdf_page",
+    ),
+    "financebench": BeirDatasetOptions(
+        loader="financebench_json",
+        dataset_name=str(FINANCEBENCH_ANNOTATIONS_PATH),
+        doc_id_field="pdf_basename",
+    ),
+}
+
+
+def resolve_beir_dataset_options(
+    *,
+    dataset_name: str | None,
+    loader: str | None = None,
+    doc_id_field: str | None = None,
+    ks: Sequence[int] | None = None,
+) -> BeirDatasetOptions:
+    """Resolve shorthand first-class BEIR dataset names into concrete options."""
+    normalized_name = str(dataset_name).strip() if dataset_name is not None else None
+    defaults = None
+    if normalized_name:
+        lookup_key = normalized_name.lower()
+        defaults = _FIRST_CLASS_BEIR_DATASETS.get(lookup_key)
+        if defaults is None and lookup_key.startswith("vidore_v3_"):
+            defaults = BeirDatasetOptions(
+                loader="vidore_hf",
+                dataset_name=normalized_name,
+                doc_id_field="pdf_basename",
+            )
+
+    resolved_ks = tuple(int(k) for k in ks) if ks else (defaults.ks if defaults else DEFAULT_BEIR_KS)
+    # Preserve the historical CLI default for custom/non-first-class BEIR datasets.
+    resolved_doc_id_field = doc_id_field or (defaults.doc_id_field if defaults else "pdf_basename")
+    return BeirDatasetOptions(
+        loader=loader or (defaults.loader if defaults else None),
+        dataset_name=(defaults.dataset_name if defaults else normalized_name),
+        doc_id_field=resolved_doc_id_field,
+        ks=resolved_ks,
+    )
+
+
 _ELEMENT_TYPE_ALIASES: dict[str, str] = {
     "caption": "image",
     "chart": "chart",
@@ -42,6 +116,24 @@ _ELEMENT_TYPE_ALIASES: dict[str, str] = {
     "table": "table",
     "table_caption": "table",
     "text": "text",
+}
+_LANGUAGE_ALIASES: dict[str, set[str]] = {
+    "en": {"en", "eng", "english"},
+    "fr": {"fr", "fra", "fre", "french", "français", "francais"},
+    "de": {"de", "deu", "ger", "german", "deutsch"},
+    "es": {"es", "spa", "spanish", "español", "espanol"},
+    "it": {"it", "ita", "italian", "italiano"},
+    "pt": {"pt", "por", "portuguese", "português", "portugues"},
+    "zh": {"zh", "zho", "chi", "chinese"},
+    "ja": {"ja", "jpn", "japanese"},
+    "ko": {"ko", "kor", "korean"},
+    "ar": {"ar", "ara", "arabic"},
+    "ru": {"ru", "rus", "russian"},
+    "nl": {"nl", "nld", "dut", "dutch"},
+    "pl": {"pl", "pol", "polish"},
+    "sv": {"sv", "swe", "swedish"},
+    "tr": {"tr", "tur", "turkish"},
+    "hi": {"hi", "hin", "hindi"},
 }
 
 
@@ -72,6 +164,7 @@ class BeirConfig:
     local_hf_device: str | None = None
     local_hf_cache_dir: str | None = None
     local_hf_batch_size: int = 32
+    local_query_max_length: int = 128
     reranker: bool = False
     reranker_model_name: str = "nvidia/llama-nemotron-rerank-1b-v2"
     reranker_endpoint: str | None = None
@@ -80,6 +173,11 @@ class BeirConfig:
     local_reranker_backend: str = "vllm"
     #: Passed to :class:`~nemo_retriever.retriever.Retriever` for local query embedding.
     local_query_embed_backend: str = "hf"
+    #: When set, queries are sent to this service URL (POST /v1/query) instead of local LanceDB.
+    service_url: str | None = None
+    service_api_token: str | None = None
+    service_query_batch_size: int = 32
+    service_max_concurrent: int = 16
 
     def __post_init__(self) -> None:
         from nemo_retriever.model import (
@@ -165,6 +263,33 @@ def _normalize_element_type(value: Any, *, subtype: Any = None) -> str | None:
     return None
 
 
+def _normalize_language_token(value: Any) -> str:
+    normalized = str(value or "").strip().lower().replace("_", "-")
+    if not normalized:
+        return ""
+
+    return "".join(char for char in unicodedata.normalize("NFKD", normalized) if not unicodedata.combining(char))
+
+
+def _normalize_language(value: Any) -> str:
+    normalized = _normalize_language_token(value)
+    if not normalized:
+        return ""
+
+    primary_subtag = normalized.split("-", 1)[0]
+    for language, aliases in _LANGUAGE_ALIASES.items():
+        normalized_aliases = {_normalize_language_token(alias) for alias in aliases}
+        if normalized in normalized_aliases or primary_subtag in normalized_aliases:
+            return language
+    return normalized
+
+
+def _languages_match(requested_language: Any, row_language: Any) -> bool:
+    requested = _normalize_language(requested_language)
+    row = _normalize_language(row_language)
+    return bool(requested and row and requested == row)
+
+
 def _build_pdf_page_modality(pdf_basename: str, page_number: Any, element_type: str) -> str | None:
     basename = _normalize_pdf_basename(pdf_basename)
     if not basename:
@@ -195,6 +320,8 @@ def _resolve_annotations_csv_path(dataset_name: str, *, loader_name: str) -> Pat
         return BO10K_ANNOTATIONS_PATH
     if loader_name == "earnings_csv" and dataset_str.lower() == "earnings":
         return EARNINGS_ANNOTATIONS_PATH
+    if loader_name == "jp20_csv" and dataset_str.lower() == "jp20":
+        return JP20_ANNOTATIONS_PATH
     raise ValueError(
         f"{loader_name} expects dataset_name='{dataset_str.lower()}' or a path to a CSV file, got {dataset_name!r}"
     )
@@ -336,41 +463,11 @@ def _load_financebench_json_dataset(*, dataset_name: str, doc_id_field: str) -> 
     )
 
 
-_LANG_ALIASES: dict[str, set[str]] = {
-    "en": {"en", "eng", "english"},
-    "fr": {"fr", "fra", "fre", "french", "français", "francais"},
-    "de": {"de", "deu", "ger", "german", "deutsch"},
-    "es": {"es", "spa", "spanish", "español", "espanol"},
-    "it": {"it", "ita", "italian", "italiano"},
-    "pt": {"pt", "por", "portuguese", "português", "portugues"},
-    "zh": {"zh", "zho", "chi", "chinese"},
-    "ja": {"ja", "jpn", "japanese"},
-    "ko": {"ko", "kor", "korean"},
-    "ar": {"ar", "ara", "arabic"},
-    "ru": {"ru", "rus", "russian"},
-    "nl": {"nl", "nld", "dut", "dutch"},
-    "pl": {"pl", "pol", "polish"},
-    "sv": {"sv", "swe", "swedish"},
-    "tr": {"tr", "tur", "turkish"},
-    "hi": {"hi", "hin", "hindi"},
-}
-
-
-def _languages_match(filter_lang: str, row_lang: str) -> bool:
-    """Fuzzy language matching that accepts ISO codes and full names."""
-    a = filter_lang.strip().lower()
-    b = row_lang.strip().lower()
-    if a == b:
-        return True
-    for aliases in _LANG_ALIASES.values():
-        if a in aliases and b in aliases:
-            return True
-    return False
-
-
 def build_queries_by_id(rows: Iterable[Any], *, query_language: str | None = None) -> tuple[list[str], list[str]]:
     """Normalize iterable rows into ordered ``(query_ids, queries)``."""
-    normalized_language = str(query_language).strip().lower() if query_language is not None else None
+    normalized_language = _normalize_language(query_language) if query_language is not None else None
+    if not normalized_language:
+        normalized_language = None
     query_ids: list[str] = []
     queries: list[str] = []
     total_rows = 0
@@ -385,7 +482,7 @@ def build_queries_by_id(rows: Iterable[Any], *, query_language: str | None = Non
             continue
 
         if normalized_language is not None:
-            row_language = str(_row_get(row, "language", "") or "").strip().lower()
+            row_language = _row_get(row, "language", "")
             if not _languages_match(normalized_language, row_language):
                 skipped_language += 1
                 continue
@@ -396,12 +493,11 @@ def build_queries_by_id(rows: Iterable[Any], *, query_language: str | None = Non
 
     if not query_ids:
         logger.warning(
-            "build_queries_by_id returned 0 queries: total_rows=%d, "
-            "skipped_empty=%d, skipped_language=%d (filter=%r)",
+            "No BEIR queries loaded from rows: total=%s skipped_empty=%s skipped_language=%s query_language=%r",
             total_rows,
             skipped_empty,
             skipped_language,
-            query_language,
+            normalized_language,
         )
 
     return query_ids, queries
@@ -442,7 +538,7 @@ def load_beir_dataset(
 ) -> BeirDataset:
     """Load a BEIR-style dataset for evaluation."""
     loader_name = str(loader).strip().lower()
-    if loader_name in {"bo767_csv", "bo10k_csv", "earnings_csv"}:
+    if loader_name in {"bo767_csv", "bo10k_csv", "earnings_csv", "jp20_csv"}:
         return _load_annotations_csv_dataset(
             dataset_name=dataset_name,
             doc_id_field=str(doc_id_field),
@@ -473,20 +569,16 @@ def load_beir_dataset(
         logger.debug("load_dataset config='qrels' failed (%s); retrying with data_dir", exc)
         qrels_rows = load_dataset(ds_repo, data_dir="qrels", split=split)
 
-    logger.info(
-        "Loaded BEIR dataset %s split=%s: %d query rows, %d qrel rows",
-        ds_repo,
-        split,
-        len(queries_rows),
-        len(qrels_rows),
-    )
-
     query_ids, queries = build_queries_by_id(queries_rows, query_language=query_language)
     if not query_ids:
+        try:
+            raw_query_count = len(queries_rows)
+        except TypeError:
+            raw_query_count = "unknown"
         raise ValueError(
             f"No queries loaded for dataset={dataset_name!r} split={split!r} "
             f"query_language={query_language!r}. "
-            f"Loaded {len(queries_rows)} raw rows from HuggingFace."
+            f"Loaded {raw_query_count} raw rows from HuggingFace."
         )
 
     allowed_query_ids = set(query_ids)
@@ -699,36 +791,206 @@ def evaluate_lancedb_beir(
         doc_id_field=cfg.doc_id_field,
     )
     ks = tuple(sorted({int(k) for k in cfg.ks if int(k) > 0}))
+    from nemo_retriever.params.models import ModelRuntimeParams
+
+    embed_kwargs: dict[str, Any] = {
+        "model_name": str(cfg.embedding_model),
+        "embed_model_name": str(cfg.embedding_model),
+        "local_ingest_embed_backend": str(cfg.local_query_embed_backend),
+        "inference_batch_size": int(cfg.local_hf_batch_size),
+        "embed_inference_batch_size": int(cfg.local_hf_batch_size),
+        "query_max_length": int(cfg.local_query_max_length),
+    }
+    if cfg.embedding_http_endpoint:
+        embed_kwargs["embedding_endpoint"] = cfg.embedding_http_endpoint
+        embed_kwargs["embed_invoke_url"] = cfg.embedding_http_endpoint
+    if (cfg.embedding_api_key or "").strip():
+        embed_kwargs["api_key"] = (cfg.embedding_api_key or "").strip()
+    if cfg.local_hf_device or cfg.local_hf_cache_dir:
+        embed_kwargs["runtime"] = ModelRuntimeParams(
+            device=cfg.local_hf_device,
+            hf_cache_dir=str(cfg.local_hf_cache_dir) if cfg.local_hf_cache_dir else None,
+        )
+
+    rerank_kw = {
+        "model_name": str(cfg.reranker_model_name),
+        "rerank_invoke_url": (cfg.reranker_endpoint or "").strip() or None,
+        "api_key": (cfg.reranker_api_key or "").strip(),
+        "batch_size": int(cfg.reranker_batch_size),
+        "local_reranker_backend": str(cfg.local_reranker_backend),
+    }
+
     retriever = Retriever(
-        vdb="lancedb",
         vdb_kwargs={
-            "uri": str(cfg.lancedb_uri),
-            "table_name": str(cfg.lancedb_table),
-            "hybrid": bool(cfg.hybrid),
-            "nprobes": int(cfg.nprobes),
-            "refine_factor": int(cfg.refine_factor),
+            "vdb_op": "lancedb",
+            "vdb_kwargs": {
+                "uri": str(cfg.lancedb_uri),
+                "table_name": str(cfg.lancedb_table),
+                "hybrid": bool(cfg.hybrid),
+                "nprobes": int(cfg.nprobes),
+                "refine_factor": int(cfg.refine_factor),
+            },
         },
-        embedder=str(cfg.embedding_model),
-        embedding_endpoint=cfg.embedding_http_endpoint,
-        embedding_api_key=(cfg.embedding_api_key or "").strip(),
-        embedding_use_grpc=False if cfg.embedding_http_endpoint else None,
+        embed_kwargs=embed_kwargs,
         top_k=max(ks),
-        local_hf_device=cfg.local_hf_device,
-        local_hf_cache_dir=Path(cfg.local_hf_cache_dir) if cfg.local_hf_cache_dir else None,
-        local_hf_batch_size=int(cfg.local_hf_batch_size),
-        reranker=bool(cfg.reranker),
-        reranker_model_name=str(cfg.reranker_model_name),
-        reranker_endpoint=cfg.reranker_endpoint,
-        reranker_api_key=(cfg.reranker_api_key or "").strip(),
-        reranker_batch_size=int(cfg.reranker_batch_size),
-        local_reranker_backend=str(cfg.local_reranker_backend),
-        local_query_embed_backend=str(cfg.local_query_embed_backend),
+        rerank=bool(cfg.reranker),
+        rerank_kwargs=rerank_kw,
     )
     raw_hits = retriever.queries(dataset.queries)
     run = build_beir_run_from_hits(dataset.query_ids, raw_hits, doc_id_field=cfg.doc_id_field)
     metrics = compute_beir_metrics(dataset.qrels, run, ks=ks)
     logger.info(
         "Computed BEIR metrics for dataset=%s queries=%d ks=%s",
+        dataset.dataset_name,
+        len(dataset.query_ids),
+        list(ks),
+    )
+    return dataset, raw_hits, run, metrics
+
+
+# ── Service-mode BEIR evaluation ─────────────────────────────────────
+
+
+def _query_service_batch(
+    client: Any,
+    base_url: str,
+    queries: list[str],
+    *,
+    top_k: int,
+    headers: dict[str, str],
+) -> list[list[dict[str, Any]]]:
+    """Send a batch of queries to POST /v1/query (sync httpx)."""
+    payload: dict[str, Any] = {
+        "query": queries if len(queries) > 1 else queries[0],
+        "top_k": top_k,
+    }
+    resp = client.post(f"{base_url}/v1/query", json=payload, headers=headers)
+    resp.raise_for_status()
+    body = resp.json()
+    all_hits: list[list[dict[str, Any]]] = []
+    for result_set in body.get("results", []):
+        hits = result_set.get("hits", []) if isinstance(result_set, dict) else []
+        all_hits.append(hits)
+    return all_hits
+
+
+def _query_service_all(
+    base_url: str,
+    queries: list[str],
+    *,
+    top_k: int,
+    batch_size: int = 32,
+    max_concurrent: int = 16,
+    token: str | None = None,
+) -> list[list[dict[str, Any]]]:
+    """Query a remote service for all queries using batched concurrent requests."""
+    import asyncio
+
+    import httpx as _httpx
+
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    all_hits: list[list[dict[str, Any]]] = [[] for _ in queries]
+    semaphore = asyncio.Semaphore(max_concurrent)
+    timeout = _httpx.Timeout(300.0, connect=30.0)
+    limits = _httpx.Limits(
+        max_connections=max_concurrent * 2,
+        max_keepalive_connections=max_concurrent,
+    )
+
+    async def _run() -> None:
+        async with _httpx.AsyncClient(timeout=timeout, limits=limits) as client:
+
+            async def _do_batch(start: int, end: int) -> None:
+                async with semaphore:
+                    batch = queries[start:end]
+                    payload: dict[str, Any] = {
+                        "query": batch if len(batch) > 1 else batch[0],
+                        "top_k": top_k,
+                    }
+                    resp = await client.post(
+                        f"{base_url}/v1/query",
+                        json=payload,
+                        headers=headers,
+                    )
+                    resp.raise_for_status()
+                    body = resp.json()
+                    for i, result_set in enumerate(body.get("results", [])):
+                        hits = result_set.get("hits", []) if isinstance(result_set, dict) else []
+                        all_hits[start + i] = hits
+
+            tasks = []
+            for start in range(0, len(queries), batch_size):
+                end = min(start + batch_size, len(queries))
+                tasks.append(asyncio.create_task(_do_batch(start, end)))
+
+            total = len(tasks)
+            done = 0
+            for coro in asyncio.as_completed(tasks):
+                await coro
+                done += 1
+                if done % 5 == 0 or done == total:
+                    logger.info("Service query progress: %d/%d batches", done, total)
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(1) as pool:
+            pool.submit(asyncio.run, _run()).result()
+    else:
+        asyncio.run(_run())
+
+    return all_hits
+
+
+def evaluate_service_beir(
+    cfg: BeirConfig,
+) -> tuple["BeirDataset", list[list[dict[str, Any]]], dict[str, dict[str, float]], dict[str, float]]:
+    """Load a BEIR-style dataset, query a remote service, and compute aggregate metrics.
+
+    Same interface as :func:`evaluate_lancedb_beir` but sends queries to
+    ``POST {cfg.service_url}/v1/query`` instead of searching a local LanceDB.
+    """
+    if not cfg.service_url:
+        raise ValueError("service_url is required for service-mode BEIR evaluation")
+
+    dataset = load_beir_dataset(
+        cfg.loader,
+        dataset_name=cfg.dataset_name,
+        split=cfg.split,
+        query_language=cfg.query_language,
+        doc_id_field=cfg.doc_id_field,
+    )
+    ks = tuple(sorted({int(k) for k in cfg.ks if int(k) > 0}))
+
+    logger.info(
+        "Running service-mode BEIR evaluation: url=%s queries=%d top_k=%d batch_size=%d",
+        cfg.service_url,
+        len(dataset.queries),
+        max(ks),
+        cfg.service_query_batch_size,
+    )
+
+    raw_hits = _query_service_all(
+        cfg.service_url,
+        list(dataset.queries),
+        top_k=max(ks),
+        batch_size=cfg.service_query_batch_size,
+        max_concurrent=cfg.service_max_concurrent,
+        token=cfg.service_api_token,
+    )
+
+    run = build_beir_run_from_hits(dataset.query_ids, raw_hits, doc_id_field=cfg.doc_id_field)
+    metrics = compute_beir_metrics(dataset.qrels, run, ks=ks)
+    logger.info(
+        "Computed service BEIR metrics for dataset=%s queries=%d ks=%s",
         dataset.dataset_name,
         len(dataset.query_ids),
         list(ks),

@@ -26,10 +26,11 @@ Usage::
 
 from __future__ import annotations
 
-import json
 import os
 import sys
-from typing import Any, Callable, Dict, List, Optional, Union
+from dataclasses import dataclass
+from io import BytesIO
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph
@@ -47,13 +48,120 @@ from nemo_retriever.params import (
     TextChunkParams,
     VideoFrameParams,
     VideoFrameTextDedupParams,
+    VdbUploadParams,
     WebhookParams,
     SPLIT_CONFIG_VALID_KEYS,
     resolve_split_params,
 )
 from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
+from nemo_retriever.utils.input_files import (
+    PDF_DOCUMENT_INPUT_TYPES,
+    _is_explicit_glob_path,
+    expand_input_file_patterns,
+    input_type_for_path,
+)
 from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env, resolve_remote_api_key
 from nemo_retriever.utils.ray_resource_hueristics import gather_cluster_resources
+
+
+_ERROR_FIELD_KEYS = ("error", "errors", "exception", "traceback", "failed")
+_REMOTE_EMBED_ENDPOINT_FIELDS = ("embedding_endpoint", "embed_invoke_url")
+_DEFAULT_PAGE_ELEMENTS_COLUMN = "page_elements_v3"
+_DEFAULT_EMBED_COLUMN = "text_embeddings_1b_v2"
+_ERROR_MESSAGE_LIMIT = 256
+_EXPLICIT_MODE_INPUT_TYPES: dict[str, frozenset[str]] = {
+    "pdf": PDF_DOCUMENT_INPUT_TYPES,
+    "image": frozenset({"image"}),
+    "text": frozenset({"txt"}),
+    "html": frozenset({"html"}),
+    "audio": frozenset({"audio"}),
+    "video": frozenset({"video"}),
+}
+
+
+@dataclass(frozen=True)
+class _EffectiveExtractionInputs:
+    extraction_mode: str
+    extract_params: Any | None
+    text_params: Any | None
+    html_params: Any | None
+    audio_chunk_params: Any | None
+    asr_params: Any | None
+    video_frame_params: Any | None
+    video_text_dedup_params: Any | None
+    av_fuse_params: Any | None
+
+
+class GraphIngestionError(RuntimeError):
+    """Raised when graph ingestion stages report structured row-level errors."""
+
+    def __init__(self, records: list[Any]) -> None:
+        self.records = records
+        super().__init__(_format_stage_error_message(records))
+
+
+def _normalize_stage_error_record(record: Any) -> dict[str, Any] | None:
+    """Coerce a stage-error record to the dict shape expected by formatting."""
+    if isinstance(record, str):
+        text = record.strip()
+        if not text:
+            return None
+        return {"row_index": None, "column": None, "path": "error", "error": text}
+    if not isinstance(record, dict):
+        return {"row_index": None, "column": None, "path": "error", "error": record}
+    return record
+
+
+def _format_stage_error_message(records: list[Any]) -> str:
+    limit = 5
+    details = []
+    for raw in records[:limit]:
+        record = _normalize_stage_error_record(raw)
+        if record is None:
+            continue
+        details.append(
+            "row {row_index}, column {column}, path {path}: {summary}".format(
+                row_index=record.get("row_index"),
+                column=record.get("column"),
+                path=record.get("path"),
+                summary=_summarize_error_payload(record.get("error")),
+            )
+        )
+    more = "" if len(records) <= limit else f" ({len(records) - limit} more)"
+    return (
+        "Graph ingestion detected row-level errors from an explicitly configured remote NIM endpoint"
+        f"{more}. " + "; ".join(details)
+    )
+
+
+def _summarize_error_payload(error: Any) -> str:
+    if isinstance(error, dict):
+        parts = []
+        stage = error.get("stage")
+        err_type = error.get("type") or error.get("error_type")
+        message = _sanitize_error_text(error.get("message") or error.get("detail"))
+        if stage:
+            parts.append(str(stage))
+        if err_type:
+            parts.append(str(err_type))
+        if message:
+            parts.append(str(message))
+        if parts:
+            return ": ".join(parts)
+    return _sanitize_error_text(error) or type(error).__name__
+
+
+def _sanitize_error_text(value: Any, *, limit: int = _ERROR_MESSAGE_LIMIT) -> str | None:
+    if value is None:
+        return None
+    text = str(value).encode("ascii", errors="ignore").decode("ascii")
+    text = "".join(ch if ch.isprintable() else " " for ch in text).split()
+    text = " ".join(text)
+    if not text:
+        return None
+    if len(text) > limit:
+        return text[:limit].rstrip() + "..."
+    return text
 
 
 def _resolve_api_key(params: Any) -> Any:
@@ -109,6 +217,10 @@ class GraphIngestor(ingestor):
         ``RayDataExecutor.__init__`` (``num_gpus``, ``batch_size``, etc.).
     show_progress
         Show a tqdm progress bar when running in inprocess mode.
+    error_policy
+        ``"raise"`` raises when explicitly configured remote NIM stages report
+        row-level errors. ``"collect"`` returns partial results with the stage
+        error payloads preserved.
     """
 
     RUN_MODE = "graph"
@@ -127,10 +239,13 @@ class GraphIngestor(ingestor):
         num_gpus: float = 0,
         node_overrides: Optional[Dict[str, Dict[str, Any]]] = None,
         show_progress: bool = True,
+        error_policy: str = "raise",
     ) -> None:
         super().__init__(documents=documents)
         if run_mode not in {"batch", "inprocess"}:
             raise ValueError(f"run_mode must be 'batch' or 'inprocess', got {run_mode!r}")
+        if error_policy not in {"raise", "collect"}:
+            raise ValueError(f"error_policy must be 'raise' or 'collect', got {error_policy!r}")
         self._run_mode = run_mode
         self._ray_address = ray_address
         self._ray_log_to_driver = ray_log_to_driver
@@ -141,10 +256,11 @@ class GraphIngestor(ingestor):
         self._num_gpus = num_gpus
         self._node_overrides: Dict[str, Dict[str, Any]] = node_overrides or {}
         self._show_progress = show_progress
+        self._error_policy = error_policy
         self._rd_dataset: Any = None
 
         # Pipeline configuration accumulated by fluent methods
-        self._extraction_mode: str = "pdf"
+        self._extraction_mode: str | None = "pdf"
         self._extract_params: Any = None
         self._text_params: Any = None
         self._html_params: Any = None
@@ -158,6 +274,7 @@ class GraphIngestor(ingestor):
         self._caption_params: Any = None
         self._dedup_params: Any = None
         self._store_params: Any = None
+        self._vdb_upload_params: Any = None
         self._webhook_params: Any = None
         # Ordered list of stage names; "extract" is tracked but excluded from
         # the post-extraction stage_order passed to graph builders.
@@ -172,6 +289,24 @@ class GraphIngestor(ingestor):
         self._documents = [documents] if isinstance(documents, str) else list(documents)
         return self
 
+    def buffers(
+        self,
+        buffers: Union[Tuple[str, BytesIO], List[Tuple[str, BytesIO]]],
+    ) -> "GraphIngestor":
+        """Set in-memory buffers for processing.
+
+        Each buffer is a ``(name, BytesIO)`` pair where *name* carries the
+        original filename (including extension) so downstream operators can
+        detect file type.  Accepts a single tuple or a list of tuples.
+
+        Only supported for ``run_mode='inprocess'``.
+        """
+        if isinstance(buffers, tuple) and len(buffers) == 2 and isinstance(buffers[0], str):
+            self._buffers = [buffers]
+        else:
+            self._buffers = list(buffers)
+        return self
+
     # ------------------------------------------------------------------
     # Extraction stage (sets extraction_mode and primary params)
     # ------------------------------------------------------------------
@@ -181,18 +316,42 @@ class GraphIngestor(ingestor):
         params: Optional[ExtractParams] = None,
         *,
         split_config: dict[str, Any] | None = None,
-        extraction_mode: str = "pdf",
+        extraction_mode: str | None = None,
+        text_params: Optional[TextChunkParams] = None,
+        html_params: Optional[HtmlChunkParams] = None,
+        audio_chunk_params: Optional[AudioChunkParams] = None,
+        asr_params: Optional[ASRParams] = None,
+        video_frame_params: Optional[VideoFrameParams] = None,
+        video_text_dedup_params: Optional[VideoFrameTextDedupParams] = None,
+        av_fuse_params: Optional[AudioVisualFuseParams] = None,
         **kwargs: Any,
     ) -> "GraphIngestor":
-        """Configure PDF/document extraction.
+        """Configure extraction.
 
-        Defaults to ``extraction_mode='pdf'``. Pass ``extraction_mode='auto'``
-        to dispatch a mixed folder through :class:`MultiTypeExtractOperator`.
+        By default, the effective extraction mode is inferred from the input
+        file extensions immediately before graph construction. Pass
+        ``extraction_mode='pdf'`` to force the dedicated PDF/document graph, or
+        ``extraction_mode='auto'`` to dispatch a mixed folder through
+        :class:`MultiTypeExtractOperator`.
         Chunking is opt-in: pass ``split_config={"<key>": {...}}`` to enable
         post-extract token chunking for that source type.
         """
         self._extraction_mode = extraction_mode
         self._extract_params = _resolve_api_key(_coerce(params, kwargs, default_factory=ExtractParams))
+        if text_params is not None:
+            self._text_params = text_params
+        if html_params is not None:
+            self._html_params = html_params
+        if audio_chunk_params is not None:
+            self._audio_chunk_params = audio_chunk_params
+        if asr_params is not None:
+            self._asr_params = asr_params
+        if video_frame_params is not None:
+            self._video_frame_params = video_frame_params
+        if video_text_dedup_params is not None:
+            self._video_text_dedup_params = video_text_dedup_params
+        if av_fuse_params is not None:
+            self._av_fuse_params = av_fuse_params
         self._apply_split_config(split_config)
         self._record_stage("extract")
         return self
@@ -301,7 +460,7 @@ class GraphIngestor(ingestor):
         return self
 
     def store(self, params: Optional[StoreParams] = None, **kwargs: Any) -> "GraphIngestor":
-        """Record a store stage for persisting extracted images/text to storage."""
+        """Record a store stage for persisting extracted image assets to storage."""
         self._store_params = _coerce(params, kwargs, default_factory=StoreParams)
         self._record_stage("store")
         return self
@@ -310,6 +469,18 @@ class GraphIngestor(ingestor):
         """Record an embedding stage."""
         self._embed_params = _resolve_api_key(_coerce(params, kwargs, default_factory=EmbedParams))
         self._record_stage("embed")
+        return self
+
+    def vdb_upload(self, params: Optional[VdbUploadParams] = None, **kwargs: Any) -> "GraphIngestor":
+        """Record a vector DB upload **sink** (in-graph after embed/store, before webhook).
+
+        Does not call :meth:`_record_stage`: ``stage_order`` only lists
+        ``dedup`` / ``caption`` / ``store`` / ``embed`` for reordering; VDB is
+        always appended from ``_vdb_upload_params`` in
+        :func:`~nemo_retriever.graph.ingestor_runtime._append_ordered_transform_stages`.
+        Plan builders that round-trip sinks use :meth:`~nemo_retriever.ingest_plans.BaseIngestPlan.record_sink`.
+        """
+        self._vdb_upload_params = _coerce(params, kwargs, default_factory=VdbUploadParams)
         return self
 
     def webhook(self, params: Optional[WebhookParams] = None, **kwargs: Any) -> "GraphIngestor":
@@ -336,10 +507,15 @@ class GraphIngestor(ingestor):
         ``run_mode='inprocess'``
             A ``pandas.DataFrame``.
         """
+        effective_extraction = self._resolve_effective_extraction_inputs()
         # Auto-enable dedup before captioning so that images overlapping
         # with table/chart/infographic detections are removed first.
         # Skip for image-only extraction — the image IS the content.
-        if self._caption_params is not None and self._dedup_params is None and self._extraction_mode != "image":
+        if (
+            self._caption_params is not None
+            and self._dedup_params is None
+            and effective_extraction.extraction_mode != "image"
+        ):
             self._dedup_params = DedupParams()
             if "dedup" not in self._stage_order:
                 # Insert dedup right before caption in the stage order.
@@ -375,20 +551,21 @@ class GraphIngestor(ingestor):
             cluster_resources = gather_cluster_resources(ray)
 
             graph = build_graph(
-                extraction_mode=self._extraction_mode,
-                extract_params=self._extract_params,
-                text_params=self._text_params,
-                html_params=self._html_params,
-                audio_chunk_params=self._audio_chunk_params,
-                asr_params=self._asr_params,
-                video_frame_params=self._video_frame_params,
-                video_text_dedup_params=self._video_text_dedup_params,
-                av_fuse_params=self._av_fuse_params,
+                extraction_mode=effective_extraction.extraction_mode,
+                extract_params=effective_extraction.extract_params,
+                text_params=effective_extraction.text_params,
+                html_params=effective_extraction.html_params,
+                audio_chunk_params=effective_extraction.audio_chunk_params,
+                asr_params=effective_extraction.asr_params,
+                video_frame_params=effective_extraction.video_frame_params,
+                video_text_dedup_params=effective_extraction.video_text_dedup_params,
+                av_fuse_params=effective_extraction.av_fuse_params,
                 embed_params=self._embed_params,
                 split_config=self._split_config,
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
                 store_params=self._store_params,
+                vdb_upload_params=self._vdb_upload_params,
                 webhook_params=self._webhook_params,
                 stage_order=post_extract_order,
             )
@@ -397,12 +574,13 @@ class GraphIngestor(ingestor):
             # node_overrides passed to __init__ take precedence.
             effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.available_gpu_count() == 0
             derived_overrides = batch_tuning_to_node_overrides(
-                self._extract_params,
+                effective_extraction.extract_params,
                 self._embed_params,
+                store_params=self._store_params,
                 cluster_resources=cluster_resources,
                 allow_no_gpu=effective_allow_no_gpu,
                 caption_params=self._caption_params,
-                video_frame_params=self._video_frame_params,
+                video_frame_params=effective_extraction.video_frame_params,
             )
             merged_overrides: Dict[str, Dict[str, Any]] = {}
             for node_name in set(derived_overrides) | set(self._node_overrides):
@@ -422,67 +600,268 @@ class GraphIngestor(ingestor):
             self._rd_dataset = result
         else:
             graph = build_graph(
-                extraction_mode=self._extraction_mode,
-                extract_params=self._extract_params,
-                text_params=self._text_params,
-                html_params=self._html_params,
-                audio_chunk_params=self._audio_chunk_params,
-                asr_params=self._asr_params,
-                video_frame_params=self._video_frame_params,
-                video_text_dedup_params=self._video_text_dedup_params,
-                av_fuse_params=self._av_fuse_params,
+                extraction_mode=effective_extraction.extraction_mode,
+                extract_params=effective_extraction.extract_params,
+                text_params=effective_extraction.text_params,
+                html_params=effective_extraction.html_params,
+                audio_chunk_params=effective_extraction.audio_chunk_params,
+                asr_params=effective_extraction.asr_params,
+                video_frame_params=effective_extraction.video_frame_params,
+                video_text_dedup_params=effective_extraction.video_text_dedup_params,
+                av_fuse_params=effective_extraction.av_fuse_params,
                 embed_params=self._embed_params,
                 split_config=self._split_config,
                 caption_params=self._caption_params,
                 dedup_params=self._dedup_params,
                 store_params=self._store_params,
+                vdb_upload_params=self._vdb_upload_params,
                 webhook_params=self._webhook_params,
                 stage_order=post_extract_order,
             )
             executor = InprocessExecutor(graph, show_progress=self._show_progress)
             self._rd_dataset = None
-            result = executor.ingest(self._documents)
+            if self._buffers:
+                import pandas as pd
 
+                df = pd.DataFrame([{"bytes": buf.read(), "path": name} for name, buf in self._buffers])
+                result = executor.ingest(df)
+            else:
+                result = executor.ingest(self._documents)
+
+        self._raise_for_stage_errors(result)
         return result
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _configured_input_paths(self) -> list[str]:
+        paths: list[str] = []
+        for document in self._documents:
+            try:
+                paths.extend(expand_input_file_patterns([document]))
+            except FileNotFoundError:
+                paths.append(os.fspath(document))
+        paths.extend(name for name, _ in self._buffers)
+        return paths
+
+    def _classified_input_paths(self) -> list[tuple[str, str | None]]:
+        return [(path, input_type_for_path(path)) for path in self._configured_input_paths()]
+
+    @staticmethod
+    def _input_type_examples(paths: Iterable[str], *, limit: int = 3) -> str:
+        examples = list(paths)[:limit]
+        return ", ".join(examples)
+
+    def _validate_explicit_extraction_mode_inputs(
+        self,
+        extraction_mode: str,
+        classified: list[tuple[str, str | None]],
+    ) -> None:
+        allowed_types = _EXPLICIT_MODE_INPUT_TYPES.get(extraction_mode)
+        if allowed_types is None:
+            return
+
+        mismatched = [
+            path
+            for path, input_type in classified
+            if not _is_explicit_glob_path(path) and (input_type is None or input_type not in allowed_types)
+        ]
+        if mismatched:
+            examples = self._input_type_examples(mismatched)
+            raise ValueError(f"Input file type(s) do not match extraction_mode={extraction_mode!r}: {examples}")
+
+    def _resolve_effective_extraction_inputs(self) -> _EffectiveExtractionInputs:
+        extraction_mode = self._extraction_mode
+        extract_params = self._extract_params
+        text_params = self._text_params
+        html_params = self._html_params
+        audio_chunk_params = self._audio_chunk_params
+        asr_params = self._asr_params
+        video_frame_params = self._video_frame_params
+        video_text_dedup_params = self._video_text_dedup_params
+        av_fuse_params = self._av_fuse_params
+
+        classified = self._classified_input_paths()
+        if extraction_mode is not None:
+            self._validate_explicit_extraction_mode_inputs(extraction_mode, classified)
+            return _EffectiveExtractionInputs(
+                extraction_mode=extraction_mode,
+                extract_params=extract_params,
+                text_params=text_params,
+                html_params=html_params,
+                audio_chunk_params=audio_chunk_params,
+                asr_params=asr_params,
+                video_frame_params=video_frame_params,
+                video_text_dedup_params=video_text_dedup_params,
+                av_fuse_params=av_fuse_params,
+            )
+
+        unsupported = [
+            path for path, input_type in classified if input_type is None and not _is_explicit_glob_path(path)
+        ]
+        if unsupported:
+            examples = self._input_type_examples(unsupported)
+            raise ValueError(f"Unsupported input file type(s) for default GraphIngestor.extract(): {examples}")
+
+        observed_input_types = {input_type for _, input_type in classified if input_type is not None}
+        if not observed_input_types or observed_input_types <= PDF_DOCUMENT_INPUT_TYPES:
+            extraction_mode = "pdf"
+        elif observed_input_types == {"image"}:
+            extraction_mode = "image"
+        elif observed_input_types == {"txt"}:
+            extraction_mode = "text"
+            text_params = text_params or TextChunkParams()
+        elif observed_input_types == {"html"}:
+            extraction_mode = "html"
+            html_params = html_params or HtmlChunkParams()
+        elif observed_input_types == {"audio"}:
+            extraction_mode = "audio"
+            audio_chunk_params = audio_chunk_params or AudioChunkParams()
+            asr_params = asr_params or ASRParams()
+        elif observed_input_types == {"video"}:
+            extraction_mode = "auto"
+            audio_chunk_params = audio_chunk_params or AudioChunkParams()
+            asr_params = asr_params or ASRParams()
+            video_frame_params = video_frame_params or VideoFrameParams()
+            video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams()
+            av_fuse_params = av_fuse_params or AudioVisualFuseParams()
+            extract_params = extract_params or ExtractParams()
+        else:
+            extraction_mode = "auto"
+
+        return _EffectiveExtractionInputs(
+            extraction_mode=extraction_mode,
+            extract_params=extract_params,
+            text_params=text_params,
+            html_params=html_params,
+            audio_chunk_params=audio_chunk_params,
+            asr_params=asr_params,
+            video_frame_params=video_frame_params,
+            video_text_dedup_params=video_text_dedup_params,
+            av_fuse_params=av_fuse_params,
+        )
+
+    @staticmethod
+    def _is_populated_error_field(key: str, value: Any) -> bool:
+        if value is None:
+            return False
+        if key == "failed" and isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, (list, tuple, set, dict)):
+            return len(value) > 0
+        return bool(value)
+
+    @classmethod
+    def _iter_stage_errors_from_value(cls, value: Any, *, path: str = "") -> Iterator[dict[str, Any]]:
+        if isinstance(value, dict):
+            for key in _ERROR_FIELD_KEYS:
+                if key in value and cls._is_populated_error_field(key, value.get(key)):
+                    yield {
+                        "path": f"{path}.{key}" if path else key,
+                        "error": value.get(key),
+                    }
+            for key, child in value.items():
+                if key in _ERROR_FIELD_KEYS and cls._is_populated_error_field(key, child):
+                    continue
+                child_path = f"{path}.{key}" if path else str(key)
+                yield from cls._iter_stage_errors_from_value(child, path=child_path)
+            return
+        if isinstance(value, (list, tuple)):
+            for i, child in enumerate(value):
+                child_path = f"{path}[{i}]" if path else f"[{i}]"
+                yield from cls._iter_stage_errors_from_value(child, path=child_path)
+
+    @classmethod
+    def _stage_error_records(cls, batch: Any, *, columns: Iterable[str] | None = None) -> list[dict[str, Any]]:
+        iter_batches = getattr(batch, "iter_batches", None)
+        if getattr(batch, "columns", None) is None and not callable(iter_batches):
+            return []
+        requested_columns = list(columns) if columns is not None else None
+
+        if callable(iter_batches):
+            batches = iter_batches(batch_format="pandas")
+        else:
+            batches = (batch,)
+
+        records: list[dict[str, Any]] = []
+        for batch_df in batches:
+            available_columns = getattr(batch_df, "columns", None)
+            if available_columns is None:
+                continue
+            target_columns = (
+                list(available_columns)
+                if requested_columns is None
+                else [c for c in requested_columns if c in available_columns]
+            )
+            for row_index, row in batch_df.iterrows():
+                for column in target_columns:
+                    for record in cls._iter_stage_errors_from_value(row[column]):
+                        records.append(
+                            {
+                                "row_index": row_index,
+                                "column": column,
+                                **record,
+                            }
+                        )
+        return records
+
     @staticmethod
     def _has_error(v: Any) -> bool:
-        def _is_populated_error_field(key: str, value: Any) -> bool:
-            if value is None:
-                return False
-            if key == "failed" and isinstance(value, bool):
-                return value
-            if isinstance(value, str):
-                return bool(value.strip())
-            if isinstance(value, (list, tuple, set, dict)):
-                return len(value) > 0
-            return bool(value)
+        return any(GraphIngestor._iter_stage_errors_from_value(v))
 
-        if v is None:
+    @staticmethod
+    def _param_value(params: Any, field: str) -> Any:
+        if params is None:
+            return None
+        if isinstance(params, dict):
+            return params.get(field)
+        return getattr(params, field, None)
+
+    @classmethod
+    def _is_configured(cls, value: Any) -> bool:
+        if value is None:
             return False
-        if isinstance(v, dict):
-            for k in ("error", "errors", "exception", "traceback", "failed"):
-                if k in v and _is_populated_error_field(k, v.get(k)):
-                    return True
-            return any(GraphIngestor._has_error(x) for x in v.values())
-        if isinstance(v, list):
-            return any(GraphIngestor._has_error(x) for x in v)
-        if isinstance(v, str):
-            s = v.strip()
-            if not s:
-                return False
-            if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
-                try:
-                    return GraphIngestor._has_error(json.loads(s))
-                except Exception:
-                    pass
-            low = s.lower()
-            return any(tok in low for tok in ("error", "exception", "traceback", "failed"))
-        return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, (list, tuple, set)):
+            return any(cls._is_configured(v) for v in value)
+        return bool(value)
+
+    @classmethod
+    def _params_has_configured_field(cls, params: Any, fields: tuple[str, ...]) -> bool:
+        return any(cls._is_configured(cls._param_value(params, field)) for field in fields)
+
+    def _remote_stage_error_columns(self) -> set[str]:
+        columns: set[str] = set()
+
+        if self._params_has_configured_field(self._extract_params, ("page_elements_invoke_url",)):
+            columns.add(self._param_value(self._extract_params, "output_column") or _DEFAULT_PAGE_ELEMENTS_COLUMN)
+        if self._params_has_configured_field(self._extract_params, ("ocr_invoke_url",)):
+            columns.add("ocr")
+        if self._params_has_configured_field(self._extract_params, ("table_structure_invoke_url",)):
+            columns.add("table_structure_ocr_v1")
+        if self._params_has_configured_field(self._extract_params, ("graphic_elements_invoke_url",)):
+            columns.add("graphic_elements_ocr_v1")
+        if self._params_has_configured_field(self._extract_params, ("invoke_url", "nemotron_parse_invoke_url")):
+            columns.add("nemotron_parse_v1_2")
+
+        if self._params_has_configured_field(self._embed_params, _REMOTE_EMBED_ENDPOINT_FIELDS):
+            columns.add(self._param_value(self._embed_params, "output_column") or _DEFAULT_EMBED_COLUMN)
+
+        return columns
+
+    def _raise_for_stage_errors(self, result: Any) -> None:
+        if self._error_policy == "collect":
+            return
+        remote_columns = self._remote_stage_error_columns()
+        if not remote_columns:
+            return
+        records = self._stage_error_records(result, columns=remote_columns)
+        if records:
+            raise GraphIngestionError(records)
 
     @staticmethod
     def extract_error_rows(batch: Any) -> Any:
@@ -491,28 +870,22 @@ class GraphIngestor(ingestor):
         columns = getattr(batch, "columns", None)
         if columns is None:
             return batch
-        error_candidate_columns = (
-            "error",
-            "errors",
-            "exception",
-            "traceback",
-            "metadata",
-            "source",
-            "embedding",
-        )
-        cols = [c for c in error_candidate_columns if c in columns]
-        if not cols:
+        if len(columns) == 0:
             return batch.iloc[0:0]
 
-        mask = batch[cols[0]].apply(GraphIngestor._has_error).astype(bool)
-        for c in cols[1:]:
+        mask = batch[columns[0]].apply(GraphIngestor._has_error).astype(bool)
+        for c in columns[1:]:
             mask = mask | batch[c].apply(GraphIngestor._has_error).astype(bool)
         return batch[mask]
 
     def get_error_rows(self, dataset: Any = None) -> Any:
+        import pandas as pd
+
         target = dataset if dataset is not None else self._rd_dataset
         if target is None:
             raise RuntimeError("No Ray Dataset available to inspect for errors.")
+        if isinstance(target, pd.DataFrame):
+            return self.extract_error_rows(target)
         return target.map_batches(self.extract_error_rows, batch_format="pandas")
 
     def get_dataset(self) -> Any:

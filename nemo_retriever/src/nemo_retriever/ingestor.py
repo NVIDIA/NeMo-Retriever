@@ -79,6 +79,7 @@ def create_ingestor(
         ray_log_to_driver=parsed.ray_log_to_driver,
         debug=parsed.debug,
         allow_no_gpu=parsed.allow_no_gpu,
+        error_policy=parsed.error_policy,
     )
 
 
@@ -161,7 +162,7 @@ class ingestor:
         self._not_implemented("filter")
 
     def store(self, params: StoreParams | None = None, **kwargs: Any) -> "ingestor":
-        """Record a store task configuration."""
+        """Record a store task configuration for extracted image assets."""
         _ = _merge_params(params, kwargs)
         self._not_implemented("store")
 

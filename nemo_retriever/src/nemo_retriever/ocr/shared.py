@@ -7,7 +7,7 @@ from __future__ import annotations
 """
 Crop-based OCR stage.
 
-Runs Nemotron OCR v1 on table / chart / infographic regions detected by
+Runs Nemotron OCR on table / chart / infographic regions detected by
 PageElements v3. Text extraction for the full page is handled upstream
 by PDFium in the PDF extraction stage.
 """
@@ -381,11 +381,11 @@ def ocr_b64_to_text(
     timeout_s: float = 120.0,
     retry: Optional[RemoteRetryParams] = None,
 ) -> List[str]:
-    """Run Nemotron OCR v1 on a list of base64 PNG images; return one text per input.
+    """Run Nemotron OCR on a list of base64 PNG images; return one text per input.
 
     Routes to remote NIM when ``invoke_url`` is set (uses ``nim_client`` if
     provided, otherwise spins up a fresh batched call), or to a local
-    ``NemotronOCRV1`` model when ``model`` is provided. Empty/non-string
+    Nemotron OCR model when ``model`` is provided. Empty/non-string
     inputs map to ``""``; per-image parse failures are logged and also map
     to ``""`` so the output preserves input order and length.
     """
@@ -699,7 +699,7 @@ def ocr_page_elements(
         remote_max_429_retries=int(kwargs.get("remote_max_429_retries", 5)),
     )
     """
-    Run Nemotron OCR v1 on cropped regions detected by PageElements v3.
+    Run Nemotron OCR on cropped regions detected by PageElements v3.
 
     For each row (page) in ``batch_df``:
     1. Read ``page_elements_v3`` detections and ``page_image["image_b64"]``.
@@ -711,7 +711,7 @@ def ocr_page_elements(
     ----------
     batch_df : pandas.DataFrame
         Ray Data batch with ``page_elements_v3`` and ``page_image`` columns.
-    model : NemotronOCRV1
+    model
         Initialised OCR model.
     extract_tables, extract_charts, extract_infographics : bool
         Which element types to OCR.

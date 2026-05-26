@@ -6,9 +6,12 @@ description: |
 
   This chart deploys the "service" run mode of nemo-retriever as a single
   scalable web endpoint that orchestrates document ingestion against
-  remote NIM endpoints (page-elements, graphic-elements, table-structure,
-  OCR, embed). The NIMs themselves are optional and may either be
-  deployed by this chart (GPU-backed) or provided as external URLs.
+  remote NIM endpoints (page-elements, table-structure, OCR, VLM embed).
+
+  In-cluster NIMs are provisioned via NVIDIA NIM Operator custom
+  resources (NIMCache + NIMService, apps.nvidia.com/v1alpha1). The
+  templates short-circuit when the operator CRDs are absent, so the
+  chart degrades gracefully into "external NIM URLs only" mode.
 
   Persistence today uses SQLite on a PersistentVolumeClaim, which caps
   the service at a single replica. A future iteration will introduce a
@@ -18,13 +21,13 @@ type: application
 version: 0.1.0
 appVersion: "0.1.0"
 kubeVersion: ">=1.25.0-0"
-home: https://github.com/NVIDIA/nv-ingest
+home: https://github.com/NVIDIA/NeMo-Retriever
 sources:
-  - https://github.com/NVIDIA/nv-ingest
+  - https://github.com/NVIDIA/NeMo-Retriever
 maintainers:
-  - name: nv-ingest maintainers
+  - name: NeMo-Retriever maintainers
 keywords:
-  - nemo-retriever
+  - NeMo-Retriever
   - nvidia
   - nim
   - document-ingestion

@@ -16,6 +16,8 @@ _VL_EMBED_MODEL_IDS = frozenset(
     {
         VL_EMBED_MODEL,
         "llama-nemotron-embed-vl-1b-v2",
+        "llama-3.2-nemoretriever-1b-vlm-embed-v1",
+        "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1",
     }
 )
 
@@ -30,6 +32,8 @@ _VL_RERANK_MODEL_IDS = frozenset(
 _EMBED_MODEL_ALIASES: dict[str, str] = {
     "nemo_retriever_v1": "nvidia/llama-nemotron-embed-1b-v2",
     "llama-nemotron-embed-vl-1b-v2": VL_EMBED_MODEL,
+    "llama-3.2-nemoretriever-1b-vlm-embed-v1": VL_EMBED_MODEL,
+    "nvidia/llama-3.2-nemoretriever-1b-vlm-embed-v1": VL_EMBED_MODEL,
 }
 
 _DEFAULT_EMBED_MODEL = "nvidia/llama-nemotron-embed-1b-v2"
@@ -66,6 +70,7 @@ def create_local_embedder(
     dimensions: int | None = None,
     normalize: bool = True,
     max_length: int = 8192,
+    query_max_length: int = 128,
 ) -> Any:
     """Create the appropriate local embedding model (VL or non-VL).
 
@@ -127,6 +132,7 @@ def create_local_embedder(
             hf_cache_dir=hf_cache_dir,
             normalize=normalize,
             max_length=int(max_length),
+            query_max_length=int(query_max_length),
             model_id=model_id,
         )
 
@@ -174,6 +180,7 @@ def create_local_query_embedder(
     dimensions: int | None = None,
     normalize: bool = True,
     max_length: int = 8192,
+    query_max_length: int = 128,
 ) -> Any:
     """Create a local embedder for *query* vectors in retrieval (Retriever / recall).
 
@@ -194,6 +201,7 @@ def create_local_query_embedder(
         dimensions=dimensions,
         normalize=normalize,
         max_length=int(max_length),
+        query_max_length=int(query_max_length),
     )
 
 

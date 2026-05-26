@@ -25,7 +25,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from nemo_retriever.harness import history
 from nemo_retriever.harness import scheduler as sched_module
+from nemo_retriever.harness.config import VALID_EVALUATION_MODES
 
 mimetypes.add_type("text/javascript", ".jsx")
 
@@ -384,15 +385,18 @@ class DatasetCreateRequest(BaseModel):
     query_csv: str | None = None
     input_type: str = "pdf"
     recall_required: bool = False
-    recall_match_mode: str = "pdf_page"
+    recall_match_mode: str = "audio_segment"
     recall_adapter: str = "none"
-    evaluation_mode: str = "recall"
+    evaluation_mode: str = "none"
     beir_loader: str | None = None
     beir_dataset_name: str | None = None
     beir_split: str = "test"
     beir_query_language: str | None = None
     beir_doc_id_field: str = "pdf_basename"
     beir_ks: list[int] | None = None
+    ocr_version: Literal["v1", "v2"] | None = None
+    ocr_lang: Literal["multi", "english"] | None = None
+    lancedb_table_name: str | None = None
     embed_model_name: str | None = None
     embed_modality: str = "text"
     embed_granularity: str = "element"
@@ -418,6 +422,9 @@ class DatasetUpdateRequest(BaseModel):
     beir_query_language: str | None = None
     beir_doc_id_field: str | None = None
     beir_ks: list[int] | None = None
+    ocr_version: Literal["v1", "v2"] | None = None
+    ocr_lang: Literal["multi", "english"] | None = None
+    lancedb_table_name: str | None = None
     embed_model_name: str | None = None
     embed_modality: str | None = None
     embed_granularity: str | None = None
@@ -853,9 +860,11 @@ async def run_retrieval_query(run_id: int, req: RetrievalQueryRequest):
         from nemo_retriever.retriever import Retriever
 
         retriever = Retriever(
-            vdb="lancedb",
-            vdb_kwargs={"uri": uri, "table_name": LANCEDB_TABLE},
-            embedder=embed_model,
+            vdb_kwargs={
+                "vdb_op": "lancedb",
+                "vdb_kwargs": {"uri": uri, "table_name": LANCEDB_TABLE},
+            },
+            embed_kwargs={"model_name": embed_model, "embed_model_name": embed_model},
             top_k=req.top_k,
         )
         hits = retriever.query(req.query)
@@ -1068,8 +1077,8 @@ _AVAILABLE_MODELS = [
         "max_length": 8192,
     },
     {
-        "id": "nemotron-ocr-v1",
-        "name": "Nemotron OCR v1",
+        "id": "nemotron-ocr-v2",
+        "name": "Nemotron OCR v2",
         "type": "ocr",
         "category": "Document AI",
         "description": "End-to-end OCR: text detection, recognition, and reading-order analysis.",
@@ -1254,9 +1263,10 @@ async def test_rerank_model(req: RerankTestRequest):
 
 
 class OCRTestRequest(BaseModel):
-    model_id: str = "nemotron-ocr-v1"
+    model_id: str = "nemotron-ocr-v2"
     image_b64: str
     merge_level: str = "paragraph"
+    ocr_lang: Literal["multi", "english"] | None = None
 
 
 @app.post("/api/models/ocr")
@@ -1267,10 +1277,12 @@ async def test_ocr_model(req: OCRTestRequest):
     try:
         import time as _time
 
-        from nemo_retriever.model.local.nemotron_ocr_v1 import NemotronOCRV1
+        from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2
+        from nemo_retriever.ocr.config import resolve_ocr_v2_lang
 
         t0 = _time.perf_counter()
-        model = NemotronOCRV1()
+        lang = resolve_ocr_v2_lang("v2", req.ocr_lang)
+        model = NemotronOCRV2(lang=lang)
         load_time = _time.perf_counter() - t0
 
         img_data = req.image_b64
@@ -1281,11 +1293,12 @@ async def test_ocr_model(req: OCRTestRequest):
         raw = model.invoke(img_data, merge_level=req.merge_level)
         infer_time = _time.perf_counter() - t1
 
-        text = NemotronOCRV1._extract_text(raw)
+        text = NemotronOCRV2._extract_text(raw)
 
         return {
             "model_id": req.model_id,
             "merge_level": req.merge_level,
+            "ocr_lang": lang,
             "model_load_ms": round(load_time * 1000, 1),
             "inference_ms": round(infer_time * 1000, 1),
             "text": text,
@@ -1546,8 +1559,21 @@ async def list_managed_datasets():
     return history.get_all_datasets()
 
 
+def _validate_dataset_evaluation_mode(evaluation_mode: str | None) -> None:
+    if evaluation_mode is not None and evaluation_mode not in VALID_EVALUATION_MODES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}",
+        )
+
+
 @app.post("/api/managed-datasets")
 async def create_managed_dataset(req: DatasetCreateRequest):
+    _validate_dataset_evaluation_mode(req.evaluation_mode)
+    if req.evaluation_mode == "beir" and not str(req.beir_loader or "").strip():
+        raise HTTPException(status_code=422, detail="beir_loader is required when evaluation_mode='beir'")
+    if req.ocr_version == "v1" and req.ocr_lang is not None:
+        raise HTTPException(status_code=422, detail="ocr_lang is only supported when ocr_version='v2'")
     data = req.model_dump(exclude_none=True)
     try:
         ds = history.create_dataset(data)
@@ -1615,6 +1641,10 @@ async def import_datasets_yaml(file: UploadFile = File(...)):
         body = body if isinstance(body, dict) else {}
         payload = {"name": name.strip(), **body}
         payload.setdefault("path", "")
+        try:
+            _validate_dataset_evaluation_mode(payload.get("evaluation_mode"))
+        except HTTPException as exc:
+            raise HTTPException(status_code=400, detail=f"{name}: {exc.detail}")
         existing = history.get_dataset_by_name(name.strip())
         if existing:
             history.update_dataset(existing["id"], payload)
@@ -1636,7 +1666,28 @@ async def get_managed_dataset(dataset_id: int):
 
 @app.put("/api/managed-datasets/{dataset_id}")
 async def update_managed_dataset(dataset_id: int, req: DatasetUpdateRequest):
-    data = {k: v for k, v in req.model_dump().items() if v is not None}
+    existing = history.get_dataset_by_id(dataset_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    requested = req.model_dump()
+    requested_fields = req.model_fields_set
+    if "evaluation_mode" in requested_fields:
+        _validate_dataset_evaluation_mode(requested.get("evaluation_mode"))
+    effective_mode = requested.get("evaluation_mode") or existing.get("evaluation_mode")
+    effective_loader = (
+        requested.get("beir_loader") if requested.get("beir_loader") is not None else existing.get("beir_loader")
+    )
+    if effective_mode == "beir" and not str(effective_loader or "").strip():
+        raise HTTPException(status_code=422, detail="beir_loader is required when evaluation_mode='beir'")
+    effective_ocr_version = requested.get("ocr_version") or existing.get("ocr_version")
+    effective_ocr_lang = requested.get("ocr_lang") if "ocr_lang" in requested_fields else existing.get("ocr_lang")
+    if effective_ocr_version == "v1" and effective_ocr_lang is not None:
+        raise HTTPException(status_code=422, detail="ocr_lang is only supported when ocr_version='v2'")
+
+    data = {k: v for k, v in requested.items() if v is not None}
+    if "ocr_lang" in requested_fields:
+        data["ocr_lang"] = requested.get("ocr_lang")
     row = history.update_dataset(dataset_id, data)
     if row is None:
         raise HTTPException(status_code=404, detail="Dataset not found")
@@ -2139,6 +2190,12 @@ def _resolve_dataset_config(
         beir_ks = managed.get("beir_ks")
         if beir_ks and isinstance(beir_ks, list):
             overrides["beir_ks"] = beir_ks
+        if managed.get("ocr_version"):
+            overrides["ocr_version"] = managed["ocr_version"]
+        if managed.get("ocr_lang"):
+            overrides["ocr_lang"] = managed["ocr_lang"]
+        if managed.get("lancedb_table_name"):
+            overrides["lancedb_table_name"] = managed["lancedb_table_name"]
         if managed.get("embed_model_name"):
             overrides["embed_model_name"] = managed["embed_model_name"]
         if managed.get("embed_modality"):

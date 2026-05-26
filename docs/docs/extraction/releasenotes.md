@@ -6,7 +6,7 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 
 NVIDIA® NeMo Retriever Library version 26.03 adds broader hardware and software support along with many pipeline, evaluation, and deployment enhancements.
 
-To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md).
+To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
 Highlights for the 26.03 release include:
 
@@ -26,7 +26,7 @@ Highlights for the 26.03 release include:
 - Enabled hybrid search with Lancedb  
 - Added retrieval_bench subfolder with generalizable agentic retrieval pipeline  
 - The project now uses UV as the primary environment and package manager instead of Conda, resulting in faster installs and simpler dependency handling  
-- Default Redis TTL increased from 1–2 hours to 48 hours so long-running jobs (e.g., VLM captioning) don’t expire before completion  
+- Default TTL for long-running pipeline job state increased from 1–2 hours to 48 hours so long-running jobs (for example, VLM captioning) do not expire before completion  
 - NeMo Retriever Library currently does not support image captioning via VLM; this feature will be added in the next release
 - Documentation: multimodal extraction is covered on one page with an in-page table of contents and redirects from the former per-topic URLs
 
@@ -45,6 +45,5 @@ Highlights for the 26.03 release include:
 ## Related Topics
 
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-- [Deploy Without Containers (Library Mode)](quickstart-library-mode.md)
 - [Deployment options](deployment-options.md)
-- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/helm/README.md)
+- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)

@@ -11,18 +11,30 @@ from typing import Any, Dict, List, Tuple
 import pandas as pd
 from PIL import Image
 
-from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
+from nemo_retriever.caption.model_profiles import (
+    get_caption_model_profile,
+    merge_request_extras,
+    resolve_caption_model_name,
+)
 from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
 from nemo_retriever.params import CaptionParams
 
 _DEFAULT_MODEL_NAME = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
 _MAX_CONTEXT_TEXT_CHARS = 4096
 _MIN_IMAGE_DIMENSION = 32
-_cached_local_model = None
+_LOCAL_MODEL_CACHE_KEYS = (
+    "model_name",
+    "device",
+    "hf_cache_dir",
+    "tensor_parallel_size",
+    "gpu_memory_utilization",
+)
+_cached_local_model: dict[tuple[tuple[str, Any], ...], Any] | None = {}
 
 
 def _image_meets_min_size(b64: str) -> bool:
@@ -48,11 +60,26 @@ def _create_local_model(kwargs: dict) -> "Any":
     )
 
 
+def _local_model_cache_key(kwargs: dict) -> tuple[tuple[str, Any], ...]:
+    resolved_kwargs = {
+        "model_name": kwargs.get("model_name", _DEFAULT_MODEL_NAME),
+        "device": kwargs.get("device"),
+        "hf_cache_dir": kwargs.get("hf_cache_dir"),
+        "tensor_parallel_size": kwargs.get("tensor_parallel_size", 1),
+        "gpu_memory_utilization": kwargs.get("gpu_memory_utilization", 0.5),
+    }
+    return tuple((key, resolved_kwargs[key]) for key in _LOCAL_MODEL_CACHE_KEYS)
+
+
 def _get_cached_local_model(kwargs: dict) -> "Any":
     global _cached_local_model
     if _cached_local_model is None:
-        _cached_local_model = _create_local_model(kwargs)
-    return _cached_local_model
+        _cached_local_model = {}
+
+    cache_key = _local_model_cache_key(kwargs)
+    if cache_key not in _cached_local_model:
+        _cached_local_model[cache_key] = _create_local_model(kwargs)
+    return _cached_local_model[cache_key]
 
 
 @designer_component(
@@ -156,6 +183,7 @@ def _caption_batch_remote(
     temperature: float,
     top_p: float | None = None,
     max_tokens: int = 1024,
+    request_extras: Dict[str, Any] | None = None,
 ) -> List[str]:
     """Send a batch of images to a remote VLM endpoint and return captions."""
     from nemo_retriever.api.util.image_processing.transforms import scale_image_to_encoding_size
@@ -171,10 +199,16 @@ def _caption_batch_remote(
 
     from nemo_retriever.params.models import LLMInferenceParams
 
-    infer_kwargs: Dict[str, Any] = {"model_name": model_name}
-    infer_kwargs.update(
-        LLMInferenceParams(temperature=temperature, top_p=top_p, max_tokens=max_tokens).to_sampling_kwargs()
+    sampling_kwargs = LLMInferenceParams(
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens,
+    ).to_sampling_kwargs()
+    infer_kwargs: Dict[str, Any] = merge_request_extras(
+        sampling_kwargs,
+        request_extras or {},
     )
+    infer_kwargs["model_name"] = model_name
 
     return nim_client.infer(data, **infer_kwargs)
 
@@ -188,16 +222,19 @@ def _caption_batch_local(
     temperature: float,
     top_p: float | None = None,
     max_tokens: int | None = None,
+    extra_body: dict[str, Any] | None = None,
 ) -> List[str]:
     """Generate captions using a local ``NemotronVLMCaptioner`` model."""
-    return model.caption_batch(
-        base64_images,
-        prompt=prompt,
-        system_prompt=system_prompt,
-        temperature=temperature,
-        top_p=top_p,
-        max_tokens=max_tokens,
-    )
+    caption_kwargs: dict[str, Any] = {
+        "prompt": prompt,
+        "system_prompt": system_prompt,
+        "temperature": temperature,
+        "top_p": top_p,
+        "max_tokens": max_tokens,
+    }
+    if extra_body:
+        caption_kwargs["extra_body"] = extra_body
+    return model.caption_batch(base64_images, **caption_kwargs)
 
 
 def _caption_one(
@@ -211,6 +248,8 @@ def _caption_one(
     temperature: float,
     top_p: float | None = None,
     max_tokens: int | None = None,
+    request_extras: Dict[str, Any] | None = None,
+    extra_body: dict[str, Any] | None = None,
 ) -> str:
     """Caption a single image (used when each image gets a unique prompt)."""
     if model is not None:
@@ -222,6 +261,7 @@ def _caption_one(
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
+            extra_body=extra_body,
         )
     else:
         captions = _caption_batch_remote(
@@ -233,6 +273,7 @@ def _caption_one(
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
+            request_extras=request_extras,
         )
     return captions[0] if captions else ""
 
@@ -252,6 +293,7 @@ def caption_images(
     batch_size: int = 8,
     context_text_max_chars: int = 0,
     caption_infographics: bool = False,
+    extra_body: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """Caption images in the ``images`` column using a VLM.
@@ -284,16 +326,29 @@ def caption_images(
     if not has_images and not has_infographics:
         return batch_df
 
-    # Normalize model name for the target execution mode (local vs remote).
-    from nemo_retriever.model.local.nemotron_vlm_captioner import resolve_caption_model_name
-
+    request_extras: Dict[str, Any] = {}
     if endpoint_url:
-        model_name = resolve_caption_model_name(model_name, target="remote")
+        profile = get_caption_model_profile(model_name, target="remote", strict=False)
+        if profile is not None:
+            model_name = profile.remote_model_id or model_name
+            request_extras = profile.request_extras_for("remote")
+        request_extras = merge_request_extras(request_extras, extra_body or {})
+        if extra_body:
+            # VLMModelInterface.format_input handles only chat_template_kwargs, mm_processor_kwargs, and
+            # media_options as first-class kwargs. Pack merged extras here so arbitrary caller keys
+            # such as custom_request_id reach the final payload via payload.update(extra_body).
+            request_extras["extra_body"] = merge_request_extras(
+                {},
+                {key: value for key, value in request_extras.items() if key != "extra_body"},
+            )
     else:
         model_name = resolve_caption_model_name(model_name, target="local")
 
     if model is None and not endpoint_url:
-        model = _get_cached_local_model(kwargs)
+        local_kwargs = dict(kwargs)
+        local_kwargs["model_name"] = model_name
+        local_kwargs["max_tokens"] = max_tokens
+        model = _get_cached_local_model(local_kwargs)
 
     nim_client = _create_remote_client(endpoint_url, api_key) if endpoint_url and model is None else None
 
@@ -353,6 +408,8 @@ def caption_images(
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=max_tokens,
+                request_extras=request_extras,
+                extra_body=extra_body,
             )
             # Infographics keep OCR text; VLM caption goes to a separate field.
             field = "caption" if col == "infographic" else "text"
@@ -369,6 +426,7 @@ def caption_images(
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=max_tokens,
+                extra_body=extra_body,
             )
         else:
             all_captions: List[str] = []
@@ -382,6 +440,7 @@ def caption_images(
                     temperature=temperature,
                     top_p=top_p,
                     max_tokens=max_tokens,
+                    request_extras=request_extras,
                 )
                 all_captions.extend(captions)
 

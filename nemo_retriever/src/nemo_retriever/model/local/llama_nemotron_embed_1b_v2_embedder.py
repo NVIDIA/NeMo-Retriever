@@ -101,7 +101,13 @@ class LlamaNemotronEmbed1BV2Embedder:
         texts_list = [str(t) for t in texts if str(t).strip()]
         if not texts_list:
             return torch.empty((0, 0), dtype=torch.float32)
-        vectors = embed_with_vllm_llm(texts_list, self._llm, batch_size=max(1, int(batch_size)), prefix=prefix)
+        vectors = embed_with_vllm_llm(
+            texts_list,
+            self._llm,
+            batch_size=max(1, int(batch_size)),
+            prefix=prefix,
+            normalize=self.normalize,
+        )
         return self._finalize_vectors(vectors)
 
     def embed_queries(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
@@ -112,7 +118,13 @@ class LlamaNemotronEmbed1BV2Embedder:
         texts_list = [str(t) for t in texts if str(t).strip()]
         if not texts_list:
             return torch.empty((0, 0), dtype=torch.float32)
-        vectors = embed_with_vllm_llm(texts_list, self._llm, batch_size=max(1, int(batch_size)), prefix="query: ")
+        vectors = embed_with_vllm_llm(
+            texts_list,
+            self._llm,
+            batch_size=max(1, int(batch_size)),
+            prefix="query: ",
+            normalize=self.normalize,
+        )
         return self._finalize_vectors(vectors)
 
     def unload(self) -> None:

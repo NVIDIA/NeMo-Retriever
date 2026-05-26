@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 app = typer.Typer(
     help="""
-    CLI for evaluating abstract pipelines on ViDoRe v3 datasets.
+    CLI for evaluating abstract pipelines on ViDoRe v3 and BRIGHT datasets.
 
     Evaluate custom retrieval pipelines that inherit from BasePipeline.
     Supports built-in pipelines (random, file-based) and custom Python implementations.
@@ -411,6 +411,36 @@ def _compute_llm_errors_from_traces(
     return out
 
 
+def _resolve_selected_datasets(*, all_datasets: bool, datasets: Optional[str]) -> tuple[list[str], dict[str, str]]:
+    """
+    Resolve dataset selection tokens into canonical full dataset names.
+
+    Returns:
+        (selected_dataset_full_names, short_by_full)
+    """
+    ds_full = get_available_datasets()
+    short_by_full = {ds: dataset_trace_dir(ds) for ds in ds_full}
+    full_by_short = {v: k for k, v in short_by_full.items()}
+
+    selected = list(ds_full)
+    if not all_datasets and datasets:
+        toks = [t.strip() for t in datasets.split(",") if t.strip()]
+        if not toks:
+            raise typer.BadParameter("--datasets was provided but empty.")
+        selected = []
+        for tok in toks:
+            if tok in short_by_full:
+                selected.append(tok)
+            elif tok in full_by_short:
+                selected.append(full_by_short[tok])
+            else:
+                raise typer.BadParameter(
+                    f"Unknown dataset '{tok}'. Expected one of: {', '.join(short_by_full.values())}"
+                )
+
+    return selected, short_by_full
+
+
 def _load_pipeline_from_module(module_path: str, class_name: str, **kwargs) -> BasePipeline:
     """
     Dynamically load a pipeline class from a Python file.
@@ -454,15 +484,15 @@ def _load_pipeline_from_module(module_path: str, class_name: str, **kwargs) -> B
 @app.command()
 def list_datasets():
     """
-    List all available ViDoRe v3 datasets.
+    List all available benchmark datasets.
 
     Example:
-        retrieval-bench pipeline list-datasets
+        retrieval-bench evaluate utils list-datasets
     """
     datasets = get_available_datasets()
 
     print("\n" + "=" * 70)
-    print("Available ViDoRe v3 Datasets")
+    print("Available Benchmark Datasets")
     print("=" * 70)
     for i, dataset_name in enumerate(datasets, 1):
         print(f"{i:2d}. {dataset_name}")
@@ -504,8 +534,8 @@ def report_results(
     """
     Report NDCG@10 and query-coverage per dataset for a results directory.
 
-    This command expects the JSON structure produced by `retrieval-bench pipeline evaluate`
-    and `retrieval-bench pipeline evaluate-all`, i.e. each file contains:
+    This command expects the JSON structure produced by `retrieval-bench evaluate dense-retrieval`
+    and `retrieval-bench evaluate agentic-retrieval`, i.e. each file contains:
       - aggregated_metrics (including ndcg_cut_10)
       - timing info (including expected_num_queries / num_queries / missing_num_queries) when available
 
@@ -592,15 +622,16 @@ def compare_results(
         typer.Option(
             "--all-datasets",
             "--all",
-            help="Report across all available ViDoRe v3 datasets (overrides --datasets).",
+            help="Report across all available benchmark datasets (overrides --datasets).",
         ),
     ] = False,
     datasets: Annotated[
         Optional[str],
         typer.Option(
             "--datasets",
-            help="Optional comma-separated dataset filter (accepts either full names like 'vidore/vidore_v3_hr' "
-            "or shorts like 'vidore_v3_hr'). Defaults to all datasets.",
+            help="Optional comma-separated dataset filter (accepts full names like 'bright/biology' "
+            "or 'vidore/vidore_v3_hr', plus shorts like 'bright__biology' or 'vidore_v3_hr'). "
+            "Defaults to all datasets.",
         ),
     ] = None,
     metric: Annotated[
@@ -621,29 +652,7 @@ def compare_results(
     if not results_dirs:
         raise typer.BadParameter("--results-dirs must include at least one directory.")
 
-    # Canonical dataset list.
-    all_ds = get_available_datasets()
-    short_by_full = {ds: dataset_trace_dir(ds) for ds in all_ds}
-    full_by_short = {v: k for k, v in short_by_full.items()}
-
-    # Optional dataset filter.
-    selected = list(all_ds)
-    if (not all_datasets) and datasets:
-        toks = [t.strip() for t in datasets.split(",") if t.strip()]
-        if not toks:
-            raise typer.BadParameter("--datasets was provided but empty.")
-        selected = []
-        for tok in toks:
-            # Allow specifying either the full dataset name (e.g. 'bright/biology')
-            # or the dataset file key used on disk (e.g. 'bright__biology').
-            if tok in short_by_full:
-                selected.append(tok)
-            elif tok in full_by_short:
-                selected.append(full_by_short[tok])
-            else:
-                raise typer.BadParameter(
-                    f"Unknown dataset '{tok}'. Expected one of: {', '.join(short_by_full.values())}"
-                )
+    selected, short_by_full = _resolve_selected_datasets(all_datasets=all_datasets, datasets=datasets)
 
     # Pipeline labels for columns.
     dirs: list[Path] = [Path(d) for d in results_dirs]
@@ -735,15 +744,16 @@ def report_llm_usage(
         typer.Option(
             "--all-datasets",
             "--all",
-            help="Report across all available ViDoRe v3 datasets (overrides --datasets).",
+            help="Report across all available benchmark datasets (overrides --datasets).",
         ),
     ] = False,
     datasets: Annotated[
         Optional[str],
         typer.Option(
             "--datasets",
-            help="Optional comma-separated dataset filter (accepts either full names like 'vidore/vidore_v3_hr' "
-            "or shorts like 'vidore_v3_hr'). Defaults to all datasets.",
+            help="Optional comma-separated dataset filter (accepts full names like 'bright/biology' "
+            "or 'vidore/vidore_v3_hr', plus shorts like 'bright__biology' or 'vidore_v3_hr'). "
+            "Defaults to all datasets.",
         ),
     ] = None,
     traces_dir: Annotated[
@@ -780,26 +790,7 @@ def report_llm_usage(
     if not results_root.exists() or not results_root.is_dir():
         raise typer.BadParameter(f"--results-dir must be an existing directory: {results_root}")
 
-    # Canonical dataset list.
-    ds_full = get_available_datasets()
-    short_by_full = {ds: dataset_trace_dir(ds) for ds in ds_full}
-    full_by_short = {v: k for k, v in short_by_full.items()}
-
-    selected = list(ds_full)
-    if not all_datasets and datasets:
-        toks = [t.strip() for t in datasets.split(",") if t.strip()]
-        if not toks:
-            raise typer.BadParameter("--datasets was provided but empty.")
-        selected = []
-        for tok in toks:
-            if tok in short_by_full:
-                selected.append(tok)
-            elif tok in full_by_short:
-                selected.append(full_by_short[tok])
-            else:
-                raise typer.BadParameter(
-                    f"Unknown dataset '{tok}'. Expected one of: {', '.join(short_by_full.values())}"
-                )
+    selected, short_by_full = _resolve_selected_datasets(all_datasets=all_datasets, datasets=datasets)
 
     # Table rows: (dataset_short, nq, err_count, pt, ct, tt, wall_ms_q, avg_traj, source)
     rows: list[tuple[str, str, str, str, str, str, str, str, str]] = []
@@ -1033,15 +1024,16 @@ def purge_llm_error_traces(
         typer.Option(
             "--all-datasets",
             "--all",
-            help="Purge across all available ViDoRe v3 datasets (overrides --datasets).",
+            help="Purge across all available benchmark datasets (overrides --datasets).",
         ),
     ] = False,
     datasets: Annotated[
         Optional[str],
         typer.Option(
             "--datasets",
-            help="Optional comma-separated dataset filter (accepts either full names like 'vidore/vidore_v3_hr' "
-            "or shorts like 'vidore_v3_hr'). Defaults to all datasets.",
+            help="Optional comma-separated dataset filter (accepts full names like 'bright/biology' "
+            "or 'vidore/vidore_v3_hr', plus shorts like 'bright__biology' or 'vidore_v3_hr'). "
+            "Defaults to all datasets.",
         ),
     ] = None,
     traces_dir: Annotated[
@@ -1086,26 +1078,7 @@ def purge_llm_error_traces(
     if (not dry_run) and (not yes):
         raise typer.BadParameter("Refusing to delete traces without --yes. Re-run with --no-dry-run --yes.")
 
-    # Canonical dataset list.
-    ds_full = get_available_datasets()
-    short_by_full = {ds: dataset_trace_dir(ds) for ds in ds_full}
-    full_by_short = {v: k for k, v in short_by_full.items()}
-
-    selected = list(ds_full)
-    if not all_datasets and datasets:
-        toks = [t.strip() for t in datasets.split(",") if t.strip()]
-        if not toks:
-            raise typer.BadParameter("--datasets was provided but empty.")
-        selected = []
-        for tok in toks:
-            if tok in short_by_full:
-                selected.append(tok)
-            elif tok in full_by_short:
-                selected.append(full_by_short[tok])
-            else:
-                raise typer.BadParameter(
-                    f"Unknown dataset '{tok}'. Expected one of: {', '.join(short_by_full.values())}"
-                )
+    selected, short_by_full = _resolve_selected_datasets(all_datasets=all_datasets, datasets=datasets)
 
     inferred_trace_run_name = results_root.name
     total_marked = 0
