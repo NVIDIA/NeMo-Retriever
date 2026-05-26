@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import base64
 import io
+import json
 import time
 import traceback
 
@@ -145,6 +146,68 @@ def _route_parsed_elements(
     return table_items, chart_items, infographic_items, page_text
 
 
+def _is_legacy_nemotron_parse_model(model_name: str) -> bool:
+    normalized = model_name.lower()
+    return any(version in normalized for version in ("v1.0", "v1.1", "v1_0", "v1_1"))
+
+
+def _route_parsed_elements_v1(
+    raw_json_text: str,
+    *,
+    extract_tables: bool,
+    extract_charts: bool,
+    extract_infographics: bool,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
+    """Route v1.0/v1.1 tool-call JSON into pipeline content channels."""
+
+    try:
+        parsed = json.loads(raw_json_text)
+    except (json.JSONDecodeError, TypeError):
+        return [], [], [], None
+
+    elements: List[Dict[str, Any]] = []
+    if isinstance(parsed, list):
+        for item in parsed:
+            if isinstance(item, list):
+                elements.extend(elem for elem in item if isinstance(elem, dict))
+            elif isinstance(item, dict):
+                elements.append(item)
+
+    table_items: List[Dict[str, Any]] = []
+    chart_items: List[Dict[str, Any]] = []
+    infographic_items: List[Dict[str, Any]] = []
+    text_parts: List[str] = []
+
+    for elem in elements:
+        cls = str(elem.get("type", ""))
+        raw_text = str(elem.get("text", "")).strip()
+        if not raw_text:
+            continue
+        text = _postprocess_element_text(raw_text, cls=cls, table_format="markdown")
+        if not text:
+            continue
+        bbox = elem.get("bbox", {})
+        bbox_list = [
+            float(bbox.get("xmin", 0)),
+            float(bbox.get("ymin", 0)),
+            float(bbox.get("xmax", 0)),
+            float(bbox.get("ymax", 0)),
+        ]
+        channel = _PARSE_CLASS_TO_CHANNEL.get(cls)
+        entry = {"bbox_xyxy_norm": bbox_list, "text": text}
+        if channel == "table" and extract_tables:
+            table_items.append(entry)
+        elif channel == "chart" and extract_charts:
+            chart_items.append(entry)
+        elif channel == "infographic" and extract_infographics:
+            infographic_items.append(entry)
+        else:
+            text_parts.append(text)
+
+    page_text = "\n\n".join(text_parts) if text_parts else None
+    return table_items, chart_items, infographic_items, page_text
+
+
 def _decode_page_image(page_image_b64: str) -> np.ndarray:
     """Decode a base64 page image to an HWC uint8 numpy array."""
     raw = base64.b64decode(page_image_b64)
@@ -233,19 +296,24 @@ def nemotron_parse_pages(
 
     # -- Phase 2: run model inference in a single batch ------------------
     raw_texts: List[str] = [""] * len(batch_indices)
+    used_v1_api = False
     if batch_images:
         try:
             if use_remote:
                 if "/v1/chat/completions" in invoke_url:
                     _model_name = nemotron_parse_model or NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL
+                    used_v1_api = _is_legacy_nemotron_parse_model(_model_name)
+                    extra_body: Dict[str, Any] = {"max_tokens": 8192}
+                    if used_v1_api:
+                        extra_body["tools"] = [{"type": "function", "function": {"name": "markdown_bbox"}}]
                     _chat_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=batch_images,
                         model=_model_name,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
-                        task_prompt=task_prompt,
-                        extra_body={"max_tokens": 8192},
+                        task_prompt=None if used_v1_api else task_prompt,
+                        extra_body=extra_body,
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
                     )
@@ -294,10 +362,11 @@ def nemotron_parse_pages(
             raw_texts = []
 
     # -- Phase 3: route parsed elements into content channels ------------
+    route_fn = _route_parsed_elements_v1 if used_v1_api else _route_parsed_elements
     for pos, raw_text in enumerate(raw_texts):
         idx = batch_indices[pos]
         try:
-            fp_tables, fp_charts, fp_infographics, fp_text = _route_parsed_elements(
+            fp_tables, fp_charts, fp_infographics, fp_text = route_fn(
                 raw_text,
                 extract_tables=extract_tables,
                 extract_charts=extract_charts,
