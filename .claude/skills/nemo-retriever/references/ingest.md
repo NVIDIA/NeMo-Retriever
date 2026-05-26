@@ -1,16 +1,17 @@
 # retriever ingest
 
-End-to-end ingestion of PDF documents into a LanceDB table — runs the full
-extract → embed → vector-DB pipeline in a single command.
+End-to-end ingestion of documents and media into a LanceDB table — runs the
+full extract → embed → vector-DB pipeline in a single command.
 
 If flags below look stale, re-check `retriever ingest --help`.
 
 ## When to use this
 
-- You have one or more PDFs (or a directory/glob of PDFs) and want them
+- You have one or more supported files (or a directory/glob of files) and want them
   searchable via `retriever query`.
-- You want the default pipeline: PDF split → extraction → page-element
-  detection → OCRv2 → embedding → LanceDB insert. No per-stage tuning needed.
+- You want the default pipeline: auto-select extraction for PDF/DOC/PPTX,
+  text, HTML, image, audio, or video inputs, then embed and insert into
+  LanceDB. No per-stage tuning needed.
 
 **Use a different command when:**
 
@@ -24,22 +25,31 @@ If flags below look stale, re-check `retriever ingest --help`.
 
 ## Canonical invocations
 
-Ingest a single PDF into the default table (`lancedb/nv-ingest.lance`):
+Ingest a single file into the default table (`lancedb/nv-ingest.lance`):
 
 ```bash
 retriever ingest data/multimodal_test.pdf
 ```
 
-Ingest a directory of PDFs:
+Ingest a directory of supported files:
 
 ```bash
-retriever ingest data/pdfs/
+retriever ingest data/corpus/
 ```
 
 Ingest via glob:
 
 ```bash
-retriever ingest "data/**/*.pdf"
+retriever ingest "data/**/*"
+```
+
+Force a specific input family:
+
+```bash
+retriever ingest data/slides/ --input-type doc
+retriever ingest data/images/ --input-type image
+retriever ingest data/audio/ --input-type audio
+retriever ingest data/video/ --input-type video
 ```
 
 Write to a custom DB / table:
@@ -52,13 +62,16 @@ retriever ingest data/multimodal_test.pdf \
 
 ## Inputs
 
-- **Positional `DOCUMENTS...`** — one or more of: PDF file paths, directories
-  containing PDFs, or shell globs. Required, repeatable.
+- **Positional `DOCUMENTS...`** — one or more file paths, directories, or
+  shell globs. Required, repeatable.
+- **Supported input types** — `pdf`, `doc` (`.docx`, `.pptx`), `txt`, `html`,
+  `image` (`.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif`, `.bmp`, `.svg`),
+  `audio` (`.mp3`, `.wav`, `.m4a`), and `video` (`.mp4`, `.mov`, `.mkv`).
 
 ## Outputs
 
 - A LanceDB dataset at `<lancedb-uri>/<table-name>.lance`. Default:
-  `./lancedb/nv-ingest.lance`.
+  `./lancedb/nemo-retriever.lance`.
 - One row per extracted primitive (text chunk, table, chart, image region),
   each with: `text`, `source`, `page_number`, `metadata` (JSON: type, bbox, …),
   and the embedding vector.
@@ -69,11 +82,12 @@ retriever ingest data/multimodal_test.pdf \
 |---|---|---|
 | `--lancedb-uri` | `lancedb` | Path or URI of the LanceDB database. |
 | `--table-name` | `nv-ingest` | LanceDB table to write into. Must match `retriever query`'s table on read. |
+| `--input-type` | `auto` | Input family to ingest. `auto` detects from file extensions and supports mixed directories. |
 | `--run-mode` | `inprocess` | `inprocess` for local runs; `batch` for the SDK batch ingestor. |
 
 ## Pipeline shape
 
-The default `ingest` runs 8 stages, in order:
+For PDF/DOC/PPTX inputs, `ingest` runs the optimized document pipeline:
 
 1. `DocToPdfConversionActor` — non-PDF inputs → PDF (no-op for PDFs).
 2. `PDFSplitActor` — split into per-page tasks.
@@ -84,6 +98,9 @@ The default `ingest` runs 8 stages, in order:
 7. `_BatchEmbedActor` — embed primitives with `llama-nemotron-embed-1b-v2`.
 8. `IngestVdbOperator` — insert rows into LanceDB.
 
+For text, HTML, image, audio, video, or mixed `auto` inputs, `ingest` routes
+through the same GraphIngestor extraction paths used by `retriever pipeline`.
+
 ## Common failure modes
 
 - **`Clamping num_partitions from 16 to 7`** — informational, not an error.
@@ -92,7 +109,7 @@ The default `ingest` runs 8 stages, in order:
 - **First run is slow (~60s+ before any pages process)** — vLLM model load and
   CUDA-graph capture for the embedder. Subsequent runs in the same process
   are fast; one-shot CLI invocations always pay this cost.
-- **`No existing dataset at …/nv-ingest.lance, it will be created`** — expected
+- **`No existing dataset at …/nemo-retriever.lance, it will be created`** — expected
   on the first ingest into a new DB. Subsequent ingests append.
 - **HuggingFace download on first run** — the embedder and page-element
   detector pull weights to `~/.cache/huggingface`. Needs network the first

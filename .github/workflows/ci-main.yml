@@ -9,39 +9,21 @@ jobs:
   # Pre-commit checks
   pre-commit:
     name: Pre-commit Checks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
+    uses: ./.github/workflows/reusable-pre-commit.yml
 
-      - uses: actions/setup-python@v3
-
-      - uses: pre-commit/action@v3.0.1
-
-  # Build standard Docker image
-  docker-build:
-    name: Build Docker Image (amd64)
-    uses: ./.github/workflows/reusable-docker-build.yml
+  # Build and test standard Docker image
+  docker-build-and-test:
+    name: Build & Test Docker (amd64)
+    uses: ./.github/workflows/reusable-docker-build-and-test.yml
     with:
       platform: 'linux/amd64'
       target: 'service'
-      push: false
       tags: 'nrl-service:main-${{ github.sha }}'
       base-image: 'ubuntu'
       base-image-tag: 'jammy-20250415.1'
-      runner: 'linux-large-disk'
-    secrets:
-      HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}
-
-  # Test Docker image
-  docker-test:
-    name: Test Docker Image
-    needs: docker-build
-    uses: ./.github/workflows/reusable-docker-test.yml
-    with:
-      image-tag: 'nrl-service:main-${{ github.sha }}'
-      platform: 'linux/amd64'
       test-selection: 'full'
       pytest-markers: 'not integration'
       coverage: true
       runner: 'linux-large-disk'
+    secrets:
+      HF_ACCESS_TOKEN: ${{ secrets.HF_ACCESS_TOKEN }}

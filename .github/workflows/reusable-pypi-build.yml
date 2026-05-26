@@ -97,11 +97,51 @@ jobs:
           RETRIEVER_GIT_SHA=${{ github.sha }} \
           python -m build
 
+      - name: Debug — wheels after build
+        run: |
+          set -x
+          echo "=== PyPI build debug (post python -m build) ==="
+          echo "pwd=$(pwd)"
+          echo "github.sha=${{ github.sha }}"
+          echo "version=${{ steps.set-version.outputs.version }}"
+          echo "release-type=${{ inputs.release-type }}"
+          echo "--- nemo_retriever/dist ---"
+          ls -la nemo_retriever/dist/ 2>&1 || echo "(missing nemo_retriever/dist)"
+          find nemo_retriever/dist -type f \( -name '*.whl' -o -name '*.tar.gz' \) -ls 2>/dev/null || true
+          du -sh nemo_retriever/dist 2>/dev/null || true
+
+      - name: Stage wheels for publish artifact layout
+        run: |
+          set -euxo pipefail
+          # Preserve nemo_retriever/dist/ in the artifact so download-artifact + the
+          # legacy publish path ./dist/nemo_retriever/dist/* both work (upload-artifact
+          # strips the common parent when uploading bare globs).
+          mkdir -p python-wheels-artifact/nemo_retriever/dist
+          shopt -s nullglob
+          built=(nemo_retriever/dist/*.whl nemo_retriever/dist/*.tar.gz)
+          if [ "${#built[@]}" -eq 0 ]; then
+            echo "::error::No wheels or sdists in nemo_retriever/dist to stage"
+            ls -laR nemo_retriever/dist || true
+            exit 1
+          fi
+          cp -v "${built[@]}" python-wheels-artifact/nemo_retriever/dist/
+
+      - name: Debug — staged artifact tree before upload
+        run: |
+          set -x
+          echo "=== PyPI build debug (pre upload-artifact) ==="
+          echo "pwd=$(pwd)"
+          echo "github.run_id=${{ github.run_id }}"
+          echo "github.run_attempt=${{ github.run_attempt }}"
+          echo "--- python-wheels-artifact/ ---"
+          find python-wheels-artifact -type f -ls 2>/dev/null || true
+          du -sh python-wheels-artifact 2>/dev/null || true
+          ls -laR python-wheels-artifact 2>&1 || true
+
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v5
         with:
           name: python-wheels
-          path: |
-            nemo_retriever/dist/*.whl
-            nemo_retriever/dist/*.tar.gz
+          path: python-wheels-artifact/
           retention-days: 7
+          if-no-files-found: error

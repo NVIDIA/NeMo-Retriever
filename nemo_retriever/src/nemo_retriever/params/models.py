@@ -150,6 +150,16 @@ class AudioChunkParams(_ParamsModel):
     audio chunking and ASR on a video pipeline — useful for visual-only
     recall benchmarks. ``MediaChunkActor`` ignores this flag for the
     audio-only pipeline since chunking is the whole point there.
+
+    ``audio_only=True`` on a video input extracts only the audio track,
+    runs ASR over it, and skips the visual branch entirely — no frame
+    extraction, no OCR, no audio/visual fusion.
+
+    ``video_audio_separate`` is accepted for compatibility but ignored by
+    ``MediaChunkActor`` on video inputs: this ASR chunking path always demuxes
+    videos to ASR-safe audio chunks and does not emit video-container chunks.
+    Use ``VideoSplitActor`` or the video pipeline when you need audio+visual
+    video processing.
     """
 
     enabled: bool = True
@@ -160,7 +170,14 @@ class AudioChunkParams(_ParamsModel):
 
 
 class ASRParams(_ParamsModel):
-    """Params for ASR (Parakeet/Riva gRPC or local transformers backend)."""
+    """Params for ASR (Parakeet/Riva gRPC or local transformers backend).
+
+    Choice of remote-NIM vs local-model is made by the :class:`ASRActor`
+    archetype (CPU variant = remote, GPU variant = local), not by a flag here.
+    Pass ``audio_endpoints`` to force the remote variant on any host; leave
+    them empty to let the archetype pick GPU (local) when a GPU is present
+    and fall back to remote (NVCF default) when not.
+    """
 
     audio_endpoints: Tuple[Optional[str], Optional[str]] = (None, None)
     audio_infer_protocol: str = "grpc"
@@ -252,11 +269,15 @@ class BatchTuningParams(_ParamsModel):
     detect_workers: Optional[int] = None
     page_elements_cpus_per_actor: float = 1
     ocr_cpus_per_actor: float = 1
+    table_structure_workers: Optional[int] = None
+    table_structure_batch_size: Optional[int] = None
+    table_structure_cpus_per_actor: float = 1
     embed_workers: Optional[int] = None
     embed_batch_size: int = 32
     embed_cpus_per_actor: float = 1
     gpu_page_elements: Optional[float] = None
     gpu_ocr: Optional[float] = None
+    gpu_table_structure: Optional[float] = None
     gpu_embed: Optional[float] = None
     nemotron_parse_workers: Optional[int] = None
     gpu_nemotron_parse: Optional[float] = None
@@ -288,6 +309,9 @@ class ExtractParams(_ParamsModel):
 
     # Extraction options
     method: str = "pdfium"
+    # Run PageElementDetection (layout/yolox). Required by TableStructure,
+    # GraphicElements, and OCR. Safe to disable for text-only ingests.
+    use_page_elements: bool = True
     use_table_structure: bool = False
     table_output_format: Optional[Literal["pseudo_markdown", "markdown"]] = None
     use_graphic_elements: bool = False
@@ -342,6 +366,14 @@ class ExtractParams(_ParamsModel):
             self.table_output_format = "markdown" if self.use_table_structure else "pseudo_markdown"
         if self.ocr_version == "v1" and self.ocr_lang is not None:
             raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
+        if not self.use_page_elements:
+            consumers = [
+                ("use_table_structure", self.use_table_structure and self.extract_tables),
+                ("use_graphic_elements", self.use_graphic_elements and self.extract_charts),
+            ]
+            enabled = [name for name, on in consumers if on]
+            if enabled:
+                raise ValueError(f"use_page_elements=False is incompatible with: {', '.join(enabled)}")
         return self
 
 
@@ -376,6 +408,7 @@ class EmbedParams(_ParamsModel):
 
     # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
     nim_http_max_concurrent: int = 32
+    request_timeout_s: float = 600.0
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
@@ -599,6 +632,7 @@ class CaptionParams(LLMInferenceParams):
     tensor_parallel_size: int = 1
     gpu_memory_utilization: float = 0.5
     caption_infographics: bool = False
+    extra_body: dict[str, Any] = Field(default_factory=dict)
 
 
 class WebhookParams(_ParamsModel):

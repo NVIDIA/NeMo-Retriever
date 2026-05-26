@@ -7,20 +7,56 @@ from pathlib import Path
 from typing import NoReturn
 
 INPUT_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
+    "auto": (
+        "*.pdf",
+        "*.docx",
+        "*.pptx",
+        "*.txt",
+        "*.html",
+        "*.jpg",
+        "*.jpeg",
+        "*.png",
+        "*.tiff",
+        "*.tif",
+        "*.bmp",
+        "*.svg",
+        "*.mp3",
+        "*.wav",
+        "*.m4a",
+        "*.mp4",
+        "*.mov",
+        "*.mkv",
+    ),
     "pdf": ("*.pdf",),
     "txt": ("*.txt",),
     "html": ("*.html",),
     "doc": ("*.docx", "*.pptx"),
-    "image": ("*.jpg", "*.jpeg", "*.png", "*.tiff", "*.bmp"),
+    "image": ("*.jpg", "*.jpeg", "*.png", "*.tiff", "*.tif", "*.bmp", "*.svg"),
     "audio": ("*.mp3", "*.wav", "*.m4a"),
     "video": ("*.mp4", "*.mov", "*.mkv"),
 }
+INPUT_TYPE_EXTENSIONS: dict[str, frozenset[str]] = {
+    input_type: frozenset(pattern[1:].lower() for pattern in patterns if pattern.startswith("*."))
+    for input_type, patterns in INPUT_TYPE_PATTERNS.items()
+    if input_type != "auto"
+}
+AUTO_INPUT_EXTENSIONS: frozenset[str] = frozenset().union(*INPUT_TYPE_EXTENSIONS.values())
+PDF_DOCUMENT_INPUT_TYPES = frozenset({"pdf", "doc"})
 
 InputPath = str | PathLike[str]
 
 
 def _is_explicit_glob_path(input_path: InputPath) -> bool:
     return glob.has_magic(fspath(input_path))
+
+
+def input_type_for_path(input_path: InputPath) -> str | None:
+    """Return the supported ingest input family for *input_path*'s extension."""
+    ext = Path(fspath(input_path)).suffix.lower()
+    for input_type, extensions in INPUT_TYPE_EXTENSIONS.items():
+        if ext in extensions:
+            return input_type
+    return None
 
 
 def raise_input_path_not_found(input_path: object, cause: BaseException | None = None) -> NoReturn:

@@ -3,7 +3,7 @@
 {{- $vdb := .Values.topology.vectordb -}}
 {{- $fullname := include "nemo-retriever.fullname" . -}}
 {{- $vdbName := printf "%s-vectordb" $fullname -}}
-{{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" . "key" "embed" "shortName" "embed" "configKey" "embedInvokeUrl") -}}
+{{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" . "key" "vlm_embed" "serviceName" .Values.nimOperator.vlm_embed.nimServiceName "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -62,22 +62,19 @@ spec:
             - {{ .Values.serviceConfig.vectordb.embedModel | quote }}
             - --port
             - {{ $vdb.port | quote }}
-          {{- if or .Values.nimApiKey.value .Values.nimApiKey.existingSecret }}
             - --embed-api-key
             - $(NVIDIA_API_KEY)
-          {{- end }}
           ports:
             - name: http
               containerPort: {{ $vdb.port }}
               protocol: TCP
           env:
-            {{- if or .Values.nimApiKey.value .Values.nimApiKey.existingSecret }}
             - name: NVIDIA_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "nemo-retriever.nimApiKeySecretName" . }}
-                  key: {{ .Values.nimApiKey.existingSecretKey }}
-            {{- end }}
+                  name: {{ .Values.ngcApiSecret.name }}
+                  key: NGC_API_KEY
+                  optional: true
           resources:
             {{- toYaml $vdb.resources | nindent 12 }}
           volumeMounts:

@@ -144,7 +144,7 @@ def test_retrieve_operator_delegates_vectors_to_retrieval() -> None:
         [
             {
                 "text": "retrieved chunk",
-                "metadata": '{"page_number": 1}',
+                "metadata": {"page_number": 1},
                 "source": "doc-a.pdf",
                 "source_id": "doc-a.pdf",
                 "path": "doc-a.pdf",

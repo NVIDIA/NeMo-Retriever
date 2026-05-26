@@ -22,6 +22,10 @@ EMBED_MAX_ACTORS = 4  # Hueristic baseline num actors per GPU (max_size of Actor
 EMBED_GPUS_PER_ACTOR = (
     0.5  # Hueristic baseline num GPUs per actor. Used to determine which GPU to schedule the actor on.
 )
+EMBED_SINGLE_GPU_ACTORS = 1  # Single-GPU heuristic: one actor avoids over-reserving the GPU for embedding.
+EMBED_SINGLE_GPU_GPUS_PER_ACTOR = (
+    0.2  # Single-GPU heuristic: smaller reservation leaves headroom for OCR/page-elements actors.
+)
 EMBED_BATCH_SIZE = 256  # Ray batch size AND EMBEDDING inference batch size
 
 # Nemotron Parse Actor constants (PER-GPU)
@@ -236,16 +240,44 @@ def gather_cluster_resources(ray: object) -> ClusterResources:
     )
 
 
+def _detect_local_gpu_count() -> int:
+    """Best-effort local GPU count without a hard pynvml dep.
+
+    Tried in order: pynvml (rich detail when available), torch.cuda (already in
+    the core deps), then ``CUDA_VISIBLE_DEVICES`` (purely env-based, used by the
+    skill-eval harness to pin runs to a single GPU). Returns 0 only when every
+    probe fails or reports no GPUs — never raises.
+
+    Historical bug this guards against: pynvml is an optional dep; when missing,
+    GPU count came back 0, which silently flipped the rerank ArchetypeOperator
+    to its CPU variant. That variant auto-fills the build.nvidia.com endpoint,
+    so a caller asking for a local GPU reranker silently turned into a remote
+    HTTP request — and a 401 / cost spike when the call eventually failed.
+    """
+    try:
+        return int(len(_get_gpu_memory_info().gpus))
+    except Exception as exc:  # pynvml missing, NVML runtime unavailable, etc.
+        logger.debug("pynvml GPU detection failed (%s); trying torch.cuda", exc)
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return int(torch.cuda.device_count())
+    except Exception as exc:
+        logger.debug("torch.cuda GPU detection failed (%s); trying CUDA_VISIBLE_DEVICES", exc)
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible is not None:
+        # ``""`` is a valid "no GPUs visible" signal; ``"0,1"`` etc means N visible.
+        ids = [tok for tok in visible.split(",") if tok.strip()]
+        return len(ids)
+    return 0
+
+
 def gather_local_resources() -> Resources:
     """Gather local CPU/GPU resources without requiring Ray."""
 
     cpu_count = int(os.cpu_count() or 0)
-    gpu_count = 0
-    try:
-        gpu_count = len(_get_gpu_memory_info().gpus)
-    except Exception as exc:  # pragma: no cover - depends on optional NVML runtime
-        logger.debug("Failed to detect local GPU resources via NVML: %s", exc)
-    return Resources(cpu_count=cpu_count, gpu_count=int(gpu_count))
+    return Resources(cpu_count=cpu_count, gpu_count=_detect_local_gpu_count())
 
 
 class RequestedPlan(BaseModel):
@@ -573,6 +605,20 @@ def resolve_requested_plan(
     embed_max_actors = _resolve_int_actors(override_embed_max_actors, EMBED_MAX_ACTORS, True)
     embed_gpus_per_actor = _resolve_float_actors(override_embed_gpus_per_actor, EMBED_GPUS_PER_ACTOR, False)
     embed_batch_size = _resolve_int(override_embed_batch_size, EMBED_BATCH_SIZE, False)
+
+    # The local vLLM embedder manages batching internally and uses substantial
+    # GPU memory. On single-GPU batch pipelines, one smaller GPU reservation
+    # prevents the embed stage from crowding OCR/page-elements actors while
+    # still allowing the embedder to run on CUDA.
+    if available_gpu_count == 1:
+        if override_embed_initial_actors is None:
+            embed_initial_actors = EMBED_SINGLE_GPU_ACTORS
+        if override_embed_min_actors is None:
+            embed_min_actors = EMBED_SINGLE_GPU_ACTORS
+        if override_embed_max_actors is None:
+            embed_max_actors = EMBED_SINGLE_GPU_ACTORS
+        if override_embed_gpus_per_actor is None:
+            embed_gpus_per_actor = EMBED_SINGLE_GPU_GPUS_PER_ACTOR
 
     nemotron_parse_initial_actors = _resolve_int_actors(
         override_nemotron_parse_initial_actors, NEMOTRON_PARSE_INITIAL_ACTORS, True

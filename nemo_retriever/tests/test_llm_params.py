@@ -224,17 +224,17 @@ class TestLiteLLMCompleteCallKwargs:
 
 
 class TestLLMJudgeConstruction:
-    """LLMJudge should default to deterministic sampling and expose .model."""
+    """LLMJudge should use the current Nemotron judge defaults and expose .model."""
 
     def test_structured_construction_uses_defaults(self):
         from nemo_retriever.llm.clients import LLMJudge
         from nemo_retriever.params.models import LLMRemoteClientParams
 
-        transport = LLMRemoteClientParams(model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
+        transport = LLMRemoteClientParams(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
         judge = LLMJudge(transport=transport)
-        assert judge.model == "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
-        assert judge._client.sampling.temperature == 0.0
-        assert judge._client.sampling.max_tokens == 256
+        assert judge.model == "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+        assert judge._client.sampling.temperature == 0.1
+        assert judge._client.sampling.max_tokens == 4096
 
     def test_custom_sampling_override(self):
         from nemo_retriever.llm.clients import LLMJudge
@@ -262,8 +262,16 @@ class TestLLMJudgeConstruction:
         assert judge._client.transport.timeout == 60.0
         assert judge._client.transport.extra_params == {"user": "t"}
         # Sampling stays at judge defaults even when using flat constructor.
-        assert judge._client.sampling.temperature == 0.0
-        assert judge._client.sampling.max_tokens == 256
+        assert judge._client.sampling.temperature == 0.1
+        assert judge._client.sampling.max_tokens == 4096
+
+    def test_from_kwargs_accepts_sampling_overrides(self):
+        from nemo_retriever.llm.clients import LLMJudge
+
+        judge = LLMJudge.from_kwargs(model="m", temperature=0.2, max_tokens=512)
+
+        assert judge._client.sampling.temperature == 0.2
+        assert judge._client.sampling.max_tokens == 512
 
     def test_from_kwargs_uses_default_model(self):
         from nemo_retriever.llm.clients import LLMJudge
@@ -313,9 +321,10 @@ class TestBackCompatCallSites:
     def test_judging_operator_constructs_cleanly(self):
         from nemo_retriever.evaluation.judging import JudgingOperator
 
-        op = JudgingOperator(model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
-        assert op._judge.model == "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
-        assert op._judge._client.sampling.temperature == 0.0
+        op = JudgingOperator(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
+        assert op._judge.model == "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+        assert op._judge._client.sampling.temperature == 0.1
+        assert op._judge._client.sampling.max_tokens == 4096
 
     def test_judging_operator_plumbs_num_retries_to_inner_judge(self):
         """JudgingOperator(num_retries=...) must flow down to the LLMJudge it
@@ -328,7 +337,7 @@ class TestBackCompatCallSites:
         from nemo_retriever.evaluation.judging import JudgingOperator
 
         op = JudgingOperator(
-            model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
+            model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
             num_retries=7,
         )
         assert op._judge._client.transport.num_retries == 7
@@ -348,7 +357,7 @@ class TestBackCompatCallSites:
         builder = RetrieverPipelineBuilder(retriever, top_k=5)
 
         judge = LLMJudge.from_kwargs(
-            model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
+            model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
             num_retries=7,
         )
         builder.judge(judge)
@@ -369,7 +378,7 @@ class TestBackCompatCallSites:
         retriever.top_k = 5
         builder = RetrieverPipelineBuilder(retriever, top_k=5)
 
-        builder.judge(model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
+        builder.judge(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
 
         judging_ops = [s for s in builder._steps if isinstance(s, JudgingOperator)]
         assert len(judging_ops) == 1

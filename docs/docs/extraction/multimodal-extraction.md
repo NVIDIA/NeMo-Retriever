@@ -24,7 +24,10 @@ NeMo Retriever Library accepts multiple document and media types. A current list
 
 ## Text and layout extraction { #text-and-layout-extraction }
 
-For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with configurable depth and paths. Scanned or mixed pages may use hybrid or OCR-oriented methods. For `extract_method` options such as `pdfium`, `pdfium_hybrid`, and `ocr`, refer to the [Python API reference](nemo-retriever-api-reference.md).
+For PDFs, NeMo Retriever Library typically uses **pdfium**-based extraction with configurable depth and paths. Scanned or mixed pages may use hybrid, OCR-oriented, or Nemotron Parse methods. For `extract_method` options such as `pdfium`, `pdfium_hybrid`, `ocr`, and `nemotron_parse`, refer to the [Python API reference](nemo-retriever-api-reference.md).
+
+!!! note
+    `extract_method="nemotron_parse"` requires the Nemotron Parse NIM client dependencies. Install them with the `nemotron-parse` extra, for example `pip install "nemo-retriever[nemotron-parse]"`, before running PDF extraction through Nemotron Parse.
 
 **Related**
 
@@ -44,7 +47,10 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 ## Charts and infographics { #charts-and-infographics }
 
-Charts and infographic regions are classified as graphic elements and processed with the corresponding NVIDIA NIM workflows (for example, **yolox-graphic-elements** in current releases). Outputs use the same metadata schema as other extracted objects.
+Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
+
+
+For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning).
 
 **Related**
 
@@ -56,6 +62,8 @@ Charts and infographic regions are classified as graphic elements and processed 
 
 Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
+The default OCR engine is **Nemotron OCR v2**. When you run extraction **locally with HuggingFace models**, v2 operates in **multilingual** mode by default (`multi`). Pass `--ocr-lang english` on the CLI (or the equivalent API parameter) for English-only v2, or `--ocr-version v1` for the legacy engine. For Kubernetes installs, the chart's OCR NIM defaults and image are documented under [Nemotron OCR v2 — language mode](prerequisites-support-matrix.md#nemotron-ocr-v2-language-mode) in the support matrix.
+
 **Related**
 
 - [Text and layout extraction](#text-and-layout-extraction)
@@ -66,11 +74,13 @@ Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine nati
 
 Image captioning generates natural-language descriptions for unstructured image content. Retrieval can then use text embeddings over captions and visual embeddings where you configure them.
 
+**Captioning is optional** — enable it in your ingest configuration (for example, the `caption` API or pipeline flag) when you need natural-language descriptions of image content. Reasoning traces are disabled by default for captioning.
+
 **Related**
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
-- [What is NeMo Retriever Library?](overview.md)
+- [Image captioning](prerequisites-support-matrix.md#image-captioning)
 
 ## Metadata and content schema { #metadata-and-content-schema }
 

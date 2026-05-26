@@ -1,0 +1,47 @@
+{{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled true) -}}
+apiVersion: apps.nvidia.com/v1alpha1
+kind: NIMCache
+metadata:
+  name: nemotron-3-nano-omni-30b-a3b-reasoning
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  source:
+    ngc:
+      modelPuller: "{{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.repository }}:{{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.tag }}"
+      pullSecret: "{{ index .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.pullSecrets 0 }}"
+      authSecret: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.authSecret }}
+  storage:
+    pvc:
+      create: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.storage.pvc.create }}
+      storageClass: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.storage.pvc.storageClass | quote }}
+      size: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.storage.pvc.size }}
+      volumeAccessMode: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.storage.pvc.volumeAccessMode }}
+---
+apiVersion: apps.nvidia.com/v1alpha1
+kind: NIMService
+metadata:
+  name: nemotron-3-nano-omni-30b-a3b-reasoning
+spec:
+  image:
+    repository: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.repository }}
+    tag: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.tag }}
+    pullPolicy: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.pullPolicy }}
+    pullSecrets:
+{{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.pullSecrets | indent 6 }}
+  authSecret: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.authSecret }}
+  storage:
+    nimCache:
+      name: nemotron-3-nano-omni-30b-a3b-reasoning
+  replicas: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.replicas }}
+  nodeSelector:
+{{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.nodeSelector | indent 4 }}
+  resources:
+{{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.resources | indent 4 }}
+  tolerations:
+{{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.tolerations | indent 4 }}
+  expose:
+{{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.expose | indent 4 }}
+  env:
+{{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.env | indent 4 }}
+{{- end }}

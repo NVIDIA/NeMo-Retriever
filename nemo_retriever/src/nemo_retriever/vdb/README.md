@@ -13,7 +13,7 @@ The only built-in backend key today is **`lancedb`**, resolved by `get_vdb_op_cl
 
 ### Role
 
-`IngestVdbOperator` adapts **flat graph / DataFrame rows** (the shape produced after extract → embed in NeMo Retriever) into the **nested NV-Ingest record batches** expected by client VDBs, then calls **`VDB.run(records)`** once per batch.
+`IngestVdbOperator` adapts **flat graph / DataFrame rows** (the shape produced after extract → embed in NeMo Retriever) into the **nested ingestion-pipeline record batches** expected by client VDBs, then calls **`VDB.run(records)`** once per batch.
 
 Flow (see `operators.py` and `records.py`):
 
@@ -46,7 +46,7 @@ op = IngestVdbOperator(
     vdb_op="lancedb",
     vdb_kwargs={
         "uri": "./kb",
-        "table_name": "nv-ingest",
+        "table_name": "nemo-retriever",
         "vector_dim": 2048,
     },
 )
@@ -57,7 +57,7 @@ CLI-equivalent kwargs are often passed as JSON:
 
 ```bash
 retriever pipeline run /data/pdfs --vdb-op lancedb \
-  --vdb-kwargs-json '{"uri":"./kb","table_name":"nv-ingest"}'
+  --vdb-kwargs-json '{"uri":"./kb","table_name":"nemo-retriever"}'
 ```
 
 ---
@@ -70,7 +70,7 @@ When `vdb_op="lancedb"` (or `vdb=LanceDB(...)` is passed explicitly), `_construc
 
 `LanceDB.run` (in `lancedb.py`) orchestrates:
 
-1. **`create_index`** — connects with `lancedb.connect(self.uri)`, transforms NV-Ingest batches into Arrow rows (`vector`, `text`, `metadata`, `source`), and **`db.create_table(...)`** with schema and `on_bad_vectors` policy.
+1. **`create_index`** — connects with `lancedb.connect(self.uri)`, transforms ingestion batches into Arrow rows (`vector`, `text`, `metadata`, `source`), and **`db.create_table(...)`** with schema and `on_bad_vectors` policy.
 2. **`write_to_index`** — builds the **vector index** (e.g. IVF/HNSW) and optionally an **FTS** index when `hybrid=True`.
 
 Common constructor arguments include:
@@ -78,7 +78,7 @@ Common constructor arguments include:
 | Parameter        | Purpose |
 |-----------------|--------|
 | `uri`           | LanceDB database path/URI |
-| `table_name`    | Table name (default `nv-ingest`) |
+| `table_name`    | Table name (default `nemo-retriever`) |
 | `overwrite`     | Table create mode vs append |
 | `vector_dim`    | Expected embedding dimension (default 2048) |
 | `index_type` / `metric` / `num_partitions` / `num_sub_vectors` | Vector index tuning |
@@ -111,7 +111,7 @@ from nemo_retriever.vdb import RetrieveVdbOperator
 
 op = RetrieveVdbOperator(
     vdb_op="lancedb",
-    vdb_kwargs={"uri": "./kb", "table_name": "nv-ingest"},
+    vdb_kwargs={"uri": "./kb", "table_name": "nemo-retriever"},
 )
 hits_per_query = op.process(
     [[0.1, 0.2, ...]],  # one query vector; dimension must match table
@@ -147,7 +147,7 @@ retriever = Retriever(
     vdb="lancedb",
     vdb_kwargs={
         "uri": "./kb",
-        "table_name": "nv-ingest",
+        "table_name": "nemo-retriever",
         "top_k": 10,
         "refine_factor": 50,
         "nprobes": 64,
@@ -165,6 +165,66 @@ retriever.query(
     vdb_kwargs={"where": "source LIKE '%annual_report%'", "top_k": 8},
 )
 ```
+
+---
+
+## Metadata filtering
+
+**Reference notebook:** [`examples/nemo_retriever_retriever_query_metadata_filter.ipynb`](../../../../examples/nemo_retriever_retriever_query_metadata_filter.ipynb) — runnable end-to-end demo using sidecar metadata and both filter modes below.
+
+Two complementary mechanisms narrow `Retriever.query` results by metadata:
+
+1. **Server-side (`where`)** — Pass a Lance / DataFusion SQL predicate in `vdb_kwargs` per call (or as a default on the `Retriever`). The predicate runs inside LanceDB on the table columns (`vector`, `text`, `metadata`, `source`) and is wired up in `LanceDB.retrieval` as a `.where(...)` clause on the vector search. **`_filter`** is accepted as an alias for `where`.
+2. **Client-side** — Use **`filter_hits_by_content_metadata(hits, predicate)`** after retrieval to keep rows whose parsed `content_metadata` satisfies an arbitrary Python predicate. Useful for logic that doesn't fit SQL or for filters that depend on combined fields.
+
+### How metadata is stored
+
+During ingestion, each chunk's `content_metadata` is serialized as a **compact JSON string** (no spaces after `:` or `,`) in the `metadata` column of the LanceDB table. Sidecar columns supplied via `meta_dataframe` / `meta_source_field` / `meta_fields` are merged into that JSON object before upload — so sidecar keys live in the same JSON string, not in separate columns. This is why SQL filters on metadata use `LIKE` against a JSON substring rather than a real JSON operator.
+
+### Writing `where` predicates
+
+LanceDB evaluates `where` as DataFusion SQL. A few patterns:
+
+```python
+# Match a sidecar string field by exact value (compact JSON: "key":"value")
+where = "metadata LIKE '%\"meta_a\":\"alpha\"%'"
+
+# Match a numeric metadata field — numbers serialize without quotes
+where = "metadata LIKE '%\"meta_b\":10%'"
+
+# Combine predicates with AND / OR
+where = "metadata LIKE '%\"meta_a\":\"bravo\"%' AND metadata LIKE '%\"meta_b\":10%'"
+
+# Filter on the `source` column directly (separate from metadata JSON)
+where = "source LIKE '%annual_report%'"
+```
+
+Escape single quotes in SQL strings by doubling them (`''`). Because matching is substring-based, include the JSON key (`"meta_a":` rather than just `alpha`) to avoid matching unrelated values.
+
+### Server-side vs client-side
+
+Use **`where`** when the predicate fits SQL and you want LanceDB to prune candidates before vector ranking — it also avoids the wasted work of materializing hits you'd discard. Use **`filter_hits_by_content_metadata`** when the predicate is easier to express in Python (e.g. combined numeric ranges, membership in a Python set, or fields that need parsing). They compose well — run a wide `top_k` with a `where` to prune broadly, then post-filter client-side for finer logic:
+
+```python
+from nemo_retriever.vdb import filter_hits_by_content_metadata
+
+hits = retriever.query(
+    "budget assumptions",
+    top_k=16,
+    vdb_kwargs={"where": "metadata LIKE '%\"meta_a\":\"bravo\"%'"},
+)
+hits = filter_hits_by_content_metadata(
+    hits, lambda m: m.get("meta_b", 0) >= 10
+)
+```
+
+### Inspecting hit metadata
+
+Each hit's `metadata` field is a JSON string. Use **`parse_hit_content_metadata(hit)`** to get a `dict` you can read directly (this is what `filter_hits_by_content_metadata` uses internally). Both helpers are exported from `nemo_retriever.vdb`.
+
+### Not implemented in this path
+
+Hybrid search (`hybrid=True`) is not implemented for the precomputed-vector retrieval path — `LanceDB.retrieval` raises `NotImplementedError`. Filters above apply only to dense vector search.
 
 ---
 
@@ -192,7 +252,7 @@ flowchart LR
   L2 -->[(same table)]
 ```
 
-- **Ingest**: flat rows → NV-Ingest batches → **`LanceDB.run`** → table + indexes.
+- **Ingest**: flat rows → ingestion batches → **`LanceDB.run`** → table + indexes.
 - **Retrieve**: strings → vectors → **`RetrieveVdbOperator`** → **`LanceDB.retrieval`** → hit lists.
 
 For implementation details, see `operators.py`, `lancedb.py`, `records.py`, `factory.py`, and `retriever.py`.

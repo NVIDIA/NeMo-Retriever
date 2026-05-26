@@ -1,0 +1,17 @@
+{{ paraphrased_prompt }}
+
+When you're done, write your final result to ./output.json with EXACTLY this schema:
+
+{
+  "final_answer": "<your natural-language answer to the question>",
+  "ranked_retrieved": [
+    {"doc_id": "<PDF filename without .pdf>", "page_number": <0-indexed int>, "rank": 1},
+    ... up to 10 entries, ranked by relevance to the question
+  ]
+}
+
+Notes:
+- `doc_id` is the base filename of the source PDF without the `.pdf` extension. Example: for a file named `Foo_Report.pdf`, the doc_id is `Foo_Report`.
+- `page_number` is 0-indexed: the first page of a PDF is page 0.
+- `ranked_retrieved` must be ordered by relevance (rank 1 = most relevant) and contain up to 10 (doc_id, page_number) pairs.
+- After writing the file, simply stop. Do not print the file contents or summarize.

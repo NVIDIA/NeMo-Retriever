@@ -32,7 +32,7 @@ Examples::
         --vdb-op <operator-key> \\
         --vdb-kwargs-json '<operator kwargs JSON object>'
 
-    # Extract + embed only (skip in-graph VDB; default run includes VDB for recall)
+    # Extract + embed only (skip in-graph VDB upload)
     retriever pipeline run /data/pdfs \\
         --no-vdb
 
@@ -188,6 +188,15 @@ def _count_input_units(result_df) -> int:
     return int(len(result_df.index))
 
 
+def _format_vdb_target(vdb_op: str, vdb_kwargs: Optional[dict[str, Any]]) -> str:
+    """``<uri>/<table>`` for a vdb destination, mirroring the lancedb-specific
+    fallbacks used downstream when those keys are absent from ``vdb_kwargs``."""
+    kw = vdb_kwargs or {}
+    uri = kw.get("uri") or kw.get("lancedb_uri") or ("lancedb" if vdb_op == "lancedb" else "?")
+    table = kw.get("table_name") or kw.get("lancedb_table") or ("nv-ingest" if vdb_op == "lancedb" else "?")
+    return f"{uri}/{table}"
+
+
 def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
     """Resolve input paths to glob patterns, recursing into subdirectories.
 
@@ -227,6 +236,7 @@ def _build_extract_params(
     extract_charts: bool,
     extract_infographics: bool,
     extract_page_as_image: bool,
+    use_page_elements: bool,
     use_graphic_elements: bool,
     use_table_structure: bool,
     table_output_format: Optional[str],
@@ -297,6 +307,7 @@ def _build_extract_params(
                 "extract_charts": extract_charts,
                 "extract_infographics": extract_infographics,
                 "extract_page_as_image": extract_page_as_image,
+                "use_page_elements": use_page_elements,
                 "api_key": extract_remote_api_key,
                 "page_elements_invoke_url": page_elements_invoke_url,
                 "ocr_invoke_url": ocr_invoke_url,
@@ -383,6 +394,7 @@ def _build_ingestor(
     *,
     run_mode: str,
     ray_address: Optional[str],
+    ray_log_to_driver: bool = True,
     file_patterns: list[str],
     input_type: str,
     extract_params: ExtractParams,
@@ -451,6 +463,7 @@ def _build_ingestor(
     ingestor = GraphIngestor(
         run_mode=run_mode,
         ray_address=ray_address,
+        ray_log_to_driver=ray_log_to_driver,
         node_overrides=node_overrides or None,
     )
     ingestor = ingestor.files(file_patterns)
@@ -642,11 +655,11 @@ def _run_evaluation(
     service_url: Optional[str] = None,
     service_api_token: Optional[str] = None,
 ) -> tuple[str, float, dict[str, float], Optional[int], bool]:
-    """Run recall or BEIR evaluation.
+    """Run audio recall or BEIR evaluation.
 
     Returns ``(label, elapsed_secs, metrics, query_count, ran)``.  When the
-    query CSV is missing in recall mode, ``ran`` is ``False`` and the caller
-    should skip metric recording.
+    query CSV is missing in audio recall mode, ``ran`` is ``False`` and the
+    caller should skip metric recording.
     """
 
     if evaluation_mode == "none":
@@ -714,14 +727,17 @@ def _run_evaluation(
             beir_dataset, _raw_hits, _run, metrics = evaluate_lancedb_beir(cfg)
         return "BEIR", time.perf_counter() - evaluation_start, metrics, len(beir_dataset.query_ids), True
 
-    if recall_match_mode != "audio_segment":
-        raise ValueError("Legacy recall evaluation is only supported for audio_segment matching")
+    if evaluation_mode != "audio_recall":
+        raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
 
-    # Legacy recall is retained for audio segment evaluation only.
+    if recall_match_mode != "audio_segment":
+        raise ValueError("Audio recall evaluation is only supported for audio_segment matching")
+
+    # Legacy scorer is retained for audio segment evaluation only.
     query_csv_path = Path(query_csv)
     if not query_csv_path.exists():
-        logger.warning("Query CSV not found at %s; skipping recall evaluation.", query_csv_path)
-        return "Recall", 0.0, {}, None, False
+        logger.warning("Query CSV not found at %s; skipping audio recall evaluation.", query_csv_path)
+        return "Audio Recall", 0.0, {}, None, False
 
     from nemo_retriever.recall.core import RecallConfig, retrieve_and_score
 
@@ -747,7 +763,7 @@ def _run_evaluation(
     )
     evaluation_start = time.perf_counter()
     df_query, _gold, _raw_hits, _retrieved_keys, metrics = retrieve_and_score(query_csv=query_csv_path, cfg=recall_cfg)
-    return "Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
+    return "Audio Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
 
 
 # ---------------------------------------------------------------------------
@@ -785,6 +801,17 @@ def run(
     log_file: Optional[Path] = typer.Option(
         None, "--log-file", path_type=Path, dir_okay=False, rich_help_panel=_PANEL_IO
     ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        help=(
+            "Suppress verbose output on success: progress bars, HuggingFace "
+            "downloads, vLLM init logs, Ray worker stdout, and INFO-level "
+            "pipeline status lines. On error, the fd-captured output is "
+            "flushed to stderr for debugging. Implies --no-ray-log-to-driver."
+        ),
+        rich_help_panel=_PANEL_IO,
+    ),
     # --- PDF / document extraction ---------------------------------------
     method: str = typer.Option(
         "pdfium", "--method", help="PDF text extraction method.", rich_help_panel=_PANEL_EXTRACT
@@ -802,6 +829,16 @@ def run(
         True,
         "--extract-page-as-image/--no-extract-page-as-image",
         rich_help_panel=_PANEL_EXTRACT,
+    ),
+    use_page_elements: bool = typer.Option(
+        True,
+        "--use-page-elements/--no-use-page-elements",
+        rich_help_panel=_PANEL_EXTRACT,
+        help=(
+            "Run PageElementDetection (layout/yolox). Auto-skipped when no downstream stage "
+            "(TableStructure, GraphicElements, OCR) consumes its output. Pass --no-use-page-elements "
+            "to force-skip for a faster text-only ingest."
+        ),
     ),
     use_graphic_elements: bool = typer.Option(False, "--use-graphic-elements", rich_help_panel=_PANEL_EXTRACT),
     use_table_structure: bool = typer.Option(False, "--use-table-structure", rich_help_panel=_PANEL_EXTRACT),
@@ -1068,7 +1105,7 @@ def run(
     no_vdb: bool = typer.Option(
         False,
         "--no-vdb",
-        help="Skip in-graph vector DB upload (extract+embed only; default run uploads for recall/eval).",
+        help="Skip in-graph vector DB upload (extract+embed only).",
         rich_help_panel=_PANEL_VDB,
     ),
     meta_dataframe: Optional[Path] = typer.Option(
@@ -1117,10 +1154,9 @@ def run(
     runtime_metrics_prefix: Optional[str] = typer.Option(None, "--runtime-metrics-prefix", rich_help_panel=_PANEL_OBS),
     # --- Evaluation -----------------------------------------------------
     evaluation_mode: str = typer.Option(
-        "recall",
+        "none",
         "--evaluation-mode",
-        help="Post-ingest evaluation: default 'recall' runs when a \
-        query CSV exists (after VDB upload unless --no-vdb).",
+        help="Post-ingest evaluation: none (default), audio_recall, beir, or qa.",
         rich_help_panel=_PANEL_EVAL,
     ),
     query_csv: Path = typer.Option(
@@ -1211,19 +1247,28 @@ def run(
     """Run the end-to-end graph ingestion pipeline against ``INPUT_PATH``."""
 
     _ = ctx
+    if quiet:
+        # Imported lazily to avoid a cycle (main.py lazy-imports this module).
+        from nemo_retriever.adapters.cli.main import _silence_noisy_libraries
+
+        _silence_noisy_libraries()
     log_handle, original_stdout, original_stderr = _configure_logging(log_file, debug=bool(debug))
+    if quiet:
+        # Hide INFO-level "Building graph pipeline...", "Starting ingestion...",
+        # etc. Errors still propagate.
+        logging.getLogger("nemo_retriever").setLevel(logging.WARNING)
     try:
         if run_mode not in {"batch", "inprocess", "service"}:
             raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
         if audio_split_type not in {"size", "time", "frame"}:
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
-        if evaluation_mode not in {"none", "recall", "beir", "qa"}:
+        if evaluation_mode not in {"none", "audio_recall", "beir", "qa"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
-        if evaluation_mode == "recall":
+        if evaluation_mode == "audio_recall":
             if input_type != "audio":
-                raise ValueError("--evaluation-mode=recall is only supported with --input-type=audio")
+                raise ValueError("--evaluation-mode=audio_recall is only supported with --input-type=audio")
             if recall_match_mode != "audio_segment":
-                raise ValueError("--evaluation-mode=recall requires --recall-match-mode=audio_segment")
+                raise ValueError("--evaluation-mode=audio_recall requires --recall-match-mode=audio_segment")
         if evaluation_mode == "qa" and eval_config is None:
             raise typer.BadParameter(
                 "--evaluation-mode=qa requires --eval-config (QA sweep YAML/JSON). "
@@ -1231,6 +1276,13 @@ def run(
             )
 
         if run_mode == "batch":
+            # --quiet implies --no-ray-log-to-driver: Ray flushes worker stdout
+            # (HF download lines, etc.) to the driver asynchronously, often
+            # after ingestor.ingest() returns and the fd capture has exited.
+            # The env var is cached at ray import time so we also override the
+            # variable that ultimately reaches ray.init(log_to_driver=...).
+            if quiet:
+                ray_log_to_driver = False
             os.environ["RAY_LOG_TO_DRIVER"] = "1" if ray_log_to_driver else "0"
 
         resolved_vdb_op = str(vdb_op or DEFAULT_VDB_OP)
@@ -1308,6 +1360,7 @@ def run(
             extract_charts=extract_charts,
             extract_infographics=extract_infographics,
             extract_page_as_image=extract_page_as_image,
+            use_page_elements=use_page_elements,
             use_graphic_elements=use_graphic_elements,
             use_table_structure=use_table_structure,
             table_output_format=table_output_format,
@@ -1359,7 +1412,7 @@ def run(
         enable_caption = caption or caption_invoke_url is not None
         enable_dedup = dedup if dedup is not None else enable_caption
 
-        # In-graph VDB by default (supports default recall); opt out with --no-vdb.
+        # In-graph VDB upload is enabled by default; opt out with --no-vdb.
         enable_in_graph_vdb_upload = run_mode != "service" and not no_vdb
         pipeline_vdb_upload: Optional[VdbUploadParams] = None
         if enable_in_graph_vdb_upload:
@@ -1369,6 +1422,7 @@ def run(
         ingestor = _build_ingestor(
             run_mode=run_mode,
             ray_address=ray_address,
+            ray_log_to_driver=ray_log_to_driver,
             file_patterns=file_patterns,
             input_type=input_type,
             extract_params=extract_params,
@@ -1409,7 +1463,13 @@ def run(
         # --- Execute ---------------------------------------------------
         logger.info("Starting ingestion of %s ...", input_path)
         ingest_start = time.perf_counter()
-        raw_result = ingestor.ingest()
+        if quiet:
+            from nemo_retriever.adapters.cli.main import _quiet_capture
+
+            with _quiet_capture():
+                raw_result = ingestor.ingest()
+        else:
+            raw_result = ingestor.ingest()
         ingestion_only_total_time = time.perf_counter() - ingest_start
         ingest_local_results, result_df, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
 
@@ -1467,6 +1527,7 @@ def run(
                 import ray
 
                 ray.shutdown()
+            typer.echo(f"Pipeline complete: 0 uploadable records from {input_path}.")
             return
 
         if evaluation_mode == "qa":
@@ -1529,6 +1590,10 @@ def run(
                 evaluation_label="QA",
                 evaluation_count=None,
             )
+            typer.echo(
+                f"Pipeline complete (QA): {num_rows} page(s) → {resolved_vdb_op} "
+                f"{_format_vdb_target(resolved_vdb_op, resolved_vdb_kwargs)} ({total_time:.1f}s)."
+            )
             if qa_code != 0:
                 raise typer.Exit(code=qa_code)
             return
@@ -1564,6 +1629,7 @@ def run(
         )
 
         if not ran:
+            no_eval_total_time = time.perf_counter() - ingest_start
             _write_runtime_summary(
                 runtime_metrics_dir,
                 runtime_metrics_prefix,
@@ -1577,7 +1643,7 @@ def run(
                     "ray_download_secs": float(ray_download_time),
                     "vdb_upload_secs": float(vdb_upload_time),
                     "evaluation_secs": 0.0,
-                    "total_secs": float(time.perf_counter() - ingest_start),
+                    "total_secs": float(no_eval_total_time),
                     "evaluation_mode": evaluation_mode,
                     "evaluation_metrics": {},
                     "recall_details": bool(recall_details),
@@ -1588,6 +1654,10 @@ def run(
                 import ray
 
                 ray.shutdown()
+            typer.echo(
+                f"Pipeline complete: {num_rows} page(s) → {resolved_vdb_op} "
+                f"{_format_vdb_target(resolved_vdb_op, resolved_vdb_kwargs)} ({no_eval_total_time:.1f}s)."
+            )
             return
 
         total_time = time.perf_counter() - ingest_start
@@ -1634,6 +1704,14 @@ def run(
             evaluation_metrics=evaluation_metrics,
             evaluation_label=evaluation_label,
             evaluation_count=evaluation_query_count,
+        )
+
+        # Final one-line success report (mirrors `retriever ingest`). Important
+        # for --quiet where print_run_summary's output may otherwise be the
+        # only signal of completion.
+        typer.echo(
+            f"Pipeline complete: {num_rows} page(s) → {resolved_vdb_op} "
+            f"{_format_vdb_target(resolved_vdb_op, resolved_vdb_kwargs)} ({total_time:.1f}s)."
         )
     finally:
         os.sys.stdout = original_stdout

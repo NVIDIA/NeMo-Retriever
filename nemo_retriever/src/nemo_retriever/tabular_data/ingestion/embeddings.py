@@ -49,7 +49,12 @@ def query_neo4j_columns_for_embedding(database_name: str) -> List[dict]:
                  WHEN c.description IS NOT NULL AND trim(toString(c.description)) <> ''
                  THEN ', column_description: ' + toString(c.description)
                  ELSE ''
-             END AS column_desc
+             END AS column_desc,
+             CASE
+                 WHEN c.sample_values IS NOT NULL AND size(c.sample_values) > 0
+                 THEN ', sample_values: ' + apoc.text.join([x IN c.sample_values[..5] | toString(x)], ', ')
+                 ELSE ''
+             END AS sample_vals
 
         RETURN collect({{
             text:  'db_name: ' + d.name +
@@ -57,7 +62,8 @@ def query_neo4j_columns_for_embedding(database_name: str) -> List[dict]:
                    ', table_name: ' + t.name +
                    ', column_name: ' + c.name +
                    ', data_type: ' + coalesce(toString(c.data_type), '') +
-                   column_desc,
+                   column_desc +
+                   sample_vals,
             name: c.name,
             label: labels(c)[0],
             id: c.id

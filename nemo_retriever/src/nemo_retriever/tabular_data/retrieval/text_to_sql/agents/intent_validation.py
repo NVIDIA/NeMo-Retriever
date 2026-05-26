@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 SQL Semantic Validation Agent
 
@@ -23,7 +27,7 @@ from typing import Dict, Any
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, AIMessage
 
-from nemo_retriever.tabular_data.retrieval.text_to_sql.llm_invoke import invoke_with_structured_output
+from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.prompts import (
     INTENT_VALIDATION_SYSTEM_PROMPT,
@@ -43,13 +47,6 @@ class IntentValidationModel(BaseModel):
 
     is_valid: bool = Field(
         description="Whether the SQL query has any CRITICAL issues. Should be True unless there are serious problems."
-    )
-    missing_entities: list[str] = Field(
-        default_factory=list,
-        description=(
-            "List of CRITICAL entity names that are completely missing and essential for the query. "
-            "Leave EMPTY [] if no entities are missing — do NOT add explanatory text like 'no missing entities'."
-        ),
     )
     join_issues: list[str] = Field(
         default_factory=list,
@@ -149,17 +146,7 @@ class IntentValidationAgent(BaseAgent):
         # Get user's question
         question = get_question_for_processing(state)
 
-        # Get entities from action_input
-        required_entities = path_state.get("entities", [])
-
-        if required_entities:
-            self.logger.info(f"Validating intent with required entities: {required_entities}")
-            entities_text = "\n".join([f"- {entity}" for entity in required_entities])
-        else:
-            self.logger.info("No required entities specified for intent validation")
-            entities_text = "No specific entities required"
-
-        validation_prompt = create_intent_validation_prompt(question, entities_text, sql_code)
+        validation_prompt = create_intent_validation_prompt(question, "", sql_code)
 
         messages = [
             SystemMessage(content=INTENT_VALIDATION_SYSTEM_PROMPT),
@@ -184,9 +171,7 @@ class IntentValidationAgent(BaseAgent):
                 "path_state": path_state,
             }
 
-        has_real_issues = (
-            validation_result.missing_entities or validation_result.join_issues or validation_result.aggregation_issues
-        )
+        has_real_issues = validation_result.join_issues or validation_result.aggregation_issues
         if not has_real_issues:
             self.logger.info("SQL validation passed (is_valid=False but no real issues listed)")
             return {
@@ -196,9 +181,6 @@ class IntentValidationAgent(BaseAgent):
 
         # Build detailed error message
         error_parts = ["Critical SQL issues found:"]
-
-        if validation_result.missing_entities:
-            error_parts.append(f"\n\nCritical missing entities: {', '.join(validation_result.missing_entities)}")
 
         if validation_result.join_issues:
             error_parts.append(

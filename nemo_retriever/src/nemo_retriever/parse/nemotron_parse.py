@@ -313,17 +313,24 @@ def nemotron_parse_pages(
         try:
             if use_remote:
                 if "/v1/chat/completions" in invoke_url:
-                    used_v1_api = True
+                    _model_name = nemotron_parse_model or NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL
+                    _is_legacy = any(v in _model_name.lower() for v in ("v1.0", "v1.1", "v1_0", "v1_1"))
+                    if _is_legacy:
+                        used_v1_api = True
+                        _extra_body: Dict[str, Any] = {
+                            "tools": [{"type": "function", "function": {"name": "markdown_bbox"}}],
+                            "max_tokens": 8192,
+                        }
+                    else:
+                        _extra_body = {"max_tokens": 8192}
                     _chat_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=batch_images,
-                        model=nemotron_parse_model or NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL,
+                        model=_model_name,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
-                        extra_body={
-                            "tools": [{"type": "function", "function": {"name": "markdown_bbox"}}],
-                            "max_tokens": 8192,
-                        },
+                        task_prompt=task_prompt if not _is_legacy else None,
+                        extra_body=_extra_body,
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
                     )

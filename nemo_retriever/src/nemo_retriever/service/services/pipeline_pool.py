@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from enum import Enum
 from typing import Any, Callable
 
@@ -32,8 +33,21 @@ from pydantic import ConfigDict
 
 from nemo_retriever.service.config import PipelinePoolConfig
 from nemo_retriever.service.models.base import RichModel
+from nemo_retriever.service.services.prometheus import (
+    POOL_MAX_QUEUE_SIZE,
+    POOL_PROCESSED_TOTAL,
+    POOL_PROCESSING_DURATION,
+    POOL_QUEUE_DEPTH,
+    POOL_QUEUE_DEPTH_RATIO,
+    POOL_WORKERS,
+)
 
 logger = logging.getLogger(__name__)
+
+# Cadence for the periodic queue-depth reporter. One second is more than
+# enough resolution for an HPA that polls every 15s; faster than that and
+# we just generate redundant samples for prometheus_client to overwrite.
+_QUEUE_DEPTH_REPORT_INTERVAL_S = 1.0
 
 
 class PoolType(str, Enum):
@@ -51,6 +65,12 @@ class WorkItem(RichModel):
     filename: str | None = None
     callback: Callable[[Any], None] | None = None
     callback_url: str | None = None
+    # Owning job aggregate (J1+). Always set today since the only
+    # admission path is /v1/ingest/job/{job_id}/document.
+    job_id: str | None = None
+    # Validated per-request pipeline overrides (PipelineSpec serialised
+    # to a dict). ``None`` means: run the legacy startup-baked pipeline.
+    pipeline_spec: dict[str, Any] | None = None
 
 
 async def _fire_gateway_callback(
@@ -110,6 +130,7 @@ class _Pool:
         self._work_fn = work_fn
         self._queue: asyncio.Queue[WorkItem | None] | None = None
         self._workers: list[asyncio.Task[None]] = []
+        self._reporter_task: asyncio.Task[None] | None = None
         self._running = False
         self._processed: int = 0
 
@@ -145,6 +166,34 @@ class _Pool:
         self._queue = asyncio.Queue(maxsize=self._max_queue_size)
         self._running = True
         self._workers = [asyncio.create_task(self._worker_loop(i)) for i in range(self._num_workers)]
+
+        # Publish startup-constant metrics so prometheus-adapter can join
+        # depth (Gauge) with capacity (Gauge) at query time.
+        POOL_MAX_QUEUE_SIZE.labels(pool=self._name).set(self._max_queue_size)
+        POOL_WORKERS.labels(pool=self._name).set(self._num_workers)
+        POOL_QUEUE_DEPTH.labels(pool=self._name).set(0)
+        POOL_QUEUE_DEPTH_RATIO.labels(pool=self._name).set(0.0)
+
+        # Periodic gauge reporter — keeps the queue-depth series live so
+        # HPA decisions don't lag behind reality between submissions. We
+        # publish here (not on every submit/get) so the metric reflects
+        # the *steady-state* fill rather than a noisy edge-triggered one.
+        #
+        # ``start()`` is called from inside the FastAPI lifespan (an
+        # async context). Tests or scripts that instantiate the pool
+        # without a running loop still get the constant gauges above,
+        # they just won't get the periodic depth updates — that's an
+        # acceptable degradation, and is preferable to crashing the
+        # pool startup when no loop is available.
+        try:
+            self._reporter_task = asyncio.create_task(self._report_metrics_loop())
+        except RuntimeError:
+            self._reporter_task = None
+            logger.debug(
+                "Pool '%s' started outside a running event loop; " "skipping periodic queue-depth reporter",
+                self._name,
+            )
+
         logger.info(
             "Pool '%s' started: workers=%d queue_size=%d work_fn=%s",
             self._name,
@@ -152,6 +201,31 @@ class _Pool:
             self._max_queue_size,
             self._work_fn.__name__ if self._work_fn else "noop",
         )
+
+    async def _report_metrics_loop(self) -> None:
+        """Publish queue-depth gauges at a steady cadence.
+
+        Runs until :meth:`shutdown` cancels it. Exceptions are logged
+        and swallowed so a transient error in prometheus_client (e.g.
+        a re-registration race in tests) never tears down the pool.
+        """
+        depth_g = POOL_QUEUE_DEPTH.labels(pool=self._name)
+        ratio_g = POOL_QUEUE_DEPTH_RATIO.labels(pool=self._name)
+        max_qs = max(1, self._max_queue_size)
+        try:
+            while self._running:
+                try:
+                    depth = self.queue_depth
+                    depth_g.set(depth)
+                    ratio_g.set(depth / max_qs)
+                except Exception:
+                    logger.exception(
+                        "Pool '%s' metrics reporter raised; continuing",
+                        self._name,
+                    )
+                await asyncio.sleep(_QUEUE_DEPTH_REPORT_INTERVAL_S)
+        except asyncio.CancelledError:
+            pass
 
     async def _worker_loop(self, worker_id: int) -> None:
         """Consume items until a ``None`` sentinel is received.
@@ -164,11 +238,18 @@ class _Pool:
         from nemo_retriever.service.services.job_tracker import get_job_tracker
 
         assert self._queue is not None
+        duration_h = POOL_PROCESSING_DURATION.labels(pool=self._name)
+        processed_ok = POOL_PROCESSED_TOTAL.labels(pool=self._name, outcome="completed")
+        processed_err = POOL_PROCESSED_TOTAL.labels(pool=self._name, outcome="failed")
         while True:
             item = await self._queue.get()
             if item is None:
                 self._queue.task_done()
                 return
+            # Per-item timer covers the *useful* work — tracker bookkeeping
+            # is excluded so the histogram reflects pipeline cost only.
+            t0 = time.monotonic()
+            outcome = "completed"
             try:
                 tracker = get_job_tracker()
                 if tracker is not None:
@@ -200,6 +281,7 @@ class _Pool:
                     )
                 self._processed += 1
             except Exception as exc:
+                outcome = "failed"
                 if item.callback_url:
                     await _fire_gateway_callback(
                         item.callback_url,
@@ -213,6 +295,14 @@ class _Pool:
                         tracker.mark_failed(item.id, f"{type(exc).__name__}: {exc}")
                 logger.exception("Pool '%s' worker %d failed on item %s", self._name, worker_id, item.id)
             finally:
+                # Always observe; cheaper to keep latency series complete
+                # than to gate on outcome. Bucketed histogram, so even
+                # very-failed-fast items show up in the low buckets.
+                duration_h.observe(time.monotonic() - t0)
+                if outcome == "completed":
+                    processed_ok.inc()
+                else:
+                    processed_err.inc()
                 self._queue.task_done()
 
     async def submit(self, item: WorkItem) -> bool:
@@ -234,6 +324,16 @@ class _Pool:
         if not self._running:
             return
         self._running = False
+
+        # Stop the metrics reporter first so it doesn't observe queue==0
+        # in the middle of the worker-cancellation race below.
+        if self._reporter_task is not None:
+            self._reporter_task.cancel()
+            try:
+                await self._reporter_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._reporter_task = None
 
         # Cancel all worker tasks immediately — don't bother draining
         # the queue with sentinels since active workers may be blocked
@@ -260,6 +360,12 @@ class _Pool:
 
         self._workers.clear()
         self._queue = None
+        # Reset depth gauges so a terminating pod doesn't keep its last
+        # high-water mark live on the scraper. We deliberately leave the
+        # *configuration* gauges (max_queue_size, workers) untouched —
+        # those are pod identity, not runtime state.
+        POOL_QUEUE_DEPTH.labels(pool=self._name).set(0)
+        POOL_QUEUE_DEPTH_RATIO.labels(pool=self._name).set(0.0)
         logger.info("Pool '%s' shut down (processed=%d)", self._name, self._processed)
 
     def stats(self) -> dict[str, Any]:
