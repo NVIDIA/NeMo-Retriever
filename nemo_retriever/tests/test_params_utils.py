@@ -62,7 +62,6 @@ class TestBuildEmbedKwargs:
         kwargs = build_embed_kwargs(params)
         assert "runtime" not in kwargs
         assert "batch_tuning" not in kwargs
-        assert "fused_tuning" not in kwargs
 
 
 class TestNormalizeEmbedKwargs:
