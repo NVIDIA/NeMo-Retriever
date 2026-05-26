@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import base64
 import io
 import json
+import re
 import time
 import traceback
 
@@ -148,7 +149,7 @@ def _route_parsed_elements(
 
 def _is_legacy_nemotron_parse_model(model_name: str) -> bool:
     normalized = model_name.lower()
-    return any(version in normalized for version in ("v1.0", "v1.1", "v1_0", "v1_1"))
+    return bool(re.search(r"v1[._][01](?!\d)", normalized))
 
 
 def _route_parsed_elements_v1(
