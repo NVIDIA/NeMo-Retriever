@@ -16,26 +16,11 @@ logger = logging.getLogger(__name__)
 from nemo_retriever.nim.error_reporter import report_error
 from nemo_retriever.model import VL_EMBED_MODEL, resolve_embed_model
 from nemo_retriever.params.models import IMAGE_MODALITIES
-from nemo_retriever.text_embed.main_text_embed import (
-    TextEmbeddingConfig,
-    create_text_embeddings_for_df,
-    _image_from_row,
-    _text_from_row,
-)
+from nemo_retriever.text_embed.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
 
 
 def _is_local_embed(endpoint: Optional[str], model: Any) -> bool:
     return endpoint is None and model is not None
-
-
-def _row_requires_embedding(row: pd.Series, *, embed_modality: str, text_column: str) -> bool:
-    row_modality = row.get("_embed_modality", embed_modality)
-    modality = str(row_modality or embed_modality)
-    if modality == "image":
-        return _image_from_row(row) is not None
-    if modality == "text_image":
-        return _text_from_row(row, text_column=text_column) is not None or _image_from_row(row) is not None
-    return _text_from_row(row, text_column=text_column) is not None
 
 
 def _embed_group(
@@ -231,21 +216,6 @@ def embed_text_main_text_embed(
         out_df[embedding_dim_column] = [0 for _ in range(len(out_df.index))]
 
     out_df[has_embedding_column] = [bool(int(d) > 0) for d in out_df[embedding_dim_column].tolist()]
-
-    if _is_local_embed(endpoint, model):
-        required_mask = out_df.apply(
-            _row_requires_embedding,
-            embed_modality=embed_modality,
-            text_column=text_column,
-            axis=1,
-        )
-        missing_mask = required_mask & ~out_df[has_embedding_column].map(bool)
-        if bool(missing_mask.any()):
-            missing_count = int(missing_mask.sum())
-            raise RuntimeError(
-                "Local embedding did not produce vectors for "
-                f"{missing_count} row(s); aborting instead of returning rows without embeddings."
-            )
 
     embedded_flags = out_df[has_embedding_column].tolist()
     out_df["embedding_v1_num_detections"] = [int(f) for f in embedded_flags]

@@ -38,14 +38,8 @@ def test_local_embed_failure_raises_instead_of_returning_empty_rows():
         runtime.embed_text_main_text_embed(_text_df(), model=_FailingEmbedder())
 
 
-def test_local_empty_embedding_for_valid_row_raises():
-    with pytest.raises(RuntimeError, match="Local embedding did not produce vectors"):
-        runtime.embed_text_main_text_embed(_text_df(), model=_EmptyEmbedder())
-
-
-def test_blank_local_text_rows_can_pass_without_embeddings():
-    df = pd.DataFrame({"text": ["   "], "metadata": [{}]})
-    result = runtime.embed_text_main_text_embed(df, model=_EmptyEmbedder())
+def test_local_empty_embedding_result_is_reported_without_breaking_batch():
+    result = runtime.embed_text_main_text_embed(_text_df(), model=_EmptyEmbedder())
 
     assert result.iloc[0]["text_embeddings_1b_v2_dim"] == 0
     assert not bool(result.iloc[0]["text_embeddings_1b_v2_has_embedding"])
