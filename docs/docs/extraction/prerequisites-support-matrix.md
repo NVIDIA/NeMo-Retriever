@@ -70,6 +70,14 @@ The production Helm chart enables these NIM microservices **by default** (for ex
 | `ocr` | [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) | Image OCR |
 | `vlm_embed` | [llama-nemotron-embed-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2) | Multimodal (VL) embedding |
 
+### Nemotron OCR v2 language mode { #nemotron-ocr-v2-language-mode }
+
+!!! note
+
+    **Local Hugging Face inference:** When you deploy locally with HuggingFace model weights (for example `pip install "nemo-retriever[local]"` and GPU inference without remote OCR NIM URLs), the default OCR engine is **Nemotron OCR v2**, which runs in **multilingual** mode by default. For CLI flags and API parameters, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). Remote OCR NIM endpoints use their own model and language behavior; local OCR language selectors are not sent on remote requests.
+
+    **Helm / NIM:** The chart deploys the core OCR NIM under `nimOperator.ocr`. For image defaults, multilingual behavior, and upgrade notes, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#nemotron-ocr-v2-language-mode) in the Helm chart README.
+
 Default VL embedder container and model for release deployments:
 
 - **Image:** `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0`
@@ -110,8 +118,8 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 | Core Features | — | Total Disk Space | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB |
 | Audio (parakeet-1-1b-ctc-en-us) | ~4.0 GiB (`model.safetensors`; the repo also ships `parakeet-ctc-1.1b.nemo` of similar size—use one format to avoid roughly doubling disk use) | Additional Dedicated GPUs | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1¹ |
 | Audio (parakeet-1-1b-ctc-en-us) | — | Additional Disk Space | ~37GB | ~37GB | ~37GB | ~37GB | ~37GB | ~37GB | ~37GB | ~37GB | ~37GB¹ |
-| nemotron-parse | ~3.5 GiB | Additional Dedicated GPUs | Not supported | Not supported | Not supported | 1 | 1 | 1 | 1 | 1 | Not supported² |
-| nemotron-parse | — | Additional Disk Space | Not supported | Not supported | Not supported | ~16GB | ~16GB | ~16GB | ~16GB | ~16GB | Not supported² |
+| nemotron-parse | ~3.5 GiB | Additional Dedicated GPUs | Not supported | 1 | Not supported | 1 | 1 | 1 | 1 | 1 | Not supported² |
+| nemotron-parse | — | Additional Disk Space | Not supported | ~16GB | Not supported | ~16GB | ~16GB | ~16GB | ~16GB | ~16GB | Not supported² |
 | Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | ~62 GiB (BF16); ~33 GiB (FP8); ~21 GiB (NVFP4) | Additional Dedicated GPUs | 1 | 1 | 1 | 1 | 1 | Not supported | Not supported | 2 | Not supported³ |
 | Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | — | Additional Disk Space (HF) | ~21–62GB | ~21–62GB | ~21–62GB | ~21–62GB | ~21–62GB | Not supported | Not supported | ~21–62GB | Not supported³ |
 | Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | — | Additional Disk Space (NIM) | ~80GB | ~80GB | ~80GB | ~80GB | ~80GB | Not supported | Not supported | ~80GB | Not supported³ |
