@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import base64
 import io
+import json
+import re
 import time
 import traceback
 
@@ -44,8 +46,9 @@ except Exception:  # pragma: no cover
 # Constants
 # ---------------------------------------------------------------------------
 
-NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse"
+NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse-v1.2"
 NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
+NEMOTRON_PARSE_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
 
 # Map Nemotron Parse class labels to the pipeline content channels.
 _PARSE_CLASS_TO_CHANNEL: Dict[str, str] = {
@@ -144,13 +147,9 @@ def _route_parsed_elements(
     return table_items, chart_items, infographic_items, page_text
 
 
-# v1.0/v1.1 JSON type labels → pipeline channel names
-_V1_TYPE_TO_CHANNEL: Dict[str, str] = {
-    "Table": "table",
-    "Chart": "chart",
-    "Picture": "infographic",
-    "Infographic": "infographic",
-}
+def _is_legacy_nemotron_parse_model(model_name: str) -> bool:
+    normalized = model_name.lower()
+    return bool(re.search(r"v1[._][01](?!\d)", normalized))
 
 
 def _route_parsed_elements_v1(
@@ -160,25 +159,18 @@ def _route_parsed_elements_v1(
     extract_charts: bool,
     extract_infographics: bool,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
-    """Route v1.0/v1.1 tool_calls JSON into pipeline content channels.
-
-    The legacy NIM returns ``tool_calls[0]["function"]["arguments"]`` as a JSON
-    string containing ``[[elem, ...], ...]`` (list of per-page element lists).
-    Each element is ``{"type": str, "bbox": {...}, "text": str}``.
-    """
-    import json
+    """Route v1.0/v1.1 tool-call JSON into pipeline content channels."""
 
     try:
         parsed = json.loads(raw_json_text)
     except (json.JSONDecodeError, TypeError):
         return [], [], [], None
 
-    # Flatten [[page1_elems], [page2_elems], ...] → [elem, ...]
     elements: List[Dict[str, Any]] = []
     if isinstance(parsed, list):
         for item in parsed:
             if isinstance(item, list):
-                elements.extend(item)
+                elements.extend(elem for elem in item if isinstance(elem, dict))
             elif isinstance(item, dict):
                 elements.append(item)
 
@@ -188,13 +180,10 @@ def _route_parsed_elements_v1(
     text_parts: List[str] = []
 
     for elem in elements:
-        if not isinstance(elem, dict):
-            continue
-        cls = elem.get("type", "")
+        cls = str(elem.get("type", ""))
         raw_text = str(elem.get("text", "")).strip()
         if not raw_text:
             continue
-        # Apply the same postprocessing as v1.2 (LaTeX table → markdown, etc.)
         text = _postprocess_element_text(raw_text, cls=cls, table_format="markdown")
         if not text:
             continue
@@ -205,7 +194,7 @@ def _route_parsed_elements_v1(
             float(bbox.get("xmax", 0)),
             float(bbox.get("ymax", 0)),
         ]
-        channel = _V1_TYPE_TO_CHANNEL.get(cls)
+        channel = _PARSE_CLASS_TO_CHANNEL.get(cls)
         entry = {"bbox_xyxy_norm": bbox_list, "text": text}
         if channel == "table" and extract_tables:
             table_items.append(entry)
@@ -244,7 +233,7 @@ def nemotron_parse_pages(
     extract_charts: bool = False,
     extract_infographics: bool = False,
     nemotron_parse_model: Optional[str] = None,
-    task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+    task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
     remote_retry: RemoteRetryParams | None = None,
     nim_client: NIMClient | None = None,
     **kwargs: Any,
@@ -308,29 +297,24 @@ def nemotron_parse_pages(
 
     # -- Phase 2: run model inference in a single batch ------------------
     raw_texts: List[str] = [""] * len(batch_indices)
-    used_v1_api = False  # v1.0/v1.1 chat completions (tool_calls JSON)
+    used_v1_api = False
     if batch_images:
         try:
             if use_remote:
                 if "/v1/chat/completions" in invoke_url:
                     _model_name = nemotron_parse_model or NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL
-                    _is_legacy = any(v in _model_name.lower() for v in ("v1.0", "v1.1", "v1_0", "v1_1"))
-                    if _is_legacy:
-                        used_v1_api = True
-                        _extra_body: Dict[str, Any] = {
-                            "tools": [{"type": "function", "function": {"name": "markdown_bbox"}}],
-                            "max_tokens": 8192,
-                        }
-                    else:
-                        _extra_body = {"max_tokens": 8192}
+                    used_v1_api = _is_legacy_nemotron_parse_model(_model_name)
+                    extra_body: Dict[str, Any] = {"max_tokens": 8192}
+                    if used_v1_api:
+                        extra_body["tools"] = [{"type": "function", "function": {"name": "markdown_bbox"}}]
                     _chat_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=batch_images,
                         model=_model_name,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
-                        task_prompt=task_prompt if not _is_legacy else None,
-                        extra_body=_extra_body,
+                        task_prompt=None if used_v1_api else task_prompt,
+                        extra_body=extra_body,
                         max_retries=int(retry.remote_max_retries),
                         max_429_retries=int(retry.remote_max_429_retries),
                     )
@@ -379,7 +363,6 @@ def nemotron_parse_pages(
             raw_texts = []
 
     # -- Phase 3: route parsed elements into content channels ------------
-    # v1.0/v1.1 returns tool_calls JSON; v1.2 returns tagged text.
     route_fn = _route_parsed_elements_v1 if used_v1_api else _route_parsed_elements
     for pos, raw_text in enumerate(raw_texts):
         idx = batch_indices[pos]
@@ -447,7 +430,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
-        task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
         remote_max_pool_workers: int = 16,
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
@@ -546,7 +529,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
-        task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
         remote_max_pool_workers: int = 16,
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
@@ -636,7 +619,7 @@ class NemotronParseActor(ArchetypeOperator):
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
-        task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
         remote_max_pool_workers: int = 16,
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
