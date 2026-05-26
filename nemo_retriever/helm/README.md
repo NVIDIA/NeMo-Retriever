@@ -282,6 +282,22 @@ and **ocr** (no `graphic_elements` operator NIM in this chart). For image
 captioning, set `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true` — see
 [Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605).
 
+### Nemotron OCR v2 language mode { #nemotron-ocr-v2-language-mode }
+
+The core OCR NIM is configured under [`nimOperator.ocr`](./values.yaml) (the `ocr:`
+block). When `image.repository` targets **nemotron-ocr-v2** for your release, the
+deployed NIM runs in **multilingual** mode by default. Confirm `image.repository`
+and `image.tag` before you upgrade.
+
+| Path | Role |
+|------|------|
+| `nimOperator.ocr.enabled` | Reconcile the OCR `NIMService` |
+| `nimOperator.ocr.image.repository` | NIM image (for example `nvcr.io/nim/nvidia/nemotron-ocr-v2`) |
+| `nimOperator.ocr.image.tag` | Pin the image tag for reproducible upgrades |
+
+Override the auto-wired in-cluster URL with `serviceConfig.nimEndpoints.ocrInvokeUrl`
+when the OCR service runs outside the operator sub-stack.
+
 ### Persistence
 
 | Path                       | Default                       | Notes |
