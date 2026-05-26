@@ -11,6 +11,7 @@ Minimal copy of ffmpeg/ffprobe and MediaInterface semantics from
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import math
@@ -26,11 +27,81 @@ logger = logging.getLogger(__name__)
 
 try:
     import ffmpeg
-
-    _FFMPEG_AVAILABLE = True
-except Exception:
+except ImportError:
     ffmpeg = None  # type: ignore[assignment]
-    _FFMPEG_AVAILABLE = False
+
+VIDEO_CONTAINER_SUFFIXES: Tuple[str, ...] = (".mp4", ".mov", ".avi", ".mkv")
+MANUAL_FFMPEG_INSTALL_COMMAND = "apt-get update && apt-get install -y --no-install-recommends ffmpeg"
+CONTAINER_FFMPEG_INSTALL_ENV = "-e INSTALL_FFMPEG=true"
+HELM_FFMPEG_INSTALL_VALUE = "service.installFfmpeg=true"
+MEDIA_DEPENDENCIES: Tuple[str, ...] = ("ffmpeg-python", "ffmpeg", "ffprobe")
+FFMPEG_DEPENDENCIES: Tuple[str, ...] = ("ffmpeg-python", "ffmpeg")
+FFPROBE_DEPENDENCIES: Tuple[str, ...] = ("ffmpeg-python", "ffprobe")
+
+
+def is_ffmpeg_python_available() -> bool:
+    """True when the ``ffmpeg-python`` wrapper package can be imported."""
+    return ffmpeg is not None
+
+
+def is_ffmpeg_cli_available() -> bool:
+    """True when the ``ffmpeg`` executable is on PATH."""
+    return shutil.which("ffmpeg") is not None
+
+
+def is_ffprobe_cli_available() -> bool:
+    """True when the ``ffprobe`` executable is on PATH."""
+    return shutil.which("ffprobe") is not None
+
+
+def is_ffmpeg_available() -> bool:
+    """True when the ``ffmpeg-python`` wrapper and ``ffmpeg`` executable are available."""
+    return is_ffmpeg_python_available() and is_ffmpeg_cli_available()
+
+
+def is_ffprobe_available() -> bool:
+    """True when the ``ffmpeg-python`` wrapper and ``ffprobe`` executable are available."""
+    return is_ffmpeg_python_available() and is_ffprobe_cli_available()
+
+
+def missing_media_dependencies(required: Tuple[str, ...] = MEDIA_DEPENDENCIES) -> List[str]:
+    """Return missing media dependencies in user-facing install order."""
+    checks = {
+        "ffmpeg-python": is_ffmpeg_python_available,
+        "ffmpeg": is_ffmpeg_cli_available,
+        "ffprobe": is_ffprobe_cli_available,
+    }
+    missing: List[str] = []
+    for dependency in required:
+        check = checks.get(dependency)
+        if check is None or not check():
+            missing.append(dependency)
+    return missing
+
+
+def media_dependency_error_message(
+    component: str = "Media processing",
+    required: Tuple[str, ...] = MEDIA_DEPENDENCIES,
+) -> str:
+    """Build an actionable error for missing audio/video dependencies."""
+    missing = missing_media_dependencies(required)
+    if not missing:
+        return f"{component} media dependencies are available."
+
+    missing_text = ", ".join(missing)
+    install_hints = []
+    if "ffmpeg-python" in missing:
+        install_hints.append("Install the Python wrapper with `pip install ffmpeg-python`.")
+    if "ffmpeg" in missing or "ffprobe" in missing:
+        install_hints.append(
+            "Install system FFmpeg with "
+            f"`{MANUAL_FFMPEG_INSTALL_COMMAND}`. "
+            "For the bundled service container, run with "
+            f"`docker run {CONTAINER_FFMPEG_INSTALL_ENV} ...`. "
+            f"For Helm deployments, set `{HELM_FFMPEG_INSTALL_VALUE}`."
+        )
+    hints_str = (" " + " ".join(install_hints)) if install_hints else ""
+    return f"{component} requires media dependencies; missing: {missing_text}.{hints_str}"
 
 
 class SplitType:
@@ -48,8 +119,8 @@ def _probe(
     timeout: Optional[float] = None,
     **kwargs: Any,
 ) -> Any:
-    if not _FFMPEG_AVAILABLE or ffmpeg is None:
-        raise RuntimeError("ffmpeg is required for media probing; install ffmpeg-python and system ffmpeg.")
+    if not is_ffprobe_available():
+        raise RuntimeError(media_dependency_error_message("Media probing", required=FFPROBE_DEPENDENCIES))
     args = ["ffprobe", "-show_format", "-show_streams", "-of", "json"]
     args += ffmpeg._utils.convert_kwargs_to_cmd_line_args(kwargs)
     if file_handle:
@@ -79,8 +150,8 @@ def _run_ffmpeg(stream: Any, *, label: str, input_path: str) -> None:
     tempfile instead — file writes never block, so ffmpeg always makes progress
     and the call returns. We only read stderr when ``returncode != 0``.
     """
-    if ffmpeg is None:
-        raise RuntimeError("ffmpeg-python is not installed.")
+    if not is_ffmpeg_available():
+        raise RuntimeError(media_dependency_error_message(f"FFmpeg operation '{label}'", required=FFMPEG_DEPENDENCIES))
     args = ffmpeg.compile(stream)
     with tempfile.TemporaryFile(mode="w+b") as stderr_buf:
         result = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=stderr_buf)
@@ -92,8 +163,8 @@ def _run_ffmpeg(stream: Any, *, label: str, input_path: str) -> None:
 
 def _get_audio_from_video(input_path: str, output_file: str, cache_path: Optional[str] = None) -> Optional[Path]:
     """Extract audio from a video file. Returns output Path or None on failure."""
-    if not _FFMPEG_AVAILABLE or ffmpeg is None:
-        raise RuntimeError("ffmpeg is required; install ffmpeg-python and system ffmpeg.")
+    if not is_ffmpeg_available():
+        raise RuntimeError(media_dependency_error_message("Audio extraction", required=FFMPEG_DEPENDENCIES))
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -198,6 +269,10 @@ class MediaInterface(_LoaderInterface):
             if duration is None:
                 raise ValueError(f"Could not determine duration for {path_file}")
             num_splits = self.find_num_splits(file_size, sample_rate, duration, split_interval, split_type)
+        except RuntimeError:
+            raise
+        except OSError as e:
+            logger.error("OS error accessing file %s: %s", path_file, e)
         except ffmpeg.Error as e:
             logger.error("FFmpeg error for file %s: %s", path_file, e.stderr.decode())
         except (KeyError, ValueError) as e:
@@ -220,14 +295,25 @@ class MediaInterface(_LoaderInterface):
         split_type: str = SplitType.SIZE,
         cache_path: Optional[str] = None,
         video_audio_separate: bool = False,
-        audio_only: bool = False,
     ) -> List[str]:
         """Split media into chunk files. Returns list of chunk file paths."""
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         original_input_path = input_path
         path_input = Path(input_path)
-        if audio_only and path_input.suffix.lower() in [".mp4", ".mov", ".avi", ".mkv"]:
+        # Always pre-extract the audio track for video inputs. Parakeet/Riva
+        # decode chunks via libsndfile, which can't read mp4/mov/avi/mkv
+        # containers — so chunking the raw video would produce chunks the ASR
+        # client immediately rejects. The historical ``audio_only`` opt-in
+        # never had any other reachable consumer, so it's been retired.
+        if path_input.suffix.lower() in VIDEO_CONTAINER_SUFFIXES:
+            if video_audio_separate:
+                logger.warning(
+                    "video_audio_separate is ignored for video inputs in the ASR chunking path; "
+                    "MediaChunkActor always demuxes videos to ASR-safe audio chunks and does not "
+                    "emit video-container chunks. Use VideoSplitActor or the video pipeline for "
+                    "audio+visual video processing."
+                )
             out_mp3 = output_dir / f"{path_input.stem}.mp3"
             result = self.get_audio_from_video(str(input_path), str(out_mp3), cache_path)
             if result is None:
@@ -263,17 +349,16 @@ class MediaInterface(_LoaderInterface):
             stream = ffmpeg.input(str(input_path)).output(str(output_pattern), **output_kwargs)
             _run_ffmpeg(stream, label="split", input_path=str(input_path))
             self.path_metadata[str(input_path)] = probe
+        except RuntimeError:
+            raise
+        except OSError as e:
+            logger.error("OS error accessing file %s: %s", original_input_path, e)
+            return []
         except ffmpeg.Error as e:
             logger.error("FFmpeg error for file %s: %s", original_input_path, e.stderr.decode())
             return []
         # Use actual chunk files produced by ffmpeg (may differ from num_splits)
         files = sorted(str(p) for p in output_dir.glob(f"{file_name}_chunk_*{suffix}") if p.is_file())
-        if video_audio_separate and suffix.lower() in [".mp4", ".mov", ".avi", ".mkv"]:
-            for f in files:
-                fp = Path(f)
-                audio_path = self.get_audio_from_video(f, str(fp.with_suffix(".mp3")), str(cache_path))
-                if audio_path is not None:
-                    files.append(str(audio_path))
         return files
 
     def extract_frames(
@@ -283,17 +368,22 @@ class MediaInterface(_LoaderInterface):
         fps: float = 1.0,
         max_frames: Optional[int] = None,
     ) -> List[Tuple[str, float]]:
-        """Extract frames at ``fps`` frames/second; return ``[(png_path, timestamp_s), ...]``.
+        """Extract frames at ``fps`` frames/second; return ``[(jpg_path, timestamp_s), ...]``.
 
         Each timestamp is the wall-clock midpoint of the frame's window in the
         original video: ``frame_index / fps + 0.5 / fps``. This matches the
         canonical ``segment_start_seconds`` / ``segment_end_seconds`` convention
         used downstream by the recall scorer.
 
+        Output is JPEG so the function works against any ffmpeg build that
+        includes the mjpeg encoder (effectively every build). PNG was the
+        previous default but requires ``libpng`` at ffmpeg compile time and
+        some slim ffmpeg packages omit it.
+
         Returns an empty list when ffmpeg fails or no frames are produced.
         """
-        if not _FFMPEG_AVAILABLE or ffmpeg is None:
-            raise RuntimeError("ffmpeg is required for frame extraction; install ffmpeg-python and system ffmpeg.")
+        if not is_ffmpeg_available():
+            raise RuntimeError(media_dependency_error_message("Frame extraction", required=FFMPEG_DEPENDENCIES))
         if fps <= 0:
             raise ValueError(f"fps must be > 0, got {fps}")
 
@@ -301,7 +391,7 @@ class MediaInterface(_LoaderInterface):
         out_dir.mkdir(parents=True, exist_ok=True)
         path_file = Path(input_path)
         file_name = path_file.stem
-        output_pattern = str(out_dir / f"{file_name}_frame_%06d.png")
+        output_pattern = str(out_dir / f"{file_name}_frame_%06d.jpg")
 
         try:
             output_kwargs: dict = {"vf": f"fps={fps}", "q:v": 2}
@@ -314,7 +404,7 @@ class MediaInterface(_LoaderInterface):
             logger.error("FFmpeg frame extraction error for file %s: %s", input_path, stderr)
             return []
 
-        produced = sorted(p for p in out_dir.glob(f"{file_name}_frame_*.png") if p.is_file())
+        produced = sorted(p for p in out_dir.glob(f"{file_name}_frame_*.jpg") if p.is_file())
         results: List[Tuple[str, float]] = []
         midpoint_offset = 0.5 / float(fps)
         for idx, frame_path in enumerate(produced):
@@ -344,5 +434,39 @@ class MediaInterface(_LoaderInterface):
 
 
 def is_media_available() -> bool:
-    """True if ffmpeg-python is installed and the ffprobe binary is on PATH."""
-    return _FFMPEG_AVAILABLE and ffmpeg is not None and shutil.which("ffprobe") is not None
+    """True if the full audio/video media pipeline can run."""
+    return is_ffmpeg_available() and is_ffprobe_cli_available()
+
+
+@contextlib.contextmanager
+def ensure_media_on_disk(path: str, data: bytes | None):
+    """Yield a filesystem path that ffmpeg can read.
+
+    When *path* already exists on disk, yields it unchanged.  Otherwise
+    spills *data* to a temporary file (preserving the original extension
+    so ffmpeg probes the right container format) and yields that temp path.
+    The temp file is cleaned up on exit.
+    """
+    if Path(path).is_file():
+        yield path
+        return
+
+    if data is None:
+        raise FileNotFoundError(f"Media file not found on disk and no in-memory bytes provided: {path}")
+
+    suffix = Path(path).suffix or ""
+    tmp = tempfile.NamedTemporaryFile(
+        suffix=suffix,
+        prefix="retriever_media_",
+        delete=False,
+    )
+    try:
+        tmp.write(data)
+        tmp.flush()
+        tmp.close()
+        yield tmp.name
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass

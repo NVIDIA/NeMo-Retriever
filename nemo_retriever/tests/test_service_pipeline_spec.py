@@ -31,6 +31,14 @@ from nemo_retriever.service.services.pipeline_executor import (
 from nemo_retriever.service_ingestor import ServiceIngestor
 
 
+@pytest.fixture(autouse=True)
+def _no_remote_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    # _ParamsModel auto-resolves unset *api_key fields from these env vars,
+    # which would then trip ServiceIngestor's server-owned-key guard.
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+
+
 # ----------------------------------------------------------------------
 # Client side: fluent → spec dict
 # ----------------------------------------------------------------------
@@ -46,7 +54,7 @@ def test_extract_records_stage_and_params() -> None:
     ing.extract(ExtractParams(extract_text=False, dpi=300))
     payload = ing._pipeline_payload()
     assert payload is not None
-    assert payload["extraction_mode"] == "pdf"
+    assert payload["extraction_mode"] == "auto"
     assert payload["stage_order"] == ["extract"]
     assert payload["extract_params"]["extract_text"] is False
     assert payload["extract_params"]["dpi"] == 300

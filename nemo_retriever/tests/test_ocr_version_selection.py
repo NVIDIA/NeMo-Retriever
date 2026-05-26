@@ -315,7 +315,7 @@ def test_table_structure_actor_receives_ocr_selectors(monkeypatch) -> None:
         _fake_resolve,
     )
     monkeypatch.setattr(
-        "nemo_retriever.graph.multi_type_extract_operator.gather_local_resources",
+        "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
         lambda: Resources(cpu_count=8, gpu_count=1),
     )
 

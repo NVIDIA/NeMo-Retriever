@@ -10,6 +10,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from packaging.requirements import Requirement
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -64,17 +65,24 @@ def _install_upstream_ocr_v2_stub(monkeypatch: pytest.MonkeyPatch) -> list[dict[
     return captured_kwargs
 
 
-def test_local_extra_depends_on_ocr_2_nightly_only() -> None:
+def test_local_extra_accepts_stable_ocr_2_and_newer_dev_releases() -> None:
     pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
     local_deps = pyproject["project"]["optional-dependencies"]["local"]
     uv_tool = pyproject["tool"]["uv"]
     uv_sources = uv_tool["sources"]
 
-    assert (
-        "nemotron-ocr>=2.0.0.dev0,<2.0.0a0; sys_platform == 'linux' "
-        "and (platform_machine == 'x86_64' or platform_machine == 'aarch64')"
-    ) in local_deps
+    ocr_dep = next(dep for dep in local_deps if dep.startswith("nemotron-ocr"))
+    ocr_requirement = Requirement(ocr_dep)
+
+    assert str(ocr_requirement.specifier) == ">=2.0.0.dev0"
+    assert ocr_requirement.specifier.contains("2.0.0")
+    assert ocr_requirement.specifier.contains("2.0.1.dev20260521010101")
+    assert ocr_requirement.specifier.contains("2.0.1")
+    assert not ocr_requirement.specifier.contains("1.0.1")
+    assert str(ocr_requirement.marker) == (
+        'sys_platform == "linux" and (platform_machine == "x86_64" or platform_machine == "aarch64")'
+    )
     assert not any(dep.startswith("nemotron-ocr-v2") for dep in local_deps)
     assert "nemotron-ocr" in uv_tool["no-build-package"]
     assert "nemotron-ocr-v2" not in uv_tool["no-build-package"]
@@ -160,7 +168,7 @@ def test_huggingface_ocr_nightly_does_not_carry_namespace_patch_knobs() -> None:
     v2_stanza = workflow.split("- id: nemotron-ocr-v2", 1)[1].split("container:", 1)[0]
 
     assert "nemotron-ocr-v1" not in workflow
-    assert 'nightly_base_version: "2.0.0"' in v2_stanza
+    assert 'nightly_base_version: "2.0.1"' in v2_stanza
     assert "project_name:" not in workflow
     assert "package_rename:" not in workflow
     assert "expected_project_name:" not in workflow

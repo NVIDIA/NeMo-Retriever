@@ -59,7 +59,7 @@ from nemo_retriever.service.services.prometheus import (
     INGEST_REQUESTS_TOTAL,
 )
 from nemo_retriever.service.services.proxy import get_proxy
-from nemo_retriever.service.utils.file_type import FileClassifier
+from nemo_retriever.service.utils.file_type import FileCategory, FileClassifier
 
 _RETRY_AFTER_SECONDS = "5"
 _DRY_RUN_HEADER = "X-Nemo-Dry-Run"
@@ -294,14 +294,30 @@ def _count_pdf_pages(file_bytes: bytes) -> int:
         return 1
 
 
-def _route_by_page_count(file_bytes: bytes, meta: IngestRequest) -> PoolType:
-    """Route to realtime for small docs (<threshold pages), batch for larger.
+def _route_by_page_count(
+    file_bytes: bytes,
+    meta: IngestRequest,
+    file_category: FileCategory | None = None,
+) -> PoolType:
+    """Route uploads to realtime or batch based on file type and page count.
+
+    * Audio / video files are always routed to **batch** — they involve
+      heavyweight ASR / frame-extraction pipelines.
+    * Image files are always routed to **realtime** — they are single-page
+      and latency-sensitive.
+    * Documents (PDF, DOCX, PPTX) and other types use the original
+      page-count heuristic: small docs (<threshold pages) go to realtime,
+      larger ones to batch.
 
     When the client requested PDF page-chunking via
     :attr:`PipelineSpec.pdf_split`, we route to **batch** as soon as the
     document has more than one chunk's worth of pages — chunking is
     intrinsically a throughput-oriented operation.
     """
+    if file_category in (FileCategory.AUDIO, FileCategory.VIDEO):
+        return PoolType.BATCH
+    if file_category == FileCategory.IMAGE:
+        return PoolType.REALTIME
     if meta.page_number is not None:
         return PoolType.REALTIME
     pages = _count_pdf_pages(file_bytes)
@@ -634,7 +650,7 @@ async def submit_document_to_job(
         file_size = _file_size_from_upload(file, request)
 
         file_bytes = await file.read()
-        route = _route_by_page_count(file_bytes, meta)
+        route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
 
         document_id = uuid.uuid4().hex
         content_sha256 = hashlib.sha256(file_bytes).hexdigest()
@@ -685,7 +701,7 @@ async def submit_document_to_job(
     classification = FileClassifier.classify(file, filename_override=meta.filename or "")
 
     file_bytes = await file.read()
-    route = _route_by_page_count(file_bytes, meta)
+    route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
     content_sha256 = hashlib.sha256(file_bytes).hexdigest()
     now = datetime.now(timezone.utc).isoformat()
 

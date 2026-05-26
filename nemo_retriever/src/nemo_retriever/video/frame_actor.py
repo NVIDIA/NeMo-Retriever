@@ -15,12 +15,16 @@ import base64
 import io
 import logging
 import tempfile
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from nemo_retriever.audio.media_interface import FFMPEG_DEPENDENCIES
 from nemo_retriever.audio.media_interface import MediaInterface
-from nemo_retriever.audio.media_interface import is_media_available
+from nemo_retriever.audio.media_interface import ensure_media_on_disk
+from nemo_retriever.audio.media_interface import is_ffmpeg_available
+from nemo_retriever.audio.media_interface import media_dependency_error_message
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
@@ -56,8 +60,8 @@ class VideoFrameActor(AbstractOperator, CPUOperator):
       - ``path``: original video path (frames are not persisted on disk;
         ``image_b64`` / ``bytes`` carry the pixels)
       - ``source_path``: original video path
-      - ``image_b64``: base64-encoded PNG (the ``VideoFrameOCRActor`` reads this)
-      - ``bytes``: raw PNG bytes (kept for compatibility with Ray Data binary readers)
+      - ``image_b64``: base64-encoded frame image, JPEG by default
+      - ``bytes``: encoded frame image bytes, JPEG by default
       - ``page_number``: frame index (0, 1, 2, ...)
       - ``metadata``: dict with ``frame_timestamp_seconds``, ``segment_start_seconds``,
         ``segment_end_seconds``, ``fps``, ``source_path``, ``modality="video_frame"``,
@@ -68,10 +72,8 @@ class VideoFrameActor(AbstractOperator, CPUOperator):
 
     def __init__(self, params: VideoFrameParams | None = None) -> None:
         super().__init__(params=params)
-        if not is_media_available():
-            raise RuntimeError(
-                "VideoFrameActor requires ffmpeg. Install with: pip install ffmpeg-python and system ffmpeg."
-            )
+        if not is_ffmpeg_available():
+            raise RuntimeError(media_dependency_error_message("VideoFrameActor", required=FFMPEG_DEPENDENCIES))
         self._params = params or VideoFrameParams()
         self._interface = MediaInterface()
 
@@ -91,8 +93,10 @@ class VideoFrameActor(AbstractOperator, CPUOperator):
             if not path_str.strip():
                 continue
             try:
-                frame_rows = _extract_one(path_str, self._params, self._interface)
-                out_rows.extend(frame_rows)
+                raw_bytes = row.get("bytes") if not Path(path_str).is_file() else None
+                with ensure_media_on_disk(path_str, raw_bytes) as real_path:
+                    frame_rows = _extract_one(real_path, self._params, self._interface, source_path_override=path_str)
+                    out_rows.extend(frame_rows)
             except Exception as e:
                 logger.exception("Error extracting frames from %s: %s", path_str, e)
                 continue
@@ -105,8 +109,19 @@ class VideoFrameActor(AbstractOperator, CPUOperator):
         return data
 
 
-def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInterface) -> List[Dict[str, Any]]:
-    """Extract frames from one video file and return a list of row dicts."""
+def _extract_one(
+    source_path: str,
+    params: VideoFrameParams,
+    interface: MediaInterface,
+    source_path_override: str | None = None,
+) -> List[Dict[str, Any]]:
+    """Extract frames from one video file and return a list of row dicts.
+
+    *source_path* is the on-disk path ffmpeg reads.
+    *source_path_override* is the original user-facing filename stamped
+    into output columns when the on-disk path is a temporary spill file.
+    """
+    display_path = source_path_override or source_path
     fps = float(params.fps)
     half_window = 0.5 / fps
     with tempfile.TemporaryDirectory(prefix="retriever_video_frames_") as tmpdir:
@@ -117,7 +132,7 @@ def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInt
             max_frames=params.max_frames,
         )
         if not frames:
-            logger.warning("No frames extracted from %s (ffmpeg returned 0 files)", source_path)
+            logger.warning("No frames extracted from %s (ffmpeg returned 0 files)", display_path)
             return []
 
         rows: List[Dict[str, Any]] = []
@@ -130,7 +145,7 @@ def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInt
                 continue
             image_b64 = base64.b64encode(frame_bytes).decode("ascii")
             metadata = {
-                "source_path": source_path,
+                "source_path": display_path,
                 "frame_index": idx,
                 "fps": fps,
                 "frame_timestamp_seconds": float(timestamp),
@@ -141,11 +156,8 @@ def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInt
             }
             rows.append(
                 {
-                    # frame_path lives inside ``tmpdir`` which is deleted on
-                    # return; consumers read ``image_b64`` / ``bytes``, not
-                    # the file. Publish the source video instead of a stale ref.
-                    "path": source_path,
-                    "source_path": source_path,
+                    "path": display_path,
+                    "source_path": display_path,
                     "image_b64": image_b64,
                     "page_number": idx,
                     "metadata": metadata,
@@ -157,7 +169,7 @@ def _extract_one(source_path: str, params: VideoFrameParams, interface: MediaInt
 
 
 def _dhash(image_b64: str, hash_size: int = 8) -> Optional[int]:
-    """Difference-hash of a base64-encoded PNG, packed into a 64-bit integer.
+    """Difference-hash of a base64-encoded frame image, packed into a 64-bit integer.
 
     Resize to ``(hash_size+1) x hash_size`` grayscale, compare each pixel to
     its right neighbour, pack the results as bits. Two frames with similar
@@ -287,8 +299,8 @@ def video_path_to_frames_df(path: str, params: VideoFrameParams | None = None) -
     Columns match :data:`FRAME_COLUMNS`. Used by inprocess ingest() when
     ``_pipeline_type == "video"``.
     """
-    if not is_media_available():
-        raise RuntimeError("video_path_to_frames_df requires ffmpeg.")
+    if not is_ffmpeg_available():
+        raise RuntimeError(media_dependency_error_message("video_path_to_frames_df", required=FFMPEG_DEPENDENCIES))
     params = params or VideoFrameParams()
     interface = MediaInterface()
     rows = _extract_one(path, params, interface)

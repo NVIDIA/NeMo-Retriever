@@ -43,7 +43,7 @@ For **local GPU inference** (Nemotron models running on your GPU), install with 
 ```bash
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install "nemo-retriever[local]==26.3.0"
+uv pip install "nemo-retriever[local]==26.05-RC1"
 ```
 
 Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (see the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
@@ -54,7 +54,7 @@ For **remote NIM inference only** (no local GPU required), the base package is s
 uv python install 3.12
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install nemo-retriever==26.3.0
+uv pip install nemo-retriever==26.05-RC1
 ```
 
 Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (see the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
@@ -64,7 +64,7 @@ This creates a dedicated Python environment and installs the `nemo-retriever` Py
 If your PDF pipeline uses `extract_method="nemotron_parse"`, install the Nemotron Parse client dependencies with the `nemotron-parse` extra:
 
 ```bash
-uv pip install "nemo-retriever[nemotron-parse]==26.3.0" nv-ingest-client==26.3.0 nv-ingest==26.3.0
+uv pip install "nemo-retriever[nemotron-parse]==26.05-RC1"
 ```
 
 For local GPU inference with Nemotron Parse, combine the extras as `nemo-retriever[local,nemotron-parse]`.
@@ -170,9 +170,7 @@ python -m nemo_retriever.examples.graph_pipeline \
   /your-example-dir \
   --lancedb-uri lancedb \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
-  --graphic-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1 \
-  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1 \
-  --ocr-version v1 \
+  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
@@ -183,8 +181,6 @@ python -m nemo_retriever.examples.graph_pipeline \
 > to multilingual mode (`multi`); pass `--ocr-lang english` for the English-only
 > v2 selector. Remote OCR NIM endpoints decide their own model and language
 > behavior, and the local OCR selectors are not added to remote request payloads.
-> The remote-inference example above pins `--ocr-version v1` because a hosted v2
-> endpoint is not yet available on `ai.api.nvidia.com`.
 
 When you use the remote embedder, pair the `Retriever` with the matching
 `embedder=` + `embedding_endpoint=` overrides shown in
@@ -362,7 +358,11 @@ Live RAG with scoring and an LLM judge (requires a ground-truth `reference`):
 ```python
 from nemo_retriever.llm import LLMJudge
 
-judge = LLMJudge.from_kwargs(model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
+judge = LLMJudge.from_kwargs(
+    model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    temperature=0.1,
+    max_tokens=4096,
+)
 result = retriever.answer(
     "What is RAG?",
     llm=llm,
@@ -459,6 +459,24 @@ For example, with apt-get on Ubuntu:
 sudo apt install -y ffmpeg
 ```
 
+The bundled Docker image uses the FFmpeg package provided by the base Ubuntu
+image when `INSTALL_FFMPEG=true` is set. If your workflow depends on exact
+FFmpeg codec or version behavior, verify the image package against those
+requirements.
+
+The bundled Dockerfile skips ffmpeg/ffprobe by default. For the service image,
+set `INSTALL_FFMPEG=true` at runtime to install them during container startup:
+
+```bash
+docker run -e INSTALL_FFMPEG=true nemo-retriever-service
+```
+
+For Kubernetes deployments, set `service.installFfmpeg=true` in the Helm chart.
+This runtime install requires network access to package repositories, a
+writable root filesystem, and security policy that allows the image's scoped
+sudo use. For locked-down environments that cannot install packages at startup,
+use a custom service image that already contains ffmpeg/ffprobe.
+
 ```python
 ingestor = create_ingestor(run_mode="batch")
 ingestor = ingestor.files([str(INPUT_AUDIO)]).extract_audio()
@@ -512,9 +530,8 @@ ingestor = (
   .extract(
     # for self hosted NIMs, your URLs will depend on your NIM container DNS settings
     page_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3",
-    graphic_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1",
-    ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1",
-    table_structure_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"
+    ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1",
+    table_structure_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1",
   )
   .embed(
     embed_invoke_url="https://integrate.api.nvidia.com/v1/embeddings",

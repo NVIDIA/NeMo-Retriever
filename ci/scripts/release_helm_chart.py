@@ -4,14 +4,12 @@ Usage:
 helm lint nemo_retriever/helm
 
 python ci/scripts/release_helm_chart.py
-    -o nvidian
-    -t nemo-llm
-    -v 26.03
-    -n nemo-retriever
+    -o <ngc-org> -t <ngc-team> -v <chart-version> -n nemo-retriever \\
     --chart-dir nemo_retriever/helm
 
 Requires: pip install ngcsdk pyyaml
-Env vars: NGC_CLI_API_KEY (required for publish)
+Env vars: NGC_CLI_API_KEY (required for publish). In CI, org/team come from
+NGC_ORG and NGC_TEAM repository secrets (not committed to the repo).
 """
 
 import argparse
@@ -22,6 +20,13 @@ import sys
 import yaml
 
 LOGO = "https://developer-blogs.nvidia.com/wp-content/uploads/2024/03/nemo-retriever-graphic.png"
+
+_NOT_FOUND_EXC = frozenset({"ResourceNotFoundException", "ChartNotFoundException"})
+_ALREADY_EXISTS_EXC = frozenset({"ResourceAlreadyExistsException", "ChartAlreadyExistsException"})
+
+
+def _exc_name(exc: BaseException) -> str:
+    return type(exc).__name__
 
 
 def main() -> None:
@@ -141,22 +146,36 @@ def main() -> None:
         clt.configure(api_key=api_key, org_name=o, team_name=t)
 
         target = f"{o}/{t}/{n}"
-        print(f"Updating chart metadata for {target} ...")
-        clt.registry.chart.update(
-            target=target,
+        metadata_kwargs = dict(
             overview_filepath=overview,
             short_description=d,
             logo=logo,
             display_name=dn,
             publisher="NVIDIA",
         )
+        print(f"Updating chart metadata for {target} ...")
+        try:
+            clt.registry.chart.update(target=target, **metadata_kwargs)
+        except Exception as exc:
+            if _exc_name(exc) not in _NOT_FOUND_EXC:
+                raise
+            print(f"Chart '{target}' not found ({_exc_name(exc)}); creating registry entry ...")
+            clt.registry.chart.create(target=target, **metadata_kwargs)
 
         print(f"Pushing chart {target}:{v} ...")
-        clt.registry.chart.push(
-            target=f"{target}:{v}",
-            source_dir=".",
-        )
-        print(f"Successfully pushed {target}:{v}")
+        try:
+            clt.registry.chart.push(
+                target=f"{target}:{v}",
+                source_dir=".",
+            )
+            print(f"Successfully pushed {target}:{v}")
+        except Exception as exc:
+            if _exc_name(exc) not in _ALREADY_EXISTS_EXC:
+                raise
+            print(
+                f"Chart version '{v}' already exists in NGC ({_exc_name(exc)}); "
+                "skipping push. Re-run with a new version tag to publish different chart contents."
+            )
 
 
 if __name__ == "__main__":

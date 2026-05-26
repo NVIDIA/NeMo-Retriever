@@ -132,8 +132,33 @@
       "severity": "medium"
     },
     {
-      "id": "github-actions-security",
-      "rule": "GitHub Actions workflows must: pin third-party actions to a full SHA (not a mutable tag like @v3), include explicit 'permissions:' blocks with least-privilege scope, never echo secrets in 'run:' steps, and avoid 'pull_request_target' with 'actions/checkout' of the PR head ref (code injection risk). New workflows or changes to existing workflows must be reviewed for secret exfiltration paths.",
+      "id": "github-actions-pin-third-party-actions",
+      "rule": "GitHub Actions workflows should pin third-party actions to a full SHA instead of a mutable tag like @v3.",
+      "scope": [".github/workflows/**/*.yml", ".github/workflows/**/*.yaml"],
+      "severity": "high",
+      "enabled": false
+    },
+    {
+      "id": "github-actions-permissions",
+      "rule": "GitHub Actions workflows must include explicit 'permissions:' blocks with least-privilege scope.",
+      "scope": [".github/workflows/**/*.yml", ".github/workflows/**/*.yaml"],
+      "severity": "high"
+    },
+    {
+      "id": "github-actions-no-secret-echo",
+      "rule": "GitHub Actions workflow 'run:' steps must not echo secrets or write secrets to logs.",
+      "scope": [".github/workflows/**/*.yml", ".github/workflows/**/*.yaml"],
+      "severity": "high"
+    },
+    {
+      "id": "github-actions-no-pr-target-checkout",
+      "rule": "GitHub Actions workflows must avoid 'pull_request_target' with 'actions/checkout' of the PR head ref because it can allow code injection.",
+      "scope": [".github/workflows/**/*.yml", ".github/workflows/**/*.yaml"],
+      "severity": "high"
+    },
+    {
+      "id": "github-actions-secret-exfiltration-review",
+      "rule": "New workflows or changes to existing workflows must be reviewed for secret exfiltration paths.",
       "scope": [".github/workflows/**/*.yml", ".github/workflows/**/*.yaml"],
       "severity": "high"
     },

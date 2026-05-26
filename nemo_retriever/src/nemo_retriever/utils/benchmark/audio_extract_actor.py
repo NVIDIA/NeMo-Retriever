@@ -21,6 +21,7 @@ from nemo_retriever.audio.asr_actor import ASRActor
 from nemo_retriever.audio.asr_actor import asr_params_from_env
 from nemo_retriever.audio.chunk_actor import MediaChunkActor
 from nemo_retriever.audio.media_interface import is_media_available
+from nemo_retriever.audio.media_interface import media_dependency_error_message
 from nemo_retriever.params import AudioChunkParams
 
 from .common import (
@@ -67,7 +68,7 @@ def run_benchmark(
     output_json: Optional[Path] = None,
 ) -> None:
     if not is_media_available():
-        raise typer.BadParameter("Audio benchmark requires ffmpeg on PATH.")
+        raise typer.BadParameter(media_dependency_error_message("Audio benchmark"))
 
     if split_type not in ("size", "time", "frame"):
         raise typer.BadParameter("--split-type must be one of: size, time, frame")

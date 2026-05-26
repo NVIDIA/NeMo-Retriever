@@ -150,6 +150,16 @@ class AudioChunkParams(_ParamsModel):
     audio chunking and ASR on a video pipeline — useful for visual-only
     recall benchmarks. ``MediaChunkActor`` ignores this flag for the
     audio-only pipeline since chunking is the whole point there.
+
+    ``audio_only=True`` on a video input extracts only the audio track,
+    runs ASR over it, and skips the visual branch entirely — no frame
+    extraction, no OCR, no audio/visual fusion.
+
+    ``video_audio_separate`` is accepted for compatibility but ignored by
+    ``MediaChunkActor`` on video inputs: this ASR chunking path always demuxes
+    videos to ASR-safe audio chunks and does not emit video-container chunks.
+    Use ``VideoSplitActor`` or the video pipeline when you need audio+visual
+    video processing.
     """
 
     enabled: bool = True
@@ -160,7 +170,14 @@ class AudioChunkParams(_ParamsModel):
 
 
 class ASRParams(_ParamsModel):
-    """Params for ASR (Parakeet/Riva gRPC or local transformers backend)."""
+    """Params for ASR (Parakeet/Riva gRPC or local transformers backend).
+
+    Choice of remote-NIM vs local-model is made by the :class:`ASRActor`
+    archetype (CPU variant = remote, GPU variant = local), not by a flag here.
+    Pass ``audio_endpoints`` to force the remote variant on any host; leave
+    them empty to let the archetype pick GPU (local) when a GPU is present
+    and fall back to remote (NVCF default) when not.
+    """
 
     audio_endpoints: Tuple[Optional[str], Optional[str]] = (None, None)
     audio_infer_protocol: str = "grpc"

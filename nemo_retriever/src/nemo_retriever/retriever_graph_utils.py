@@ -22,11 +22,20 @@ def hits_lists_to_rerank_dataframe(
     query_texts: list[str],
     hits_per_query: list[list[dict[str, Any]]],
 ) -> pd.DataFrame:
-    """One row per (query, hit) with payload to rebuild hits after reranking."""
+    """One row per (query, hit) with payload to rebuild hits after reranking.
+
+    Returns a DataFrame with the columns ``query``, ``text``, ``_hit`` even when
+    there are no hits — ``pd.DataFrame([])`` yields a column-less DataFrame,
+    which crashes the downstream rerank actor with ``KeyError: 'query'`` on a
+    legitimate empty-results path (empty/unmatched corpus, freshly-ingested
+    table, etc.).
+    """
     rows: list[dict[str, Any]] = []
     for q, hits in zip(query_texts, hits_per_query):
         for h in hits:
             rows.append({"query": q, "text": str(h.get("text", "")), "_hit": dict(h)})
+    if not rows:
+        return pd.DataFrame(columns=["query", "text", "_hit"])
     return pd.DataFrame(rows)
 
 

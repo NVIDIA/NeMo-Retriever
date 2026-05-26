@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 import logging
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -48,9 +50,10 @@ from nemo_retriever.video import VideoFrameActor
 from nemo_retriever.video import VideoFrameOCRActor
 from nemo_retriever.video import VideoFrameTextDedup
 from nemo_retriever.video import dedup_video_frames
+from nemo_retriever.video import video_asr_audio_chunk_params
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.utils.input_files import INPUT_TYPE_EXTENSIONS
-from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
+from nemo_retriever.utils import ray_resource_hueristics as _rrh
 
 logger = logging.getLogger(__name__)
 
@@ -206,9 +209,14 @@ class _MultiTypeExtractBase(AbstractOperator):
             html_params = self._effective_chunk_params("html")
             outputs.append(HtmlSplitActor(params=html_params).run(grouped["html"]))
         if not grouped["audio"].empty:
-            audio_df = MediaChunkActor(params=self.audio_chunk_params).run(grouped["audio"])
-            audio_df = ASRActor(params=self.asr_params).run(audio_df)
-            outputs.append(self._maybe_chunk(audio_df, "audio"))
+            audio_work, audio_spill = self._materialize_media_bytes(grouped["audio"])
+            try:
+                audio_df = MediaChunkActor(params=self.audio_chunk_params).run(audio_work)
+                audio_df = ASRActor(params=self.asr_params).run(audio_df)
+                outputs.append(self._maybe_chunk(audio_df, "audio"))
+            finally:
+                if audio_spill is not None:
+                    shutil.rmtree(audio_spill, ignore_errors=True)
         if not grouped["video"].empty:
             outputs.append(self._run_video_pipeline(grouped["video"]))
 
@@ -351,12 +359,42 @@ class _MultiTypeExtractBase(AbstractOperator):
             "request_timeout_s": float(ep.ocr_request_timeout_s or ep.request_timeout_s),
         }
 
+    @staticmethod
+    def _materialize_media_bytes(batch_df: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
+        """Spill in-memory ``bytes`` to temp files when ``path`` is not on disk.
+
+        Returns ``(updated_df, tmpdir)`` where *tmpdir* is ``None`` when no
+        spilling was needed (all paths already exist on disk).  The caller
+        **must** delete *tmpdir* when finished.
+        """
+        if "bytes" not in batch_df.columns:
+            return batch_df, None
+
+        needs_spill = []
+        for idx, row in batch_df.iterrows():
+            p = str(row.get("path") or "")
+            if p and not Path(p).is_file() and row.get("bytes") is not None:
+                needs_spill.append(idx)
+
+        if not needs_spill:
+            return batch_df, None
+
+        tmpdir = tempfile.mkdtemp(prefix="retriever_media_spill_")
+        df = batch_df.copy()
+        for idx in needs_spill:
+            row = df.loc[idx]
+            original_name = Path(str(row["path"])).name or f"media_{idx}"
+            dest = Path(tmpdir) / original_name
+            dest.write_bytes(row["bytes"])
+            df.at[idx, "path"] = str(dest)
+        return df, tmpdir
+
     def _run_video_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         """Run audio-from-video ASR + frame OCR + (optional) scene fusion.
 
-        Branch A: ``MediaChunkActor`` chunks the video and ``ASRActor``
-        runs ASR on the chunks (audio is implicit — Parakeet reads from
-        the video stream). Emits per-utterance audio rows.
+        Branch A: ``MediaChunkActor`` demuxes the video's audio track
+        before chunking and ``ASRActor`` runs ASR on those audio bytes
+        instead of the video container. Emits per-utterance audio rows.
 
         Branch B: ``VideoFrameActor`` extracts frames at
         ``video_frame_params.fps``; optional content-hash dedup;
@@ -372,12 +410,20 @@ class _MultiTypeExtractBase(AbstractOperator):
         ``av_fuse_params.enabled`` is False or when neither branch
         produced rows.
         """
+        work_df, spill_dir = self._materialize_media_bytes(batch_df)
+        try:
+            return self._run_video_pipeline_inner(work_df)
+        finally:
+            if spill_dir is not None:
+                shutil.rmtree(spill_dir, ignore_errors=True)
+
+    def _run_video_pipeline_inner(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         # Branch A: audio-from-video → ASR. Skipped when the caller disables
         # audio (visual-only recall benchmarks); mirrors ``build_graph``'s
         # ``audio_enabled`` gate.
         audio_enabled = self.audio_chunk_params.enabled
         if audio_enabled:
-            audio_chunks = MediaChunkActor(params=self.audio_chunk_params).run(batch_df)
+            audio_chunks = MediaChunkActor(params=video_asr_audio_chunk_params(self.audio_chunk_params)).run(batch_df)
             audio_out = ASRActor(params=self.asr_params).run(audio_chunks)
         else:
             audio_out = pd.DataFrame()
@@ -511,7 +557,7 @@ class _MultiTypeExtractBase(AbstractOperator):
 
     def _local_resources(self):
         if self._resolved_resources is None:
-            self._resolved_resources = gather_local_resources()
+            self._resolved_resources = _rrh.gather_local_resources()
         return self._resolved_resources
 
     def _instantiate_resolved(self, operator_class: type[AbstractOperator], **operator_kwargs: Any) -> AbstractOperator:

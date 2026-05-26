@@ -603,13 +603,22 @@ class RetrieverServiceClient:
 
             def _on_sse_event(event: dict[str, Any]) -> None:
                 event_name = event.get("event")
-                if event_name in {"job_progress", "job_finalized", "job_partial", "job_failed"}:
+                if event_name in {
+                    "job_created",
+                    "job_started",
+                    "job_progress",
+                    "job_finalized",
+                    "job_partial",
+                    "job_failed",
+                }:
                     payload = dict(event)
                     payload.setdefault("job_id", job_id)
                     event_queue.put_nowait(payload)
                     return
                 doc_id = event.get("id", "")
                 status = event.get("status", "completed")
+                if status not in ("completed", "failed"):
+                    return
                 event_queue.put_nowait(
                     {
                         "event": "document_complete",

@@ -24,6 +24,7 @@ from nemo_retriever.audio.asr_actor import apply_asr_to_df
 from nemo_retriever.audio.asr_actor import asr_params_from_env
 from nemo_retriever.audio.chunk_actor import audio_path_to_chunks_df
 from nemo_retriever.audio.media_interface import is_media_available
+from nemo_retriever.audio.media_interface import media_dependency_error_message
 from nemo_retriever.params import ASRParams
 from nemo_retriever.params import AudioChunkParams
 
@@ -160,20 +161,18 @@ def extract(
         min=1,
         help="Chunk split interval (bytes for size, seconds for time, frames for frame).",
     ),
-    audio_only: bool = typer.Option(
-        False,
-        "--audio-only/--no-audio-only",
-        help="If true and file is video, extract audio to MP3 then chunk.",
-    ),
     video_audio_separate: bool = typer.Option(
         False,
         "--video-audio-separate/--no-video-audio-separate",
-        help="If true and video, also add extracted MP3 as separate item.",
+        help=(
+            "Compatibility no-op for video inputs in this ASR path: videos are always demuxed "
+            "to ASR-safe audio chunks. Use VideoSplitActor or the video pipeline for audio+visual processing."
+        ),
     ),
     use_env_asr: bool = typer.Option(
         True,
         "--use-env-asr/--no-use-env-asr",
-        help="Build ASR params from AUDIO_GRPC_ENDPOINT, NGC_API_KEY, AUDIO_FUNCTION_ID when set.",
+        help="Build ASR params from AUDIO_GRPC_ENDPOINT, NVIDIA_API_KEY, AUDIO_FUNCTION_ID when set.",
     ),
     audio_grpc_endpoint: Optional[str] = typer.Option(
         None,
@@ -199,7 +198,7 @@ def extract(
     """
     Scan input_dir for audio/video files, run chunk + ASR, and write extraction JSON sidecars.
 
-    Uses local Parakeet when no ASR endpoint is set; use NGC_API_KEY + AUDIO_FUNCTION_ID
+    Uses local Parakeet when no ASR endpoint is set; use NVIDIA_API_KEY + AUDIO_FUNCTION_ID
     (or --audio-grpc-endpoint) for cloud ASR.
     """
     print(f"Audio stage extract: input_dir={input_dir!s} glob={glob!r} output_dir={output_dir!s}", flush=True)
@@ -207,23 +206,18 @@ def extract(
     sys.stderr.flush()
 
     if not is_media_available():
-        raise typer.BadParameter("Audio stage requires ffmpeg. Install system ffmpeg and ensure it is on PATH.")
+        raise typer.BadParameter(media_dependency_error_message("Audio stage"))
 
     if split_type not in ("size", "time", "frame"):
         raise typer.BadParameter("--split-type must be one of: size, time, frame")
     chunk_params = AudioChunkParams(
         split_type=split_type,
         split_interval=split_interval,
-        audio_only=audio_only,
         video_audio_separate=video_audio_separate,
     )
 
     if use_env_asr:
-        asr_params = asr_params_from_env()
-        if audio_grpc_endpoint is not None:
-            asr_params = asr_params.model_copy(
-                update={"audio_endpoints": (audio_grpc_endpoint, asr_params.audio_endpoints[1])}
-            )
+        asr_params = asr_params_from_env(default_grpc_endpoint=audio_grpc_endpoint)
         if auth_token is not None:
             asr_params = asr_params.model_copy(update={"auth_token": auth_token})
     else:
@@ -245,7 +239,14 @@ def extract(
         sys.stderr.flush()
         raise typer.Exit(code=2)
 
-    asr_mode = "remote" if (asr_params.audio_endpoints[0] or "").strip() else "local (Parakeet)"
+    # ASR mode is decided by ASRActor at resolve time:
+    #   - explicit audio_endpoints  -> CPU variant (remote NIM)
+    #   - no endpoint, GPU present  -> GPU variant (local Parakeet)
+    #   - no endpoint, no GPU       -> CPU variant defaults to NVCF Parakeet
+    if (asr_params.audio_endpoints[0] or "").strip():
+        asr_mode = "remote (explicit endpoint)"
+    else:
+        asr_mode = "archetype-resolved (GPU local / NVCF default)"
     typer.echo(f"Found {len(paths)} file(s) matching {patterns}. ASR: {asr_mode}.", err=True)
     sys.stderr.flush()
 

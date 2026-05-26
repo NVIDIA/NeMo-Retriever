@@ -20,6 +20,44 @@ When you run a job you might see errors similar to the following:
 These errors can occur when your input file is malformed. 
 Verify or fix the format of your input file, and try resubmitting your job.
 
+## Audio or video extraction reports missing media dependencies { #audio-or-video-extraction-reports-missing-media-dependencies }
+
+When you run audio or video extraction, you might see an error similar to one
+of the following:
+
+```text
+Audio extraction requires media dependencies; missing: ffmpeg.
+VideoFrameActor requires media dependencies; missing: ffprobe.
+```
+
+The `ffmpeg-python` wrapper and `nemo-retriever[multimedia]` do not install the
+`ffmpeg` or `ffprobe` binaries the pipeline executes.
+
+For air-gapped or locked-down clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+
+**Connected environments:**
+
+On Debian or Ubuntu hosts:
+
+```bash
+sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+```
+
+For the bundled service container at runtime:
+
+```bash
+docker run -e INSTALL_FFMPEG=true nemo-retriever-service
+```
+
+For Helm, when package-repo egress and the image security policy allow startup install:
+
+```yaml
+service:
+  installFfmpeg: true
+```
+
+This path fails with `allowPrivilegeEscalation: false` or `readOnlyRootFilesystem: true`.
+
 ## Can't start new thread error
 
 In rare cases, when you run a job you might an see an error similar to `can't start new thread`. 
