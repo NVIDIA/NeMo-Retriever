@@ -571,8 +571,7 @@ class TestNemotronParseActor:
             def invoke_chat_completions_images(self, **kwargs):
                 self.kwargs = kwargs
                 return [
-                    '[{"type": "Text", "bbox": {"xmin": 0, "ymin": 0, "xmax": 1, "ymax": 1}, '
-                    '"text": "Legacy text"}]'
+                    '[{"type": "Text", "bbox": {"xmin": 0, "ymin": 0, "xmax": 1, "ymax": 1}, ' '"text": "Legacy text"}]'
                 ]
 
         client = _FakeNIMClient()
