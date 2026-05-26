@@ -74,9 +74,7 @@ The production Helm chart enables these NIM microservices **by default** (for ex
 
 !!! note
 
-    **Local Hugging Face inference:** When you deploy locally with HuggingFace model weights (for example `pip install "nemo-retriever[local]"` and GPU inference without remote OCR NIM URLs), the supported OCR engine is **Nemotron OCR v2** (the default). It runs in **multilingual** mode by default (`multi`). For English-only v2, pass `--ocr-lang english` on the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli) or set the equivalent `ocr_lang` parameter in the Python API. Local Hugging Face inference does not support `--ocr-version v1`; the legacy English-only OCR v1 engine is available only on NIM or other remote OCR backend paths (for example a `nemotron-ocr-v1` endpoint). Remote OCR NIM endpoints use their own model and language behavior; local OCR version and language selectors are not sent on remote requests.
-
-    **Helm / NIM:** The [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) deploys the core OCR NIM under [`nimOperator.ocr`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/values.yaml#L817-L852). When that block targets **nemotron-ocr-v2** for your release, the deployed NIM also runs in multilingual mode by default. Confirm the `repository` and `tag` in `values.yaml` before you upgrade.
+    The default OCR engine is **Nemotron OCR v2**. For language mode, local Hugging Face inference, and Kubernetes NIM deployment, see the [CLI reference](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli) and the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
 Default VL embedder container and model for release deployments:
 
