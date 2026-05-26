@@ -236,10 +236,11 @@ def nemotron_parse_pages(
         try:
             if use_remote:
                 if "/v1/chat/completions" in invoke_url:
+                    _model_name = nemotron_parse_model or NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL
                     _chat_kw = dict(
                         invoke_url=invoke_url,
                         image_b64_list=batch_images,
-                        model=nemotron_parse_model or NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL,
+                        model=_model_name,
                         api_key=api_key,
                         timeout_s=float(request_timeout_s),
                         task_prompt=task_prompt,

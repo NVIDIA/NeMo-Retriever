@@ -153,6 +153,8 @@ class LLMJudge:
 def _parse_judge_response(raw: str) -> JudgeResult:
     """Parse the judge's JSON response into a JudgeResult."""
     text = raw.strip()
+    # Reasoning models can emit a <think>...</think> block before the final JSON.
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
     text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
     text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE)

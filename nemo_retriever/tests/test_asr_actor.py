@@ -18,8 +18,13 @@ from unittest.mock import patch
 import pandas as pd
 
 from nemo_retriever.audio.asr_actor import ASRActor
+from nemo_retriever.audio.asr_actor import DEFAULT_NGC_ASR_FUNCTION_ID
 from nemo_retriever.audio.asr_actor import apply_asr_to_df
+from nemo_retriever.audio.asr_actor import asr_params_from_env
 from nemo_retriever.params import ASRParams
+
+
+NVCF_GRPC_ENDPOINT = "grpc.nvcf.nvidia.com:443"
 
 
 def test_strip_pad_from_transcript():
@@ -239,6 +244,51 @@ def test_local_asr_does_not_call_get_client():
             sys.modules.pop("nemo_retriever.model.local", None)
         else:
             sys.modules["nemo_retriever.model.local"] = prev_local
+
+
+def test_asr_params_from_env_default_grpc_endpoint_preserves_nvidia_auth(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+    monkeypatch.delenv("AUDIO_GRPC_ENDPOINT", raising=False)
+    monkeypatch.delenv("AUDIO_FUNCTION_ID", raising=False)
+
+    params = asr_params_from_env(default_grpc_endpoint=NVCF_GRPC_ENDPOINT)
+
+    assert params.audio_endpoints[0] == NVCF_GRPC_ENDPOINT
+    assert params.auth_token == "nvapi-test"
+    assert params.function_id == DEFAULT_NGC_ASR_FUNCTION_ID
+    assert params.audio_infer_protocol == "grpc"
+
+
+def test_asr_params_from_env_without_endpoint_drops_nvidia_auth(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+    monkeypatch.setenv("AUDIO_FUNCTION_ID", "function-test")
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+    monkeypatch.delenv("AUDIO_GRPC_ENDPOINT", raising=False)
+
+    params = asr_params_from_env()
+
+    assert params.audio_endpoints == (None, None)
+    assert params.auth_token is None
+    assert params.function_id is None
+    assert params.audio_infer_protocol == "grpc"
+
+
+def test_asr_cpu_actor_defaults_with_only_nvidia_auth_populate_remote_defaults(monkeypatch):
+    from nemo_retriever.audio.cpu_actor import ASRCPUActor
+
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+    monkeypatch.delenv("AUDIO_GRPC_ENDPOINT", raising=False)
+    monkeypatch.delenv("AUDIO_FUNCTION_ID", raising=False)
+
+    with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+        actor = ASRCPUActor(params=asr_params_from_env())
+
+    mock_get.assert_called_once()
+    assert actor._params.audio_endpoints[0] == NVCF_GRPC_ENDPOINT
+    assert actor._params.auth_token == "nvapi-test"
+    assert actor._params.function_id == DEFAULT_NGC_ASR_FUNCTION_ID
+    assert actor._params.audio_infer_protocol == "grpc"
 
 
 def test_local_asr_apply_asr_to_df():

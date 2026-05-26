@@ -63,10 +63,10 @@ nemo_retriever/helm/
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
         ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
-        ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (optional; enabled by default; not auto-wired)
-        ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; enabled by default; not auto-wired)
-        ├── nemotron-3-nano-omni-30b-a3b-reasoning.yaml  # NIMCache + NIMService (optional; enabled by default; not auto-wired)
-        └── audio.yaml                         # NIMCache + NIMService (optional; enabled by default; not auto-wired)
+        ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (optional; not auto-wired)
+        ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
+        ├── nemotron-3-nano-omni-30b-a3b-reasoning.yaml  # NIMCache + NIMService (optional; not auto-wired)
+        └── audio.yaml                         # NIMCache + NIMService (optional; not auto-wired)
 ```
 
 ---
@@ -159,9 +159,7 @@ the secret is absent (useful for fully local NIM endpoints).
 
 Install the [NIM Operator](https://docs.nvidia.com/nim-operator/) first so
 the `NIMCache` / `NIMService` CRDs (`apps.nvidia.com/v1alpha1`) are
-registered. Then run the default install — `nims.enabled` is `true` out
-of the box, so every per-NIM block under `nimOperator.<key>.enabled: true`
-(all eight by default) is reconciled:
+registered. For **26.05 production**, use the [recommended minimal install](#recommended-minimal-install-2605) (four core NIMs only). A plain `helm install` without overrides may also reconcile optional NIMs when their `enabled` flags are `true` in `values.yaml`.
 
 ```bash
 helm install retriever ./nemo_retriever/helm \
@@ -169,6 +167,22 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcImagePullSecret.password=$NGC_API_KEY \
   --set ngcApiSecret.create=true \
   --set ngcApiSecret.password=$NGC_API_KEY
+```
+
+### Recommended minimal install (26.05)
+
+Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`). Disable optional NIMs unless your workload needs reranking, Nemotron Parse, Omni captioning, or ASR:
+
+```bash
+helm install retriever ./nemo_retriever/helm \
+  --set ngcImagePullSecret.create=true \
+  --set ngcImagePullSecret.password=$NGC_API_KEY \
+  --set ngcApiSecret.create=true \
+  --set ngcApiSecret.password=$NGC_API_KEY \
+  --set nimOperator.rerankqa.enabled=false \
+  --set nimOperator.nemotron_parse.enabled=false \
+  --set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=false \
+  --set nimOperator.audio.enabled=false
 ```
 
 The chart auto-wires the operator-managed in-cluster URLs of the four
@@ -244,10 +258,10 @@ pair gated on three conditions ALL holding:
 | `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
 | `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
 | `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
-| `nimOperator.rerankqa.enabled`         | `true`  | Reranker NIM. |
-| `nimOperator.nemotron_parse.enabled`   | `true`  | Structured-parse NIM. |
-| `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `true` | Multimodal reasoning LLM (30B). |
-| `nimOperator.audio.enabled`            | `true`  | ASR NIM. |
+| `nimOperator.rerankqa.enabled`         | `true`  | Reranker NIM (optional; not auto-wired). Set `false` for [minimal install](#recommended-minimal-install-2605). |
+| `nimOperator.nemotron_parse.enabled`   | `true`  | Structured-parse NIM (optional). Set `false` unless using `extract_method="nemotron_parse"`. |
+| `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `true` | Omni caption NIM (optional). Set `false` unless enabling image captioning. |
+| `nimOperator.audio.enabled`            | `true`  | ASR NIM (optional). Set `false` unless using audio/video transcription. |
 | `nimOperator.<key>.image.repository`   | `nvcr.io/nim/nvidia/...` | Per-NIM image. |
 | `nimOperator.<key>.image.pullSecrets`  | `[ngc-secret]` | Referenced by the NIMService CR. |
 | `nimOperator.<key>.authSecret`         | `ngc-api`      | NIM auth Secret name. |
@@ -258,14 +272,15 @@ pair gated on three conditions ALL holding:
 | `nimOperator.<key>.expose.service.grpcPort` | `8001` (50051 for audio) | gRPC port. |
 
 > Only the four "core" NIMs (page_elements, table_structure, ocr, vlm_embed)
-> are auto-wired into the retriever-service config. The other NIMs are
-> reconciled by the operator but the retriever-service won't call them
-> unless you wire your own pipeline to use them.
+> are auto-wired into the retriever-service config. Optional NIMs may reconcile
+> when `nimOperator.<key>.enabled` is `true` in `values.yaml`, but the
+> retriever-service won't call them unless you wire your pipeline to use them.
+> For 26.05, prefer the [minimal install](#recommended-minimal-install-2605) overrides.
 
-**Charts and captioning.** Charts and infographics use **page_elements**
+**Charts and captioning (26.05).** Charts and infographics use **page_elements**
 and **ocr** (no `graphic_elements` operator NIM in this chart). For image
-captioning, enable `nemotron_3_nano_omni_30b_a3b_reasoning` — see
-[Image captioning](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning).
+captioning, set `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true` — see
+[Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605).
 
 ### Persistence
 
@@ -619,10 +634,10 @@ sanity check before opening Grafana.
 
 See [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment) for overview and workflow. Chart-specific reference for mirroring:
 
-### Container images to mirror (chart defaults)
+### Container images to mirror (26.05 chart defaults)
 
-Verify tags on the Git branch or tag you ship (for example `main` or a
-release tag). Defaults below match
+Verify tags on the Git branch or tag you ship (for example `26.05` or
+`26.05-RC1`). Defaults below match
 [`values.yaml`](./values.yaml) on the current chart.
 
 | Role | `nimOperator` key | Default image (`repository:tag`) |
@@ -681,7 +696,7 @@ nimOperator:
 - For **offline captioning**, enable
   `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning` and point the pipeline
   caption endpoint at the in-cluster NIM URL (see
-  [Image captioning](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning)).
+  [Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605)).
 
 ### Mirroring pattern
 

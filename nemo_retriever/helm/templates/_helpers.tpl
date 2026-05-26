@@ -112,14 +112,16 @@ PVC + Secret name helpers
 Pull secret helpers
 =============================================================================
 
-Combine the chart-managed NGC pull Secret (when ngcImagePullSecret.create=true)
-with any pre-existing pull secrets listed in .Values.imagePullSecrets and
-emit them in the form expected by a Pod spec.
+Combine the chart-managed NGC pull Secret with any pre-existing pull secrets
+listed in .Values.imagePullSecrets and emit them in the form expected by a
+Pod spec.  The NGC secret is injected when the chart creates it
+(ngcImagePullSecret.create=true) OR when the user pre-created it and
+supplied the name (ngcImagePullSecret.create=false + name set).
 */}}
 {{- define "nemo-retriever.imagePullSecrets" -}}
 {{- $secrets := list -}}
-{{- if .Values.ngcImagePullSecret.create -}}
-{{- $secrets = append $secrets (dict "name" .Values.ngcImagePullSecret.name) -}}
+{{- if or .Values.ngcImagePullSecret.create .Values.ngcImagePullSecret.name -}}
+{{- $secrets = append $secrets (dict "name" (default "ngc-secret" .Values.ngcImagePullSecret.name)) -}}
 {{- end -}}
 {{- range .Values.imagePullSecrets -}}
 {{- $secrets = append $secrets . -}}
@@ -213,6 +215,9 @@ Mapping (key -> Service name, default invokePath):
   table_structure -> nemotron-table-structure-v1    /v1/infer
   ocr             -> nemotron-ocr-v1                /v1/infer
   vlm_embed       -> llama-nemotron-embed-vl-1b-v2  /v1/embeddings
+
+Audio ASR (Parakeet) is configured directly via
+  serviceConfig.nimEndpoints.audioGrpcEndpoint (no NIM Operator auto-wire).
 */}}
 
 {{/*

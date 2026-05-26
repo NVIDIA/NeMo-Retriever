@@ -6,13 +6,16 @@
 
 from __future__ import annotations
 
+import base64
 import subprocess
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from tests import _have_ffmpeg_binary_for_png_frames
+from tests import _assert_jpeg_bytes
+from tests import _have_ffmpeg_binary_for_jpeg_frames
+from nemo_retriever.audio.media_interface import MediaInterface
 from nemo_retriever.params import VideoFrameParams
 from nemo_retriever.video.frame_actor import (
     FRAME_COLUMNS,
@@ -43,8 +46,8 @@ def _make_test_mp4_video_only(path: Path, *, duration_sec: int = 5, size: str = 
 
 
 @pytest.mark.skipif(
-    not _have_ffmpeg_binary_for_png_frames(),
-    reason="ffmpeg with PNG encoder required for frame extraction",
+    not _have_ffmpeg_binary_for_jpeg_frames(),
+    reason="ffmpeg with JPEG encoder required for default frame extraction",
 )
 def test_video_path_to_frames_df_basic_count_and_timestamps(tmp_path: Path) -> None:
     fixture = tmp_path / "fixture.mp4"
@@ -76,8 +79,26 @@ def test_video_path_to_frames_df_basic_count_and_timestamps(tmp_path: Path) -> N
 
 
 @pytest.mark.skipif(
-    not _have_ffmpeg_binary_for_png_frames(),
-    reason="ffmpeg with PNG encoder required for frame extraction",
+    not _have_ffmpeg_binary_for_jpeg_frames(),
+    reason="ffmpeg with JPEG encoder required for default frame extraction",
+)
+def test_media_interface_extract_frames_defaults_to_jpeg_files(tmp_path: Path) -> None:
+    fixture = tmp_path / "fixture.mp4"
+    _make_test_mp4_video_only(fixture, duration_sec=2)
+    output_dir = tmp_path / "frames"
+
+    frames = MediaInterface().extract_frames(str(fixture), str(output_dir), fps=1.0)
+
+    assert frames
+    for frame_path, _timestamp in frames:
+        path = Path(frame_path)
+        assert path.suffix == ".jpg"
+        _assert_jpeg_bytes(path.read_bytes())
+
+
+@pytest.mark.skipif(
+    not _have_ffmpeg_binary_for_jpeg_frames(),
+    reason="ffmpeg with JPEG encoder required for default frame extraction",
 )
 def test_video_frame_actor_runs_on_dataframe(tmp_path: Path) -> None:
     fixture = tmp_path / "fixture.mp4"
@@ -89,6 +110,8 @@ def test_video_frame_actor_runs_on_dataframe(tmp_path: Path) -> None:
     assert isinstance(out, pd.DataFrame)
     assert len(out) == 3
     assert all(isinstance(b, str) and b for b in out["image_b64"])
+    for image_b64 in out["image_b64"]:
+        _assert_jpeg_bytes(base64.b64decode(image_b64))
 
 
 def _solid_png_b64(rgb: tuple[int, int, int], size: int = 16) -> str:

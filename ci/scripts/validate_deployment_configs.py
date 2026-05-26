@@ -53,7 +53,6 @@ SERVICE_MAPPING = {
     "embedding": "embedqa",
     "reranker": "rerankqa",
     "nemotron-parse": "nemotron_parse",
-    "vlm": "nemotron_nano_12b_v2_vl",
     "audio": "audio",
     "nv-ingest-ms-runtime": "__MAIN__",  # Special marker for top-level config
 }

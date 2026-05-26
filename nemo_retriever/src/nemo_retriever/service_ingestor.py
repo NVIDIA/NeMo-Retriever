@@ -366,7 +366,7 @@ class ServiceIngestor(ingestor):
         self._last_run_elapsed_s: float = 0.0
         self._last_job_id: str | None = None
         self._pipeline_spec: dict[str, Any] = {
-            "extraction_mode": "pdf",
+            "extraction_mode": "auto",
             "stage_order": [],
         }
         # save_to_disk state (populated by .save_to_disk(...); None when disabled)
@@ -427,7 +427,7 @@ class ServiceIngestor(ingestor):
         """
         spec = self._pipeline_spec
         is_empty = (
-            spec.get("extraction_mode", "pdf") == "pdf"
+            spec.get("extraction_mode", "auto") in ("pdf", "auto")
             and not spec.get("stage_order")
             and not any(
                 spec.get(k)
@@ -522,13 +522,14 @@ class ServiceIngestor(ingestor):
         params: Any = None,
         *,
         split_config: Optional[dict[str, Any]] = None,
-        extraction_mode: str = "pdf",
+        extraction_mode: str = "auto",
         **kwargs: Any,
     ) -> "ServiceIngestor":
         """Record a generic extraction stage.
 
         ``extraction_mode`` selects the worker's extraction path
-        (``'pdf'`` default, ``'auto'`` for mixed inputs, etc.).
+        (``'auto'`` default — dispatches by file extension; ``'pdf'``
+        forces the PDF path for all inputs, etc.).
         """
         merged = _merge_params(params, kwargs) if (params or kwargs) else ExtractParams()
         params_dict = _strip_server_owned(_params_to_dict(merged), "extract")
@@ -970,6 +971,8 @@ class ServiceIngestor(ingestor):
 
             elif event_type == "document_complete":
                 status = evt.get("status", "completed")
+                if status not in ("completed", "failed"):
+                    continue
                 if status == "failed":
                     documents_failed += 1
                     error = evt.get("error", "unknown error")

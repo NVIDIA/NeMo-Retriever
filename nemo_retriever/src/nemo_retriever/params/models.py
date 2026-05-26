@@ -154,6 +154,12 @@ class AudioChunkParams(_ParamsModel):
     ``audio_only=True`` on a video input extracts only the audio track,
     runs ASR over it, and skips the visual branch entirely — no frame
     extraction, no OCR, no audio/visual fusion.
+
+    ``video_audio_separate`` is accepted for compatibility but ignored by
+    ``MediaChunkActor`` on video inputs: this ASR chunking path always demuxes
+    videos to ASR-safe audio chunks and does not emit video-container chunks.
+    Use ``VideoSplitActor`` or the video pipeline when you need audio+visual
+    video processing.
     """
 
     enabled: bool = True

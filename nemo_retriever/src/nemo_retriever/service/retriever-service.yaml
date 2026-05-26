@@ -37,6 +37,10 @@ nim_endpoints:
   embed_invoke_url: null
   # Model name for the remote embed NIM (server-owned; must match the SKU).
   embed_model_name: null
+  # gRPC endpoint for the Parakeet ASR NIM (e.g. parakeet-nim:50051).
+  # When set, audio/video pipelines use remote ASR instead of loading
+  # the local Parakeet model (which requires torch + GPU).
+  audio_grpc_endpoint: null
   # Remote VLM endpoint for the ``caption`` stage. When set, clients
   # may submit caption_params overrides (prompt, system_prompt,
   # batch_size, …). The endpoint URL, API key, and model name itself
