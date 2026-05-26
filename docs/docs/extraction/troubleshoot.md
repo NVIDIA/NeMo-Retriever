@@ -58,6 +58,19 @@ service:
 
 This path fails with `allowPrivilegeEscalation: false` or `readOnlyRootFilesystem: true`.
 
+## Parakeet ASR NIM does not become Ready on Blackwell { #parakeet-asr-blackwell }
+
+On Blackwell GPUs (compute capability 12.0), the optional Parakeet ASR NIM
+(`nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0`) deployed with
+`nimOperator.audio` may never reach Ready. The pod can enter `CrashLoopBackOff`
+while building the TensorRT engine, with logs that mention ONNX Runtime IR
+version, missing cuDNN on `LD_LIBRARY_PATH`, or unsupported FP8 tactics.
+
+This is a known limitation for 26.05 on Blackwell SKUs. See
+[Model hardware requirements](prerequisites-support-matrix.md#model-hardware-requirements)
+(footnote ⁴) for supported GPUs and alternatives (non-Blackwell GPU, hosted
+inference, or `nimOperator.audio.enabled=false`).
+
 ## Can't start new thread error
 
 In rare cases, when you run a job you might an see an error similar to `can't start new thread`. 

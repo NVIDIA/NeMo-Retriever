@@ -63,6 +63,10 @@ This pipeline enables retrieval at the speech segment level when you enable segm
 
 Use the following procedure to run the NIM on your own infrastructure. Self-hosted Parakeet runs on Kubernetes via the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md). Enable the ASR NIM per [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default) and the [Helm chart — NIM operator sub-stack](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#nim-operator-sub-stack); pin the workload to a dedicated GPU and wire the ASR endpoint in your pipeline.
 
+!!! warning "Blackwell GPUs (26.05)"
+
+    The chart-pinned Parakeet image (`parakeet-1-1b-ctc-en-us:1.5.0`) does not start on Blackwell GPUs (compute capability 12.0) via Helm + NIM Operator. See [Model hardware requirements](prerequisites-support-matrix.md#model-hardware-requirements) (footnote ⁴) for supported SKUs, workarounds, and troubleshooting.
+
 !!! important
 
     Pin the Parakeet workload to the dedicated GPU with your Helm values or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) (for example, node selectors, resource limits, or device requests appropriate to your cluster).
