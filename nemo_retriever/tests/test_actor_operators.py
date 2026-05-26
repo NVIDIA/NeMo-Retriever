@@ -532,7 +532,11 @@ class TestNemotronParseActor:
         pd.testing.assert_frame_equal(result, expected)
 
     def test_remote_chat_completions_uses_v1_2_protocol(self):
-        from nemo_retriever.parse.nemotron_parse import NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL, nemotron_parse_pages
+        from nemo_retriever.parse.nemotron_parse import (
+            NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
+            NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL,
+            nemotron_parse_pages,
+        )
 
         class _FakeNIMClient:
             def __init__(self):
@@ -554,7 +558,7 @@ class TestNemotronParseActor:
 
         assert result["text"].tolist() == ["Hello world"]
         assert client.kwargs["model"] == NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL
-        assert client.kwargs["task_prompt"]
+        assert client.kwargs["task_prompt"] == NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
         assert client.kwargs["extra_body"] == {"max_tokens": 8192}
 
     @patch("nemo_retriever.parse.nemotron_parse.nemotron_parse_pages", side_effect=RuntimeError("boom"))

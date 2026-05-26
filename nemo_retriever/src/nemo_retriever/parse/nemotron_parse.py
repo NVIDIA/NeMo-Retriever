@@ -46,6 +46,7 @@ except Exception:  # pragma: no cover
 
 NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL = "nvidia/nemotron-parse-v1.2"
 NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL = "nvidia/NVIDIA-Nemotron-Parse-v1.2"
+NEMOTRON_PARSE_DEFAULT_TASK_PROMPT = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>"
 
 # Map Nemotron Parse class labels to the pipeline content channels.
 _PARSE_CLASS_TO_CHANNEL: Dict[str, str] = {
@@ -168,7 +169,7 @@ def nemotron_parse_pages(
     extract_charts: bool = False,
     extract_infographics: bool = False,
     nemotron_parse_model: Optional[str] = None,
-    task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+    task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
     remote_retry: RemoteRetryParams | None = None,
     nim_client: NIMClient | None = None,
     **kwargs: Any,
@@ -359,7 +360,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
-        task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
         remote_max_pool_workers: int = 16,
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
@@ -458,7 +459,7 @@ class NemotronParseCPUActor(AbstractOperator, CPUOperator):
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
-        task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
         remote_max_pool_workers: int = 16,
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
@@ -548,7 +549,7 @@ class NemotronParseActor(ArchetypeOperator):
         invoke_url: Optional[str] = None,
         api_key: Optional[str] = None,
         request_timeout_s: float = 120.0,
-        task_prompt: str = "</s><s><predict_bbox><predict_classes><output_markdown><predict_no_text_in_pic>",
+        task_prompt: str = NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
         remote_max_pool_workers: int = 16,
         remote_max_retries: int = 10,
         remote_max_429_retries: int = 5,
