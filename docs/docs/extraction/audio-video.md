@@ -63,6 +63,8 @@ This pipeline enables retrieval at the speech segment level when you enable segm
 
 For Kubernetes deployment details, see the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#audio-video-parakeet).
 
+On first deploy, the Parakeet/Riva NIM may need a long Riva/TensorRT engine build (especially on RTX GPUs without a prebuilt profile). Wait until the audio NIM pod is Ready before you run extraction jobs—see [Pre-Requisites & Support Matrix — footnote ⁵](prerequisites-support-matrix.md#model-hardware-requirements).
+
 After deploy, call the pipeline from Python:
 
 ```python

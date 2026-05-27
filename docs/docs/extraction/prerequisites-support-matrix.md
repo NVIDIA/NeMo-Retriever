@@ -114,15 +114,15 @@ NeMo Retriever Library supports the following GPU hardware given system constrai
 
 Model repositories and NIM references are linked in [Core and Advanced Pipeline Features](#core-and-advanced-pipeline-features) above.
 
-**B200 and audio/video extraction (26.05):** The [audio and video](audio-video.md) transcription path (self-hosted Parakeet ASR via `nimOperator.audio`) is **not supported on B200** or other Blackwell GPUs. Core PDF and multimodal extraction on B200 is unchanged. See footnote ⁴ below.
+**B200 and audio/video extraction (26.05):** The [audio and video](audio-video.md) transcription path (self-hosted Parakeet ASR via `nimOperator.audio`) is **not supported on B200**. Core PDF and multimodal extraction on B200 is unchanged. See footnote ⁴ below. On **RTX workstation** GPUs, Parakeet may run after a first-run Riva/TensorRT profile build—see footnote ⁵.
 
 | Feature | HF Model Weights | GPU Option | [RTX Pro 6000](https://www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/) | [B200](https://www.nvidia.com/en-us/data-center/dgx-b200/) | [H200 NVL](https://www.nvidia.com/en-us/data-center/h200/) | [H100](https://www.nvidia.com/en-us/data-center/h100/) | [A100 80GB](https://www.nvidia.com/en-us/data-center/a100/) | A100 40GB | [A10G](https://aws.amazon.com/ec2/instance-types/g5/) | L40S | [RTX PRO 4500 Blackwell](https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-4500/) |
 |---------|------------------|------------|--------|--------|--------|--------|--------|--------|--------|--------|------------------------|
 | GPU | — | Memory | 96GB | 180GB | 141GB | 80GB | 80GB | 40GB | 24GB | 48GB | 32GB GDDR7 (GB203) |
 | Core Features | ~4.8 GiB combined: embed VL 1b ~3.1 GiB; page-elements ~0.41 GiB; table-structure ~0.81 GiB; OCR ~0.51 GiB | Total GPUs | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 |
 | Core Features | — | Total Disk Space | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB |
-| Audio/video extraction (parakeet-1-1b-ctc-en-us) | ~4.0 GiB (`model.safetensors`; the repo also ships `parakeet-ctc-1.1b.nemo` of similar size—use one format to avoid roughly doubling disk use) | Additional Dedicated GPUs | Not supported⁴ | Not supported⁴ | 1¹ | 1¹ | 1¹ | 1¹ | 1¹ | 1¹ | Not supported⁴ |
-| Audio/video extraction (parakeet-1-1b-ctc-en-us) | — | Additional Disk Space | Not supported⁴ | Not supported⁴ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | Not supported⁴ |
+| Audio/video extraction (parakeet-1-1b-ctc-en-us) | ~4.0 GiB (`model.safetensors`; the repo also ships `parakeet-ctc-1.1b.nemo` of similar size—use one format to avoid roughly doubling disk use) | Additional Dedicated GPUs | 1¹⁵ | Not supported⁴ | 1¹ | 1¹ | 1¹ | 1¹ | 1¹ | 1¹ | 1¹⁵ |
+| Audio/video extraction (parakeet-1-1b-ctc-en-us) | — | Additional Disk Space | ~37GB¹⁵ | Not supported⁴ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹⁵ |
 | nemotron-parse | ~3.5 GiB | Additional Dedicated GPUs | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | Not supported² |
 | nemotron-parse | — | Additional Disk Space | ~16GB | ~16GB | ~16GB | ~16GB | ~16GB | ~16GB | ~16GB | ~16GB | Not supported² |
 | Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | ~62 GiB (BF16) | Additional Dedicated GPUs | 1 | 1 | 1 | 1 | 1 | Not supported | Not supported | 2 | Not supported³ |
@@ -131,9 +131,17 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 | Reranker | ~3.1 GiB (llama-nemotron-rerank-vl-1b-v2) | With Core Pipeline | Yes | Yes | Yes | Yes | Yes | No* | No* | No* | No* |
 | Reranker | — | Standalone (recall only) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
-¹ On other supported GPUs, Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`) may require a runtime TensorRT engine build (no prebuilt profile in the chart image).
+¹ On supported datacenter GPUs, Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`) may require a runtime TensorRT engine build when the NIM image has no prebuilt profile for your GPU. The first startup can take longer than the Helm chart default `startupProbe` window; wait for the audio NIM pod to reach Ready before you submit audio jobs (see footnote ⁵ for RTX SKUs).
 
-⁴ **B200** and other **Blackwell** GPUs (compute capability 12.0), including RTX PRO 6000 Blackwell and RTX PRO 4500 Blackwell, do **not** support the [audio/video extraction](audio-video.md) path when Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`) runs self-hosted via Helm + NIM Operator. Video workflows that depend on Parakeet for speech transcription are affected the same way. `NIMService` for `nimOperator.audio` may stay not Ready or enter `CrashLoopBackOff` while building the Riva/TensorRT engine (for example ONNX Runtime IR version, cuDNN visibility, or FP8 tactic errors). Use a non-Blackwell dedicated GPU, [hosted Parakeet on build.nvidia.com](audio-video.md#parakeet-hosted-inference-build-nvidia), or set `nimOperator.audio.enabled=false`.
+⁴ **B200** does **not** support the [audio/video extraction](audio-video.md) path when Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`) runs self-hosted via Helm + NIM Operator. Video workflows that depend on Parakeet for speech transcription are affected the same way. `NIMService` for `nimOperator.audio` may stay not Ready or enter `CrashLoopBackOff` (for example ONNX Runtime IR version, cuDNN visibility, or FP8 tactic errors). Use a non-B200 dedicated GPU, [hosted Parakeet on build.nvidia.com](audio-video.md#parakeet-hosted-inference-build-nvidia), or set `nimOperator.audio.enabled=false`.
+
+⁵ **RTX workstation SKUs** (including RTX Pro 6000 Blackwell and RTX PRO 4500 Blackwell): the Parakeet/Riva speech NIM (`parakeet-1-1b-ctc-en-us:1.5.0`) does **not** ship with prebuilt TensorRT profiles for these GPUs. On first deploy, the NIM builds a Riva/TensorRT engine at runtime. During that build the audio pod can fail the chart default `startupProbe` even though the NIM is still working—treat `CrashLoopBackOff` or not-Ready status as “profile build in progress” until logs show the build finished or the pod stays Ready. **Do not submit audio extraction jobs until the audio NIM pod is Ready.** Confirm readiness with:
+
+```bash
+kubectl wait --for=condition=Ready pod -n <namespace> -l 'app.kubernetes.io/name=audio' --timeout=30m
+```
+
+The command exits with code 0 when the pod is Ready and prints nothing until then. If the pod never becomes Ready within 30 minutes, inspect `kubectl logs -n <namespace> deploy/audio` and the [NVIDIA Speech NIM support matrix](https://docs.nvidia.com/nim/speech/latest/reference/support-matrix/index.html). To allow a longer probe window on retry, increase `startupProbe.failureThreshold` on the audio NIM deployment (for example ~360) per the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#audio-video-parakeet).
 
 ² Nemotron Parse fails to start on 32GB.
 
