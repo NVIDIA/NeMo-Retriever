@@ -83,7 +83,7 @@ class ContainerFfmpegInstallTests(TestCase):
         values = _read_required_file(repo_root / "nemo_retriever/helm/values.yaml")
         deployment = _read_required_file(repo_root / "nemo_retriever/helm/templates/deployment.yaml")
 
-        self.assertIn("installFfmpeg: false", values)
+        self.assertIn("installFfmpeg: true", values)
         self.assertIn("service.installFfmpeg", values)
         self.assertIn("cannot both set INSTALL_FFMPEG", deployment)
         self.assertEqual(deployment.count("- name: INSTALL_FFMPEG"), 2)
