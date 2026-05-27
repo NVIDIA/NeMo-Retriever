@@ -75,24 +75,22 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
     - The `Ingestor` object initializes the ingestion process.
     - The `files` method specifies the input files to process.
-    - The `extract` method runs audio extraction.
+    - The `extract_audio` method runs audio extraction.
 
     ```python
+    from nemo_retriever.params.models import ASRParams
+
     ingestor = (
         Ingestor()
         .files("./data/*.wav")
-        .extract(
-            document_type="wav",  # Ingestor should detect type automatically in most cases
-            extract_method="audio",
-            extract_audio_params={
-                "segment_audio": True,
-            },
+        .extract_audio(
+            asr_params=ASRParams(segment_audio=True),
         )
     )
     ```
 
 
-    To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a self-hosted Parakeet NIM or using build.nvidia.com hosted inference, but has no effect when using the local Hugging Face Parakeet model.
+    To generate one extracted element for each sentence-like ASR segment, pass `asr_params=ASRParams(segment_audio=True)` to `.extract_audio(...)`. This option applies when audio extraction runs with a self-hosted Parakeet NIM or using build.nvidia.com hosted inference, but has no effect when using the local Hugging Face Parakeet model.
 
 
     !!! tip
@@ -109,23 +107,22 @@ Instead of running the pipeline locally, you can call Parakeet through [build.nv
 
     - The `Ingestor` object initializes the ingestion process.
     - The `files` method specifies the input files to process.
-    - The `extract` method runs audio extraction.
-    - The `document_type` parameter is optional because `Ingestor` should detect the file type automatically in most cases.
+    - The `extract_audio` method runs audio extraction.
+    - The hosted gRPC endpoint, function ID, and API key are routed through `ASRParams`. Pass them via `asr_params=ASRParams(...)`; the ASR actor reads `audio_endpoints`, `function_id`, and `auth_token` from that object.
 
     ```python
+    from nemo_retriever.params.models import ASRParams
+
     ingestor = (
         Ingestor()
         .files("./data/*.mp3")
-        .extract(
-            document_type="mp3",
-            extract_method="audio",
-            extract_audio_params={
-                "grpc_endpoint": "grpc.nvcf.nvidia.com:443",
-                "auth_token": "<API key>",
-                "function_id": "<function ID>",
-                "use_ssl": True,
-                "segment_audio": True,
-            },
+        .extract_audio(
+            asr_params=ASRParams(
+                audio_endpoints=("grpc.nvcf.nvidia.com:443", None),
+                function_id="<function ID>",
+                auth_token="<API key>",
+                segment_audio=True,
+            ),
         )
     )
     ```
