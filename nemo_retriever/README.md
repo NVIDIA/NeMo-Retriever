@@ -151,7 +151,7 @@ Point it at a **directory** of PDFs to produce a ready-to-query LanceDB table.
 ```bash
 python -m nemo_retriever.examples.graph_pipeline \
   /your-example-dir \
-  --lancedb-uri lancedb
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}'
 ```
 
 Chunks land at `./lancedb/nemo-retriever`, which matches the `vdb_kwargs`
@@ -168,7 +168,7 @@ export NVIDIA_API_KEY=nvapi-...
 
 python -m nemo_retriever.examples.graph_pipeline \
   /your-example-dir \
-  --lancedb-uri lancedb \
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
   --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
