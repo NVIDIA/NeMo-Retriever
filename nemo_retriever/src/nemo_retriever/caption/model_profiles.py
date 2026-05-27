@@ -219,11 +219,9 @@ def _unique(names: tuple[str, ...]) -> tuple[str, ...]:
 
 
 _BF16_ENGINE_KWARGS = {"dtype": "bfloat16"}
-_FP8_ENGINE_KWARGS = {
-    "dtype": "auto",
-    "quantization": "fp8",
-    "hf_overrides": {"quantization_config": {"quant_method": "fp8", "activation_scheme": "static"}},
-}
+# ModelOpt FP8 checkpoints provide the quantization config. These kwargs
+# intentionally omit `quantization` and `hf_overrides`.
+_MODEL_OPT_FP8_ENGINE_KWARGS = {"dtype": "auto"}
 _NVFP4_ENGINE_KWARGS = {"dtype": "auto", "quantization": "modelopt"}
 
 _OMNI_CAPABILITIES = CaptionCapabilities(
@@ -250,7 +248,7 @@ _NANO_FP8_PROFILE = CaptionModelProfile(
     local_model_id=NANO_FP8_MODEL_ID,
     remote_model_id=_NANO_FP8_REMOTE_MODEL_ID,
     revision=get_hf_revision(NANO_FP8_MODEL_ID, strict=False),
-    local_engine_kwargs=_FP8_ENGINE_KWARGS,
+    local_engine_kwargs=_MODEL_OPT_FP8_ENGINE_KWARGS,
 )
 _NANO_NVFP4_QAD_PROFILE = CaptionModelProfile(
     family="nemotron-nano",
@@ -280,7 +278,7 @@ _OMNI_FP8_PROFILE = CaptionModelProfile(
     capabilities=_OMNI_CAPABILITIES,
     local_request_extras=_OMNI_NO_THINK_EXTRAS,
     remote_request_extras=_OMNI_NO_THINK_EXTRAS,
-    local_engine_kwargs=_FP8_ENGINE_KWARGS,
+    local_engine_kwargs=_MODEL_OPT_FP8_ENGINE_KWARGS,
 )
 _OMNI_NVFP4_PROFILE = CaptionModelProfile(
     family="nemotron-3-nano-omni",

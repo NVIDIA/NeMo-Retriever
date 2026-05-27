@@ -593,10 +593,10 @@ def _build_ingestor(
 def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], Any, float, int]:
     """Materialize the graph result into a list of records + DataFrame.
 
-    Ingest may return a ``pandas.DataFrame`` (in-process or after
-    ``ray.data.Dataset.to_pandas()`` in the executor), a ``ray.data.Dataset``,
-    or a :class:`~nemo_retriever.service_ingestor.ServiceIngestResult` (service
-    mode); normalize to a consistent ``(records, DataFrame, secs, units)`` tuple.
+    Ingest may return a ``pandas.DataFrame`` (in-process and batch graph paths,
+    where batch materializes via ``ds.to_pandas()`` in the executor) or a
+    :class:`~nemo_retriever.service_ingestor.ServiceIngestResult` (service mode);
+    normalize to a consistent ``(records, DataFrame, secs, units)`` tuple.
 
     Returns ``(records, result_df, ray_download_secs, num_input_units)``.
     """
