@@ -75,9 +75,11 @@ Two complementary mechanisms narrow `Retriever.query` results:
 from nemo_retriever.retriever import Retriever
 
 retriever = Retriever(
-    vdb="lancedb",
     vdb_kwargs={"uri": "./lancedb_data", "table_name": "nemo-retriever"},
-    embedder="nvidia/llama-nemotron-embed-1b-v2",
+    embed_kwargs={
+        "model_name": "nvidia/llama-nemotron-embed-1b-v2",
+        "embed_model_name": "nvidia/llama-nemotron-embed-1b-v2",
+    },
 )
 
 hits = retriever.query(
