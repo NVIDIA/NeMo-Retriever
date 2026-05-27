@@ -63,7 +63,7 @@ nemo_retriever/helm/
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
         ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
-        ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (optional; not auto-wired)
+        ├── llama-nemotron-rerank-vl-1b-v2.yaml   # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-3-nano-omni-30b-a3b-reasoning.yaml  # NIMCache + NIMService (optional; not auto-wired)
         └── audio.yaml                         # NIMCache + NIMService (optional; not auto-wired)
@@ -171,7 +171,7 @@ helm install retriever ./nemo_retriever/helm \
 
 ### Recommended minimal install (26.05)
 
-Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`). Disable optional NIMs unless your workload needs reranking, Nemotron Parse, Omni captioning, or ASR:
+Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`). The multimodal reranker (`rerankqa`) is **disabled by default** in `values.yaml`. Disable the other optional NIMs unless your workload needs Nemotron Parse, Omni captioning, or ASR:
 
 ```bash
 helm install retriever ./nemo_retriever/helm \
@@ -179,11 +179,12 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcImagePullSecret.password=$NGC_API_KEY \
   --set ngcApiSecret.create=true \
   --set ngcApiSecret.password=$NGC_API_KEY \
-  --set nimOperator.rerankqa.enabled=false \
   --set nimOperator.nemotron_parse.enabled=false \
   --set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=false \
   --set nimOperator.audio.enabled=false
 ```
+
+To deploy the VL reranker NIM (`llama-nemotron-rerank-vl-1b-v2`), add `--set nimOperator.rerankqa.enabled=true`.
 
 The chart auto-wires the operator-managed in-cluster URLs of the four
 "core" NIMs into the service's `nim_endpoints` block:
@@ -269,7 +270,9 @@ pair gated on three conditions ALL holding:
 | `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
 | `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
 | `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
-| `nimOperator.rerankqa.enabled`         | `true`  | Reranker NIM (optional; not auto-wired). Set `false` for [minimal install](#recommended-minimal-install-2605). |
+| `nimOperator.rerankqa.enabled`         | `false` | Multimodal (VL) reranker NIM (optional; not auto-wired). Set `true` when you need reranking. |
+| `nimOperator.rerankqa.nimServiceName`  | `llama-nemotron-rerank-vl-1b-v2` | NIMService / in-cluster DNS name. |
+| `nimOperator.rerankqa.image`           | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:1.11.0` | Default VL rerank NIM image. |
 | `nimOperator.nemotron_parse.enabled`   | `true`  | Structured-parse NIM (optional). Set `false` unless using `extract_method="nemotron_parse"`. |
 | `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `true` | Omni caption NIM (optional). Set `false` unless enabling image captioning. |
 | `nimOperator.audio.enabled`            | `true`  | ASR NIM (optional). Set `false` unless using audio/video transcription. |
@@ -659,7 +662,7 @@ Verify tags on the Git branch or tag you ship (for example `26.05` or
 | Table structure | `table_structure` | `nvcr.io/nim/nvidia/nemotron-table-structure-v1:1.8.0` |
 | OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0` |
 | VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` |
-| Reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-1b-v2:1.10.0` |
+| Reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:1.11.0` |
 | Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
 | Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` |
 | Parakeet ASR (optional) | `audio` | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` |
