@@ -141,6 +141,14 @@ def _fmt_cost(value: Any) -> str:
     return "n/a" if value is None else f"${float(value):.3f}"
 
 
+def _md_link(label: str, path: str) -> str:
+    return "-" if not path else f"[{label}]({path})"
+
+
+def _md_cell(value: Any) -> str:
+    return str(value).replace("|", "\\|")
+
+
 def _md_row(row: dict[str, Any]) -> str:
     m = row.get("metrics", {})
     judge_cell = f"{m['judge_score_mean']:.2f} (n={m.get('judge_score_n', 0)})" if "judge_score_mean" in m else "-"
@@ -177,7 +185,19 @@ def write_summary_md(
     config: dict[str, Any],
     agent: str,
     model: str,
+    trace_rows_by_domain: dict[str, list[TrialResult]] | None = None,
 ) -> Path:
+    query_parallelism = int(config.get("query_parallelism") or 1)
+    if query_parallelism > 1:
+        execution_note = (
+            f"_Execution mode: setup runs once, then query turns run in isolated sessions "
+            f"with parallelism={query_parallelism}. Session totals sum setup plus all isolated query sessions._"
+        )
+    else:
+        execution_note = (
+            "_Each (agent, condition, domain) is one agent session: turn 1 = setup, turns 2..N = query turns._"
+        )
+
     lines = [
         f"# skill_eval session summary - `{session_dir.name}`",
         "",
@@ -187,7 +207,7 @@ def write_summary_md(
         f"- Per-trial timeout: {config.get('per_trial_timeout_s', '?')}s",
         "",
         "_Agent-session tokens only. Pipeline-side LLM calls (embeddings, VLM, etc.) are not instrumented._",
-        "_Each (agent, condition, domain) is one agent session: turn 1 = setup, turns 2..N = query turns._",
+        execution_note,
         "",
         "## Overall (averaged across all queries in this run)",
         "",
@@ -262,6 +282,36 @@ def write_summary_md(
         lines.append("")
         lines.append("## Diagnostics")
         lines.extend(diag_lines)
+
+    trace_rows_by_domain = trace_rows_by_domain or {}
+    if any(trace_rows_by_domain.values()):
+        lines += [
+            "",
+            "## Per-query traces",
+            "",
+            "| domain | run | entry_id | query_id | status | compact_trace | raw_log |",
+            "|---|---|---|---|---|---|---|",
+        ]
+        for domain in sorted(trace_rows_by_domain):
+            rows = sorted(
+                trace_rows_by_domain[domain],
+                key=lambda r: (_condition_order(r.condition), r.condition, r.entry_id, r.query_id),
+            )
+            for result in rows:
+                run_name = (
+                    f"{result.agent}/{result.condition}/{domain}" if domain else f"{result.agent}/{result.condition}"
+                )
+                lines.append(
+                    "| {domain} | {run} | {entry} | {query} | {status} | {trace} | {raw} |".format(
+                        domain=_md_cell(domain or "default"),
+                        run=_md_cell(run_name),
+                        entry=result.entry_id,
+                        query=_md_cell(result.query_id),
+                        status=_md_cell(result.status),
+                        trace=_md_link("trace", result.compact_trace_path),
+                        raw=_md_link("log", result.raw_log_path),
+                    )
+                )
 
     summary_blocks: list[tuple[str, str]] = []
     for domain in sorted(rows_by_domain):
@@ -348,5 +398,21 @@ def write_summary(
         session_type="skill_eval",
         config_path=config_path,
     )
-    md_path = write_summary_md(session_dir, dict(domain_rows), overall_rows, config, agent=agent, model=model)
+    trace_rows_by_domain: dict[str, list[TrialResult]] = defaultdict(list)
+    for (_agent_name, _cond, domain), results in results_by_key.items():
+        for result in results:
+            if result.is_setup:
+                continue
+            if result.compact_trace_path or result.raw_log_path:
+                trace_rows_by_domain[domain].append(result)
+
+    md_path = write_summary_md(
+        session_dir,
+        dict(domain_rows),
+        overall_rows,
+        config,
+        agent=agent,
+        model=model,
+        trace_rows_by_domain=dict(trace_rows_by_domain),
+    )
     return json_path, md_path
