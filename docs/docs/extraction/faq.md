@@ -29,6 +29,7 @@ For more information, refer to [Extract Captions from Images](nemo-retriever-api
 
 For scanned documents, or documents with complex layouts, 
 you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate PDF extraction method by setting `extract_method="nemotron_parse"`. 
+Install the Python client dependencies first with `pip install "nemo-retriever[nemotron-parse]"` (or combine extras as `pip install "nemo-retriever[local,nemotron-parse]"` when you also run models on your GPU).
 For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
 ## Why are the environment variables different between library mode and self-hosted mode?
