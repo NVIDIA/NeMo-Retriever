@@ -868,10 +868,12 @@ from nemo_retriever.retriever import Retriever
 from nemo_retriever.llm import LiteLLMClient, LLMJudge
 
 retriever = Retriever(
-    lancedb_uri="lancedb",
-    lancedb_table="nemo-retriever",
-    embedder="nvidia/llama-nemotron-embed-1b-v2",
-    embedding_endpoint="https://integrate.api.nvidia.com/v1/embeddings",
+    vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
+    embed_kwargs={
+        "model_name": "nvidia/llama-nemotron-embed-1b-v2",
+        "embed_model_name": "nvidia/llama-nemotron-embed-1b-v2",
+        "embedding_endpoint": "https://integrate.api.nvidia.com/v1/embeddings",
+    },
     top_k=5,
 )
 
