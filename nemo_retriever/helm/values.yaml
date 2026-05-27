@@ -1021,7 +1021,7 @@ nimOperator:
     enabled: false
     image:
       repository: nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2
-      tag: "1.10.0"
+      tag: "1.11.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
