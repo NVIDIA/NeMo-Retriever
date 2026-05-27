@@ -176,7 +176,7 @@ service:
   # This requires package-repository network egress, a writable root
   # filesystem, and security policy that allows the image's scoped sudo use.
   # Do not also set INSTALL_FFMPEG manually in service.env.
-  installFfmpeg: false
+  installFfmpeg: true
 
   # Extra env vars (after the chart-managed ones). Use `envFrom` to pull
   # whole Secrets/ConfigMaps in.
