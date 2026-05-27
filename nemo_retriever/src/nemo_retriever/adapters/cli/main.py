@@ -32,10 +32,41 @@ logger = logging.getLogger(__name__)
 
 app = typer.Typer(help="Retriever")
 
+_EXPERIMENTAL_HELP_PREFIX = "Experimental, not product-supported: "
+_EXPERIMENTAL_SUBAPPS = {
+    "audio",
+    "image",
+    "pdf",
+    "local",
+    "chart",
+    "compare",
+    "eval",
+    "benchmark",
+    "harness",
+    "recall",
+    "skill-eval",
+    "txt",
+    "html",
+    "service",
+}
+
+
+def _experimental_help(help_text: str) -> str:
+    if help_text.startswith(_EXPERIMENTAL_HELP_PREFIX):
+        return help_text
+    return f"{_EXPERIMENTAL_HELP_PREFIX}{help_text}"
+
+
+def _mark_experimental_subapp(subapp: typer.Typer) -> typer.Typer:
+    if subapp.info.help:
+        subapp.info.help = _experimental_help(subapp.info.help)
+    return subapp
+
+
 # Service sub-app is always available (lightweight, no GPU deps).
 from nemo_retriever.service.cli import app as service_app  # noqa: E402
 
-app.add_typer(service_app, name="service")
+app.add_typer(_mark_experimental_subapp(service_app), name="service", help=service_app.info.help)
 
 # All other sub-apps are registered lazily so that missing optional
 # dependencies (tritonclient, torch, …) don't prevent the service
@@ -60,7 +91,15 @@ _LAZY_SUBAPPS: list[tuple[str, str, str]] = [
 for _name, _module, _attr in _LAZY_SUBAPPS:
     try:
         _mod = importlib.import_module(_module)
-        app.add_typer(getattr(_mod, _attr), name=_name)
+        _subapp = getattr(_mod, _attr)
+        _help = None
+        if _name in _EXPERIMENTAL_SUBAPPS:
+            _subapp = _mark_experimental_subapp(_subapp)
+            _help = _subapp.info.help
+        if _help is None:
+            app.add_typer(_subapp, name=_name)
+        else:
+            app.add_typer(_subapp, name=_name, help=_help)
     except Exception:
         logger.debug("Skipping '%s' sub-command (import failed)", _name)
 
@@ -415,6 +454,21 @@ def query_command(
         "--embed-model-name",
         help="Optional embedding model name override.",
     ),
+    local_query_embed_backend: LocalIngestEmbedBackendValue | None = typer.Option(
+        None,
+        "--local-query-embed-backend",
+        help="Local query-time text embedder when --embed-invoke-url is unset.",
+    ),
+    local_hf_cache_dir: str | None = typer.Option(
+        None,
+        "--local-hf-cache-dir",
+        help="HuggingFace cache directory for local query embedding.",
+    ),
+    local_hf_device: str | None = typer.Option(
+        None,
+        "--local-hf-device",
+        help="Torch device for local HuggingFace query embedding, such as 'cuda' or 'cpu'.",
+    ),
     reranker_invoke_url: str | None = typer.Option(None, "--reranker-invoke-url", help="Reranker NIM endpoint URL."),
     reranker_model_name: str | None = typer.Option(
         None,
@@ -454,6 +508,9 @@ def query_command(
                 table_name=table_name,
                 embed_invoke_url=embed_invoke_url,
                 embed_model_name=embed_model_name,
+                local_query_embed_backend=local_query_embed_backend,
+                local_hf_cache_dir=local_hf_cache_dir,
+                local_hf_device=local_hf_device,
                 reranker_invoke_url=reranker_invoke_url,
                 reranker_model_name=reranker_model_name,
                 reranker_backend=reranker_backend,

@@ -8,6 +8,7 @@ import importlib
 import json
 import logging
 import os
+import re
 import sys
 from typing import Any
 from unittest.mock import create_autospec
@@ -18,11 +19,46 @@ from typer.testing import CliRunner
 
 import nemo_retriever.adapters.cli.sdk_workflow as sdk_workflow
 from nemo_retriever.graph_ingestor import GraphIngestor
-from nemo_retriever.params import AudioChunkParams, EmbedParams, ExtractParams, TextChunkParams, VideoFrameParams
+from nemo_retriever.params import (
+    AudioChunkParams,
+    EmbedParams,
+    ExtractParams,
+    ModelRuntimeParams,
+    TextChunkParams,
+    VideoFrameParams,
+)
 
 
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.adapters.cli.main")
+
+
+def test_root_help_labels_experimental_subcommands() -> None:
+    result = RUNNER.invoke(cli_main.app, ["--help"])
+
+    assert result.exit_code == 0
+    for command in (
+        "audio",
+        "benchmark",
+        "chart",
+        "compare",
+        "eval",
+        "harness",
+        "html",
+        "image",
+        "local",
+        "pdf",
+        "recall",
+        "service",
+        "skill-eval",
+        "txt",
+    ):
+        assert command in result.output
+    assert result.output.count("Experimental, not product-supported") >= 14
+    for command in ("ingest", "query", "pipeline"):
+        assert command in result.output
+        assert re.search(rf"{command}\s+Experimental, not product-supported", result.output) is None
+    assert "End-to-end graph-based ingestion pipeline" in result.output
 
 
 class _FakeAsrParams:
@@ -632,6 +668,45 @@ def test_root_query_passes_embed_options(monkeypatch) -> None:
     ]
     assert query_calls == ["Which passages mention deployment?"]
     assert json.loads(result.output) == []
+
+
+def test_root_query_passes_local_hf_embed_options(monkeypatch) -> None:
+    retriever_calls: list[dict[str, Any]] = []
+
+    class FakeRetriever:
+        def __init__(self, **kwargs: Any) -> None:
+            retriever_calls.append(kwargs)
+
+        def query(self, query: str) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "Which passages mention deployment?",
+            "--embed-model-name",
+            "nvidia/llama-nemotron-embed-1b-v2",
+            "--local-query-embed-backend",
+            "hf",
+            "--local-hf-cache-dir",
+            "/models/huggingface",
+            "--local-hf-device",
+            "cuda",
+        ],
+    )
+
+    assert result.exit_code == 0
+    embed_kwargs = retriever_calls[0]["embed_kwargs"]
+    assert embed_kwargs["model_name"] == "nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_kwargs["embed_model_name"] == "nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_kwargs["local_ingest_embed_backend"] == "hf"
+    runtime = embed_kwargs["runtime"]
+    assert isinstance(runtime, ModelRuntimeParams)
+    assert runtime.hf_cache_dir == "/models/huggingface"
+    assert runtime.device == "cuda"
 
 
 def test_root_query_passes_reranker_url(monkeypatch) -> None:

@@ -80,14 +80,14 @@ per_trial_workdir_root: /tmp/skill_eval
 conditions:
   - c1_base               # retriever blocked → forces Read-only baseline
   - c2_retriever          # retriever available, NL prompt, skill auto-discovery
-  - c3_retriever_skill    # retriever available, explicit /nemo-retriever slash
+  - c3_retriever_skill    # retriever available, explicit split-skill slash commands
 
 # ---------------------------------------------------------------------------
 # Skill source override (rarely needed)
 # ---------------------------------------------------------------------------
-# Defaults to <repo>/.claude/skills/nemo-retriever when unset. Set this only
-# if you want to A/B-test an alternate skill tree.
-# skill_source_dir: /path/to/.claude/skills/nemo-retriever
+# Defaults to <repo>/.claude/skills when unset. Point this at either a directory
+# containing multiple skill directories or one standalone skill directory.
+# skill_source_dir: /path/to/.claude/skills
 
 # ---------------------------------------------------------------------------
 # LLM-as-judge

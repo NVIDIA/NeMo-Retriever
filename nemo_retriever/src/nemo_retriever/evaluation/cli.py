@@ -16,7 +16,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import typer
 
@@ -374,6 +374,21 @@ def export_cmd(
         "--embedder",
         help="Embedding model name.",
     ),
+    local_query_embed_backend: Literal["vllm", "hf"] | None = typer.Option(
+        None,
+        "--local-query-embed-backend",
+        help="Local query-time text embedder when no remote embedding endpoint is used.",
+    ),
+    local_hf_cache_dir: str | None = typer.Option(
+        None,
+        "--local-hf-cache-dir",
+        help="HuggingFace cache directory for local query embedding.",
+    ),
+    local_hf_device: str | None = typer.Option(
+        None,
+        "--local-hf-device",
+        help="Torch device for local HuggingFace query embedding, such as 'cuda' or 'cpu'.",
+    ),
     page_index: Path = typer.Option(
         None,
         "--page-index",
@@ -410,6 +425,9 @@ def export_cmd(
         output_path=str(output),
         top_k=top_k,
         embedder=embedder,
+        local_query_embed_backend=local_query_embed_backend,
+        local_hf_cache_dir=local_hf_cache_dir,
+        local_hf_device=local_hf_device,
         page_index=page_idx,
     )
     elapsed = time.monotonic() - t0

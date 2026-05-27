@@ -17,6 +17,7 @@ from nemo_retriever.params import (
     EmbedParams,
     ExtractParams,
     HtmlChunkParams,
+    ModelRuntimeParams,
     TextChunkParams,
     VdbUploadParams,
     VideoFrameParams,
@@ -198,6 +199,8 @@ def _build_embed_kwargs(
     embed_invoke_url: str | None,
     embed_model_name: str | None,
     local_ingest_embed_backend: LocalIngestEmbedBackendValue | None = None,
+    local_hf_cache_dir: str | None = None,
+    local_hf_device: str | None = None,
     embed_workers: int | None = None,
     embed_batch_size: int | None = None,
     embed_cpus_per_actor: float | None = None,
@@ -212,6 +215,11 @@ def _build_embed_kwargs(
         embed_kwargs["embed_model_name"] = embed_model_name
     if local_ingest_embed_backend is not None:
         embed_kwargs["local_ingest_embed_backend"] = local_ingest_embed_backend
+    if local_hf_cache_dir is not None or local_hf_device is not None:
+        embed_kwargs["runtime"] = ModelRuntimeParams(
+            device=local_hf_device,
+            hf_cache_dir=local_hf_cache_dir,
+        )
     embed_tuning = _build_embed_batch_tuning(
         embed_workers=embed_workers,
         embed_batch_size=embed_batch_size,
@@ -473,6 +481,9 @@ def query_documents(
     table_name: str = "nv-ingest",
     embed_invoke_url: str | None = None,
     embed_model_name: str | None = None,
+    local_query_embed_backend: LocalIngestEmbedBackendValue | None = None,
+    local_hf_cache_dir: str | None = None,
+    local_hf_device: str | None = None,
     reranker_invoke_url: str | None = None,
     reranker_model_name: str | None = None,
     reranker_backend: str | None = None,
@@ -483,7 +494,13 @@ def query_documents(
     Reranking is opt-in: pass ``rerank=True`` (or any of the rerank-related
     args via the CLI, which implicitly set ``rerank=True``) to enable.
     """
-    embed_kwargs = _build_embed_kwargs(embed_invoke_url, embed_model_name)
+    embed_kwargs = _build_embed_kwargs(
+        embed_invoke_url,
+        embed_model_name,
+        local_ingest_embed_backend=local_query_embed_backend,
+        local_hf_cache_dir=local_hf_cache_dir,
+        local_hf_device=local_hf_device,
+    )
     retriever_kwargs: dict[str, Any] = {
         "top_k": top_k,
         "vdb_kwargs": {"uri": lancedb_uri, "table_name": table_name},
