@@ -176,7 +176,7 @@ service:
   # This requires package-repository network egress, a writable root
   # filesystem, and security policy that allows the image's scoped sudo use.
   # Do not also set INSTALL_FFMPEG manually in service.env.
-  installFfmpeg: false
+  installFfmpeg: true
 
   # Extra env vars (after the chart-managed ones). Use `envFrom` to pull
   # whole Secrets/ConfigMaps in.
@@ -769,6 +769,15 @@ nimOperator:
   # helm/README.md §"Filtering cached GPU profiles".
   modelProfile: {}
 
+  # Default GPU limit rendered on every NIMService when a per-NIM
+  # ``resources`` block is empty (``{}``). The NIM Operator does not
+  # reliably set ``spec.resources.limits.nvidia.com/gpu`` from the model
+  # profile on all supported versions; without this, NIM pods can start
+  # without GPU access. Set to ``null`` to omit the resources block and
+  # rely on operator reconciliation only (see helm/README.md). Per-NIM
+  # ``resources`` overrides the entire block when non-empty.
+  nimServiceGpuLimit: 1
+
   # ---------------------------------------------------------------------------
   # Per-NIM defaults
   # ---------------------------------------------------------------------------
@@ -826,12 +835,8 @@ nimOperator:
         size: "25Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    # GPU limits are reconciled by the NIM Operator from the model profile.
-    # Leave empty (`{}`) so the chart does not take server-side-apply
-    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
-    # owned by the operator, and a Helm-managed value here causes SSA
-    # conflicts on subsequent `helm upgrade` runs. Override via
-    # `kubectl edit nimservice <name>` if you need a non-default value.
+    # Empty (`{}`) uses `nimOperator.nimServiceGpuLimit` (default 1 GPU).
+    # Set a non-empty map to replace the whole resources block.
     resources: {}
     nodeSelector: {}
     tolerations: []
@@ -874,12 +879,8 @@ nimOperator:
         size: "25Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    # GPU limits are reconciled by the NIM Operator from the model profile.
-    # Leave empty (`{}`) so the chart does not take server-side-apply
-    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
-    # owned by the operator, and a Helm-managed value here causes SSA
-    # conflicts on subsequent `helm upgrade` runs. Override via
-    # `kubectl edit nimservice <name>` if you need a non-default value.
+    # Empty (`{}`) uses `nimOperator.nimServiceGpuLimit` (default 1 GPU).
+    # Set a non-empty map to replace the whole resources block.
     resources: {}
     nodeSelector: {}
     tolerations: []
@@ -922,12 +923,8 @@ nimOperator:
         size: "25Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    # GPU limits are reconciled by the NIM Operator from the model profile.
-    # Leave empty (`{}`) so the chart does not take server-side-apply
-    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
-    # owned by the operator, and a Helm-managed value here causes SSA
-    # conflicts on subsequent `helm upgrade` runs. Override via
-    # `kubectl edit nimservice <name>` if you need a non-default value.
+    # Empty (`{}`) uses `nimOperator.nimServiceGpuLimit` (default 1 GPU).
+    # Set a non-empty map to replace the whole resources block.
     resources: {}
     nodeSelector: {}
     tolerations: []
@@ -969,12 +966,8 @@ nimOperator:
         size: "50Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    # GPU limits are reconciled by the NIM Operator from the model profile.
-    # Leave empty (`{}`) so the chart does not take server-side-apply
-    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
-    # owned by the operator, and a Helm-managed value here causes SSA
-    # conflicts on subsequent `helm upgrade` runs. Override via
-    # `kubectl edit nimservice <name>` if you need a non-default value.
+    # Empty (`{}`) uses `nimOperator.nimServiceGpuLimit` (default 1 GPU).
+    # Set a non-empty map to replace the whole resources block.
     resources: {}
     nodeSelector: {}
     tolerations: []
@@ -1036,12 +1029,8 @@ nimOperator:
         size: "50Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    # GPU limits are reconciled by the NIM Operator from the model profile.
-    # Leave empty (`{}`) so the chart does not take server-side-apply
-    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
-    # owned by the operator, and a Helm-managed value here causes SSA
-    # conflicts on subsequent `helm upgrade` runs. Override via
-    # `kubectl edit nimservice <name>` if you need a non-default value.
+    # Empty (`{}`) uses `nimOperator.nimServiceGpuLimit` (default 1 GPU).
+    # Set a non-empty map to replace the whole resources block.
     resources: {}
     nodeSelector: {}
     tolerations: []
@@ -1092,12 +1081,8 @@ nimOperator:
         size: "100Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    # GPU limits are reconciled by the NIM Operator from the model profile.
-    # Leave empty (`{}`) so the chart does not take server-side-apply
-    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
-    # owned by the operator, and a Helm-managed value here causes SSA
-    # conflicts on subsequent `helm upgrade` runs. Override via
-    # `kubectl edit nimservice <name>` if you need a non-default value.
+    # Empty (`{}`) uses `nimOperator.nimServiceGpuLimit` (default 1 GPU).
+    # Set a non-empty map to replace the whole resources block.
     resources: {}
     nodeSelector: {}
     tolerations: []
@@ -1154,12 +1139,8 @@ nimOperator:
         size: "300Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    # GPU limits are reconciled by the NIM Operator from the model profile.
-    # Leave empty (`{}`) so the chart does not take server-side-apply
-    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
-    # owned by the operator, and a Helm-managed value here causes SSA
-    # conflicts on subsequent `helm upgrade` runs. Override via
-    # `kubectl edit nimservice <name>` if you need a non-default value.
+    # Empty (`{}`) uses `nimOperator.nimServiceGpuLimit` (default 1 GPU).
+    # Set a non-empty map to replace the whole resources block.
     resources: {}
     nodeSelector: {}
     tolerations: []
@@ -1194,12 +1175,8 @@ nimOperator:
         size: "100Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    # GPU limits are reconciled by the NIM Operator from the model profile.
-    # Leave empty (`{}`) so the chart does not take server-side-apply
-    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
-    # owned by the operator, and a Helm-managed value here causes SSA
-    # conflicts on subsequent `helm upgrade` runs. Override via
-    # `kubectl edit nimservice <name>` if you need a non-default value.
+    # Empty (`{}`) uses `nimOperator.nimServiceGpuLimit` (default 1 GPU).
+    # Set a non-empty map to replace the whole resources block.
     resources: {}
     nodeSelector: {}
     tolerations: []

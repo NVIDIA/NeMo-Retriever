@@ -37,10 +37,7 @@ spec:
   replicas: {{ .Values.nimOperator.nemotron_parse.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.nemotron_parse.nodeSelector | indent 4 }}
-  {{- with .Values.nimOperator.nemotron_parse.resources }}
-  resources:
-{{ toYaml . | indent 4 }}
-  {{- end }}
+  {{- include "nemo-retriever.nimServiceResources" (dict "context" $ "resources" .Values.nimOperator.nemotron_parse.resources) | nindent 2 }}
   tolerations:
 {{ toYaml .Values.nimOperator.nemotron_parse.tolerations | indent 4 }}
   expose:

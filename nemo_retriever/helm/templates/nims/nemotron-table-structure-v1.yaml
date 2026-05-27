@@ -37,10 +37,7 @@ spec:
   replicas: {{ .Values.nimOperator.table_structure.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.table_structure.nodeSelector | indent 4 }}
-  {{- with .Values.nimOperator.table_structure.resources }}
-  resources:
-{{ toYaml . | indent 4 }}
-  {{- end }}
+  {{- include "nemo-retriever.nimServiceResources" (dict "context" $ "resources" .Values.nimOperator.table_structure.resources) | nindent 2 }}
   tolerations:
 {{ toYaml .Values.nimOperator.table_structure.tolerations | indent 4 }}
   expose:

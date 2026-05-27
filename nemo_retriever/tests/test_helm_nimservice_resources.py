@@ -2,34 +2,20 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Regression tests for the NIMService ``resources`` field-ownership fix.
+"""Regression tests for NIMService GPU resource rendering.
 
-The NIM Operator reconciles ``NIMService.spec.resources.limits.nvidia.com/gpu``
-from the model profile.  If the Helm chart also writes that field, both
-Helm and the operator become server-side-apply owners of it, and a
-subsequent ``helm upgrade --install`` (even a no-op one) fails with:
+The NIM Operator does not reliably populate ``spec.resources.limits.nvidia.com/gpu``
+from the model profile on all tested versions (for example v3.1.1 on A100/H100).
+The chart therefore defaults to rendering ``nvidia.com/gpu: 1`` via
+``nimOperator.nimServiceGpuLimit``.
 
-    Error: UPGRADE FAILED: conflict occurred while applying object
-      <ns>/<nim> apps.nvidia.com/v1alpha1, Kind=NIMService:
-      Apply failed with 1 conflict:
-      conflict with "manager" using apps.nvidia.com/v1alpha1:
-        .spec.resources.limits.nvidia.com/gpu
-
-To stay idempotent the chart must:
-
-* default ``nimOperator.<key>.resources`` to ``{}`` in ``values.yaml``,
-  and
-* wrap the NIMService ``resources:`` block in ``{{- with ... }}`` on
-  every ``templates/nims/*.yaml`` so the field is **not rendered** when
-  the user has not overridden it.
-
-These two invariants are pinned below.  An optional end-to-end check
-shells out to ``helm template`` when the binary is available and asserts
-that no ``nvidia.com/gpu`` key appears anywhere in the default render.
+Helm and the operator may both server-side-apply that field; see README
+§GPU limits and ``helm upgrade`` for ``--force-conflicts`` guidance.
 """
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -58,143 +44,112 @@ def _read_required_file(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _helm_template(extra_sets: list[str] | None = None) -> str:
+    helm = shutil.which("helm")
+    if helm is None:
+        raise SkipTest("`helm` binary not available in this environment.")
+    chart_path = _repo_root() / "nemo_retriever/helm"
+    if not chart_path.is_dir():
+        raise SkipTest(f"Chart directory missing: {chart_path}")
+
+    cmd = [
+        helm,
+        "template",
+        "nrl-regression",
+        str(chart_path),
+        "--set",
+        "ngcImagePullSecret.create=false",
+        "--set",
+        "ngcApiSecret.create=false",
+        "--set",
+        "nimOperator.rerankqa.enabled=true",
+        "--set",
+        "nimOperator.audio.enabled=true",
+        "--set",
+        "nimOperator.nemotron_parse.enabled=true",
+        "--set",
+        "nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true",
+        "--api-versions",
+        "apps.nvidia.com/v1alpha1",
+    ]
+    if extra_sets:
+        for flag in extra_sets:
+            cmd.extend(["--set", flag])
+
+    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise AssertionError(f"`helm template` failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}")
+    return proc.stdout
+
+
+def _nimservice_resources_blocks(rendered: str) -> list[str]:
+    """Return the ``resources:`` subtree for each NIMService document."""
+    blocks: list[str] = []
+    for chunk in rendered.split("\n---\n"):
+        if "\nkind: NIMService\n" not in chunk:
+            continue
+        match = re.search(r"\n  resources:\n(.*?)(?=\n  [a-zA-Z])", chunk, re.DOTALL)
+        if match:
+            blocks.append(match.group(1))
+    return blocks
+
+
 class HelmNimServiceResourcesTests(TestCase):
-    """Field-ownership invariants for ``NIMService.spec.resources``."""
-
-    def test_values_default_resources_to_empty_for_every_nim(self) -> None:
-        """Defaults must be ``{}`` — anything else means Helm claims SSA ownership."""
+    def test_values_default_nim_service_gpu_limit(self) -> None:
         values = _read_required_file(_repo_root() / "nemo_retriever/helm/values.yaml")
+        self.assertIn("nimServiceGpuLimit: 1", values)
 
-        self.assertNotIn(
-            "nvidia.com/gpu: 1",
-            values,
-            "values.yaml must not default any nimOperator.<key>.resources.limits "
-            "to a GPU count — the NIM Operator reconciles that field. See "
-            "templates/_helpers.tpl §NIM Operator field ownership notes.",
-        )
-        # Every per-NIM block should end the resources entry with `{}`.
-        self.assertEqual(
-            values.count("    resources: {}"),
-            len(_NIMSERVICE_TEMPLATES),
-            "Every nimOperator.<key>.resources block must default to `{}`.",
-        )
-
-    def test_each_nimservice_template_renders_resources_conditionally(self) -> None:
-        """The NIMService ``resources:`` block must be wrapped in ``{{ with }}``."""
+    def test_each_nimservice_template_uses_resources_helper(self) -> None:
         templates_dir = _repo_root() / "nemo_retriever/helm/templates/nims"
-
         for filename, values_key in _NIMSERVICE_TEMPLATES:
             with self.subTest(template=filename):
                 body = _read_required_file(templates_dir / filename)
-
-                expected_guard = f"{{{{- with .Values.nimOperator.{values_key}.resources }}}}"
                 self.assertIn(
-                    expected_guard,
+                    'include "nemo-retriever.nimServiceResources"',
                     body,
-                    f"{filename} must guard the NIMService resources block with "
-                    f"`{{{{- with .Values.nimOperator.{values_key}.resources }}}}` "
-                    "so an empty default does not render `resources: {}` (which "
-                    "still grants Helm SSA ownership of "
-                    "`spec.resources.limits.nvidia.com/gpu` and conflicts with the "
-                    "NIM Operator on every `helm upgrade --install`).",
+                    f"{filename} must render NIMService resources via the shared helper.",
                 )
-
-                # The unconditional `toYaml ... .resources | indent 4` form is
-                # exactly what the bug used; make sure it does not creep back.
                 self.assertNotIn(
-                    f"  resources:\n{{{{ toYaml .Values.nimOperator.{values_key}.resources | indent 4 }}}}",
+                    f"{{{{- with .Values.nimOperator.{values_key}.resources }}}}",
                     body,
-                    f"{filename} still renders the NIMService resources block "
-                    "unconditionally — that was the field-ownership bug.",
+                    f"{filename} must not use the old `with resources` guard alone.",
                 )
 
-    def test_helpers_document_the_field_ownership_rationale(self) -> None:
+    def test_helpers_document_gpu_limit_behavior(self) -> None:
         helpers = _read_required_file(_repo_root() / "nemo_retriever/helm/templates/_helpers.tpl")
-        self.assertIn("NIM Operator field ownership notes", helpers)
-        self.assertIn(".spec.resources.limits.nvidia.com/gpu", helpers)
+        self.assertIn("nimServiceGpuLimit", helpers)
+        self.assertIn('define "nemo-retriever.nimServiceResources"', helpers)
 
     def test_readme_documents_gpu_limit_upgrade_caveat(self) -> None:
         readme = _read_required_file(_repo_root() / "nemo_retriever/helm/README.md")
         self.assertIn("gpu-limits-and-helm-upgrade", readme)
+        self.assertIn("nimServiceGpuLimit", readme)
         self.assertIn("force-conflicts", readme)
 
-    # ------------------------------------------------------------------
-    # Optional integration check — only runs when `helm` is available.
-    # ------------------------------------------------------------------
-
-    def test_helm_template_default_render_has_no_nvidia_gpu_limit(self) -> None:
-        """No `nvidia.com/gpu` field on any rendered NIMService, even when all 8 are enabled.
-
-        The SSA-conflict bug is field-level, not NIM-level — every
-        ``templates/nims/*.yaml`` that renders must keep the operator as
-        the single owner of ``spec.resources.limits.nvidia.com/gpu``.
-        We therefore opt in to the NIMs that are now disabled by
-        default (``rerankqa``, ``audio``, ``nemotron_parse``, and
-        ``nemotron_3_nano_omni_30b_a3b_reasoning``; see
-        :mod:`test_helm_optional_nims_disabled_by_default` for the
-        regression that pins the new defaults) so the check still
-        exercises **every** NIMService template.
-        """
-        helm = shutil.which("helm")
-        if helm is None:
-            raise SkipTest("`helm` binary not available in this environment.")
-        chart_path = _repo_root() / "nemo_retriever/helm"
-        if not chart_path.is_dir():
-            raise SkipTest(f"Chart directory missing: {chart_path}")
-
-        proc = subprocess.run(
-            [
-                helm,
-                "template",
-                "nrl-regression",
-                str(chart_path),
-                "--set",
-                "ngcImagePullSecret.create=false",
-                "--set",
-                "ngcApiSecret.create=false",
-                # Opt every optional NIM in so this test still asserts
-                # the SSA-conflict invariant across all 8 NIMService
-                # templates. The actual defaults (rerankqa + audio +
-                # Parse + Omni off) are covered separately to keep
-                # concerns separated.
-                "--set",
-                "nimOperator.rerankqa.enabled=true",
-                "--set",
-                "nimOperator.audio.enabled=true",
-                "--set",
-                "nimOperator.nemotron_parse.enabled=true",
-                "--set",
-                "nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true",
-                "--api-versions",
-                "apps.nvidia.com/v1alpha1",
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+    def test_helm_template_default_render_sets_gpu_limit_on_every_nimservice(self) -> None:
+        rendered = _helm_template()
+        blocks = _nimservice_resources_blocks(rendered)
         self.assertEqual(
-            proc.returncode,
-            0,
-            f"`helm template` failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
-        )
-
-        rendered = proc.stdout
-        self.assertNotIn(
-            "nvidia.com/gpu",
-            rendered,
-            "Default `helm template` render must not contain `nvidia.com/gpu` — "
-            "the NIM Operator owns that field. Found it in the rendered "
-            "manifest, which reintroduces the no-op `helm upgrade --install` "
-            "SSA conflict.",
-        )
-
-        nimservice_count = rendered.count("\nkind: NIMService\n")
-        self.assertEqual(
-            nimservice_count,
+            len(blocks),
             len(_NIMSERVICE_TEMPLATES),
-            f"Expected {len(_NIMSERVICE_TEMPLATES)} NIMService objects in the "
-            f"default + opt-in render, got {nimservice_count}.",
+            f"Expected {len(_NIMSERVICE_TEMPLATES)} NIMService resources blocks.",
         )
+        for block in blocks:
+            self.assertIn("nvidia.com/gpu: 1", block)
+
+    def test_helm_template_operator_only_mode_omits_gpu_limit(self) -> None:
+        rendered = _helm_template(["nimOperator.nimServiceGpuLimit=null"])
+        self.assertNotIn("nvidia.com/gpu", rendered)
+
+    def test_per_nim_resources_override_replaces_default(self) -> None:
+        rendered = _helm_template(["nimOperator.page_elements.resources.limits.nvidia\\.com/gpu=2"])
+        match = re.search(
+            r"name: nemotron-page-elements-v3\nspec:.*?resources:\n(.*?)(?=\n  [a-z])",
+            rendered,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(match)
+        self.assertIn("nvidia.com/gpu: 2", match.group(1))
 
 
 if __name__ == "__main__":

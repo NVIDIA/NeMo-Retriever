@@ -37,10 +37,7 @@ spec:
   replicas: {{ .Values.nimOperator.audio.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.audio.nodeSelector | indent 4 }}
-  {{- with .Values.nimOperator.audio.resources }}
-  resources:
-{{ toYaml . | indent 4 }}
-  {{- end }}
+  {{- include "nemo-retriever.nimServiceResources" (dict "context" $ "resources" .Values.nimOperator.audio.resources) | nindent 2 }}
   tolerations:
 {{ toYaml .Values.nimOperator.audio.tolerations | indent 4 }}
   expose:
