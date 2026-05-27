@@ -239,9 +239,43 @@ kubectl get nimcache,nimservice -n <namespace>
 kubectl describe nimservice nemotron-page-elements-v3 -n <namespace>
 ```
 
-First-time NIMCache reconciliation downloads model weights to a PVC; the
-NIMCache resources carry the `helm.sh/resource-policy: keep` annotation so
-those downloads survive `helm uninstall`.
+First-time NIMCache reconciliation downloads model weights to a PVC. By
+default (`nimOperator.nimCache.keepOnUninstall: true`) every **NIMCache**
+carries `helm.sh/resource-policy: keep` so those downloads survive
+`helm uninstall`. **NIMService** CRs do not use `keep` and are removed by
+Helm on uninstall.
+
+### Why NIM resources still exist after `helm uninstall`
+
+| What you see | Typical cause |
+|--------------|----------------|
+| `NIMCache` + PVC remain | **Expected** when `keepOnUninstall` is true (default). Helm intentionally skips deleting caches so you do not re-pull multi‑GiB weights. |
+| `NIMService` CR remains | **Not expected** on a normal uninstall. Usually an **orphan** from a failed install/upgrade (release never recorded the resource, or the chart renamed the NIM, e.g. `nemotron-ocr-v1` → `nemotron-ocr-v2`). |
+| Deployments / GPU pods still running | Often the operator workload for a **kept** `NIMCache`, or a stale `NIMService` that Helm did not own. Check `kubectl get nimservice,nimcache -n <ns>`. |
+| `nemotron-*-job-*` pods in `Error` | The NIM Operator's **model-download Job** for a `NIMCache` (not the retriever service). Failed cache pulls retry and leave Error pods until the Job or `NIMCache` is deleted. Common after a failed `helm install` when the release is rolled back but `keep` retains the cache CR. |
+| `helm uninstall` appears to do nothing | Release may be missing or failed (`helm list -n <ns> -a`). CRs created before a failed install can be left without a release to clean them up. |
+
+**Full teardown** (dev cluster — deletes caches and PVCs Helm kept):
+
+```bash
+NS=retriever
+REL=nemo-retriever
+
+helm uninstall "${REL}" -n "${NS}" 2>/dev/null || true
+
+# Orphans and kept NIMCaches (Helm keep does not block kubectl delete):
+kubectl delete nimservice,nimcache -n "${NS}" --all
+# Optional: drop model PVCs if you will re-pull from NGC
+kubectl delete pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator' 2>/dev/null || true
+```
+
+**Dev installs** that should not retain caches on uninstall:
+
+```bash
+helm upgrade --install "${REL}" ./nemo_retriever/helm -n "${NS}" \
+  --set nimOperator.nimCache.keepOnUninstall=false \
+  ...
+```
 
 ---
 
@@ -541,6 +575,7 @@ and `image.tag` before you upgrade.
 
 | Path | Role |
 |------|------|
+| `nimOperator.nimCache.keepOnUninstall` | `true` | When true, NIMCache CRs survive `helm uninstall` (`helm.sh/resource-policy: keep`). NIMService CRs are always removed. Set `false` for dev clusters that should fully tear down on uninstall. |
 | `nimOperator.ocr.enabled` | Reconcile the OCR `NIMService` |
 | `nimOperator.ocr.image.repository` | NIM image (for example `nvcr.io/nim/nvidia/nemotron-ocr-v2`) |
 | `nimOperator.ocr.image.tag` | Pin the image tag for reproducible upgrades |
