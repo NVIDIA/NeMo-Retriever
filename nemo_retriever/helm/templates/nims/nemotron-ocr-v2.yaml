@@ -1,10 +1,25 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.ocr.enabled true) -}}
+<<<<<<< HEAD
 {{- $name := .Values.nimOperator.ocr.nimServiceName | default "nemotron-ocr-v2" -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
   name: {{ $name }}
   {{- include "nemo-retriever.nimcache.keepPolicy" . | nindent 2 }}
+=======
+{{- $name := .Values.nimOperator.ocr.nimServiceName -}}
+apiVersion: apps.nvidia.com/v1alpha1
+kind: NIMCache
+metadata:
+<<<<<<<< HEAD:nemo_retriever/helm/templates/nims/nemotron-ocr-v1.yaml
+  name: nemotron-ocr-v1
+  {{- include "nemo-retriever.nimcache.keepPolicy" . | nindent 2 }}
+========
+  name: {{ $name }}
+  annotations:
+    helm.sh/resource-policy: keep
+>>>>>>>> upstream/26.05:nemo_retriever/helm/templates/nims/nemotron-ocr-v2.yaml
+>>>>>>> upstream/26.05
 spec:
   source:
     ngc:

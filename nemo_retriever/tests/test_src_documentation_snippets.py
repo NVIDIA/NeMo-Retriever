@@ -61,9 +61,35 @@ _PUBLIC_RETRIEVER_DOCS = (
     "nemo_retriever/src/nemo_retriever/evaluation/README.md",
     "nemo_retriever/src/nemo_retriever/vdb/README.md",
 )
-_UNSUPPORTED_DIRECT_RETRIEVER_KWARGS = frozenset(
-    {"lancedb_uri", "lancedb_table", "embedder", "embedding_endpoint", "reranker"}
+_PUBLIC_GRAPH_PIPELINE_DOCS = (
+    "docs/docs/extraction/workflow-document-ingestion.md",
+    "nemo_retriever/README.md",
+    "nemo_retriever/src/nemo_retriever/evaluation/README.md",
 )
+_UNSUPPORTED_DIRECT_RETRIEVER_KWARGS = frozenset(
+    {
+        "vdb",
+        "lancedb_uri",
+        "lancedb_table",
+        "embedder",
+        "embedding_endpoint",
+        "local_query_embed_backend",
+        "reranker",
+    }
+)
+_UNSUPPORTED_GRAPH_PIPELINE_OPTIONS = frozenset({"--lancedb-uri"})
+
+
+def _public_doc_path(root: Path, rel_path: str) -> Path | None:
+    path = root / rel_path
+    if path.exists():
+        return path
+    repo_only_doc = rel_path == "README.md" or rel_path.startswith(("docs/", "examples/"))
+    package_only_image = not (root / "README.md").exists() and not (root / "docs").exists()
+    if repo_only_doc and package_only_image:
+        return None
+    assert False, f"Expected public documentation file is missing: {rel_path}"
+    return path
 
 
 @pytest.mark.parametrize("block_id,code", _MD_BLOCKS, ids=[b[0] for b in _MD_BLOCKS])
@@ -76,7 +102,9 @@ def _iter_public_retriever_doc_code() -> list[tuple[str, str]]:
     root = _repo_root()
     blocks: list[tuple[str, str]] = []
     for rel_path in _PUBLIC_RETRIEVER_DOCS:
-        path = root / rel_path
+        path = _public_doc_path(root, rel_path)
+        if path is None:
+            continue
         if path.suffix == ".ipynb":
             nb = json.loads(path.read_text(encoding="utf-8"))
             for i, cell in enumerate(nb.get("cells", [])):
@@ -93,7 +121,31 @@ def _iter_public_retriever_doc_code() -> list[tuple[str, str]]:
     return blocks
 
 
-def _retriever_call_flat_kwargs(code: str) -> list[str]:
+def _iter_public_graph_pipeline_commands() -> list[tuple[str, str]]:
+    root = _repo_root()
+    commands: list[tuple[str, str]] = []
+    for rel_path in _PUBLIC_GRAPH_PIPELINE_DOCS:
+        path = _public_doc_path(root, rel_path)
+        if path is None:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for i, code in enumerate(re.findall(r"```bash\n(.*?)```", text, re.DOTALL)):
+            lines = code.splitlines()
+            command_idx = 0
+            for line_idx, line in enumerate(lines):
+                if "python -m nemo_retriever.examples.graph_pipeline" not in line:
+                    continue
+                command_lines = [line]
+                next_idx = line_idx + 1
+                while command_lines[-1].rstrip().endswith("\\") and next_idx < len(lines):
+                    command_lines.append(lines[next_idx])
+                    next_idx += 1
+                commands.append((f"{rel_path}#bash-{i}-cmd-{command_idx}", "\n".join(command_lines)))
+                command_idx += 1
+    return commands
+
+
+def _retriever_call_unsupported_kwargs(code: str) -> list[str]:
     tree = ast.parse(code)
     found: list[str] = []
     for node in ast.walk(tree):
@@ -103,7 +155,17 @@ def _retriever_call_flat_kwargs(code: str) -> list[str]:
         is_retriever = isinstance(func, ast.Name) and func.id == "Retriever"
         is_retriever = is_retriever or isinstance(func, ast.Attribute) and func.attr == "Retriever"
         if is_retriever:
-            found.extend(str(kw.arg) for kw in node.keywords if kw.arg in _UNSUPPORTED_DIRECT_RETRIEVER_KWARGS)
+            for kw in node.keywords:
+                if kw.arg in _UNSUPPORTED_DIRECT_RETRIEVER_KWARGS:
+                    found.append(str(kw.arg))
+                if kw.arg is None and isinstance(kw.value, ast.Dict):
+                    found.extend(
+                        key.value
+                        for key in kw.value.keys
+                        if isinstance(key, ast.Constant)
+                        and isinstance(key.value, str)
+                        and key.value in _UNSUPPORTED_DIRECT_RETRIEVER_KWARGS
+                    )
     return found
 
 
@@ -112,13 +174,24 @@ def test_public_retriever_examples_do_not_use_unsupported_constructor_kwargs() -
     violations = []
     for block_id, code in _iter_public_retriever_doc_code():
         try:
-            flat_kwargs = _retriever_call_flat_kwargs(code)
+            unsupported_kwargs = _retriever_call_unsupported_kwargs(code)
         except SyntaxError:
             continue
-        if flat_kwargs:
-            violations.append(f"{block_id}: {', '.join(sorted(set(flat_kwargs)))}")
+        if unsupported_kwargs:
+            violations.append(f"{block_id}: {', '.join(sorted(set(unsupported_kwargs)))}")
 
     assert not violations, "Unsupported kwargs in public direct Retriever(...) examples:\n" + "\n".join(violations)
+
+
+def test_public_graph_pipeline_examples_do_not_use_unsupported_options() -> None:
+    """Public ``graph_pipeline`` examples should not use options that command rejects."""
+    violations = []
+    for block_id, command in _iter_public_graph_pipeline_commands():
+        unsupported_options = [option for option in _UNSUPPORTED_GRAPH_PIPELINE_OPTIONS if option in command]
+        if unsupported_options:
+            violations.append(f"{block_id}: {', '.join(sorted(unsupported_options))}")
+
+    assert not violations, "Unsupported options in public graph_pipeline examples:\n" + "\n".join(violations)
 
 
 def test_graph_readme_smallest_example() -> None:
