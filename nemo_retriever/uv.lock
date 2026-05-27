@@ -2614,7 +2614,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "nvidia-ml-py", marker = "extra == 'local'" },
     { name = "nvidia-riva-client", specifier = ">=2.25.1" },
-    { name = "nvidia-riva-client", marker = "extra == 'service'", specifier = ">=2.17.0" },
+    { name = "nvidia-riva-client", marker = "extra == 'service'", specifier = ">=2.25.1" },
     { name = "open-clip-torch", marker = "extra == 'benchmarks'", specifier = "==3.2.0" },
     { name = "open-clip-torch", marker = "extra == 'nemotron-parse'", specifier = "==3.2.0" },
     { name = "pandas", specifier = ">=2.0,<3" },

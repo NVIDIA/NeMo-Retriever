@@ -94,7 +94,7 @@ service = [
   "psutil>=5.9.0",
   "apscheduler>=3.10",
   # Riva gRPC client for remote Parakeet ASR (audio/video ingestion)
-  "nvidia-riva-client>=2.17.0",
+  "nvidia-riva-client>=2.25.1",
   # Audio resampling used by ParakeetClient
   "librosa>=0.10.2",
 ]
