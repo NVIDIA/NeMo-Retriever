@@ -53,6 +53,17 @@ def test_serviceingestor_empty_spec_is_none() -> None:
     assert ing._pipeline_payload() is None
 
 
+def test_extract_mode_only_omits_extract_params() -> None:
+    """``.extract(extraction_mode='pdf')`` must not send client model defaults."""
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing.extract(extraction_mode="pdf").all_tasks()
+    payload = ing._pipeline_payload()
+    assert payload is not None
+    assert payload["extraction_mode"] == "pdf"
+    assert payload["stage_order"] == ["extract", "dedup", "embed"]
+    assert "extract_params" not in payload
+
+
 def test_extract_records_stage_and_params() -> None:
     ing = ServiceIngestor(base_url="http://example:7670")
     ing.extract(ExtractParams(extract_text=False, dpi=300))

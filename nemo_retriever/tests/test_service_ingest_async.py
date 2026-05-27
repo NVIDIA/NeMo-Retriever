@@ -51,6 +51,27 @@ def _stub_event_sequence() -> list[dict[str, Any]]:
     ]
 
 
+def _fake_materialize_completed_document(
+    self: ServiceIngestor,
+    document_id: str,
+    *,
+    return_results: bool,
+) -> list[dict[str, Any]] | None:
+    if not return_results and self._save_to_disk_dir is None:
+        return None
+    rows = [
+        {
+            "path": f"/uploads/{document_id}.pdf",
+            "page_number": 1,
+            "text": f"content-{document_id}",
+            "metadata": {"source_id": document_id},
+        }
+    ]
+    if self._save_to_disk_dir is not None:
+        self._write_result_data_to_disk(document_id, rows)
+    return rows if return_results else None
+
+
 @pytest.fixture
 def stub_ingestor() -> Iterator[ServiceIngestor]:
     """A ``ServiceIngestor`` whose stream yields a fixed event sequence."""
@@ -60,7 +81,10 @@ def stub_ingestor() -> Iterator[ServiceIngestor]:
     def _fake_stream(self: ServiceIngestor) -> Iterator[dict[str, Any]]:
         return iter(events)
 
-    with patch.object(ServiceIngestor, "ingest_stream", _fake_stream):
+    with (
+        patch.object(ServiceIngestor, "ingest_stream", _fake_stream),
+        patch.object(ServiceIngestor, "_materialize_completed_document", _fake_materialize_completed_document),
+    ):
         yield ing
 
 
@@ -81,6 +105,10 @@ def test_ingest_default_returns_service_ingest_result(stub_ingestor: ServiceInge
     # ``.failures``.
     assert len(result) == 2
     assert result.failures == [("doc-b", "boom")]
+    assert result.dataframe is not None
+    assert len(result.dataframe) == 1
+    assert "document_id" not in result.dataframe.columns
+    assert result.dataframe.iloc[0]["text"] == "content-doc-a"
 
 
 def test_ingest_return_failures_returns_tuple(stub_ingestor: ServiceIngestor) -> None:
@@ -130,6 +158,25 @@ def test_ingest_ignores_unrelated_kwargs(stub_ingestor: ServiceIngestor) -> None
     assert isinstance(out, ServiceIngestResult)
 
 
+def test_ingest_return_results_false_skips_dataframe(stub_ingestor: ServiceIngestor) -> None:
+    result = stub_ingestor.ingest(return_results=False)
+    assert isinstance(result, ServiceIngestResult)
+    assert result.dataframe is None
+
+
+def test_ingest_return_results_reads_from_params_model(stub_ingestor: ServiceIngestor) -> None:
+    params = IngestExecuteParams(return_results=False)
+    result = stub_ingestor.ingest(params=params)
+    assert result.dataframe is None
+
+
+def test_ingest_return_results_kwargs_override_params(stub_ingestor: ServiceIngestor) -> None:
+    params = IngestExecuteParams(return_results=False)
+    result = stub_ingestor.ingest(params=params, return_results=True)
+    assert result.dataframe is not None
+    assert len(result.dataframe) == 1
+
+
 # ----------------------------------------------------------------------
 # Async-future surface (the originally reported defect)
 # ----------------------------------------------------------------------
@@ -176,3 +223,10 @@ def test_ingest_async_default_matches_ingest_default(stub_ingestor: ServiceInges
     out = future.result(timeout=5.0)
     assert isinstance(out, ServiceIngestResult)
     assert not isinstance(out, tuple)
+
+
+def test_ingest_async_forwards_return_results(stub_ingestor: ServiceIngestor) -> None:
+    future = stub_ingestor.ingest_async(return_results=False)
+    out = future.result(timeout=5.0)
+    assert isinstance(out, ServiceIngestResult)
+    assert out.dataframe is None
