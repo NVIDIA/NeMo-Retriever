@@ -30,7 +30,7 @@ Don't pre-OCR, don't pre-chunk, don't write Python wrappers — the CLI handles 
 ## Query turn — the WHOLE workflow
 
 ```bash
-retriever query "<the user's question>" --top-k 10 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --rerank \
+retriever query "<the user's question>" --top-k 20 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --rerank \
   | tee /tmp/hits.json \
   | jq -r '.[] | "rank=\(.rank // 0) page=\(.page_number) pdf=\(.pdf_basename) type=\(.metadata.type // "?") text=\(.text[:200])"'
 ```
@@ -46,7 +46,7 @@ Each hit has: `text`, `pdf_basename`, `page_number` (int, **1-indexed**: the fir
 **Then write `./output.json` directly from $HITS:**
 
 - `final_answer`: synthesize from the top hits' `text`. Include the exact number / name / date / row / column the question asks for, plus the source PDF and 0-indexed page. One paragraph. No restating the question, no hedging caveats. If the chunks talk *around* the fact but don't state it, run ONE `retriever pdf stage page-elements ./pdfs --method pdfium --json-output-dir /tmp/pdf_text --compact-json` and read `/tmp/pdf_text/<top_pdf>.pdf.pdf_extraction.json` for the rank-1 page (or rank-2 if rank-1 is metadata) — that almost always surfaces the exact figure. Then synthesize. **If after both calls the asked-for fact still isn't in the evidence, write `final_answer` that says so explicitly** — e.g. "The retrieved pages do not state [X] for [entity]; the closest content is [Y]." Do NOT invent, extrapolate, or generate plausible-sounding content from adjacent material. A confidently-wrong answer scores worse than an honest "not in the retrieved pages".
-- `ranked_retrieved`: one entry per hit in the order `retriever query` returned: `{"doc_id": "<pdf_basename without .pdf>", "page_number": <int>, "rank": <i+1>}`. Up to 10. Duplicate `(doc, page)` is fine. **Indexing:** the retriever's `page_number` is 1-indexed. If the task's output schema says 0-indexed (e.g. "first page is page 0"), emit `hit.page_number - 1`; if the task says 1-indexed or doesn't specify, emit `hit.page_number` as-is.
+- `ranked_retrieved`: emit **up to 10 entries** `{"doc_id": "<pdf_basename without .pdf>", "page_number": <int>, "rank": <r>}` chosen from the reranked pool. `--top-k 20 --rerank` returns 20 reranked candidates (rerank's `refine_factor=4` means retriever pulled 80 candidates internally then the cross-encoder reranked them); the wider pool exists so you can surface 10 distinct pages even when multimodal indexes produce text + table + chart chunks on the same page. **Rule (deterministic):** walk the 20 reranked hits in order and emit each hit whose `(doc_id, page_number)` you have not emitted yet, with `rank` = 1, 2, 3, ... in emit order. Stop at 10 distinct pairs. Only if the full 20-candidate pool runs out before you reach 10 may you fall back to emitting a duplicate — and only enough to fill the remaining slots. **Indexing:** the retriever's `page_number` is 1-indexed. If the task's output schema says 0-indexed (e.g. "first page is page 0"), emit `hit.page_number - 1`; if the task says 1-indexed or doesn't specify, emit `hit.page_number` as-is.
 
 **Before writing `final_answer`, re-read the question.** If it lists multiple entities, years, or categories, your answer must address each one explicitly — even if for some of them the chunks say "not provided" or contain no data. Missing entities lose more judge points than imprecise numbers.
 
