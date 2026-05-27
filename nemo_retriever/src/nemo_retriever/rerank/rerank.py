@@ -51,6 +51,7 @@ Ray Data actor usage::
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 import json
 import logging
 import traceback
@@ -502,19 +503,50 @@ def _rerank_batch(
         images_b64 = batch_df[image_column].tolist()
 
     if rerank_invoke_url:
-        # Remote endpoint: score pair-by-pair (each row may have a different query).
-        scores: List[float] = []
+        # Remote endpoint: batch all passages that share a query into one request.
+        # The long-form DataFrame can contain different queries in the same Ray
+        # batch, so keep per-row score alignment when expanding grouped responses.
+        groups: dict[Any, dict[str, Any]] = {}
         for i, (q, d) in enumerate(pairs):
-            img = [images_b64[i]] if images_b64 else None
+            if not isinstance(q, Hashable):
+                logger.warning(
+                    "Query at row %d is not hashable (%s); it will be sent in its own request "
+                    "and cannot be batched with identical queries.",
+                    i,
+                    type(q).__name__,
+                )
+            key = q if isinstance(q, Hashable) else ("__unhashable_query__", i)
+            group = groups.setdefault(
+                key,
+                {
+                    "query": q,
+                    "indices": [],
+                    "documents": [],
+                    "images_b64": [] if images_b64 is not None else None,
+                },
+            )
+            group["indices"].append(i)
+            group["documents"].append(d)
+            if images_b64 is not None:
+                group["images_b64"].append(images_b64[i])
+
+        scores = [float("-inf")] * len(pairs)
+        for group in groups.values():
             row_scores = _rerank_via_endpoint(
-                q,
-                [d],
+                group["query"],
+                group["documents"],
                 endpoint=rerank_invoke_url,
                 model_name=model_name,
                 api_key=api_key,
-                images_b64=img,
+                images_b64=group["images_b64"],
             )
-            scores.append(row_scores[0])
+            if len(row_scores) != len(group["indices"]):
+                raise RuntimeError(
+                    f"Endpoint returned {len(row_scores)} scores for a batch of "
+                    f"{len(group['indices'])} documents; score alignment is broken."
+                )
+            for row_index, score in zip(group["indices"], row_scores):
+                scores[row_index] = score
     elif model is not None:
         if images_b64 is not None:
             scores = model.score_pairs(pairs, images_b64=images_b64, max_length=max_length, batch_size=batch_size)

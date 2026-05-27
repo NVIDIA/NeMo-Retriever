@@ -572,16 +572,85 @@ class TestNemotronRerankActor:
 
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
-        mock_resp.json.side_effect = [
-            {"rankings": [{"index": 0, "logit": 0.1}]},
-            {"rankings": [{"index": 0, "logit": 0.9}]},
-        ]
+        mock_resp.json.return_value = {
+            "rankings": [
+                {"index": 0, "logit": 0.1},
+                {"index": 1, "logit": 0.9},
+            ]
+        }
 
-        with patch("requests.post", return_value=mock_resp):
+        with patch("requests.post", return_value=mock_resp) as mock_post:
             out = actor(df)
 
+        mock_post.assert_called_once()
+        payload = mock_post.call_args[1]["json"]
+        assert payload["query"] == {"text": "q"}
+        assert payload["passages"] == [{"text": "low relevance"}, {"text": "high relevance"}]
         scores = out["rerank_score"].tolist()
         assert scores == sorted(scores, reverse=True)
+
+    def test_actor_call_batches_remote_rows_by_query(self):
+        import pandas as pd
+        from nemo_retriever.rerank.rerank import NemotronRerankActor
+
+        actor = NemotronRerankActor(rerank_invoke_url="http://localhost:8000", sort_results=False)
+        df = pd.DataFrame(
+            {
+                "query": ["q1", "q1", "q2"],
+                "text": ["doc A", "doc B", "doc C"],
+            }
+        )
+
+        resp_q1 = MagicMock()
+        resp_q1.raise_for_status = MagicMock()
+        resp_q1.json.return_value = {
+            "rankings": [
+                {"index": 1, "logit": 0.7},
+                {"index": 0, "logit": 0.2},
+            ]
+        }
+        resp_q2 = MagicMock()
+        resp_q2.raise_for_status = MagicMock()
+        resp_q2.json.return_value = {"rankings": [{"index": 0, "logit": 0.9}]}
+
+        with patch("requests.post", side_effect=[resp_q1, resp_q2]) as mock_post:
+            out = actor(df)
+
+        assert mock_post.call_count == 2
+        assert mock_post.call_args_list[0][1]["json"]["query"] == {"text": "q1"}
+        assert mock_post.call_args_list[0][1]["json"]["passages"] == [{"text": "doc A"}, {"text": "doc B"}]
+        assert mock_post.call_args_list[1][1]["json"]["query"] == {"text": "q2"}
+        assert mock_post.call_args_list[1][1]["json"]["passages"] == [{"text": "doc C"}]
+        assert out["rerank_score"].tolist() == [0.2, 0.7, 0.9]
+
+    def test_rerank_batch_raises_when_endpoint_score_count_mismatches(self):
+        import pandas as pd
+        from nemo_retriever.rerank.rerank import _rerank_batch
+
+        df = pd.DataFrame({"query": ["q", "q"], "text": ["doc A", "doc B"]})
+
+        with (
+            patch("nemo_retriever.rerank.rerank._rerank_via_endpoint", return_value=[0.2]),
+            pytest.raises(RuntimeError, match="score alignment is broken"),
+        ):
+            _rerank_batch(df, rerank_invoke_url="http://localhost:8000", sort_results=False)
+
+    def test_rerank_batch_warns_when_unhashable_queries_cannot_batch(self, caplog):
+        import logging
+
+        import pandas as pd
+        from nemo_retriever.rerank.rerank import _rerank_batch
+
+        caplog.set_level(logging.WARNING, logger="nemo_retriever.rerank.rerank")
+        df = pd.DataFrame({"query": [["q"], ["q"]], "text": ["doc A", "doc B"]})
+
+        with patch("nemo_retriever.rerank.rerank._rerank_via_endpoint", side_effect=[[0.2], [0.7]]) as mock_rerank:
+            out = _rerank_batch(df, rerank_invoke_url="http://localhost:8000", sort_results=False)
+
+        assert mock_rerank.call_count == 2
+        assert "Query at row 0 is not hashable (list)" in caplog.text
+        assert "Query at row 1 is not hashable (list)" in caplog.text
+        assert out["rerank_score"].tolist() == [0.2, 0.7]
 
     def test_actor_call_returns_error_payload_on_exception(self):
         import pandas as pd
