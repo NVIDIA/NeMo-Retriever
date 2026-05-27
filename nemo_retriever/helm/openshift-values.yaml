@@ -1,0 +1,27 @@
+# OpenShift overrides for the nemo-retriever Helm chart.
+#
+# Use with restricted-v2 SCC and Pod Security Admission "restricted" profile.
+# See README.md — "OpenShift deployment".
+#
+#   helm install retriever ./nemo_retriever/helm -f openshift-values.yaml ...
+
+service:
+  podSecurityContext:
+    runAsNonRoot: true
+    # Do not set runAsUser, runAsGroup, or fsGroup — OpenShift SCC assigns them.
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+serviceConfig:
+  logging:
+    file: /tmp/retriever-service.log
+  vectordb:
+    enabled: false
+
+topology:
+  otel:
+    enabled: false
