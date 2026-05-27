@@ -266,6 +266,17 @@ For audio and video extraction, set `service.installFfmpeg=true` when your
 cluster allows runtime package installation. For air-gapped clusters, see
 [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
 
+### Audio and video (Parakeet ASR) { #audio-video-parakeet }
+
+To run self-hosted Parakeet for [audio and video extraction](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md):
+
+1. Set `nimOperator.audio.enabled=true` (it is on by default; disable other optional NIMs you do not need per [Recommended minimal install (26.05)](#recommended-minimal-install-2605)).
+2. Pin the ASR `NIMService` to a **dedicated GPU** with `nimOperator.audio.resources`, `nodeSelector`, or `tolerations` (see [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html)).
+3. Confirm the GPU SKU in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) (footnote ⁴ lists Blackwell limitations).
+4. Set `service.installFfmpeg=true` when the retriever service will process audio or video (see `service.installFfmpeg` above).
+
+The retriever service picks up the in-cluster ASR endpoint when `nimOperator.audio` is enabled; see [NIM Operator sub-stack](#nim-operator-sub-stack).
+
 ### Service configuration (rendered into `retriever-service.yaml`)
 
 | Path                                              | Default | Notes |
@@ -915,6 +926,8 @@ Verify tags on the Git branch or tag you ship (for example `26.05` or
 | Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
 | Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` |
 | Parakeet ASR (optional) | `audio` | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` |
+
+GPU SKU support for `audio` is in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements).
 
 Also mirror images for the vectordb sidecar, Redis, or other subcharts if
 your values enable them.
