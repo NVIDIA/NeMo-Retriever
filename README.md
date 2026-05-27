@@ -59,24 +59,22 @@ ingestor = (
 )
 
 # ingestor.ingest() actually executes the pipeline
-# batch run_mode returns a ray.data.Dataset; inprocess returns a pandas DataFrame
-dataset = ingestor.ingest()
-chunks = dataset.take_all()  # Ray Dataset API (batch mode)
+chunks = ingestor.ingest()  # pandas.DataFrame (batch and inprocess)
 ```
 
 You can see the extracted text that represents the content of the ingested test document.
 
 ```python
 # page 1 raw text:
->>> chunks[0]["text"]
+>>> chunks.iloc[0]["text"]
 'TestingDocument\r\nA sample document with headings and placeholder text\r\nIntroduction\r\nThis is a placeholder document that can be used for any purpose...'
 
 # markdown formatted table from the first page
->>> chunks[1]["text"]
+>>> chunks.iloc[1]["text"]
 '| Table | 1 |\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |'
 
 # a chart from the first page
->>> chunks[2]["text"]
+>>> chunks.iloc[2]["text"]
 'Chart 1\nThis chart shows some gadgets, and some very fictitious costs.\nGadgets and their cost\n$160.00\n$140.00\n$120.00\n$100.00\nDollars\n$80.00\n$60.00\n$40.00\n$20.00\n$-\nPowerdrill\nBluetooth speaker\nMinifridge\nPremium desk fan\nHammer\nCost'
 
 # markdown formatting for full pages or documents:

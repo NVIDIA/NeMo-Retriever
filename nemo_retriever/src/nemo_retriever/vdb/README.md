@@ -124,7 +124,7 @@ hits_per_query = op.process(
 
 ## `Retriever` and `RetrieveVdbOperator`
 
-The high-level **`Retriever`** class (`retriever.py`) uses **`RetrieveVdbOperator`** internally when you set `vdb="lancedb"` (default) and pass **`vdb_kwargs`** for `uri`, `table_name`, filters, etc.
+The high-level **`Retriever`** class (`retriever.py`) uses **`RetrieveVdbOperator`** internally. Pass a flat LanceDB **`vdb_kwargs`** dict with `uri`, `table_name`, filters, etc., or the explicit nested shape `{"vdb_op": "lancedb", "vdb_kwargs": {...}}`.
 
 It **lazy-builds** the operator:
 
@@ -144,7 +144,6 @@ Typical construction:
 from nemo_retriever.retriever import Retriever
 
 retriever = Retriever(
-    vdb="lancedb",
     vdb_kwargs={
         "uri": "./kb",
         "table_name": "nemo-retriever",
@@ -152,7 +151,10 @@ retriever = Retriever(
         "refine_factor": 50,
         "nprobes": 64,
     },
-    embedder="nvidia/llama-nemotron-embed-1b-v2",
+    embed_kwargs={
+        "model_name": "nvidia/llama-nemotron-embed-1b-v2",
+        "embed_model_name": "nvidia/llama-nemotron-embed-1b-v2",
+    },
 )
 results = retriever.query("What is covered in section 2?")
 ```
