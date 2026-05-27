@@ -875,6 +875,12 @@ class GraphIngestor(ingestor):
         classified = self._classified_input_paths()
         if extraction_mode is not None:
             self._validate_explicit_extraction_mode_inputs(extraction_mode, classified)
+            if extraction_mode == "auto":
+                observed_input_types = {input_type for _, input_type in classified if input_type is not None}
+                if "txt" in observed_input_types:
+                    text_params = text_params or TextChunkParams()
+                if "html" in observed_input_types:
+                    html_params = html_params or HtmlChunkParams()
             return _EffectiveExtractionInputs(
                 extraction_mode=extraction_mode,
                 extract_params=extract_params,

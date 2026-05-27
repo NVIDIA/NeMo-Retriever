@@ -116,6 +116,42 @@ class FileClassifier:
 _MEDIA_CATEGORIES: frozenset[FileCategory] = frozenset({FileCategory.AUDIO, FileCategory.VIDEO})
 
 
+def infer_extraction_mode_from_filename(filename: str) -> str | None:
+    """Map a filename suffix to a GraphIngestor ``extraction_mode`` string.
+
+    Returns ``"text"`` / ``"html"`` / ``"image"`` / ``"audio"`` / ``"video"``
+    / ``"pdf"`` for known extensions, or ``None`` when the suffix is not in
+    :attr:`FileClassifier.SUFFIX_MAP`. Used by the service worker to avoid
+    routing text-like uploads through the PDF or audio-only graphs when the
+    client leaves ``extraction_mode`` at the default ``"auto"``.
+    """
+    dot = filename.rfind(".")
+    suffix = filename[dot:].lower() if dot != -1 else ""
+    entry = FileClassifier.SUFFIX_MAP.get(suffix)
+    if entry is None:
+        return None
+    category, _ = entry
+    if category == FileCategory.TEXT:
+        return "text"
+    if category == FileCategory.HTML:
+        return "html"
+    if category == FileCategory.IMAGE:
+        return "image"
+    if category == FileCategory.AUDIO:
+        return "audio"
+    if category == FileCategory.VIDEO:
+        return "video"
+    if category == FileCategory.DOCUMENT:
+        return "pdf"
+    return None
+
+
+def is_text_like_filename(filename: str) -> bool:
+    """True when *filename* is a supported plain-text or HTML ingest type."""
+    mode = infer_extraction_mode_from_filename(filename)
+    return mode in {"text", "html"}
+
+
 def category_requires_media_deps(category: FileCategory) -> bool:
     """True when *category* needs ``ffmpeg``/``ffprobe`` to ingest.
 

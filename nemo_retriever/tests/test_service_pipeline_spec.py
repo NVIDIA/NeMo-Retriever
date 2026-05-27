@@ -26,9 +26,12 @@ from nemo_retriever.service.services.pipeline_executor import (
     _build_graph_ingestor_from_spec,
     _merge_server_owned,
     _request_needs_asr_params,
+    _resolve_service_extraction_mode,
+    _run_pipeline_in_process,
     _TRUST_OWNED_EMBED_KEYS,
     _TRUST_OWNED_EXTRACT_KEYS,
 )
+from nemo_retriever.service.utils.file_type import infer_extraction_mode_from_filename
 from nemo_retriever.service_ingestor import ServiceIngestor
 
 
@@ -329,7 +332,7 @@ def test_build_graph_ingestor_does_not_attach_asr_params_for_pdf_upload() -> Non
         base_asr=base_asr,
     )
 
-    assert mode == "auto"
+    assert mode == "pdf"
     assert (
         ingestor._asr_params is None
     ), f"PDF ingestion must not carry worker-wide ASR params. Got: {ingestor._asr_params!r}"
@@ -374,6 +377,90 @@ def test_build_graph_ingestor_attaches_asr_params_for_explicit_audio_mode() -> N
 
     assert mode == "audio"
     assert ingestor._asr_params is not None
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("notes.txt", "text"),
+        ("page.html", "html"),
+        ("report.pdf", "pdf"),
+        ("diagram.png", "image"),
+        ("clip.mp4", "video"),
+        ("unknown.xyz", None),
+    ],
+)
+def test_infer_extraction_mode_from_filename(filename: str, expected: str | None) -> None:
+    assert infer_extraction_mode_from_filename(filename) == expected
+
+
+@pytest.mark.parametrize(
+    ("extraction_mode", "filename", "resolved"),
+    [
+        ("auto", "notes.txt", "text"),
+        ("auto", "page.html", "html"),
+        ("auto", "report.pdf", "pdf"),
+        ("pdf", "notes.txt", "pdf"),
+        ("text", "page.html", "text"),
+    ],
+)
+def test_resolve_service_extraction_mode(extraction_mode: str, filename: str, resolved: str) -> None:
+    assert _resolve_service_extraction_mode(extraction_mode, filename) == resolved
+
+
+def test_build_graph_ingestor_uses_typed_txt_html_shortcuts() -> None:
+    base_extract: dict[str, object] = {}
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+
+    txt_ingestor, txt_mode, _ = _build_graph_ingestor_from_spec(
+        "notes.txt",
+        b"The quick brown fox",
+        base_extract,
+        None,
+        spec,
+    )
+    assert txt_mode == "text"
+    assert txt_ingestor._extraction_mode == "text"
+    assert txt_ingestor._text_params is not None
+
+    html_ingestor, html_mode, _ = _build_graph_ingestor_from_spec(
+        "page.html",
+        b"<html><body><h1>Hi</h1></body></html>",
+        base_extract,
+        None,
+        spec,
+    )
+    assert html_mode == "html"
+    assert html_ingestor._extraction_mode == "html"
+    assert html_ingestor._html_params is not None
+
+
+def test_run_pipeline_in_process_rejects_empty_text_like_output() -> None:
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+    with pytest.raises(ValueError, match="Extraction produced no rows"):
+        _run_pipeline_in_process("empty.txt", b"", {}, None, None, spec)
+
+
+def test_run_pipeline_in_process_html_txt_produce_rows() -> None:
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+    html_rows, _, _ = _run_pipeline_in_process(
+        "page.html",
+        b"<html><body><h1>Title</h1><p>body</p></body></html>",
+        {},
+        None,
+        None,
+        spec,
+    )
+    txt_rows, _, _ = _run_pipeline_in_process(
+        "notes.txt",
+        b"Line one\nLine two\n",
+        {},
+        None,
+        None,
+        spec,
+    )
+    assert html_rows >= 1
+    assert txt_rows >= 1
 
 
 def test_build_graph_ingestor_omits_asr_params_when_worker_unconfigured() -> None:
