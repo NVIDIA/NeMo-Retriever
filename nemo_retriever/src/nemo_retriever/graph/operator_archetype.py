@@ -7,7 +7,8 @@ from __future__ import annotations
 from typing import Any
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.utils.ray_resource_hueristics import ClusterResources, Resources, gather_local_resources
+from nemo_retriever.utils import ray_resource_hueristics as _rrh
+from nemo_retriever.utils.ray_resource_hueristics import ClusterResources, Resources
 
 
 def _available_gpu_count(resources: ClusterResources | Resources) -> int:
@@ -45,7 +46,7 @@ class ArchetypeOperator(AbstractOperator):
         resources: ClusterResources | Resources | None = None,
         operator_kwargs: dict[str, Any] | None = None,
     ) -> type[AbstractOperator]:
-        detected = resources or gather_local_resources()
+        detected = resources or _rrh.gather_local_resources()
         cpu_variant = cls.cpu_variant_class()
         gpu_variant = cls.gpu_variant_class()
         if cls.prefers_cpu_variant(operator_kwargs or {}) and cpu_variant is not None:
@@ -87,7 +88,7 @@ class ArchetypeOperator(AbstractOperator):
         if not hasattr(self, "_resolved_delegate"):
             self._resolved_delegate = None
             self._resolved_delegate_key = None
-        detected = resources or gather_local_resources()
+        detected = resources or _rrh.gather_local_resources()
         cache_key = _delegate_cache_key(detected)
         if self._resolved_delegate is not None and self._resolved_delegate_key == cache_key:
             return self._resolved_delegate

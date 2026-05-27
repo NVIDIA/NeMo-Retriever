@@ -11,6 +11,7 @@ spec:
       modelPuller: "{{ .Values.nimOperator.page_elements.image.repository }}:{{ .Values.nimOperator.page_elements.image.tag }}"
       pullSecret: "{{ index .Values.nimOperator.page_elements.image.pullSecrets 0 }}"
       authSecret: {{ .Values.nimOperator.page_elements.authSecret }}
+      {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "page_elements") | nindent 6 }}
   storage:
     pvc:
       create: {{ .Values.nimOperator.page_elements.storage.pvc.create }}
@@ -38,8 +39,7 @@ spec:
   replicas: {{ .Values.nimOperator.page_elements.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.page_elements.nodeSelector | indent 4 }}
-  resources:
-{{ toYaml .Values.nimOperator.page_elements.resources | indent 4 }}
+  {{- include "nemo-retriever.nimServiceResources" (dict "context" $ "resources" .Values.nimOperator.page_elements.resources) | nindent 2 }}
   tolerations:
 {{ toYaml .Values.nimOperator.page_elements.tolerations | indent 4 }}
   expose:

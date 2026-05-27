@@ -30,6 +30,7 @@ try:
 except ImportError:
     ffmpeg = None  # type: ignore[assignment]
 
+VIDEO_CONTAINER_SUFFIXES: Tuple[str, ...] = (".mp4", ".mov", ".avi", ".mkv")
 MANUAL_FFMPEG_INSTALL_COMMAND = "apt-get update && apt-get install -y --no-install-recommends ffmpeg"
 CONTAINER_FFMPEG_INSTALL_ENV = "-e INSTALL_FFMPEG=true"
 HELM_FFMPEG_INSTALL_VALUE = "service.installFfmpeg=true"
@@ -294,14 +295,25 @@ class MediaInterface(_LoaderInterface):
         split_type: str = SplitType.SIZE,
         cache_path: Optional[str] = None,
         video_audio_separate: bool = False,
-        audio_only: bool = False,
     ) -> List[str]:
         """Split media into chunk files. Returns list of chunk file paths."""
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         original_input_path = input_path
         path_input = Path(input_path)
-        if audio_only and path_input.suffix.lower() in [".mp4", ".mov", ".avi", ".mkv"]:
+        # Always pre-extract the audio track for video inputs. Parakeet/Riva
+        # decode chunks via libsndfile, which can't read mp4/mov/avi/mkv
+        # containers — so chunking the raw video would produce chunks the ASR
+        # client immediately rejects. The historical ``audio_only`` opt-in
+        # never had any other reachable consumer, so it's been retired.
+        if path_input.suffix.lower() in VIDEO_CONTAINER_SUFFIXES:
+            if video_audio_separate:
+                logger.warning(
+                    "video_audio_separate is ignored for video inputs in the ASR chunking path; "
+                    "MediaChunkActor always demuxes videos to ASR-safe audio chunks and does not "
+                    "emit video-container chunks. Use VideoSplitActor or the video pipeline for "
+                    "audio+visual video processing."
+                )
             out_mp3 = output_dir / f"{path_input.stem}.mp3"
             result = self.get_audio_from_video(str(input_path), str(out_mp3), cache_path)
             if result is None:
@@ -347,12 +359,6 @@ class MediaInterface(_LoaderInterface):
             return []
         # Use actual chunk files produced by ffmpeg (may differ from num_splits)
         files = sorted(str(p) for p in output_dir.glob(f"{file_name}_chunk_*{suffix}") if p.is_file())
-        if video_audio_separate and suffix.lower() in [".mp4", ".mov", ".avi", ".mkv"]:
-            for f in files:
-                fp = Path(f)
-                audio_path = self.get_audio_from_video(f, str(fp.with_suffix(".mp3")), str(cache_path))
-                if audio_path is not None:
-                    files.append(str(audio_path))
         return files
 
     def extract_frames(
@@ -362,12 +368,17 @@ class MediaInterface(_LoaderInterface):
         fps: float = 1.0,
         max_frames: Optional[int] = None,
     ) -> List[Tuple[str, float]]:
-        """Extract frames at ``fps`` frames/second; return ``[(png_path, timestamp_s), ...]``.
+        """Extract frames at ``fps`` frames/second; return ``[(jpg_path, timestamp_s), ...]``.
 
         Each timestamp is the wall-clock midpoint of the frame's window in the
         original video: ``frame_index / fps + 0.5 / fps``. This matches the
         canonical ``segment_start_seconds`` / ``segment_end_seconds`` convention
         used downstream by the recall scorer.
+
+        Output is JPEG so the function works against any ffmpeg build that
+        includes the mjpeg encoder (effectively every build). PNG was the
+        previous default but requires ``libpng`` at ffmpeg compile time and
+        some slim ffmpeg packages omit it.
 
         Returns an empty list when ffmpeg fails or no frames are produced.
         """
@@ -380,7 +391,7 @@ class MediaInterface(_LoaderInterface):
         out_dir.mkdir(parents=True, exist_ok=True)
         path_file = Path(input_path)
         file_name = path_file.stem
-        output_pattern = str(out_dir / f"{file_name}_frame_%06d.png")
+        output_pattern = str(out_dir / f"{file_name}_frame_%06d.jpg")
 
         try:
             output_kwargs: dict = {"vf": f"fps={fps}", "q:v": 2}
@@ -393,7 +404,7 @@ class MediaInterface(_LoaderInterface):
             logger.error("FFmpeg frame extraction error for file %s: %s", input_path, stderr)
             return []
 
-        produced = sorted(p for p in out_dir.glob(f"{file_name}_frame_*.png") if p.is_file())
+        produced = sorted(p for p in out_dir.glob(f"{file_name}_frame_*.jpg") if p.is_file())
         results: List[Tuple[str, float]] = []
         midpoint_offset = 0.5 / float(fps)
         for idx, frame_path in enumerate(produced):

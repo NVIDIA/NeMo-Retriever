@@ -10,7 +10,7 @@ import numpy as np
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.hf_model_registry import install_pinned_hf_hub_download
 from nemo_retriever.utils.nvtx import gpu_inference_range
-from ..model import HuggingFaceModel, RunMode
+from ..model import HuggingFaceModel, ModelRunMode
 
 import nemotron_page_elements_v3.model as _page_elements_model
 from nemotron_page_elements_v3.model import define_model as define_model_page_elements
@@ -192,7 +192,7 @@ class NemotronPageElementsV3(HuggingFaceModel):
         return "object-detection"
 
     @property
-    def model_runmode(self) -> RunMode:
+    def model_runmode(self) -> ModelRunMode:
         """Execution mode: local, NIM, or build-endpoint."""
         return "local"
 

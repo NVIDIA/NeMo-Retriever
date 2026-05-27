@@ -11,6 +11,7 @@ spec:
       modelPuller: "{{ .Values.nimOperator.ocr.image.repository }}:{{ .Values.nimOperator.ocr.image.tag }}"
       pullSecret: "{{ index .Values.nimOperator.ocr.image.pullSecrets 0 }}"
       authSecret: {{ .Values.nimOperator.ocr.authSecret }}
+      {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "ocr") | nindent 6 }}
   storage:
     pvc:
       create: {{ .Values.nimOperator.ocr.storage.pvc.create }}
@@ -36,8 +37,7 @@ spec:
   replicas: {{ .Values.nimOperator.ocr.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.ocr.nodeSelector | indent 4 }}
-  resources:
-{{ toYaml .Values.nimOperator.ocr.resources | indent 4 }}
+  {{- include "nemo-retriever.nimServiceResources" (dict "context" $ "resources" .Values.nimOperator.ocr.resources) | nindent 2 }}
   tolerations:
 {{ toYaml .Values.nimOperator.ocr.tolerations | indent 4 }}
   expose:

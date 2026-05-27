@@ -53,7 +53,7 @@ from nemo_retriever.video import dedup_video_frames
 from nemo_retriever.video import video_asr_audio_chunk_params
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.utils.input_files import INPUT_TYPE_EXTENSIONS
-from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
+from nemo_retriever.utils import ray_resource_hueristics as _rrh
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +232,15 @@ class _MultiTypeExtractBase(AbstractOperator):
         for idx, row in batch_df.iterrows():
             path = str(row.get("path") or "")
             ext = Path(path).suffix.lower()
-            target = explicit_mode if explicit_mode != "auto" else self._mode_for_extension(ext)
+            ext_mode = self._mode_for_extension(ext)
+            if explicit_mode == "auto":
+                target = ext_mode
+            elif explicit_mode in {"text", "html"}:
+                # Honor the file suffix so a mis-set extraction_mode does not
+                # force HTML bytes through the TXT splitter (or vice versa).
+                target = ext_mode or explicit_mode
+            else:
+                target = explicit_mode
             if explicit_mode == "auto" and target == "":
                 logger.warning(
                     _unsupported_extension_message(ext),
@@ -557,7 +565,7 @@ class _MultiTypeExtractBase(AbstractOperator):
 
     def _local_resources(self):
         if self._resolved_resources is None:
-            self._resolved_resources = gather_local_resources()
+            self._resolved_resources = _rrh.gather_local_resources()
         return self._resolved_resources
 
     def _instantiate_resolved(self, operator_class: type[AbstractOperator], **operator_kwargs: Any) -> AbstractOperator:

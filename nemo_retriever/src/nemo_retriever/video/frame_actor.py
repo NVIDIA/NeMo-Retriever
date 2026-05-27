@@ -60,8 +60,8 @@ class VideoFrameActor(AbstractOperator, CPUOperator):
       - ``path``: original video path (frames are not persisted on disk;
         ``image_b64`` / ``bytes`` carry the pixels)
       - ``source_path``: original video path
-      - ``image_b64``: base64-encoded PNG (the ``VideoFrameOCRActor`` reads this)
-      - ``bytes``: raw PNG bytes (kept for compatibility with Ray Data binary readers)
+      - ``image_b64``: base64-encoded frame image, JPEG by default
+      - ``bytes``: encoded frame image bytes, JPEG by default
       - ``page_number``: frame index (0, 1, 2, ...)
       - ``metadata``: dict with ``frame_timestamp_seconds``, ``segment_start_seconds``,
         ``segment_end_seconds``, ``fps``, ``source_path``, ``modality="video_frame"``,
@@ -169,7 +169,7 @@ def _extract_one(
 
 
 def _dhash(image_b64: str, hash_size: int = 8) -> Optional[int]:
-    """Difference-hash of a base64-encoded PNG, packed into a 64-bit integer.
+    """Difference-hash of a base64-encoded frame image, packed into a 64-bit integer.
 
     Resize to ``(hash_size+1) x hash_size`` grayscale, compare each pixel to
     its right neighbour, pack the results as bits. Two frames with similar

@@ -70,14 +70,22 @@ The production Helm chart enables these NIM microservices **by default** (for ex
 | `ocr` | [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) | Image OCR |
 | `vlm_embed` | [llama-nemotron-embed-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2) | Multimodal (VL) embedding |
 
+### Nemotron OCR v2 language mode { #nemotron-ocr-v2-language-mode }
+
+!!! note
+
+    **Local Hugging Face inference:** When you deploy locally with HuggingFace model weights (for example `pip install "nemo-retriever[local]"` and GPU inference without remote OCR NIM URLs), the default OCR engine is **Nemotron OCR v2**, which runs in **multilingual** mode by default. For CLI flags and API parameters, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). Remote OCR NIM endpoints use their own model and language behavior; local OCR language selectors are not sent on remote requests.
+
+    **Helm / NIM:** The chart deploys the core OCR NIM under `nimOperator.ocr`. For image defaults, multilingual behavior, and upgrade notes, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#nemotron-ocr-v2-language-mode) in the Helm chart README.
+
 Default VL embedder container and model for release deployments:
 
 - **Image:** `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0`
 - **Model ID:** `nvidia/llama-nemotron-embed-vl-1b-v2`
 
-### Optional Helm NIMs (not auto-wired by default) { #optional-helm-nims-not-auto-wired-by-default }
+### Optional Helm NIMs (not auto-wired) { #optional-helm-nims-not-auto-wired-by-default }
 
-The chart may reconcile these NIM microservices when `nimOperator.<key>.enabled` is `true`, but the retriever service does **not** call them until you enable the matching pipeline stage (reranker, Nemotron Parse, caption, or audio). Enable only what your workload needs. Chart keys and `enabled` defaults are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#nim-operator-sub-stack).
+These NIM microservices are **optional** for the default extraction pipeline. The retriever service does **not** call them until you enable the matching pipeline stage (reranker, Nemotron Parse, caption, or audio). For **26.05 production**, disable keys you do not need (see [Recommended minimal install (26.05)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#recommended-minimal-install-2605)). Set `nimOperator.<key>.enabled=true` when you want that NIM reconciled. Chart keys are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#nim-operator-sub-stack).
 
 | Helm flag | NIM | Role |
 |-----------|-----|------|
