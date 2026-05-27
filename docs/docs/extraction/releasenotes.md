@@ -10,6 +10,8 @@ To upgrade the Helm charts for this release, refer to the [NeMo Retriever Helm c
 
 Highlights for the 26.05 release line include everything in [26.03](#2603-release-notes-2630) plus changes on `main` merged into the `26.05` branch. See the [Git compare view](https://github.com/NVIDIA/NeMo-Retriever/compare/26.03...26.05) for the full commit list.
 
+**Migration note:** Direct `Retriever(...)` construction uses grouped configuration dictionaries. Replace flat `lancedb_uri=`, `lancedb_table=`, `embedder=`, `embedding_endpoint=`, and `reranker=` arguments with `vdb_kwargs={...}`, `embed_kwargs={...}`, and `rerank=...`. Helper APIs that document their own flat kwargs keep their own compatibility layer.
+
 **Install (RC1 example):**
 
 ```bash

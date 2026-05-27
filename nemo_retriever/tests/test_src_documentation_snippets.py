@@ -16,6 +16,7 @@ import ast
 import base64
 import importlib.util
 import io
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,10 @@ def _package_dir() -> Path:
     return Path(nemo_retriever.__file__).resolve().parent
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
 def _iter_markdown_python_blocks() -> list[tuple[str, str]]:
     blocks: list[tuple[str, str]] = []
     root = _package_dir()
@@ -45,12 +50,75 @@ def _iter_markdown_python_blocks() -> list[tuple[str, str]]:
 
 
 _MD_BLOCKS = _iter_markdown_python_blocks()
+_PUBLIC_RETRIEVER_DOCS = (
+    "README.md",
+    "docs/docs/extraction/custom-metadata.md",
+    "examples/nemo_retriever_metadata_and_filtered_search.ipynb",
+    "examples/nemo_retriever_retriever_query_metadata_filter.ipynb",
+    "nemo_retriever/README.md",
+    "nemo_retriever/docs/cli/README.md",
+    "nemo_retriever/retriever.md",
+    "nemo_retriever/src/nemo_retriever/evaluation/README.md",
+    "nemo_retriever/src/nemo_retriever/vdb/README.md",
+)
+_UNSUPPORTED_DIRECT_RETRIEVER_KWARGS = frozenset(
+    {"lancedb_uri", "lancedb_table", "embedder", "embedding_endpoint", "reranker"}
+)
 
 
 @pytest.mark.parametrize("block_id,code", _MD_BLOCKS, ids=[b[0] for b in _MD_BLOCKS])
 def test_markdown_python_snippet_is_valid_syntax(block_id: str, code: str) -> None:
     """All in-tree Markdown ``python`` fences parse as Python except documented pseudocode."""
     ast.parse(code)
+
+
+def _iter_public_retriever_doc_code() -> list[tuple[str, str]]:
+    root = _repo_root()
+    blocks: list[tuple[str, str]] = []
+    for rel_path in _PUBLIC_RETRIEVER_DOCS:
+        path = root / rel_path
+        if path.suffix == ".ipynb":
+            nb = json.loads(path.read_text(encoding="utf-8"))
+            for i, cell in enumerate(nb.get("cells", [])):
+                if cell.get("cell_type") != "code":
+                    continue
+                source = cell.get("source") or []
+                code = source if isinstance(source, str) else "".join(source)
+                blocks.append((f"{rel_path}#cell-{i}", code))
+            continue
+
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for i, code in enumerate(re.findall(r"```python\n(.*?)```", text, re.DOTALL)):
+            blocks.append((f"{rel_path}#python-{i}", code))
+    return blocks
+
+
+def _retriever_call_flat_kwargs(code: str) -> list[str]:
+    tree = ast.parse(code)
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        is_retriever = isinstance(func, ast.Name) and func.id == "Retriever"
+        is_retriever = is_retriever or isinstance(func, ast.Attribute) and func.attr == "Retriever"
+        if is_retriever:
+            found.extend(str(kw.arg) for kw in node.keywords if kw.arg in _UNSUPPORTED_DIRECT_RETRIEVER_KWARGS)
+    return found
+
+
+def test_public_retriever_examples_do_not_use_unsupported_constructor_kwargs() -> None:
+    """Public direct ``Retriever(...)`` examples should not use kwargs that the constructor rejects."""
+    violations = []
+    for block_id, code in _iter_public_retriever_doc_code():
+        try:
+            flat_kwargs = _retriever_call_flat_kwargs(code)
+        except SyntaxError:
+            continue
+        if flat_kwargs:
+            violations.append(f"{block_id}: {', '.join(sorted(set(flat_kwargs)))}")
+
+    assert not violations, "Unsupported kwargs in public direct Retriever(...) examples:\n" + "\n".join(violations)
 
 
 def test_graph_readme_smallest_example() -> None:
