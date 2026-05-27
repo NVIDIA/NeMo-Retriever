@@ -49,7 +49,7 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
 
-Chart-labeled PDF regions are **not** routed through the Omni caption stage in 26.05; they remain on the layout-and-OCR path. For scope and validation guidance, see [Image captioning (26.05)](prerequisites-support-matrix.md#image-captioning-2605).
+Chart-labeled PDF regions are **not** routed through the Omni caption stage in 26.05; they remain on the layout-and-OCR path. For scope and validation guidance, see [Caption scope (26.05)](prerequisites-support-matrix.md#caption-scope-2605).
 
 For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning) and set `caption_infographics=True` when you need VLM captions on infographic regions.
 
@@ -75,7 +75,7 @@ The default OCR engine is **Nemotron OCR v2**. For OCR configuration (language m
 
 Image captioning generates natural-language descriptions for unstructured image content. Retrieval can then use text embeddings over captions and visual embeddings where you configure them.
 
-For Omni scope in 26.05 (including PDF chart exclusions and validation), see [Image captioning (26.05)](prerequisites-support-matrix.md#image-captioning-2605).
+For Omni scope in 26.05 (including PDF chart exclusions and validation), see [Caption scope (26.05)](prerequisites-support-matrix.md#caption-scope-2605).
 
 **Captioning is optional** — enable it in your ingest configuration (for example, the `caption` API or pipeline flag) when you need natural-language descriptions of image content. Reasoning traces are disabled by default for captioning.
 

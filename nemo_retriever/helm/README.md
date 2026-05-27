@@ -292,7 +292,7 @@ pair gated on three conditions ALL holding:
 and **ocr** (no `graphic_elements` operator NIM in this chart). PDF regions labeled
 **chart** are not sent to the caption stage. For image captioning scope and validation,
 set `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true` when needed — see
-[Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605).
+[Caption scope (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#caption-scope-2605).
 
 ### Persistence
 
