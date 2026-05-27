@@ -8,7 +8,7 @@ import re
 from collections import deque
 from dataclasses import dataclass, field
 
-# Legacy patterns (inprocess_pipeline / fused_pipeline)
+# Legacy patterns (inprocess_pipeline)
 DONE_RE = re.compile(r"\[done\]\s+(?P<files>\d+)\s+files,\s+(?P<pages>\d+)\s+pages\s+in\s+(?P<secs>[0-9.]+)s")
 INGEST_ROWS_RE = re.compile(
     r"Ingestion complete\.\s+(?P<rows>\d+)\s+rows\s+proces+ed\s+in\s+(?P<secs>[0-9.]+)\s+seconds\.\s+"
