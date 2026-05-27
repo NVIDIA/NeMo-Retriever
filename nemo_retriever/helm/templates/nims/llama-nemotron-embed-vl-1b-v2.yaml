@@ -12,6 +12,7 @@ spec:
       modelPuller: "{{ .Values.nimOperator.vlm_embed.image.repository }}:{{ .Values.nimOperator.vlm_embed.image.tag }}"
       pullSecret: "{{ index .Values.nimOperator.vlm_embed.image.pullSecrets 0 }}"
       authSecret: {{ .Values.nimOperator.vlm_embed.authSecret }}
+      {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "vlm_embed") | nindent 6 }}
   storage:
     pvc:
       create: {{ .Values.nimOperator.vlm_embed.storage.pvc.create }}
@@ -37,8 +38,10 @@ spec:
   replicas: {{ .Values.nimOperator.vlm_embed.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.vlm_embed.nodeSelector | indent 4 }}
+  {{- with .Values.nimOperator.vlm_embed.resources }}
   resources:
-{{ toYaml .Values.nimOperator.vlm_embed.resources | indent 4 }}
+{{ toYaml . | indent 4 }}
+  {{- end }}
   tolerations:
 {{ toYaml .Values.nimOperator.vlm_embed.tolerations | indent 4 }}
   expose:

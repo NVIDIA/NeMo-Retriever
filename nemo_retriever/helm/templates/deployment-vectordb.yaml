@@ -4,6 +4,23 @@
 {{- $fullname := include "nemo-retriever.fullname" . -}}
 {{- $vdbName := printf "%s-vectordb" $fullname -}}
 {{- $embedURL := include "nemo-retriever.nim.endpointURL" (dict "context" . "key" "vlm_embed" "serviceName" .Values.nimOperator.vlm_embed.nimServiceName "configKey" "embedInvokeUrl" "invokePath" "/v1/embeddings") -}}
+{{- /*
+  Fail-fast guard: rendering a vectordb Deployment without an embed
+  endpoint produces a "healthy" Pod (its /v1/health probe only inspects
+  LanceDB state) whose first /v1/query request then dies with HTTP 501
+  ("No embedding endpoint configured."). Refuse to install in that
+  configuration so the user gets a clear, actionable error at
+  `helm install` / `helm upgrade` time instead of after ingestion.
+
+  The embed endpoint can be supplied either explicitly via
+  `serviceConfig.nimEndpoints.embedInvokeUrl`, or implicitly by enabling
+  the in-cluster NIM Operator-managed embed NIM
+  (`nimOperator.vlm_embed.enabled=true`, with the
+  `apps.nvidia.com/v1alpha1` CRDs installed).
+*/}}
+{{- if not $embedURL }}
+{{- fail "serviceConfig.vectordb.enabled=true but the embed endpoint could not be resolved. The vectordb Pod's /v1/query handler requires a NIM embedding endpoint. Pick one of: (1) set an explicit URL via --set serviceConfig.nimEndpoints.embedInvokeUrl=http://<host>:<port>/v1/embeddings; (2) enable the in-cluster embed NIM via --set nimOperator.vlm_embed.enabled=true (requires the apps.nvidia.com/v1alpha1 CRDs); or (3) disable the vectordb sub-stack via --set serviceConfig.vectordb.enabled=false. See nemo_retriever/helm/README.md section 'VectorDB and the embed endpoint' for details." -}}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

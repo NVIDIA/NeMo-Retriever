@@ -59,9 +59,12 @@ def _prediction_to_detections(pred: Any, *, label_names: List[str]) -> List[Dict
     Produces dicts of the form:
       {"bbox_xyxy_norm": [...], "label": int|None, "label_name": str, "score": float|None}
     """
-    if torch is None:  # pragma: no cover
-        raise ImportError("torch required for prediction parsing.")
-
+    # Extract candidate boxes/labels/scores BEFORE checking torch. The
+    # retriever-service image deliberately omits torch (it talks to
+    # remote NIMs only), so an input that yields no boxes/labels — the
+    # common case for NIM-formatted responses passed here by mistake —
+    # must return ``[]`` rather than raise ``ImportError``. Without
+    # this ordering a single non-table page can fail an entire batch.
     boxes = labels = scores = None
     if isinstance(pred, dict):
         # IMPORTANT: do not use `or` chains here. torch.Tensor truthiness is ambiguous and raises.
@@ -81,6 +84,9 @@ def _prediction_to_detections(pred: Any, *, label_names: List[str]) -> List[Dict
 
     if boxes is None or labels is None:
         return []
+
+    if torch is None:  # pragma: no cover
+        raise ImportError("torch required for prediction parsing.")
 
     # Normalize to torch tensors.
     def _to_tensor(x: Any) -> Optional["torch.Tensor"]:
@@ -160,6 +166,18 @@ def _prediction_to_detections(pred: Any, *, label_names: List[str]) -> List[Dict
     return dets
 
 
+def _is_nim_bounding_boxes_response(response_item: Any) -> bool:
+    """Return ``True`` iff *response_item* is a NIM ``bounding_boxes`` envelope.
+
+    Used to distinguish "the NIM correctly reported zero detections" from
+    "the response is in some other shape and we need the legacy parser".
+    The two cases produce identical empty lists from
+    :func:`_parse_nim_bounding_boxes`, so this predicate is the only
+    signal callers can use.
+    """
+    return isinstance(response_item, dict) and isinstance(response_item.get("bounding_boxes"), dict)
+
+
 def _parse_nim_bounding_boxes(response_item: Any) -> List[Dict[str, Any]]:
     """Parse the ``bounding_boxes`` NIM response format.
 
@@ -172,7 +190,10 @@ def _parse_nim_bounding_boxes(response_item: Any) -> List[Dict[str, Any]]:
         }}
 
     Returns a flat list of detection dicts compatible with
-    ``_structure_dets_to_class_boxes``.
+    ``_structure_dets_to_class_boxes``. An empty list is returned both
+    when the response is *not* in ``bounding_boxes`` shape and when the
+    NIM reports zero detections — callers that need to disambiguate
+    these cases should use :func:`_is_nim_bounding_boxes_response`.
     """
     bb = None
     if isinstance(response_item, dict):
@@ -417,7 +438,15 @@ def table_structure_ocr_page_elements(
                 raise RuntimeError(f"Expected {n_crops} table-structure responses, got {len(response_items)}")
             for ci, resp in enumerate(response_items):
                 parsed = _parse_nim_bounding_boxes(resp)
-                if not parsed:
+                # An empty ``bounding_boxes: {}`` payload is the NIM's
+                # canonical "no detections on this crop" response — a
+                # legitimate outcome for pages without tables, NOT a
+                # "parse failed, try fallback" signal. Only fall
+                # through to the legacy in-process parser when the
+                # response isn't in NIM ``bounding_boxes`` shape at
+                # all; that fallback path requires ``torch`` (which
+                # the retriever-service image does not ship).
+                if not parsed and not _is_nim_bounding_boxes_response(resp):
                     pred_item = _extract_remote_pred_item(resp)
                     parsed = _prediction_to_detections(pred_item, label_names=label_names)
                 structure_results[ci] = [d for d in parsed if (d.get("score") or 0.0) >= YOLOX_TABLE_MIN_SCORE]

@@ -220,7 +220,7 @@ topology:
   mode: standalone   # "standalone" or "split"
 
   gateway:
-    replicas: 2
+    replicas: 1
     resources:
       requests:
         cpu: "4"
@@ -233,7 +233,7 @@ topology:
     affinity: {}
 
   realtime:
-    replicas: 2
+    replicas: 1
     resources:
       requests:
         cpu: "8"
@@ -267,7 +267,7 @@ topology:
     # existing values files keep working.
     hpa:
       enabled: true
-      minReplicas: 2
+      minReplicas: 1
       maxReplicas: 8
       metrics:
         queueDepthRatio:
@@ -312,7 +312,7 @@ topology:
       targetCPUUtilizationPercentage: null
 
   batch:
-    replicas: 2
+    replicas: 1
     resources:
       requests:
         cpu: "16"
@@ -474,6 +474,18 @@ serviceConfig:
     tableStructureInvokeUrl: ""
     ocrInvokeUrl: ""
     embedInvokeUrl: ""
+    # Optional remote VLM endpoint for image captioning (Nemotron 3 Nano
+    # Omni). Auto-wired from the in-cluster Service when
+    # `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`
+    # (and the NIM Operator CRDs are present). Set explicitly to point
+    # at a hosted endpoint.
+    captionInvokeUrl: ""
+    # Model identifier passed to the remote caption endpoint. Auto-set
+    # to the Omni reasoning model id (matching
+    # `nemo_retriever.caption.model_profiles.OMNI_REMOTE_MODEL_ID`) when
+    # the operator-managed Omni NIM is enabled. Override to point at a
+    # different VLM SKU.
+    captionModelName: ""
     # gRPC endpoint for the Parakeet ASR NIM (e.g. "parakeet-nim:50051").
     # Required for audio/video ingestion in service mode (without torch).
     audioGrpcEndpoint: ""
@@ -722,13 +734,75 @@ nimOperator:
       volumeAccessMode: ReadWriteOnce
 
   # ---------------------------------------------------------------------------
-  # All NIMs the operator can stand up are enabled by default — flip
-  # `nims.enabled: false` to disable the whole sub-stack, or set
-  # `nimOperator.<key>.enabled: false` to opt out of a single NIM.
-  # page_elements, table_structure, ocr, and vlm_embed are wired into the
-  # retriever-service config automatically; the rest are reconciled by the
-  # operator but the retriever-service won't call them unless you also point
-  # your pipeline at them.
+  # NIMCache GPU / profile filter (chart-wide default)
+  # ---------------------------------------------------------------------------
+  # Renders directly under `spec.source.ngc.model` on every NIMCache the
+  # chart provisions; the NIM Operator uses it to restrict which model
+  # profiles each cache job downloads. Without a filter the operator
+  # caches every profile applicable to the GPUs it detects, which on
+  # heterogeneous clusters (or any cluster with ≥ 3 NIMs) wastes tens of
+  # GiB of PVC storage and NGC bandwidth.
+  #
+  # Two filter dimensions are supported (matching the NIMCache CRD —
+  # set whichever fits your cluster; ``gpus`` is the common case):
+  #
+  #   gpus:                 list of GPU selectors. Each selector is
+  #     - ids: ["<pci>"]    ``{ids: [<PCI device IDs>], product:
+  #       product: "..."    "<NVIDIA marketing name>"}``. Profiles that
+  #                         do not match at least one selector are
+  #                         skipped.
+  #   profiles:             list of profile UUIDs. Only those exact
+  #     - "<uuid>"          profiles are downloaded.
+  #
+  # Default: ``{}`` — no filter, preserves the operator's "cache all
+  # profiles applicable to detected GPUs" behaviour. Override examples:
+  #
+  #   # Homogeneous H100 80 GB SXM cluster:
+  #   modelProfile:
+  #     gpus:
+  #       - ids: ["26B5"]
+  #         product: "NVIDIA-H100-80GB-HBM3"
+  #
+  # Per-NIM overrides live next to each NIM's ``enabled:`` flag below
+  # (``nimOperator.<key>.modelProfile``) and REPLACE this chart-wide
+  # default when non-empty (they do not merge). Documented in
+  # helm/README.md §"Filtering cached GPU profiles".
+  modelProfile: {}
+
+  # ---------------------------------------------------------------------------
+  # Per-NIM defaults
+  # ---------------------------------------------------------------------------
+  # Two enablement tiers, matching the docs' "core vs optional" contract
+  # (see docs/extraction/deployment-options.md "Core NIMs for the default
+  # extraction pipeline (26.05)"):
+  #
+  #   Core (enabled: true by default, auto-wired into the service config):
+  #     - page_elements
+  #     - table_structure
+  #     - ocr
+  #     - vlm_embed
+  #
+  #   Optional (enabled: false by default, NOT auto-wired):
+  #     - rerankqa                                 (VL reranker,
+  #                                                 ≈ 3.1 GiB GPU)
+  #     - nemotron_parse                           (Parse v1.2, ≈ 3.5 GiB GPU)
+  #     - nemotron_3_nano_omni_30b_a3b_reasoning   (Omni 30B caption NIM,
+  #                                                 ≈ 62 GiB BF16 weights)
+  #     - audio                                    (Parakeet ASR)
+  #
+  # Two flags gate every NIM, so each one is opt-in along two independent
+  # axes:
+  #   * `nims.enabled: true`              — chart-wide master switch.
+  #   * `nimOperator.<key>.enabled: true` — per-NIM toggle below.
+  #
+  # The optional NIMs sit behind their per-NIM toggles to honor the
+  # "optional and disabled by default" contract in 26.05 — turning them
+  # on alongside the core stack at install time would silently pull tens
+  # of gigabytes of model weights (Omni 30B ≈ 62 GiB BF16) and consume
+  # an additional dedicated GPU per NIM with no opt-in from the operator.
+  # See helm/README.md "Recommended minimal install (26.05)" for the
+  # opt-in flags and "Image tag conventions" for what the
+  # ``1.7.0-variant`` Parse / Omni tags mean.
   # ---------------------------------------------------------------------------
 
   # Page-elements detector (YOLOX-style). Used by the page-element extraction
@@ -742,6 +816,9 @@ nimOperator:
       pullSecrets:
         - ngc-secret
     authSecret: ngc-api
+    # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
+    # above for the shape; non-empty REPLACES the chart-wide default.
+    modelProfile: {}
     storage:
       pvc:
         create: true
@@ -749,9 +826,13 @@ nimOperator:
         size: "25Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    resources:
-      limits:
-        nvidia.com/gpu: 1
+    # GPU limits are reconciled by the NIM Operator from the model profile.
+    # Leave empty (`{}`) so the chart does not take server-side-apply
+    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
+    # owned by the operator, and a Helm-managed value here causes SSA
+    # conflicts on subsequent `helm upgrade` runs. Override via
+    # `kubectl edit nimservice <name>` if you need a non-default value.
+    resources: {}
     nodeSelector: {}
     tolerations: []
     expose:
@@ -783,6 +864,9 @@ nimOperator:
       pullSecrets:
         - ngc-secret
     authSecret: ngc-api
+    # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
+    # above for the shape; non-empty REPLACES the chart-wide default.
+    modelProfile: {}
     storage:
       pvc:
         create: true
@@ -790,9 +874,13 @@ nimOperator:
         size: "25Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    resources:
-      limits:
-        nvidia.com/gpu: 1
+    # GPU limits are reconciled by the NIM Operator from the model profile.
+    # Leave empty (`{}`) so the chart does not take server-side-apply
+    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
+    # owned by the operator, and a Helm-managed value here causes SSA
+    # conflicts on subsequent `helm upgrade` runs. Override via
+    # `kubectl edit nimservice <name>` if you need a non-default value.
+    resources: {}
     nodeSelector: {}
     tolerations: []
     expose:
@@ -824,6 +912,9 @@ nimOperator:
       pullSecrets:
         - ngc-secret
     authSecret: ngc-api
+    # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
+    # above for the shape; non-empty REPLACES the chart-wide default.
+    modelProfile: {}
     storage:
       pvc:
         create: true
@@ -831,9 +922,13 @@ nimOperator:
         size: "25Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    resources:
-      limits:
-        nvidia.com/gpu: 1
+    # GPU limits are reconciled by the NIM Operator from the model profile.
+    # Leave empty (`{}`) so the chart does not take server-side-apply
+    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
+    # owned by the operator, and a Helm-managed value here causes SSA
+    # conflicts on subsequent `helm upgrade` runs. Override via
+    # `kubectl edit nimservice <name>` if you need a non-default value.
+    resources: {}
     nodeSelector: {}
     tolerations: []
     expose:
@@ -864,6 +959,9 @@ nimOperator:
       pullSecrets:
         - ngc-secret
     authSecret: ngc-api
+    # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
+    # above for the shape; non-empty REPLACES the chart-wide default.
+    modelProfile: {}
     storage:
       pvc:
         create: true
@@ -871,9 +969,13 @@ nimOperator:
         size: "50Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    resources:
-      limits:
-        nvidia.com/gpu: 1
+    # GPU limits are reconciled by the NIM Operator from the model profile.
+    # Leave empty (`{}`) so the chart does not take server-side-apply
+    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
+    # owned by the operator, and a Helm-managed value here causes SSA
+    # conflicts on subsequent `helm upgrade` runs. Override via
+    # `kubectl edit nimservice <name>` if you need a non-default value.
+    resources: {}
     nodeSelector: {}
     tolerations: []
     expose:
@@ -900,16 +1002,33 @@ nimOperator:
   # whole sub-stack.
   # ---------------------------------------------------------------------------
 
-  # Llama Nemotron rerank 1B v2. Optional reranking stage for retrieval.
+  # Llama Nemotron rerank VL 1B v2 — multimodal reranking NIM.
+  #
+  # Disabled by default per the 26.05 "optional and disabled by default"
+  # contract (see docs/extraction/deployment-options.md L21 and
+  # docs/extraction/prerequisites-support-matrix.md L92 / L128). Opt in
+  # only when the retrieval pipeline calls a reranker — enabling this NIM
+  # consumes one GPU and ~3.1 GiB of GPU memory at runtime.
+  #
+  # IMPORTANT — VL vs text-only: 26.05 documents the **VL** reranker
+  # (``llama-nemotron-rerank-vl-1b-v2``) as the supported NIM so the
+  # ingest pipeline can score image + text passages together. The
+  # text-only ``llama-nemotron-rerank-1b-v2`` is a different SKU that
+  # silently degrades to text-only behaviour on multimodal queries.
+  # Override the repository only when validated against the matching
+  # service/Helm release.
   rerankqa:
-    enabled: true
+    enabled: false
     image:
-      repository: nvcr.io/nim/nvidia/llama-nemotron-rerank-1b-v2
+      repository: nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2
       tag: "1.10.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
     authSecret: ngc-api
+    # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
+    # above for the shape; non-empty REPLACES the chart-wide default.
+    modelProfile: {}
     storage:
       pvc:
         create: true
@@ -917,9 +1036,13 @@ nimOperator:
         size: "50Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    resources:
-      limits:
-        nvidia.com/gpu: 1
+    # GPU limits are reconciled by the NIM Operator from the model profile.
+    # Leave empty (`{}`) so the chart does not take server-side-apply
+    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
+    # owned by the operator, and a Helm-managed value here causes SSA
+    # conflicts on subsequent `helm upgrade` runs. Override via
+    # `kubectl edit nimservice <name>` if you need a non-default value.
+    resources: {}
     nodeSelector: {}
     tolerations: []
     expose:
@@ -934,8 +1057,24 @@ nimOperator:
         value: "1"
 
   # Nemotron Parse v1.2. Optional structured document parser.
+  #
+  # Disabled by default per the 26.05 "optional and disabled by default"
+  # contract (see docs/extraction/deployment-options.md). Opt in only when
+  # the pipeline runs `extract_method="nemotron_parse"`; enabling this
+  # NIM consumes one GPU and ~3.5 GiB of GPU memory at runtime, plus
+  # ~16 GB of on-disk NIM model cache (see prerequisites-support-matrix).
+  #
+  # The default image tag (`1.7.0-variant`) is the Nemotron Parse v1.2
+  # NIM SKU shipped alongside the 26.05 release; the `-variant` suffix
+  # marks it as the build that ships with the per-GPU TensorRT engine
+  # variants required by NIM Operator profile reconciliation, matching
+  # `nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` and the row
+  # for Nemotron Parse in
+  # docs/extraction/prerequisites-support-matrix.md "Model hardware
+  # requirements". Override to a different NGC tag only when validated
+  # against the matching service/Helm release.
   nemotron_parse:
-    enabled: true
+    enabled: false
     image:
       repository: nvcr.io/nim/nvidia/nemotron-parse-v1.2
       tag: "1.7.0-variant"
@@ -943,6 +1082,9 @@ nimOperator:
       pullSecrets:
         - ngc-secret
     authSecret: ngc-api
+    # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
+    # above for the shape; non-empty REPLACES the chart-wide default.
+    modelProfile: {}
     storage:
       pvc:
         create: true
@@ -950,9 +1092,13 @@ nimOperator:
         size: "100Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    resources:
-      limits:
-        nvidia.com/gpu: 1
+    # GPU limits are reconciled by the NIM Operator from the model profile.
+    # Leave empty (`{}`) so the chart does not take server-side-apply
+    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
+    # owned by the operator, and a Helm-managed value here causes SSA
+    # conflicts on subsequent `helm upgrade` runs. Override via
+    # `kubectl edit nimservice <name>` if you need a non-default value.
+    resources: {}
     nodeSelector: {}
     tolerations: []
     expose:
@@ -966,11 +1112,31 @@ nimOperator:
       - name: NIM_TRITON_LOG_VERBOSE
         value: "1"
 
-  # Nemotron 3 Nano Omni 30B A3B Reasoning. Multimodal reasoning LLM.
-  # Large model — bump `storage.pvc.size` and `resources.limits.nvidia.com/gpu`
-  # if your weights/runtime need more than the defaults below.
+  # Nemotron 3 Nano Omni 30B A3B Reasoning. Multimodal reasoning VLM
+  # used by the image-captioning stage.
+  #
+  # Disabled by default per the 26.05 "optional and disabled by default"
+  # contract (see docs/extraction/deployment-options.md). This is the
+  # canonical caption NIM — once enabled the chart auto-wires
+  # `nim_endpoints.caption_invoke_url` + `caption_model_name` into the
+  # retriever-service config (see helm/README.md "Image captioning
+  # (Omni 30B)"), but it is intentionally opt-in because the model is
+  # very large: ~62 GiB (BF16), ~33 GiB (FP8), ~21 GiB (NVFP4), plus
+  # ~80 GB on-disk NIM cache. Bump `storage.pvc.size` below if your
+  # weights need more than 300 GiB; GPU count is reconciled by the NIM
+  # Operator from the model profile (override with `kubectl edit
+  # nimservice` if necessary).
+  #
+  # The default image tag (`1.7.0-variant`) is the Omni NIM SKU shipped
+  # alongside the 26.05 release; the `-variant` suffix marks it as the
+  # build that ships with the per-GPU TensorRT engine variants required
+  # by NIM Operator profile reconciliation, matching the row for the
+  # Omni caption NIM in
+  # docs/extraction/prerequisites-support-matrix.md "Model hardware
+  # requirements" (footnote ³). Override to a different NGC tag only
+  # when validated against the matching service/Helm release.
   nemotron_3_nano_omni_30b_a3b_reasoning:
-    enabled: true
+    enabled: false
     image:
       repository: nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
       tag: "1.7.0-variant"
@@ -978,6 +1144,9 @@ nimOperator:
       pullSecrets:
         - ngc-secret
     authSecret: ngc-api
+    # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
+    # above for the shape; non-empty REPLACES the chart-wide default.
+    modelProfile: {}
     storage:
       pvc:
         create: true
@@ -985,9 +1154,13 @@ nimOperator:
         size: "300Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    resources:
-      limits:
-        nvidia.com/gpu: 1
+    # GPU limits are reconciled by the NIM Operator from the model profile.
+    # Leave empty (`{}`) so the chart does not take server-side-apply
+    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
+    # owned by the operator, and a Helm-managed value here causes SSA
+    # conflicts on subsequent `helm upgrade` runs. Override via
+    # `kubectl edit nimservice <name>` if you need a non-default value.
+    resources: {}
     nodeSelector: {}
     tolerations: []
     expose:
@@ -1003,7 +1176,7 @@ nimOperator:
 
   # Parakeet ASR. Optional audio transcription NIM.
   audio:
-    enabled: true
+    enabled: false
     image:
       repository: nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us
       tag: "1.5.0"
@@ -1011,6 +1184,9 @@ nimOperator:
       pullSecrets:
         - ngc-secret
     authSecret: ngc-api
+    # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
+    # above for the shape; non-empty REPLACES the chart-wide default.
+    modelProfile: {}
     storage:
       pvc:
         create: true
@@ -1018,9 +1194,13 @@ nimOperator:
         size: "100Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    resources:
-      limits:
-        nvidia.com/gpu: 1
+    # GPU limits are reconciled by the NIM Operator from the model profile.
+    # Leave empty (`{}`) so the chart does not take server-side-apply
+    # ownership of `spec.resources.limits.nvidia.com/gpu` — that field is
+    # owned by the operator, and a Helm-managed value here causes SSA
+    # conflicts on subsequent `helm upgrade` runs. Override via
+    # `kubectl edit nimservice <name>` if you need a non-default value.
+    resources: {}
     nodeSelector: {}
     tolerations: []
     expose:

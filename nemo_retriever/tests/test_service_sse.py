@@ -8,9 +8,16 @@ We assert the route shape and error responses for
 ``GET /v1/ingest/job/{job_id}/events``:
 
 * unknown job → ``404`` (validated before the stream opens),
-* the legacy firehose ``GET /v1/ingest/events`` is removed (404),
-* the route is registered (``openapi.json``-style listing) so a
-  refactor that drops it would fail loudly.
+* the legacy firehose ``GET /v1/ingest/events`` is removed and now
+  returns ``410 Gone`` with a migration body that names the
+  replacement route — so an older SDK build hitting a new service
+  fails with an actionable error instead of an empty result,
+* the legacy single-shot ``POST /v1/ingest`` route is similarly
+  surfaced with ``410 Gone`` + migration body,
+* the per-job route is registered in OpenAPI (``openapi.json``-style
+  listing) so a refactor that drops it would fail loudly,
+* the legacy 410 stubs are **hidden** from OpenAPI so they aren't
+  advertised as supported endpoints.
 
 The per-job filtering semantics of the underlying ``EventBus`` are
 already covered in :mod:`test_service_job_tracker` — see
@@ -85,10 +92,47 @@ def test_per_job_sse_route_404_when_job_missing(app_with_stub_pool: TestClient) 
     assert "not found" in resp.json()["detail"].lower()
 
 
-def test_legacy_firehose_route_is_removed(app_with_stub_pool: TestClient) -> None:
-    """``GET /v1/ingest/events`` was deleted in J4 — it should now 404."""
+def test_legacy_firehose_route_returns_410_with_migration_body(
+    app_with_stub_pool: TestClient,
+) -> None:
+    """``GET /v1/ingest/events`` returns ``410 Gone`` with a migration hint.
+
+    Replaces the older "should now 404" contract.  The default FastAPI
+    404 had no body, which meant older SDK builds calling the firehose
+    surfaced a generic "no documents completed" failure with no clue
+    that the route had moved.  We now return an explicit ``410 Gone``
+    naming the replacement route (``/v1/ingest/job/{job_id}/events``)
+    and the underlying cause (SDK / service version mismatch).
+    """
     resp = app_with_stub_pool.get("/v1/ingest/events")
-    assert resp.status_code == 404
+    assert resp.status_code == 410, resp.text
+    detail = resp.json().get("detail", "")
+    # Body must name the replacement route so operators can act on it.
+    assert "/v1/ingest/job/{job_id}/events" in detail, detail
+    # And it must surface the actual cause — SDK / service version
+    # mismatch — so this isn't mistaken for a generic transient failure.
+    assert "SDK" in detail and "service" in detail, detail
+
+
+def test_legacy_ingest_upload_route_returns_410_with_migration_body(
+    app_with_stub_pool: TestClient,
+) -> None:
+    """``POST /v1/ingest`` (legacy single-shot upload) returns ``410 Gone``.
+
+    Older SDK builds upload through this path.  Without an explicit
+    handler FastAPI returns a body-less 404 and the SDK surfaces an
+    empty result — the customer-facing regression captured in the
+    26.05-RC2 release-integration report.  The 410 body must name the
+    replacement pair (``/v1/ingest/job`` + ``/v1/ingest/job/{job_id}/document``).
+    """
+    # Body is intentionally empty — the route should reject the request
+    # on path alone, before any multipart parsing.
+    resp = app_with_stub_pool.post("/v1/ingest")
+    assert resp.status_code == 410, resp.text
+    detail = resp.json().get("detail", "")
+    assert "/v1/ingest/job" in detail, detail
+    assert "/v1/ingest/job/{job_id}/document" in detail, detail
+    assert "SDK" in detail and "service" in detail, detail
 
 
 def test_per_job_sse_route_is_registered(app_with_stub_pool: TestClient) -> None:
@@ -99,7 +143,19 @@ def test_per_job_sse_route_is_registered(app_with_stub_pool: TestClient) -> None
     assert "get" in methods
 
 
-def test_legacy_firehose_route_is_not_registered(app_with_stub_pool: TestClient) -> None:
-    """The schema should not advertise the removed firehose endpoint."""
+def test_legacy_routes_are_not_registered_in_openapi(
+    app_with_stub_pool: TestClient,
+) -> None:
+    """Schema must not advertise the removed firehose or legacy upload routes.
+
+    Both legacy stubs (``GET /v1/ingest/events`` and ``POST /v1/ingest``)
+    are registered with ``include_in_schema=False`` so they exist for
+    error-handling purposes but do not show up as supported endpoints
+    in clients generated from ``/openapi.json``.
+    """
     schema = app_with_stub_pool.get("/openapi.json").json()
-    assert "/v1/ingest/events" not in schema["paths"], sorted(schema["paths"])
+    paths = schema["paths"]
+    assert "/v1/ingest/events" not in paths, sorted(paths)
+    # ``/v1/ingest`` is also reserved for the 410 stub and must not be
+    # exposed as a real upload route to schema-generated clients.
+    assert "/v1/ingest" not in paths, sorted(paths)

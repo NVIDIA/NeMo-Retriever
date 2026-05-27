@@ -44,7 +44,7 @@ from nemo_retriever.service.models.responses import (
 )
 from nemo_retriever.service.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.service.services.event_bus import get_event_bus
-from nemo_retriever.service.services.job_tracker import get_job_tracker
+from nemo_retriever.service.services.job_tracker import MarkOutcome, get_job_tracker
 from nemo_retriever.service.services.metrics import get_metrics
 from nemo_retriever.service.services.pipeline_pool import (
     PoolType,
@@ -59,7 +59,11 @@ from nemo_retriever.service.services.prometheus import (
     INGEST_REQUESTS_TOTAL,
 )
 from nemo_retriever.service.services.proxy import get_proxy
-from nemo_retriever.service.utils.file_type import FileCategory, FileClassifier
+from nemo_retriever.service.utils.file_type import (
+    FileCategory,
+    FileClassifier,
+    enforce_media_dependencies,
+)
 
 _RETRY_AFTER_SECONDS = "5"
 _DRY_RUN_HEADER = "X-Nemo-Dry-Run"
@@ -647,6 +651,7 @@ async def submit_document_to_job(
 
     if _is_gateway(request):
         classification = FileClassifier.classify(file, filename_override=meta.filename or "")
+        enforce_media_dependencies(classification)
         file_size = _file_size_from_upload(file, request)
 
         file_bytes = await file.read()
@@ -699,6 +704,7 @@ async def submit_document_to_job(
 
     # ── worker / standalone ──────────────────────────────────────
     classification = FileClassifier.classify(file, filename_override=meta.filename or "")
+    enforce_media_dependencies(classification)
 
     file_bytes = await file.read()
     route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
@@ -772,6 +778,7 @@ async def submit_page_to_job(
 
     if _is_gateway(request):
         classification = FileClassifier.classify(file, filename_override=filename)
+        enforce_media_dependencies(classification)
         file_size = _file_size_from_upload(file, request)
 
         page_id = uuid.uuid4().hex
@@ -830,6 +837,7 @@ async def submit_page_to_job(
     # ── worker / standalone ──────────────────────────────────────
     dry_run = _is_dry_run(request)
     classification = FileClassifier.classify(file, filename_override=filename)
+    enforce_media_dependencies(classification)
 
     file_bytes = await file.read()
     content_sha256 = hashlib.sha256(file_bytes).hexdigest()
@@ -904,6 +912,7 @@ async def submit_whole_document_to_job(
 
     if _is_gateway(request):
         classification = FileClassifier.classify(file, filename_override=meta.filename or "")
+        enforce_media_dependencies(classification)
         file_size = _file_size_from_upload(file, request)
 
         document_id = uuid.uuid4().hex
@@ -956,6 +965,7 @@ async def submit_whole_document_to_job(
     # ── worker / standalone ──────────────────────────────────────
     dry_run = _is_dry_run(request)
     classification = FileClassifier.classify(file, filename_override=meta.filename or "")
+    enforce_media_dependencies(classification)
 
     file_bytes = await file.read()
     content_sha256 = hashlib.sha256(file_bytes).hexdigest()
@@ -1332,6 +1342,13 @@ async def job_callback(request: Request) -> JSONResponse:
 
     The gateway's ``JobTracker`` is updated and an SSE event is published
     so connected clients are notified instantly.
+
+    The log line emitted here is the primary diagnostic signal for
+    "client hang" reports: it carries the ``job_id`` looked up from the
+    tracker, the actual transition outcome (``transitioned`` /
+    ``idempotent`` / ``unknown_document``), and the per-job subscriber
+    count so operators can correlate worker-pod completion with
+    client-side SSE delivery without grepping multiple files.
     """
     body = await request.json()
     item_id = body.get("id")
@@ -1342,15 +1359,21 @@ async def job_callback(request: Request) -> JSONResponse:
     if tracker is None:
         raise HTTPException(status_code=503, detail="Job tracker not available")
 
+    # Capture the doc's job_id BEFORE the state transition so we still
+    # log a useful job_id even if the transition turns out to be a
+    # no-op (idempotent or unknown_document).
+    pre_rec = tracker.get_document(item_id)
+    job_id_for_log = pre_rec.job_id if pre_rec is not None else None
+
     status = body.get("status", "completed")
     if status == "failed":
-        tracker.mark_failed(
+        outcome = tracker.mark_failed(
             item_id,
             body.get("error", "unknown error"),
             elapsed_s=body.get("elapsed_s"),
         )
     else:
-        tracker.mark_completed(
+        outcome = tracker.mark_completed(
             item_id,
             result_rows=body.get("result_rows", 0),
             result_data=body.get("result_data"),
@@ -1358,15 +1381,99 @@ async def job_callback(request: Request) -> JSONResponse:
         )
 
     bus = get_event_bus()
-    sub_count = bus.subscriber_count if bus else 0
-    logger.info(
-        "Gateway callback: id=%s status=%s rows=%s subscribers=%d",
+    if bus is not None and job_id_for_log is not None:
+        sub_count = bus.subscribers_for(job_id_for_log)
+    elif bus is not None:
+        sub_count = bus.subscriber_count
+    else:
+        sub_count = 0
+
+    log_fn = logger.warning if outcome == MarkOutcome.UNKNOWN_DOCUMENT else logger.info
+    log_fn(
+        "Gateway callback: id=%s job_id=%s status=%s outcome=%s rows=%s subscribers=%d",
         item_id,
+        job_id_for_log or "?",
         status,
+        outcome.value,
         body.get("result_rows", 0),
         sub_count,
     )
     return JSONResponse(content={"ok": True})
+
+
+# ------------------------------------------------------------------
+# Legacy / removed route stubs
+#
+# The Retriever Service v2 refactor (multi-pod architecture) removed
+# two legacy routes that older SDK builds may still call:
+#
+#   * ``POST /v1/ingest``        — the old "single-shot" upload route,
+#     replaced by the job-scoped pair
+#     ``POST /v1/ingest/job`` + ``POST /v1/ingest/job/{job_id}/document``.
+#   * ``GET  /v1/ingest/events`` — the old firehose SSE stream, replaced
+#     by per-job ``GET /v1/ingest/job/{job_id}/events``.
+#
+# When a customer ships a *new* service image with an *older* Retriever
+# SDK wheel, the SDK calls these legacy paths and the server otherwise
+# falls through to FastAPI's default 404 with an empty body. The client
+# sees an opaque "no documents completed" outcome.
+#
+# We register the legacy paths explicitly so the server can return an
+# actionable ``410 Gone`` body that names the replacement route and
+# tells the operator to align SDK and service versions. The stubs are
+# hidden from the OpenAPI schema (``include_in_schema=False``) so they
+# do not advertise themselves as supported endpoints.
+# ------------------------------------------------------------------
+
+
+_LEGACY_REMOVED_VERSION = "26.05"
+
+_LEGACY_INGEST_DETAIL = (
+    "POST /v1/ingest was removed in retriever-service "
+    f"{_LEGACY_REMOVED_VERSION} (multi-pod refactor). Open a job with "
+    "POST /v1/ingest/job and then upload each document via "
+    "POST /v1/ingest/job/{job_id}/document. This 410 typically means "
+    "the Python SDK is older than the deployed nrl-service image — "
+    "upgrade the SDK (or downgrade the chart/image) so the two match."
+)
+
+_LEGACY_FIREHOSE_DETAIL = (
+    "GET /v1/ingest/events (firehose SSE) was removed in "
+    f"retriever-service {_LEGACY_REMOVED_VERSION}. Subscribe to "
+    "GET /v1/ingest/job/{job_id}/events with the job_id returned by "
+    "POST /v1/ingest/job. This 410 typically means the Python SDK is "
+    "older than the deployed nrl-service image — upgrade the SDK (or "
+    "downgrade the chart/image) so the two match."
+)
+
+
+@router.post(
+    "/ingest",
+    include_in_schema=False,
+)
+async def _legacy_ingest_upload_removed() -> None:
+    """Return ``410 Gone`` with a migration hint for the removed route.
+
+    Older SDK builds (pre-v2 client) upload through ``POST /v1/ingest``.
+    Without this stub FastAPI returns a body-less 404 and the SDK
+    surfaces "no documents completed" with no indication of why — the
+    customer-visible regression captured in the 26.05-RC2 release notes.
+    """
+    raise HTTPException(status_code=410, detail=_LEGACY_INGEST_DETAIL)
+
+
+@router.get(
+    "/ingest/events",
+    include_in_schema=False,
+)
+async def _legacy_ingest_firehose_removed() -> None:
+    """Return ``410 Gone`` for the removed firehose SSE endpoint.
+
+    The per-job SSE route (``/v1/ingest/job/{job_id}/events``) replaced
+    this in J4. We surface the migration message instead of the default
+    404 so old clients fail with a clear, actionable error.
+    """
+    raise HTTPException(status_code=410, detail=_LEGACY_FIREHOSE_DETAIL)
 
 
 # ------------------------------------------------------------------
@@ -1378,7 +1485,9 @@ async def job_callback(request: Request) -> JSONResponse:
 # must declare which job it is observing. Dashboard internals (which
 # are served from a separate router) still use a firehose subscription
 # for the operator overview view, but that endpoint is privileged and
-# lives under ``/dashboard``.
+# lives under ``/dashboard``. See the legacy stub above for the 410
+# Gone behavior that surfaces a clear error to old SDK builds that
+# still call this firehose path.
 # ------------------------------------------------------------------
 
 

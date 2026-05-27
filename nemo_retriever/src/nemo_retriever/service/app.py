@@ -72,6 +72,46 @@ def _apply_resource_limits(config: ServiceConfig) -> None:
             logger.warning("Could not set memory limit: %s", exc)
 
 
+def _check_media_dependencies(mode: str) -> None:
+    """Log a startup banner when ``ffmpeg``/``ffprobe`` are missing.
+
+    Audio and video ingestion uploads fail with HTTP 501 when these
+    binaries are absent (see :func:`enforce_media_dependencies`). Surfacing
+    a clear WARNING at startup gives cluster operators a chance to fix
+    the deployment (set ``service.installFfmpeg=true`` or bake FFmpeg
+    into a custom image) before the first media upload arrives, instead
+    of debugging a worker traceback after the fact.
+
+    The gateway pod does not run pipeline workers, so its missing FFmpeg
+    is only a problem if it also classifies media uploads — which it
+    does (it computes the routing category before forwarding). The
+    warning therefore applies to every service role.
+    """
+    from nemo_retriever.audio.media_interface import (
+        HELM_FFMPEG_INSTALL_VALUE,
+        MANUAL_FFMPEG_INSTALL_COMMAND,
+        is_media_available,
+        missing_media_dependencies,
+    )
+
+    if is_media_available():
+        logger.info("Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=%s)", mode)
+        return
+
+    missing = ", ".join(missing_media_dependencies()) or "ffmpeg, ffprobe"
+    logger.warning(
+        "Media dependencies missing in this container: %s. Audio and video "
+        "uploads will be rejected with HTTP 501 (mode=%s). To enable "
+        "media ingestion, redeploy the Helm chart with "
+        "`--set %s`, install FFmpeg manually with `%s`, or build a "
+        "custom image that includes ffmpeg/ffprobe.",
+        missing,
+        mode,
+        HELM_FFMPEG_INSTALL_VALUE,
+        MANUAL_FFMPEG_INSTALL_COMMAND,
+    )
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup / shutdown lifecycle for the service.
@@ -120,6 +160,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             realtime_work_fn=rt_fn,
             batch_work_fn=bt_fn,
         )
+
+    _check_media_dependencies(mode)
 
     logger.info(
         "Retriever service started — mode=%s host=%s port=%d",
