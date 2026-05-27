@@ -8,6 +8,7 @@ Use this documentation to learn how [NeMo Retriever Library](overview.md) stores
 - [Why LanceDB?](#why-lancedb)
 - [Upload to LanceDB](#upload-to-lancedb)
 - [Semantic and hybrid retrieval](#semantic-and-hybrid-retrieval)
+- [Metadata and filtering](#metadata-and-filtering)
 - [Hybrid search (LanceDB)](#hybrid-search-lancedb)
 - [LanceDB deployment characteristics](#lancedb-deployment-characteristics)
 - [Upload to a Custom Data Store](#upload-to-a-custom-data-store)
@@ -85,11 +86,18 @@ Semantic retrieval uses dense embeddings to find content that is similar in mean
 In NeMo Retriever Library, the default vector path is LanceDB. Use these resources together with the sections on this page:
 
 - [Hybrid search (LanceDB)](#hybrid-search-lancedb) for LanceDB hybrid mode (dense vectors, BM25, and RRF) and query APIs
+- [Metadata and filtering](#metadata-and-filtering) for sidecar metadata at ingest and query-time filters
 - [Concepts](concepts.md) for broader pipeline and search patterns
 - [Environment variables](environment-config.md) for hybrid-related flags where documented
-- [Custom metadata and filtering](custom-metadata.md) for query-time filtering
 
 **Evaluation** — For evaluation and metrics, refer to [Evaluate on your data](evaluate-on-your-data.md).
+
+## Metadata and filtering { #metadata-and-filtering }
+
+This page covers LanceDB upload, indexes, and hybrid search. **Metadata is not duplicated here.**
+
+- **Published guide** — [Custom metadata and filtering](custom-metadata.md) (sidecar `meta_*` on `vdb_upload`, compact JSON in LanceDB, server-side `where` on `Retriever.query`, and client-side `filter_hits_by_content_metadata`).
+- **Canonical reference** — [Vector DB operators and LanceDB — Metadata filtering](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering) in `nemo_retriever/src/nemo_retriever/vdb/README.md` (operator behavior and examples).
 
 ## Hybrid search (LanceDB) { #hybrid-search-lancedb }
 
@@ -178,6 +186,7 @@ Testing and release cadence for these integrations follow the owning project (RA
 
 ### More information (embeddings & custom `VDB`) { #vector-database-partners-more-info }
 
+- [Custom metadata and filtering](custom-metadata.md) and the package [VDB README (metadata filtering)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering)
 - [Multimodal embeddings (VLM)](embedding.md)
 - [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html)
 - [NVIDIA NIM catalog](https://build.nvidia.com/) for embedding and retrieval-related NIMs
@@ -190,6 +199,8 @@ To implement a custom operator, follow the `VDB` abstract interface described in
 
 ## Related Topics { #related-topics }
 
+- [Custom metadata and filtering](custom-metadata.md)
+- [Vector DB operators and LanceDB (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb)
 - [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md)
 - [Store Extracted Images](nemo-retriever-api-reference.md)
 - [Environment Variables](environment-config.md)

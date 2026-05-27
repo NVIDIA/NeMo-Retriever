@@ -9,6 +9,10 @@ no-build-package = ["nemotron-ocr"]
 # fastparquet 2026.3.0 has no wheel for Linux x86_64 (manylinux); constrain to last version that does.
 override-dependencies = [
   "fastparquet>=2024.11.0,<2026",
+  # Suppress opencv-python from transitive deps. nemotron wheels pull in both
+  # opencv-python and opencv-python-headless, which stomp on the same cv2/ dir.
+  # The 'never' marker makes uv treat this as unsatisfiable on all platforms.
+  "opencv-python ; sys_platform == 'never'",
 ]
 
 [project]
@@ -107,6 +111,7 @@ local = [
   "transformers>=4.57.6,<5",
   "tokenizers>=0.21.1",
   "accelerate==1.12.0",
+  "opencv-python-headless>=4.8.0",
   "torch~=2.11.0",
   "torchvision>=0.26.0,<0.27",
   "tritonclient",

@@ -66,13 +66,17 @@ agent_models:
 # agent_model: claude-opus-4-7
 per_trial_budget_usd: 5.0
 per_trial_timeout_s: 600
+# 1 preserves the historical single-session linear query loop. Values >1 run
+# query turns in isolated sessions copied from the completed setup workdir.
+query_parallelism: 1
 per_trial_workdir_root: /tmp/skill_eval
 
 # ---------------------------------------------------------------------------
 # Conditions to run, in execution order
 # ---------------------------------------------------------------------------
-# Each (condition, domain) workdir is deleted after it finishes, so only one
-# LanceDB is on disk at a time. Override on the CLI with ``--conditions``.
+# Each (condition, domain) setup workdir is deleted after it finishes. With
+# query_parallelism >1, per-query copies may temporarily create multiple LanceDBs.
+# Override on the CLI with ``--conditions``.
 conditions:
   - c1_base               # retriever blocked → forces Read-only baseline
   - c2_retriever          # retriever available, NL prompt, skill auto-discovery
