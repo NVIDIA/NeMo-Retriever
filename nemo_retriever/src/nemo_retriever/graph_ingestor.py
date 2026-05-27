@@ -502,10 +502,10 @@ class GraphIngestor(ingestor):
 
         Returns
         -------
-        ``run_mode='batch'``
-            A materialized ``ray.data.Dataset``.
-        ``run_mode='inprocess'``
-            A ``pandas.DataFrame``.
+        pandas.DataFrame
+            Materialized extraction results. Both ``run_mode='batch'`` and
+            ``run_mode='inprocess'`` return a DataFrame; batch mode materializes
+            the Ray pipeline via ``ds.to_pandas()`` at the executor boundary.
         """
         effective_extraction = self._resolve_effective_extraction_inputs()
         # Auto-enable dedup before captioning so that images overlapping

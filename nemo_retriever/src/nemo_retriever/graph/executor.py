@@ -223,8 +223,9 @@ class RayDataExecutor(AbstractExecutor):
 
         Returns
         -------
-        ray.data.Dataset
-            The materialized result dataset.
+        pandas.DataFrame
+            The materialized result after executing the Ray Data pipeline
+            (``ds.to_pandas()``).
         """
         import ray
         import ray.data as rd
