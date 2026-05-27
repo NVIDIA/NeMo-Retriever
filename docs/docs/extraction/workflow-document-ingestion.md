@@ -59,7 +59,7 @@ Run the above with your working directory at the repository root (so `data/multi
 ```bash
 python -m nemo_retriever.examples.graph_pipeline \
   /your-example-dir \
-  --lancedb-uri lancedb
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}'
 ```
 
 For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](api-keys.md#nvidia-api-key) and pass the `--*-invoke-url` / `--embed-invoke-url` options shown in the [README remote inference section](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/README.md#ingest-a-test-corpus-cli).
