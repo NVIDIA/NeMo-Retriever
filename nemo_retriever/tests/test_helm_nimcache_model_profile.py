@@ -299,7 +299,7 @@ class NimCacheModelProfileTests(TestCase):
         # Every other NIMCache should still carry the chart-wide gpus
         # filter.  Spot-check one — the others are covered by the
         # previous test.
-        ocr = docs["nemotron-ocr-v2"]
+        ocr = docs["nemotron-ocr-v1"]
         self.assertEqual(
             ocr,
             {"gpus": [{"product": "NVIDIA-H100-80GB-HBM3"}]},

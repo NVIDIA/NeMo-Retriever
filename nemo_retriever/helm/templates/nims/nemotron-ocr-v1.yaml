@@ -1,9 +1,8 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.ocr.enabled true) -}}
-{{- $name := .Values.nimOperator.ocr.nimServiceName | default "nemotron-ocr-v2" -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
-  name: {{ $name }}
+  name: nemotron-ocr-v1
   {{- include "nemo-retriever.nimcache.keepPolicy" . | nindent 2 }}
 spec:
   source:
@@ -22,7 +21,7 @@ spec:
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
 metadata:
-  name: {{ $name }}
+  name: nemotron-ocr-v1
 spec:
   image:
     repository: {{ .Values.nimOperator.ocr.image.repository }}
@@ -33,7 +32,7 @@ spec:
   authSecret: {{ .Values.nimOperator.ocr.authSecret }}
   storage:
     nimCache:
-      name: {{ $name }}
+      name: nemotron-ocr-v1
   replicas: {{ .Values.nimOperator.ocr.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.ocr.nodeSelector | indent 4 }}
