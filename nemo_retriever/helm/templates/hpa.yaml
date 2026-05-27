@@ -1,7 +1,31 @@
+{{- /*
+HorizontalPodAutoscaler templates.
+
+Standalone mode (single-pod chart) still renders the existing CPU/memory
+HPA from the top-level `autoscaling.*` block — that path is unchanged
+and only fires when `autoscaling.enabled` is true.
+
+Split mode renders one HPA per stateless role (`realtime`, `batch`).
+Each HPA mixes up to three signals, gated by per-metric `enabled` flags
+on `topology.<role>.hpa.metrics`:
+
+  • queueDepthRatio       — External metric via prometheus-adapter
+  • processingLatencyP95  — External metric via prometheus-adapter
+  • cpu                   — Resource metric (built-in)
+
+The chart degrades cleanly:
+  • If `autoscaling.queueDepth.backend != "prometheus-adapter"`, the
+    External metrics are skipped and the HPA falls back to CPU.
+  • If no signals are enabled at all, the HPA still renders with the
+    CPU fallback so the Deployment doesn't end up with `replicas: 1`
+    silently pinned.
+  • The deprecated `targetCPUUtilizationPercentage` knob is honoured
+    as an alias for `metrics.cpu.targetUtilizationPercentage` (back-compat).
+*/}}
 {{- if eq .Values.topology.mode "standalone" }}
 {{- if .Values.autoscaling.enabled -}}
 # =========================================================================
-# Standalone mode HPA
+# Standalone mode HPA — unchanged from the pre-H4 chart
 # =========================================================================
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -40,11 +64,46 @@ spec:
 {{- end }}
 {{- else }}
 # =========================================================================
-# Split mode — per-role HPAs (gateway does not autoscale by default)
+# Split mode — per-role HPAs (gateway does not autoscale by default).
 # =========================================================================
+{{- $backend := .Values.autoscaling.queueDepth.backend | default "prometheus-adapter" }}
+{{- $promAdapter := and (eq $backend "prometheus-adapter") (hasKey .Values.autoscaling "queueDepth") }}
+{{- $adapterCfg := .Values.autoscaling.queueDepth.prometheusAdapter | default dict }}
+{{- $queueRatioMetric := $adapterCfg.queueDepthRatioMetric | default "nemo_retriever_pool_queue_depth_ratio_avg" }}
+{{- $latencyMetric := $adapterCfg.processingLatencyP95Metric | default "nemo_retriever_pool_processing_duration_p95_seconds" }}
 {{- range $role := list "realtime" "batch" }}
 {{- $roleCfg := index $.Values.topology $role }}
 {{- if and (hasKey $roleCfg "hpa") $roleCfg.hpa.enabled }}
+{{- /*
+  Resolve metrics block with back-compat: an older values file that
+  only sets `hpa.targetCPUUtilizationPercentage` (no `hpa.metrics`)
+  should still produce a CPU-only HPA.
+*/ -}}
+{{- $metrics := $roleCfg.hpa.metrics | default dict }}
+{{- $cpuMetric := $metrics.cpu | default dict }}
+{{- $queueMetric := $metrics.queueDepthRatio | default dict }}
+{{- $latencyMetricCfg := $metrics.processingLatencyP95 | default dict }}
+{{- /*
+  Back-compat: when the legacy alias is set AND the new cpu block
+  hasn't been touched, treat the alias as the source of truth.
+*/ -}}
+{{- $legacyCpu := $roleCfg.hpa.targetCPUUtilizationPercentage }}
+{{- $cpuEnabled := $cpuMetric.enabled }}
+{{- $cpuTarget := $cpuMetric.targetUtilizationPercentage }}
+{{- if and $legacyCpu (not $cpuEnabled) }}
+{{- $cpuEnabled = true }}
+{{- $cpuTarget = $legacyCpu }}
+{{- end }}
+{{- /*
+  Final fallback: if absolutely nothing is enabled, force CPU on at
+  whatever default cpu.targetUtilizationPercentage the role block
+  declared. This guarantees the HPA spec is never empty.
+*/ -}}
+{{- $anyPromEnabled := and $promAdapter (or $queueMetric.enabled $latencyMetricCfg.enabled) }}
+{{- if and (not $cpuEnabled) (not $anyPromEnabled) }}
+{{- $cpuEnabled = true }}
+{{- $cpuTarget = ($cpuMetric.targetUtilizationPercentage | default 70) }}
+{{- end }}
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -52,6 +111,14 @@ metadata:
   name: {{ include "nemo-retriever.role.fullname" (dict "context" $ "role" $role) }}
   labels:
     {{- include "nemo-retriever.role.labels" (dict "context" $ "role" $role) | nindent 4 }}
+  annotations:
+    # Document the active signal set so an operator inspecting the
+    # HPA can tell at a glance what's driving scaling decisions.
+    nemo-retriever.nvidia.com/hpa-backend: {{ $backend | quote }}
+    nemo-retriever.nvidia.com/hpa-signals: {{ printf "queueRatio=%v latencyP95=%v cpu=%v"
+      (and $promAdapter $queueMetric.enabled)
+      (and $promAdapter $latencyMetricCfg.enabled)
+      $cpuEnabled | quote }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -60,14 +127,47 @@ spec:
   minReplicas: {{ $roleCfg.hpa.minReplicas }}
   maxReplicas: {{ $roleCfg.hpa.maxReplicas }}
   metrics:
-    {{- if $roleCfg.hpa.targetCPUUtilizationPercentage }}
+    {{- if and $promAdapter $queueMetric.enabled }}
+    # Queue fill ratio (0..1) — primary scaling signal.
+    # AverageValue divides the metric by current replica count,
+    # so the target is the per-replica fill, not the cluster total.
+    - type: External
+      external:
+        metric:
+          name: {{ $queueRatioMetric }}
+          selector:
+            matchLabels:
+              pool: {{ $role }}
+        target:
+          type: AverageValue
+          averageValue: {{ $queueMetric.target | default "500m" | quote }}
+    {{- end }}
+    {{- if and $promAdapter $latencyMetricCfg.enabled }}
+    # 95th-percentile processing latency — catches GPU stalls and
+    # remote-NIM slowdowns that don't immediately show up in queue depth.
+    - type: External
+      external:
+        metric:
+          name: {{ $latencyMetric }}
+          selector:
+            matchLabels:
+              pool: {{ $role }}
+        target:
+          type: AverageValue
+          averageValue: {{ $latencyMetricCfg.targetSeconds | default "30" | quote }}
+    {{- end }}
+    {{- if $cpuEnabled }}
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: {{ $roleCfg.hpa.targetCPUUtilizationPercentage }}
+          averageUtilization: {{ $cpuTarget }}
     {{- end }}
+  {{- with $roleCfg.hpa.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

@@ -87,6 +87,34 @@ POOL_QUEUE_DEPTH = Gauge(
     ["pool"],
 )
 
+POOL_QUEUE_DEPTH_RATIO = Gauge(
+    "nemo_retriever_pool_queue_depth_ratio",
+    "Queue fill ratio (current depth / max queue size), in [0.0, 1.0]. "
+    "This is the canonical signal for queue-depth-based HPA scaling.",
+    ["pool"],
+)
+
+POOL_MAX_QUEUE_SIZE = Gauge(
+    "nemo_retriever_pool_max_queue_size",
+    "Configured maximum queue size for the worker pool. Set once at "
+    "startup; published so prometheus-adapter (or any consumer) can "
+    "compute the queue-depth ratio in PromQL without baking the "
+    "denominator into the publisher.",
+    ["pool"],
+)
+
+POOL_WORKERS = Gauge(
+    "nemo_retriever_pool_workers",
+    "Number of worker tasks configured for the pool.",
+    ["pool"],
+)
+
+POOL_PROCESSED_TOTAL = Counter(
+    "nemo_retriever_pool_processed_total",
+    "Total work items processed by a pool, by terminal outcome.",
+    ["pool", "outcome"],
+)
+
 POOL_PROCESSING_DURATION = Histogram(
     "nemo_retriever_pool_processing_duration_seconds",
     "Time spent processing a single work item",

@@ -1,9 +1,9 @@
-# nv-ingest Integration Testing Framework
+# NeMo Retriever integration testing harness
 
 ## Unsupported Developer Docs
 
 The harness in `tools/harness/` and everything documented in this README are
-internal developer tooling for nv-ingest integration testing. They are
+internal developer tooling for NeMo Retriever integration testing. They are
 not a supported or stable feature of NeMo Retriever Library; commands,
 configuration, and defaults may change or be removed without notice—do not rely
 on them as a public API or product guarantee.
@@ -14,7 +14,7 @@ one-off workflows). For an index of those notes, see
 [`nemo_retriever/developer_docs/README.md`](../../nemo_retriever/developer_docs/README.md).
 
 A configurable, dataset-agnostic testing framework for end-to-end validation of
-nv-ingest pipelines. This framework uses structured YAML configuration for type
+NeMo Retriever extraction pipelines. This framework uses structured YAML configuration for type
 safety, validation, and parameter management.
 
 ## Quick Start
@@ -30,23 +30,25 @@ safety, validation, and parameter management.
 # Navigate to the harness directory
 cd tools/harness/
 
-# Install the harness (includes nv-ingest packages, pypdfium2, and nemotron-* model packages)
+# Install the harness (includes ingestion runtime/API/client packages, pypdfium2, and nemotron-* model packages)
 uv pip install -e .
 ```
 
-**Vanilla pip:** Install the project with `pip install -e .` (from repo root, install `nv-ingest`, `nv-ingest-api`, and `nv-ingest-client` first if needed). The harness env already includes the nemotron packages; to get nightly versions from Test PyPI, install on top: `pip install -r tools/harness/nemotron-nightly.txt --force-reinstall --no-deps`.
+Commands below assume your shell is still in `tools/harness/` (uv discovers `pyproject.toml` from the current directory — do not pass `--project tools/harness` after `cd`).
+
+**Vanilla pip:** Install the project with `pip install -e .` (from repo root, install the **ingestion runtime**, **ingestion API**, and **ingestion client** packages from the same release first if needed). The harness env already includes the nemotron packages; to get nightly versions from Test PyPI, install on top: `pip install -r tools/harness/nemotron-nightly.txt --force-reinstall --no-deps`.
 
 ### Run Your First Test
 
 ```bash
 # Run with a pre-configured dataset (assumes services are running)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 
 # Or use a custom path that uses the "active" configuration
-uv run nv-ingest-harness-run --case=e2e --dataset=/path/to/your/data
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=/path/to/your/data
 
 # With managed infrastructure (starts/stops services)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed
 ```
 
 ## Configuration System
@@ -107,7 +109,7 @@ Each dataset includes its path, extraction settings, and recall evaluator in one
 ```yaml
 datasets:
   bo767:
-    path: /datasets/nv-ingest/bo767
+    path: /datasets/retrieval-eval/bo767
     extract_text: true
     extract_tables: true
     extract_charts: true
@@ -125,7 +127,7 @@ datasets:
     recall_dataset: jp20  # bo10k evaluator filtered to jp20 subset
 
   bo20:
-    path: /datasets/nv-ingest/bo20
+    path: /datasets/retrieval-eval/bo20
     extract_text: true
     extract_tables: true
     extract_charts: true
@@ -134,7 +136,7 @@ datasets:
     recall_dataset: null  # bo20 does not have recall
   
   earnings:
-    path: /datasets/nv-ingest/earnings_consulting
+    path: /datasets/retrieval-eval/earnings_consulting
     extract_text: true
     extract_tables: true
     extract_charts: true
@@ -151,13 +153,13 @@ datasets:
 **Usage:**
 ```bash
 # Single dataset - configs applied automatically
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 
 # Multiple datasets (sweeping) - each gets its own config
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767,earnings,bo20
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767,earnings,bo20
 
 # Custom path still works (uses active section config)
-uv run nv-ingest-harness-run --case=e2e --dataset=/custom/path
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=/custom/path
 ```
 
 **Dataset Extraction Settings:**
@@ -184,7 +186,7 @@ Example:
 # YAML active section has api_version: v1
 # Dataset bo767 has extract_images: false
 # Override via environment variable (highest priority)
-EXTRACT_IMAGES=true API_VERSION=v2 uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+EXTRACT_IMAGES=true API_VERSION=v2 uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 # Result: Uses bo767 path, but extract_images=true (env override) and api_version=v2 (env override)
 ```
 
@@ -246,13 +248,13 @@ Configuration is validated on load with helpful error messages.
 
 ```bash
 # Run with default YAML configuration (assumes services are running)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 
 # With document-level analysis
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --doc-analysis
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --doc-analysis
 
 # With managed infrastructure (starts/stops services)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed
 ```
 
 ### Dataset Sweeping
@@ -261,7 +263,7 @@ Run multiple datasets in a single command - each dataset automatically gets its 
 
 ```bash
 # Sweep multiple datasets
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767,earnings,bo20
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767,earnings,bo20
 
 # Each dataset runs sequentially with its own:
 # - Extraction settings (from dataset config)
@@ -269,13 +271,13 @@ uv run nv-ingest-harness-run --case=e2e --dataset=bo767,earnings,bo20
 # - Results summary at the end
 
 # With managed infrastructure (services start once, shared across all datasets)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767,earnings,bo20 --managed
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767,earnings,bo20 --managed
 
 # E2E+Recall sweep (each dataset ingests then evaluates recall)
-uv run nv-ingest-harness-run --case=e2e_recall --dataset=bo767,earnings
+uv run python -m nv_ingest_harness.cli.run --case=e2e_recall --dataset=bo767,earnings
 
 # Recall-only sweep (evaluates existing collections)
-uv run nv-ingest-harness-run --case=recall --dataset=bo767,earnings
+uv run python -m nv_ingest_harness.cli.run --case=recall --dataset=bo767,earnings
 ```
 
 **Sweep Behavior:**
@@ -289,10 +291,10 @@ uv run nv-ingest-harness-run --case=recall --dataset=bo767,earnings
 
 ```bash
 # Override via environment (useful for CI/CD)
-API_VERSION=v2 EXTRACT_TABLES=false uv run nv-ingest-harness-run --case=e2e
+API_VERSION=v2 EXTRACT_TABLES=false uv run python -m nv_ingest_harness.cli.run --case=e2e
 
 # Temporary changes without editing YAML
-DATASET_DIR=/custom/path uv run nv-ingest-harness-run --case=e2e
+DATASET_DIR=/custom/path uv run python -m nv_ingest_harness.cli.run --case=e2e
 ```
 
 ## Test Scenarios
@@ -485,23 +487,23 @@ recall:
 ```bash
 # Evaluate existing bo767 collections (no reranker)
 # recall_dataset automatically set from dataset config
-uv run nv-ingest-harness-run --case=recall --dataset=bo767
+uv run python -m nv_ingest_harness.cli.run --case=recall --dataset=bo767
 
 # With reranker only (set reranker_mode in YAML recall section)
-uv run nv-ingest-harness-run --case=recall --dataset=bo767
+uv run python -m nv_ingest_harness.cli.run --case=recall --dataset=bo767
 
 # Sweep multiple datasets for recall evaluation
-uv run nv-ingest-harness-run --case=recall --dataset=bo767,earnings
+uv run python -m nv_ingest_harness.cli.run --case=recall --dataset=bo767,earnings
 ```
 
 **E2E + Recall (fresh ingestion):**
 ```bash
 # Fresh ingestion with recall evaluation
 # recall_dataset automatically set from dataset config
-uv run nv-ingest-harness-run --case=e2e_recall --dataset=bo767
+uv run python -m nv_ingest_harness.cli.run --case=e2e_recall --dataset=bo767
 
 # Sweep multiple datasets (each ingests then evaluates)
-uv run nv-ingest-harness-run --case=e2e_recall --dataset=bo767,earnings
+uv run python -m nv_ingest_harness.cli.run --case=e2e_recall --dataset=bo767,earnings
 ```
 
 **Dataset configuration:**
@@ -543,7 +545,7 @@ Metrics are also logged via `kv_event_log()`:
 
 ## Model Testing
 
-The harness includes benchmark test cases for Nemotron document analysis models. These cases benchmark inference performance on image datasets without requiring the full nv-ingest service infrastructure. The default install (via `uv pip install -e .`) includes the nemotron-* packages from Test PyPI (`nemotron-page-elements-v3`, `nemotron-graphic-elements-v1`, `nemotron-table-structure-v1`, `nemotron-ocr`). With vanilla pip, install the standard harness env first, then `pip install -r tools/harness/nemotron-nightly.txt --force-reinstall --no-deps` to get the nightly Nemotron packages from Test PyPI.
+The harness includes benchmark test cases for Nemotron document analysis models. These cases benchmark inference performance on image datasets without requiring the full extraction service infrastructure. The default install (via `uv pip install -e .`) includes the nemotron-* packages from Test PyPI (`nemotron-page-elements-v3`, `nemotron-graphic-elements-v1`, `nemotron-table-structure-v1`, `nemotron-ocr`). With vanilla pip, install the standard harness env first, then `pip install -r tools/harness/nemotron-nightly.txt --force-reinstall --no-deps` to get the nightly Nemotron packages from Test PyPI.
 
 ### Available Model Benchmarks
 
@@ -560,16 +562,16 @@ Model benchmarks don't require managed services - they run the model directly on
 
 ```bash
 # Page elements benchmark
-uv run nv-ingest-harness-run --case=page_elements --dataset=/path/to/page_images
+uv run python -m nv_ingest_harness.cli.run --case=page_elements --dataset=/path/to/page_images
 
 # Table structure benchmark  
-uv run nv-ingest-harness-run --case=table_structure --dataset=/path/to/table_images
+uv run python -m nv_ingest_harness.cli.run --case=table_structure --dataset=/path/to/table_images
 
 # Graphic elements benchmark
-uv run nv-ingest-harness-run --case=graphic_elements --dataset=/path/to/chart_images
+uv run python -m nv_ingest_harness.cli.run --case=graphic_elements --dataset=/path/to/chart_images
 
 # Nemotron OCR benchmark
-uv run nv-ingest-harness-run --case=ocr --dataset=/path/to/images
+uv run python -m nv_ingest_harness.cli.run --case=ocr --dataset=/path/to/images
 ```
 
 ### Configuration
@@ -658,7 +660,7 @@ The easiest way to test multiple datasets is using dataset sweeping:
 
 ```bash
 # Test multiple datasets - each gets its native config automatically
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767,earnings,bo20
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767,earnings,bo20
 
 # Each dataset runs with its pre-configured extraction settings
 # Results are organized in separate artifact directories
@@ -669,7 +671,7 @@ uv run nv-ingest-harness-run --case=e2e --dataset=bo767,earnings,bo20
 To sweep through different parameter values:
 
 1. **Edit** `test_configs.yaml` - Update values in the `active` section
-2. **Run** the test: `uv run nv-ingest-harness-run --case=e2e --dataset=<name>`
+2. **Run** the test: `uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=<name>`
 3. **Analyze** results in `artifacts/<test_name>_<timestamp>/`
 4. **Repeat** steps 1-3 for next parameter combination
 
@@ -677,25 +679,25 @@ Example parameter sweep workflow:
 ```bash
 # Test 1: Baseline V1
 vim test_configs.yaml  # Set: api_version=v1, extract_tables=true
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 
 # Test 2: V2 with 32-page splitting
 vim test_configs.yaml  # Set: api_version=v2, pdf_split_page_count=32
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 
 # Test 3: V2 with 8-page splitting
 vim test_configs.yaml  # Set: pdf_split_page_count=8
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 
 # Test 4: Tables disabled (override via env var)
-EXTRACT_TABLES=false uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+EXTRACT_TABLES=false uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 ```
 
 **Note**: Each test run creates a new timestamped artifact directory, so you can compare results across sweeps.
 
 ## Deployment Types
 
-The harness supports two deployment orchestrators for managing nv-ingest services:
+The harness supports two deployment orchestrators for managing extraction services:
 
 ### Docker Compose (Default)
 
@@ -703,10 +705,10 @@ Docker Compose is the default deployment type and is ideal for local development
 
 ```bash
 # Default - uses Docker Compose
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed
 
 # Explicitly specify Docker Compose
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-type=compose
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --deployment-type=compose
 ```
 
 **Features:**
@@ -722,7 +724,7 @@ Helm deployment is for Kubernetes-based testing (MicroK8s, K3s, cloud K8s):
 
 ```bash
 # Use Helm deployment
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-type=helm
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --deployment-type=helm
 ```
 
 **Features:**
@@ -744,17 +746,17 @@ active:
   
   # Helm settings (only used when deployment_type: helm)
   helm_bin: helm  # or "microk8s helm", "k3s helm"
-  helm_chart: nim-nvstaging/nv-ingest
+  helm_chart: <your-registry>/<ingestion-chart>
   helm_chart_version: 26.1.0-RC7
-  helm_release: nv-ingest
-  helm_namespace: nv-ingest
+  helm_release: nemo-retriever-dev
+  helm_namespace: nemo-retriever-dev
   helm_values_file: .helm-env
 ```
 
 **CLI flag overrides YAML setting:**
 ```bash
 # Override to Helm even if YAML has deployment_type: compose
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --deployment-type=helm
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --deployment-type=helm
 ```
 
 For detailed Helm and Docker Compose configuration, see `plans/SERVICE_MANAGER.md`.
@@ -764,7 +766,7 @@ For detailed Helm and Docker Compose configuration, see `plans/SERVICE_MANAGER.m
 ### Attach Mode (Default)
 
 ```bash
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 ```
 
 - **Default behavior**: Assumes services are already running
@@ -776,7 +778,7 @@ uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 ### Managed Mode
 
 ```bash
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed
 ```
 
 - Starts Docker services automatically
@@ -788,19 +790,19 @@ uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed
 **Managed mode options:**
 ```bash
 # Skip Docker image rebuild (faster startup)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --no-build
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --no-build
 
 # Keep services running after test (useful for multi-test scenarios)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --keep-up
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --keep-up
 
 # Minimize VRAM during e2e_recall: stop ingestion-only services between e2e and recall, start reranker only when needed (managed + e2e_recall only; mutually exclusive with --keep-up)
-uv run nv-ingest-harness-run --case=e2e_recall --dataset=bo767 --managed --minimize-vram
+uv run python -m nv_ingest_harness.cli.run --case=e2e_recall --dataset=bo767 --managed --minimize-vram
 
 # Use GPU-specific configuration (A10G, L40S, A100-40GB)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --sku=a10g
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --sku=a10g
 
 # Disable service log dumping (enabled by default)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --no-dump-logs
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --no-dump-logs
 ```
 
 ### GPU-Specific Configuration (SKU Override)
@@ -809,17 +811,17 @@ The harness supports GPU-specific configuration overrides via the `--sku` option
 
 ```bash
 # A10G GPU settings
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --sku=a10g
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --sku=a10g
 
 # L40S GPU settings
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --sku=l40s
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --sku=l40s
 
 # A100 40GB GPU settings
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --sku=a100-40gb
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --sku=a100-40gb
 ```
 
 **How it works:**
-- **Compose:** Loads `docker-compose.<sku>.yaml` and merges with base `docker-compose.yaml` (override takes precedence).
+- **Compose:** Loads `docker-compose.<sku>.yaml` and merges with base `docker-compose.yaml` (override takes precedence). **Unsupported developer tooling** — see [`nemo_retriever/docker.md`](../../nemo_retriever/docker.md) for human-oriented Compose notes (this README covers harness automation only).
 - **Helm:** Loads `helm/overrides/values-<sku>.yaml` via `helm upgrade -f`; merged with chart defaults (and any `helm_values_file` / `helm_values` still override).
 
 **Available SKUs:** `a10g` (NVIDIA A10G), `l40s` (NVIDIA L40S), `a100-40gb` (NVIDIA A100 40GB).
@@ -830,9 +832,9 @@ Automated benchmarks with Slack reporting and historical tracking.
 
 ```bash
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
-uv run nv-ingest-harness-nightly              # Full run
-uv run nv-ingest-harness-nightly --skip-slack # No Slack
-uv run nv-ingest-harness-nightly --dry-run    # Show config only
+uv run python -m nv_ingest_harness.cli.nightly              # Full run
+uv run python -m nv_ingest_harness.cli.nightly --skip-slack # No Slack
+uv run python -m nv_ingest_harness.cli.nightly --dry-run    # Show config only
 ```
 
 Configure datasets and sinks in `nightly_config.yaml`. See [NIGHTLY.md](NIGHTLY.md) for details.
@@ -845,25 +847,25 @@ Compare runs or sessions and analyze historical trends.
 
 ```bash
 # Compare two single runs (artifact directories with results.json)
-uv run nv-ingest-harness-compare tools/harness/artifacts/bo20_20260109_053814_UTC tools/harness/artifacts/bo20_20260110_204419_UTC
+uv run python -m nv_ingest_harness.cli.compare artifacts/bo20_20260109_053814_UTC artifacts/bo20_20260110_204419_UTC
 
 # Compare two nightly sessions (directories with session_summary.json)
-uv run nv-ingest-harness-compare tools/harness/artifacts/nightly_20260109 tools/harness/artifacts/nightly_20260112 \
+uv run python -m nv_ingest_harness.cli.compare artifacts/nightly_20260109 artifacts/nightly_20260112 \
   --baseline-label "Main RC" --compare-label "NIM RC" --note "Testing new drops"
 
 # Output markdown or post to Slack
-uv run nv-ingest-harness-compare <run_a> <run_b> --markdown compare.md
-uv run nv-ingest-harness-compare <run_a> <run_b> --slack
+uv run python -m nv_ingest_harness.cli.compare <run_a> <run_b> --markdown compare.md
+uv run python -m nv_ingest_harness.cli.compare <run_a> <run_b> --slack
 ```
 
 ### Stats from history database
 
 ```bash
-# Analyze recent history for a dataset (defaults to tools/harness/history.db)
-uv run nv-ingest-harness-stats --dataset=bo20 --limit=10
+# Analyze recent history for a dataset (defaults to history.db in this directory)
+uv run python -m nv_ingest_harness.cli.stats --dataset=bo20 --limit=10
 
 # Filter by session name pattern or use a custom DB
-uv run nv-ingest-harness-stats --dataset=bo20 --session=nightly --db tools/harness/history.db
+uv run python -m nv_ingest_harness.cli.stats --dataset=bo20 --session=nightly --db history.db
 ```
 
 ## Artifacts and Logging
@@ -885,11 +887,9 @@ When running in managed mode (`--managed`), service logs are automatically dumpe
 
 ```
 tools/harness/artifacts/<session_or_run>/service_logs/
-├── container_nv-ingest-1.log           # Docker Compose: individual container logs
-├── container_redis-1.log
+├── container_compose_1.log           # Docker Compose: individual container logs
 ├── docker_compose_combined.log         # Docker Compose: combined logs
-├── pod_nv-ingest-ms-runtime-xxx.log   # Helm: pod logs
-├── pod_redis-master-0.log
+├── pod_ms-runtime-xxx.log   # Helm: pod logs
 ├── pod_status.txt                      # Helm: pod status
 └── pod_events.txt                      # Helm: Kubernetes events
 ```
@@ -897,10 +897,10 @@ tools/harness/artifacts/<session_or_run>/service_logs/
 **Disabling log dumping:**
 ```bash
 # Skip log collection if not needed (saves time)
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767 --managed --no-dump-logs
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed --no-dump-logs
 
 # Or for nightly runs
-uv run nv-ingest-harness-nightly --managed --no-dump-logs
+uv run python -m nv_ingest_harness.cli.nightly --managed --no-dump-logs
 ```
 
 **Log collection features:**
@@ -935,7 +935,7 @@ This feature is particularly useful for debugging test failures and understandin
 Enable per-document element breakdown:
 
 ```bash
-uv run nv-ingest-harness-run --case=e2e --doc-analysis
+uv run python -m nv_ingest_harness.cli.run --case=e2e --doc-analysis
 ```
 
 **Sample Output:**
@@ -1122,7 +1122,7 @@ The framework is dataset-agnostic and supports multiple approaches:
 **Option 1: Use pre-configured dataset (Recommended)**
 ```bash
 # Dataset configs automatically applied
-uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 ```
 
 **Option 2: Add new dataset to YAML**
@@ -1137,17 +1137,17 @@ datasets:
     extract_infographics: false
     recall_dataset: null  # or set to evaluator name if applicable
 ```
-Then use: `uv run nv-ingest-harness-run --case=e2e --dataset=my_dataset`
+Then use: `uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=my_dataset`
 
 **Option 3: Use custom path (uses active section config)**
 ```bash
-uv run nv-ingest-harness-run --case=e2e --dataset=/path/to/your/dataset
+uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=/path/to/your/dataset
 ```
 
 **Option 4: Environment variable override**
 ```bash
 # Override specific settings via env vars
-EXTRACT_IMAGES=true uv run nv-ingest-harness-run --case=e2e --dataset=bo767
+EXTRACT_IMAGES=true uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
 ```
 
 **Best Practice**: For repeated testing, add your dataset to the `datasets` section with its native extraction settings. This ensures consistent configuration and enables dataset sweeping.
@@ -1159,4 +1159,4 @@ EXTRACT_IMAGES=true uv run nv-ingest-harness-run --case=e2e --dataset=bo767
 - **Docker setup**: See project root README for service management commands
 - **API documentation**: See `docs/` for API version differences
 
-The framework prioritizes clarity, type safety, and validation to support reliable testing of nv-ingest pipelines.
+The framework prioritizes clarity, type safety, and validation to support reliable testing of NeMo Retriever extraction pipelines.

@@ -1,18 +1,15 @@
 #! python3
 """
 Usage:
-helm repo add ngc "https://helm.ngc.nvidia.com/nvidian/nemo-llm" --username '$oauthtoken' --password "${NGC_API_KEY}"
-helm dependency update helm/
-helm dependency build helm/
+helm lint nemo_retriever/helm
 
-./scripts/release_helm_chart.py
-    -o nvidian
-    -t nemo-llm
-    -v 24.06
-    -n nv-ingest
+python ci/scripts/release_helm_chart.py
+    -o <ngc-org> -t <ngc-team> -v <chart-version> -n nemo-retriever \\
+    --chart-dir nemo_retriever/helm
 
 Requires: pip install ngcsdk pyyaml
-Env vars: NGC_CLI_API_KEY (required for publish)
+Env vars: NGC_CLI_API_KEY (required for publish). In CI, org/team come from
+NGC_ORG and NGC_TEAM repository secrets (not committed to the repo).
 """
 
 import argparse
@@ -23,6 +20,13 @@ import sys
 import yaml
 
 LOGO = "https://developer-blogs.nvidia.com/wp-content/uploads/2024/03/nemo-retriever-graphic.png"
+
+_NOT_FOUND_EXC = frozenset({"ResourceNotFoundException", "ChartNotFoundException"})
+_ALREADY_EXISTS_EXC = frozenset({"ResourceAlreadyExistsException", "ChartAlreadyExistsException"})
+
+
+def _exc_name(exc: BaseException) -> str:
+    return type(exc).__name__
 
 
 def main() -> None:
@@ -59,10 +63,16 @@ def main() -> None:
         required=True,
     )
     parser.add_argument(
+        "--chart-dir",
+        action="store",
+        help="Path to the Helm chart source directory",
+        default="nemo_retriever/helm",
+    )
+    parser.add_argument(
         "--display-name",
         action="store",
         help="The display name of the chart",
-        default="NVIDIA NVIngest Microservice",
+        default="NVIDIA NeMo Retriever Helm Chart",
     )
     parser.add_argument(
         "-v",
@@ -76,7 +86,7 @@ def main() -> None:
         "--description",
         action="store",
         help="The description of the chart",
-        default="Helm Chart for NeMo Retriever NVIngest Microservice",
+        default="Helm chart for the NeMo Retriever ingest service and optional NIM microservices",
     )
     parser.add_argument(
         "-l",
@@ -94,12 +104,17 @@ def main() -> None:
     v = args.version
     d = args.description
     dn = args.display_name
+    chart_dir = args.chart_dir
+
+    if not os.path.isdir(chart_dir):
+        print(f"ERROR: chart directory does not exist: {chart_dir}", file=sys.stderr)
+        sys.exit(1)
 
     os.makedirs(f"dist/{n}", exist_ok=True)
     subprocess.check_call(
         f"""
     rm -rf dist/{n}/*
-    cp -r helm/* dist/{n}/
+    cp -r {chart_dir}/* dist/{n}/
     echo $(git rev-parse --short HEAD) >> dist/{n}/.gitsha
     """,
         shell=True,
@@ -131,22 +146,36 @@ def main() -> None:
         clt.configure(api_key=api_key, org_name=o, team_name=t)
 
         target = f"{o}/{t}/{n}"
-        print(f"Updating chart metadata for {target} ...")
-        clt.registry.chart.update(
-            target=target,
+        metadata_kwargs = dict(
             overview_filepath=overview,
             short_description=d,
             logo=logo,
             display_name=dn,
             publisher="NVIDIA",
         )
+        print(f"Updating chart metadata for {target} ...")
+        try:
+            clt.registry.chart.update(target=target, **metadata_kwargs)
+        except Exception as exc:
+            if _exc_name(exc) not in _NOT_FOUND_EXC:
+                raise
+            print(f"Chart '{target}' not found ({_exc_name(exc)}); creating registry entry ...")
+            clt.registry.chart.create(target=target, **metadata_kwargs)
 
         print(f"Pushing chart {target}:{v} ...")
-        clt.registry.chart.push(
-            target=f"{target}:{v}",
-            source_dir=".",
-        )
-        print(f"Successfully pushed {target}:{v}")
+        try:
+            clt.registry.chart.push(
+                target=f"{target}:{v}",
+                source_dir=".",
+            )
+            print(f"Successfully pushed {target}:{v}")
+        except Exception as exc:
+            if _exc_name(exc) not in _ALREADY_EXISTS_EXC:
+                raise
+            print(
+                f"Chart version '{v}' already exists in NGC ({_exc_name(exc)}); "
+                "skipping push. Re-run with a new version tag to publish different chart contents."
+            )
 
 
 if __name__ == "__main__":

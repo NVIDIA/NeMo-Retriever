@@ -22,13 +22,15 @@ with per-combo run counts::
       nemotron-super:
         model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
         api_key: "${NVIDIA_API_KEY}"
-      mixtral-judge:
-        model: "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
+      nemotron-super-judge:
+        model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
         api_key: "${NVIDIA_API_KEY}"
+        temperature: 0.1
+        max_tokens: 4096
 
     evaluations:
       - generator: "nemotron-super"
-        judge: "mixtral-judge"
+        judge: "nemotron-super-judge"
         runs: 5
 
     execution:
@@ -44,8 +46,10 @@ auto-normalised internally::
         api_key: "${NVIDIA_API_KEY}"
 
     judge:
-      model: "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
+      model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
       api_key: "${NVIDIA_API_KEY}"
+      temperature: 0.1
+      max_tokens: 4096
 
 Environment variables are expanded in string values: ``${VAR}`` resolves
 to ``os.environ["VAR"]`` at load time. Secrets never live in the config.
@@ -323,6 +327,8 @@ def build_eval_chain(
         extra_params=judge_cfg.get("extra_params"),
         num_retries=judge_cfg.get("num_retries", 3),
         timeout=judge_cfg.get("timeout", default_timeout),
+        temperature=judge_cfg.get("temperature"),
+        max_tokens=judge_cfg.get("max_tokens"),
         max_workers=execution.get("max_workers", 8),
     )
 
@@ -394,6 +400,8 @@ def build_eval_pipeline(config: dict) -> "QAEvalPipeline":
         extra_params=judge_cfg.get("extra_params"),
         num_retries=judge_cfg.get("num_retries", 3),
         timeout=judge_cfg.get("timeout", default_timeout),
+        temperature=judge_cfg.get("temperature"),
+        max_tokens=judge_cfg.get("max_tokens"),
     )
 
     return QAEvalPipeline(

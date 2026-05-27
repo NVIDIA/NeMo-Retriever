@@ -24,6 +24,7 @@ from nemo_retriever.video.ocr_actor import VideoFrameOCRActor
 from nemo_retriever.video.ocr_actor import VideoFrameOCRCPUActor
 from nemo_retriever.video.ocr_actor import VideoFrameOCRGPUActor
 from nemo_retriever.video.split import VideoSplitActor
+from nemo_retriever.video.split import video_asr_audio_chunk_params
 from nemo_retriever.video.text_dedup import VideoFrameTextDedup
 
 from .cli import app
@@ -41,5 +42,6 @@ __all__ = [
     "VideoFrameTextDedup",
     "VideoFrameTextDedupParams",
     "VideoSplitActor",
+    "video_asr_audio_chunk_params",
     "video_path_to_frames_df",
 ]

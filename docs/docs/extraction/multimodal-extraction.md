@@ -47,7 +47,10 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 ## Charts and infographics { #charts-and-infographics }
 
-Charts and infographic regions are classified as graphic elements and processed with the corresponding NVIDIA NIM workflows (for example, **yolox-graphic-elements** in current releases). Outputs use the same metadata schema as other extracted objects.
+Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
+
+
+For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning).
 
 **Related**
 
@@ -59,6 +62,8 @@ Charts and infographic regions are classified as graphic elements and processed 
 
 Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
+The default OCR engine is **Nemotron OCR v2**. For OCR configuration (language mode, local inference, and NIM deployment), see the [CLI reference](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli) and the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
+
 **Related**
 
 - [Text and layout extraction](#text-and-layout-extraction)
@@ -69,13 +74,13 @@ Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine nati
 
 Image captioning generates natural-language descriptions for unstructured image content. Retrieval can then use text embeddings over captions and visual embeddings where you configure them.
 
-The default caption model remains `nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16`. For opt-in image captioning with Nemotron 3 Nano Omni, set the caption model to one of the local Hugging Face IDs such as `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`, or use the hosted remote ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` with your OpenAI-compatible caption endpoint. Omni reasoning traces are disabled by default for captioning.
+**Captioning is optional** — enable it in your ingest configuration (for example, the `caption` API or pipeline flag) when you need natural-language descriptions of image content. Reasoning traces are disabled by default for captioning.
 
 **Related**
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
-- [What is NeMo Retriever Library?](overview.md)
+- [Image captioning](prerequisites-support-matrix.md#image-captioning)
 
 ## Metadata and content schema { #metadata-and-content-schema }
 

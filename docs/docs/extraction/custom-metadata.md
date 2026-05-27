@@ -1,172 +1,142 @@
-# Use Custom Metadata to Filter Search Results
+# Custom metadata and filtering
 
-You can upload custom metadata for documents during ingestion. 
-By uploading custom metadata you can attach additional information to documents, 
-and use it for filtering results during retrieval operations. 
-For example, you can add author metadata to your documents, and filter by author when you retrieve results. 
-To create filters at query time, use predicates supported by [LanceDB SQL](https://lancedb.github.io/lancedb/sql/) against your table schema (custom fields are serialized into the `metadata` column with your ingested chunks). For a worked example, see the repository notebook linked at the end of this page.
+Use this documentation to attach per-document metadata during ingestion and to narrow [LanceDB](vdbs.md) search results in [NeMo Retriever Library](overview.md). Implementation details live in the package [Vector DB operators and LanceDB](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering) README.
 
-Use this documentation to use custom metadata to filter search results when you work with [NeMo Retriever Library](overview.md).
+## On this page { #on-this-page }
 
+- [Attach metadata at ingestion](#attach-metadata-at-ingestion)
+- [How metadata is stored](#how-metadata-is-stored)
+- [Filter results at query time](#filter-results-at-query-time)
+- [Writing `where` predicates](#writing-where-predicates)
+- [Server-side vs client-side filters](#server-side-vs-client-side-filters)
+- [Inspect hit metadata](#inspect-hit-metadata)
+- [Limitations](#limitations)
+- [Related content](#related-content)
 
-## Limitations
+## Attach metadata at ingestion { #attach-metadata-at-ingestion }
 
-The following are limitation when you use custom metadata:
+Pass a **sidecar metadata table** on `vdb_upload` so selected columns are merged into each chunk's `content_metadata` before LanceDB upload. All three parameters must be set together:
 
-- Metadata fields must be consistent across documents in the same collection.
-- Complex filter expressions may impact retrieval performance.
-- If you update your custom metadata, you must ingest your documents again to use the new metadata.
+| Parameter | Purpose |
+|-----------|---------|
+| `meta_dataframe` | Path to CSV, JSON, or Parquet, or an in-memory `pandas.DataFrame` |
+| `meta_source_field` | Column that identifies each document (must match ingest paths or basenames per `meta_join_key`) |
+| `meta_fields` | Non-empty list of column names to copy into `content_metadata` |
 
-
-
-## Add Custom Metadata During Ingestion
-
-You can add custom metadata during the document ingestion process. 
-You can specify metadata for each file, 
-and you can specify different metadata for different documents in the same ingestion batch.
-
-
-### Metadata Structure
-
-You specify custom metadata as a dataframe or a file (json, csv, or parquet). 
-
-The following example contains metadata fields for category, department, and timestamp. 
-You can create whatever metadata is helpful for your scenario.
+Optional `meta_join_key` controls how rows are matched to documents: `auto` (try full path then basename), `source_id` (full path), or `source_name` (basename only).
 
 ```python
 import pandas as pd
+from nemo_retriever import create_ingestor
 
 meta_df = pd.DataFrame(
     {
         "source": ["data/woods_frost.pdf", "data/multimodal_test.pdf"],
-        "category": ["Alpha", "Bravo"],
-        "department": ["Language", "Engineering"],
-        "timestamp": ["2025-05-01T00:00:00", "2025-05-02T00:00:00"]
+        "meta_a": ["alpha", "bravo"],
+        "meta_b": [10, 20],
     }
 )
 
-# Convert the dataframe to a csv file, 
-# to demonstrate how to ingest a metadata file in a later step.
-
-file_path = "./meta_file.csv"
-meta_df.to_csv(file_path)
-```
-
-
-### Example: Add Custom Metadata During Ingestion
-
-The following example adds custom metadata during ingestion. 
-For more information about the `Ingestor` class, refer to [Use the Python API](nemo-retriever-api-reference.md).
-For more information about the `vdb_upload` method, refer to [Upload Data](vdbs.md).
-
-```python
-from nv_ingest_client.client import Ingestor
-
-hostname = "localhost"
-table_name = "nemo_retriever_collection"
-lancedb_uri = "./lancedb_data"
-
 ingestor = (
-    Ingestor(message_client_hostname=hostname)
-        .files(["data/woods_frost.pdf", "data/multimodal_test.pdf"])
-        .extract(
-            extract_text=True,
-            extract_tables=True,
-            extract_charts=True,
-            extract_images=True,
-            text_depth="page"
-        )
-        .embed()
-        .vdb_upload(
-            vdb_op="lancedb",
-            uri=lancedb_uri,
-            table_name=table_name,
-            hybrid=False,
-        )
-)
-results = ingestor.ingest_async().result()
-```
-
-Merge values from `meta_df` (or `file_path`) into each document's `content_metadata` before `vdb_upload`, or follow the step-by-step pattern in [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb), so category, department, and timestamp are present on the chunks LanceDB indexes.
-
-## Best Practices
-
-The following are the best practices when you work with custom metadata:
-
-- Plan metadata structure before ingestion.
-- Test filter expressions with small datasets first.
-- Consider performance implications of complex filters.
-- Validate metadata during ingestion.
-- Handle missing metadata fields gracefully.
-- Log invalid filter expressions.
-
-
-
-## Use Custom Metadata to Filter Results During Retrieval
-
-You can use custom metadata to filter documents during retrieval operations.
-For **predicate pushdown**, use [LanceDB SQL](https://lancedb.github.io/lancedb/sql/) on an opened table (see the native query sketch below). The **`lancedb_retrieval` helper does not accept a server-side filter**: it always returns up to `top_k` hits from the index, so any list comprehension over those hits is **application-side only**—raise `top_k` if your matches might sit outside the first `top_k` neighbors, or use a native `table.search(...).where(...)` query instead.
-
-
-### Example filter ideas
-
-Typical keys to filter on include `category`, `department`, `priority`, and `timestamp` (use comparable ISO-8601 strings for time ranges). Encode predicates in LanceDB SQL against your table columns (often the serialized `metadata` string), or inspect `hit["entity"]["content_metadata"]` after search as in the `lancedb_retrieval` example below.
-
-### Example: Use a Filter Expression in Search
-
-After ingestion is complete, and documents are uploaded to LanceDB with metadata,
-you can narrow results in the database with a **`where`** clause, or in Python on the returned hits.
-
-**Native LanceDB (SQL pushdown):** connect, embed the query yourself (same model as ingestion), then chain `.where("<LanceDB SQL predicate>")` on `table.search(...)` so filtering happens before the `limit`. Exact SQL depends on how `metadata` is stored; see [LanceDB SQL](https://lancedb.github.io/lancedb/sql/).
-
-```python
-import lancedb
-
-# Pseudocode sketch — replace YOUR_VECTOR and YOUR_PREDICATE with real values.
-db = lancedb.connect("./lancedb_data")
-table = db.open_table("nemo_retriever_collection")
-# table.search(YOUR_VECTOR, vector_column_name="vector").where(YOUR_PREDICATE).limit(10).to_list()
-```
-
-**`lancedb_retrieval` + post-filter:** the helper only returns `top_k` rows with no `where` argument; filtering in Python is for illustration and does **not** change what the database evaluates.
-
-```python
-from nv_ingest_client.util.vdb.lancedb import lancedb_retrieval
-
-hostname = "localhost"
-table_name = "nemo_retriever_collection"
-lancedb_uri = "./lancedb_data"
-top_k = 5
-model_name = "nvidia/llama-3.2-nv-embedqa-1b-v2"
-
-queries = ["this is expensive"]
-q_results = []
-for que in queries:
-    batch = lancedb_retrieval(
-        [que],
-        table_path=lancedb_uri,
-        table_name=table_name,
-        embedding_endpoint=f"http://{hostname}:8012/v1",
-        top_k=top_k,
-        model_name=model_name,
+    create_ingestor(run_mode="batch")
+    .files(["data/woods_frost.pdf", "data/multimodal_test.pdf"])
+    .extract(extract_text=True, text_depth="page")
+    .embed()
+    .vdb_upload(
+        vdb_op="lancedb",
+        uri="./lancedb_data",
+        table_name="nemo-retriever",
+        meta_dataframe=meta_df,
+        meta_source_field="source",
+        meta_fields=["meta_a", "meta_b"],
     )
-    # Application-side only: fewer than top_k hits if Engineering rows are not in this batch
-    filtered = [
-        hit
-        for hit in batch[0]
-        if hit.get("entity", {})
-        .get("content_metadata", {})
-        .get("department")
-        == "Engineering"
-    ]
-    q_results.append(filtered)
-
-print(f"{q_results}")
+)
+ingestor.ingest()
 ```
 
+For a runnable end-to-end flow (ingest, `Retriever.query`, and both filter modes), see [nemo_retriever_retriever_query_metadata_filter.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb).
 
+When you ingest through the **retriever service**, upload the sidecar with [`POST /v1/ingest/sidecar`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/routers/ingest.py#L1040-L1129) (multipart file; response [`SidecarUploadResponse`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/models/responses.py#L60-L68)), then pass the returned `sidecar_id` as `meta_dataframe_id` with `meta_source_field` and `meta_fields` in `pipeline.vdb_upload_params` on [`POST /v1/ingest`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/models/requests.py#L15-L32) ([`PipelineSpec`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/models/pipeline_spec.py#L55-L78)). Request and response shapes, form fields, and auth headers are in the service OpenAPI UI at `/docs` (or `/openapi.json`) on your retriever base URL (for example `http://localhost:7670/docs` after `retriever service start`). Do not send a raw local path as `meta_dataframe` on the service spec.
 
-## Related Content
+## How metadata is stored { #how-metadata-is-stored }
 
-- For a notebook that uses the CLI to add custom metadata and filter query results, refer to [metadata_and_filtered_search.ipynb
-](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb).
+During ingestion, each chunk's `content_metadata` is serialized as a **compact JSON string** (no spaces after `:` or `,`) in the LanceDB `metadata` column. Sidecar columns are merged into that JSON object before upload, so custom keys live in the same string — not in separate table columns. SQL filters on custom fields therefore use `LIKE` against JSON substrings rather than a dedicated JSON operator.
+
+The `source` column stores the document path separately from the metadata JSON.
+
+## Filter results at query time { #filter-results-at-query-time }
+
+Two complementary mechanisms narrow `Retriever.query` results:
+
+1. **Server-side (`where`)** — Pass a Lance / DataFusion SQL predicate in `vdb_kwargs` per call (or as defaults on the `Retriever`). LanceDB applies it as a `.where(...)` clause on vector search. **`_filter`** is accepted as an alias for `where`.
+2. **Client-side** — Use `filter_hits_by_content_metadata(hits, predicate)` after retrieval to keep rows whose parsed `content_metadata` satisfies arbitrary Python logic.
+
+```python
+from nemo_retriever.retriever import Retriever
+
+retriever = Retriever(
+    vdb="lancedb",
+    vdb_kwargs={"uri": "./lancedb_data", "table_name": "nemo-retriever"},
+    embedder="nvidia/llama-nemotron-embed-1b-v2",
+)
+
+hits = retriever.query(
+    "budget assumptions",
+    top_k=16,
+    vdb_kwargs={"where": "metadata LIKE '%\"meta_a\":\"bravo\"%'"},
+)
+```
+
+## Writing `where` predicates { #writing-where-predicates }
+
+LanceDB evaluates `where` as DataFusion SQL over columns `vector`, `text`, `metadata`, and `source`:
+
+```python
+# Match a sidecar string field (compact JSON: "key":"value")
+where = "metadata LIKE '%\"meta_a\":\"alpha\"%'"
+
+# Match a numeric metadata field — numbers serialize without quotes
+where = "metadata LIKE '%\"meta_b\":10%'"
+
+# Combine predicates
+where = "metadata LIKE '%\"meta_a\":\"bravo\"%' AND metadata LIKE '%\"meta_b\":10%'"
+
+# Filter on the source column directly
+where = "source LIKE '%annual_report%'"
+```
+
+Escape single quotes in SQL strings by doubling them (`''`). Because matching is substring-based, include the JSON key (`"meta_a":` rather than only `alpha`) to avoid false positives.
+
+## Server-side vs client-side filters { #server-side-vs-client-side-filters }
+
+Use **`where`** when the predicate fits SQL and you want LanceDB to prune candidates before vector ranking. Use **`filter_hits_by_content_metadata`** when the predicate is easier in Python (combined numeric ranges, set membership, or fields that need parsing). They compose: run a wider `top_k` with `where`, then post-filter for finer logic.
+
+```python
+from nemo_retriever.vdb import filter_hits_by_content_metadata
+
+hits = retriever.query(
+    "budget assumptions",
+    top_k=16,
+    vdb_kwargs={"where": "metadata LIKE '%\"meta_a\":\"bravo\"%'"},
+)
+hits = filter_hits_by_content_metadata(
+    hits, lambda m: m.get("meta_b", 0) >= 10
+)
+```
+
+## Inspect hit metadata { #inspect-hit-metadata }
+
+Each hit's `metadata` field is a JSON string. Use **`parse_hit_content_metadata(hit)`** to obtain a `dict` (the same helper `filter_hits_by_content_metadata` uses). Both helpers are exported from `nemo_retriever.vdb`.
+
+## Limitations { #limitations }
+
+- **Hybrid search** — Metadata filters on the precomputed-vector retrieval path apply to **dense vector search only**. `LanceDB.retrieval` raises `NotImplementedError` when `hybrid=True`; see [Vector databases](vdbs.md#hybrid-search-lancedb).
+- **Predicate shape** — `where` uses substring `LIKE` on compact JSON in `metadata`; design keys and values accordingly.
+- **Sidecar updates** — Changing sidecar data requires re-ingesting affected documents so LanceDB rows pick up new metadata.
+
+## Related content { #related-content }
+
+- [Vector databases](vdbs.md) — LanceDB upload, retrieval, and hybrid notes
+- [nemo_retriever_retriever_query_metadata_filter.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) — end-to-end metadata filtering with `Retriever`
+- [nemo_retriever_metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_metadata_and_filtered_search.ipynb) — graph ingest with sidecar metadata
+- [Vector DB operators (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering) — canonical developer reference for this page

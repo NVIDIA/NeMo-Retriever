@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 **Important: The default branch is main, which tracks active development and may be ahead of the latest supported release.**
 
-For the latest stable release use the [release/26.03 branch](https://github.com/NVIDIA/NeMo-Retriever/tree/26.03).
+For the latest release line use the [26.05 branch](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05) (RC builds are tagged `26.05-RC1`, `26.05-RC2`, …). The previous stable line is [26.03](https://github.com/NVIDIA/NeMo-Retriever/tree/26.03).
 
 See the corresponding [NeMo Retriever Library documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/).
 
@@ -15,7 +15,7 @@ See the corresponding [NeMo Retriever Library documentation](https://docs.nvidia
 NeMo Retriever Library is a scalable, performance-oriented framework for document content and metadata extraction. It supports both NVIDIA NIM microservices and a wide range of models to find, contextualize, and extract text, tables, charts, and infographics for use in downstream generative and retrieval-augmented applications.
 
 > [!Note]
-> NeMo Retriever extraction is also known as NVIDIA Ingest and nv-ingest.
+> NeMo Retriever extraction is also referred to as **NVIDIA Ingest** in some NVIDIA product materials.
 
 NeMo Retriever Library enables parallelization of splitting documents into pages where artifacts are classified (such as text, tables, charts, and infographics), extracted, and further contextualized through optical character recognition (OCR) into a well defined JSON schema. From there, NeMo Retriever Library manages computaiton of embeddings for the extracted content as well as storing them in [LanceDB](https://lancedb.com/).
 
@@ -23,10 +23,12 @@ The following diagram shows the NeMo Retriever Library pipeline.
 
 ![Pipeline Overview](https://docs.nvidia.com/nemo/retriever/extraction/images/overview-extraction.png)
 
-For production-level performance and scalability, we recommend that you deploy the pipeline and supporting NIMs by using Kubernetes ([helm charts](nemo_retriever/helm)). For more information, refer to [prerequisites](https://docs.nvidia.com/nv-ingest/user-guide/getting-started/prerequisites).
+For production-level performance and scalability, deploy the pipeline and supporting NIMs on **Kubernetes** using **Helm** — start with the **[NeMo Retriever Helm chart](nemo_retriever/helm/README.md)** and the **[NeMo Retriever Library (prerequisites / deployment)](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)** for published charts and install procedures.
+
+**Docker Compose** in this repository is **unsupported developer tooling** only (local experimentation). It is **not** a recommended or supported deployment path for NIMs — see **[`nemo_retriever/docker.md`](nemo_retriever/docker.md)** for details and caveats.
 
 *Note*:
-Along with the recent repo name change, we're phasing out the nv-ingest APIs and simplifying the dependencies. You can follow this work and see the forward looking API via the [nemo_retriever](nemo_retriever) library subfolder.
+Along with the recent repo name change, we're phasing out legacy ingestion APIs and simplifying the dependencies. You can follow this work and see the forward looking API via the [nemo_retriever](nemo_retriever) library subfolder.
 
 
 ## Typical Use
@@ -78,20 +80,16 @@ You can see the extracted text that represents the content of the ingested test 
 'Chart 1\nThis chart shows some gadgets, and some very fictitious costs.\nGadgets and their cost\n$160.00\n$140.00\n$120.00\n$100.00\nDollars\n$80.00\n$60.00\n$40.00\n$20.00\n$-\nPowerdrill\nBluetooth speaker\nMinifridge\nPremium desk fan\nHammer\nCost'
 
 # markdown formatting for full pages or documents:
-# document results are keyed by source filename
+# per-page markdown is keyed by page number
 >>> to_markdown_by_page(chunks).keys()
-dict_keys(['multimodal_test.pdf'])
-
-# results per document are keyed by page number
->>> to_markdown_by_page(chunks)["multimodal_test.pdf"].keys()
 dict_keys([1, 2, 3])
 
->>> to_markdown_by_page(chunks)["multimodal_test.pdf"][1]
+>>> to_markdown_by_page(chunks)[1]
 'TestingDocument\r\nA sample document with headings and placeholder text\r\nIntroduction\r\nThis is a placeholder document that can be used for any purpose. It contains some \r\nheadings and some placeholder text to fill the space. The text is not important and contains \r\nno real value, but it is useful for testing. Below, we will have some simple tables and charts \r\nthat we can use to confirm Ingest is working as expected.\r\nTable 1\r\nThis table describes some animals, and some activities they might be doing in specific \r\nlocations.\r\nAnimal Activity Place\r\nGira@e Driving a car At the beach\r\nLion Putting on sunscreen At the park\r\nCat Jumping onto a laptop In a home o@ice\r\nDog Chasing a squirrel In the front yard\r\nChart 1\r\nThis chart shows some gadgets, and some very fictitious costs.\n\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |\n\nChart 1 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost $160.00 $140.00 $120.00 $100.00 Dollars $80.00 $60.00 $40.00 $20.00 $- Powerdrill Bluetooth speaker Minifridge Premium desk fan Hammer Cost\n\n### Table 1\n\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |\n\n### Chart 1\n\nChart 1 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost $160.00 $140.00 $120.00 $100.00 Dollars $80.00 $60.00 $40.00 $20.00 $- Powerdrill Bluetooth speaker Minifridge Premium desk fan Hammer Cost\n\n### Table 2\n\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |\n\n### Chart 2\n\nChart 1 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost $160.00 $140.00 $120.00 $100.00 Dollars $80.00 $60.00 $40.00 $20.00 $- Powerdrill Bluetooth speaker Minifridge Premium desk fan Hammer Cost\n\n### Table 3\n\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |\n\n### Chart 3\n\nChart 1 This chart shows some gadgets, and some very fictitious costs. Gadgets and their cost $160.00 $140.00 $120.00 $100.00 Dollars $80.00 $60.00 $40.00 $20.00 $- Powerdrill Bluetooth speaker Minifridge Premium desk fan Hammer Cost'
 
-# full document markdown also keyed by source filename
->>> to_markdown(chunks).keys()
-dict_keys(['multimodal_test.pdf'])
+# full document markdown is a single string (or None if empty)
+>>> to_markdown(chunks)[:50]
+'# Extracted Content\n\n## Page 1\n\nTestingDocument\r\nA s'
 ```
 
 ### Query Ingested Content
@@ -166,7 +164,7 @@ https://pypi.org/project/pdfservices-sdk/
     [license agreement](https://github.com/adobe/pdfservices-python-sdk?tab=License-1-ov-file) for the
     pdfservices-sdk before enabling this option.
 - **Built With Llama**:
-  - **Description**: The NV-Ingest container comes with the `meta-llama/Llama-3.2-1B` tokenizer pre-downloaded so 
+  - **Description**: The NeMo Retriever ingestion container comes with the `meta-llama/Llama-3.2-1B` tokenizer pre-downloaded so 
     that the split task can use it for token-based splitting without making a network request. The [Llama 3.2 Community License Agreement](https://huggingface.co/meta-llama/Llama-3.2-1B/blob/main/LICENSE.txt) governs your use of these Llama materials.
     
     If you're building the container yourself and want to pre-download this model, you'll first need to set 

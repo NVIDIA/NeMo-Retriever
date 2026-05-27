@@ -5,7 +5,11 @@
 """Unit tests for nemo_retriever.params.utils."""
 
 from nemo_retriever.params.models import EmbedParams
-from nemo_retriever.params.utils import build_embed_kwargs, coerce_params, normalize_embed_kwargs
+from nemo_retriever.params.utils import (
+    build_embed_kwargs,
+    coerce_params,
+    normalize_embed_kwargs,
+)
 
 
 class TestCoerceParams:
@@ -58,7 +62,6 @@ class TestBuildEmbedKwargs:
         kwargs = build_embed_kwargs(params)
         assert "runtime" not in kwargs
         assert "batch_tuning" not in kwargs
-        assert "fused_tuning" not in kwargs
 
 
 class TestNormalizeEmbedKwargs:

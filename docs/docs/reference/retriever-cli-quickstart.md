@@ -1,1 +1,1 @@
---8<-- "../nemo_retriever/docs/cli/quickstart.md"
+--8<-- "../nemo_retriever/docs/cli/README.md:quickstart"

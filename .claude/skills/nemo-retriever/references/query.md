@@ -23,13 +23,13 @@ If flags below look stale, re-check `retriever query --help`.
 Top-10 search against the default table:
 
 ```bash
-retriever query "what is in chart 1?"
+<RETRIEVER_VENV>/bin/retriever query "what is in chart 1?"
 ```
 
 Top-3, custom table:
 
 ```bash
-retriever query "average frequency ranges for tweeters" \
+<RETRIEVER_VENV>/bin/retriever query "average frequency ranges for tweeters" \
   --top-k 3 \
   --lancedb-uri ./my-lancedb \
   --table-name my-corpus
@@ -51,10 +51,10 @@ retriever query "average frequency ranges for tweeters" \
   - `metadata` — JSON string with `type` (`text` / `table` / `chart` / `image`)
     and, where applicable, a normalised `bbox_xyxy_norm`.
 
-Pipe to `jq` for filtering, e.g. only chart hits:
+Pipe through Python for filtering, e.g. only chart hits:
 
 ```bash
-retriever query "gadget costs" | jq '[.[] | select(.metadata | fromjson.type == "chart")]'
+<RETRIEVER_VENV>/bin/retriever query "gadget costs" | <RETRIEVER_VENV>/bin/python -c 'import json,sys; hits=json.load(sys.stdin); print(json.dumps([h for h in hits if json.loads(h["metadata"]).get("type")=="chart"], indent=2))'
 ```
 
 ## Key flags
@@ -63,7 +63,7 @@ retriever query "gadget costs" | jq '[.[] | select(.metadata | fromjson.type == 
 |---|---|---|
 | `--top-k` | `10` | Max hits to return. Must be ≥ 1. |
 | `--lancedb-uri` | `lancedb` | Must match what `ingest` wrote to. |
-| `--table-name` | `nv-ingest` | Must match what `ingest` wrote to. |
+| `--table-name` | `nemo-retriever` | Must match what `ingest` wrote to. |
 
 ## Distance interpretation
 
@@ -79,7 +79,7 @@ retriever query "gadget costs" | jq '[.[] | select(.metadata | fromjson.type == 
 
 - **Empty result array** — table is empty (no ingest run yet) or
   `--table-name` / `--lancedb-uri` don't match where ingest wrote.
-- **`Table 'nv-ingest' was not found`** — same root cause: wrong table/URI,
+- **`Table 'nemo-retriever' was not found`** — same root cause: wrong table/URI,
   or ingest hasn't been run.
 - **First query is slow (~10–15s)** — vLLM startup for the query embedder.
   Subsequent queries in the same process are sub-second; one-shot CLI

@@ -504,7 +504,7 @@ def retrieve_and_score(
 
     rerank_kw: dict[str, Any] = {
         "model_name": str(cfg.reranker or VL_RERANK_MODEL),
-        "invoke_url": (cfg.reranker_endpoint or "").strip() or None,
+        "rerank_invoke_url": (cfg.reranker_endpoint or "").strip() or None,
         "api_key": (cfg.reranker_api_key or "").strip(),
         "batch_size": int(cfg.reranker_batch_size),
         "local_reranker_backend": str(cfg.local_reranker_backend),

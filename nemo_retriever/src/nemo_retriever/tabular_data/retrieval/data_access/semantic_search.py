@@ -4,11 +4,22 @@
 
 """Vector semantic search primitives.
 
-The functions here build ``where`` predicates over the JSON ``metadata``
-column, run per-label vector queries through the injected
+The functions here build ``where`` predicates for the per-query metadata
+filter, run per-label vector queries through the injected
 :class:`~nemo_retriever.retriever.Retriever`, and shape the raw hits into a
 common ``{text, id, label, score}`` candidate dict consumed by the rest of
 the retrieval data-access modules.
+
+The filter shape is chosen by the VDB the caller plugged in (read off
+``retriever.vdb_kwargs["vdb"].metadata_filter_format``):
+
+* ``"sql"`` (default) — SQL ``LIKE`` predicate over the JSON ``metadata``
+  column, fed to LanceDB's ``.where()`` API.
+* ``"dict"`` — flat ``{column: value | [values]}`` mapping, fed straight
+  into the backend's native dict-filter API (e.g.
+  ``PGVector.similarity_search_with_score_by_vector(..., filter=)``). The
+  customer's VDB is responsible for storing ``label`` / ``database_name``
+  as top-level columns so the keys match.
 """
 
 from __future__ import annotations
@@ -16,10 +27,12 @@ from __future__ import annotations
 import ast
 import json
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from nemo_retriever.retriever import Retriever
+
+MetadataFilterFormat = Literal["sql", "dict"]
 
 logger = logging.getLogger(__name__)
 
@@ -103,14 +116,37 @@ def _escape_like(value: str) -> str:
 def _build_metadata_where_clause(
     labels: list[str] | None = None,
     database_name: str | None = None,
-) -> str | None:
-    """Build a SQL ``where`` predicate for the ``metadata`` JSON column.
+    *,
+    fmt: MetadataFilterFormat = "sql",
+) -> str | dict | None:
+    """Build a per-query metadata filter for ``label`` / ``database_name``.
 
-    Uses ``LIKE`` on the compact-JSON string (no spaces after ``:``) to match
-    ``"label":"<value>"`` and ``"database_name":"<value>"`` substrings. Values
-    are escaped via :func:`_escape_like` and the predicate declares
-    ``ESCAPE '\\'`` so ``%`` / ``_`` / ``\\`` in inputs are treated literally.
+    The output shape is selected by *fmt*:
+
+    * ``"sql"`` (default) — SQL ``LIKE`` predicate against the JSON
+      ``metadata`` column, suitable for LanceDB's ``.where()`` API. Uses
+      compact-JSON ``"key":"value"`` substring matching; values are
+      escaped via :func:`_escape_like` and the predicate declares
+      ``ESCAPE '\\'`` so ``%`` / ``_`` / ``\\`` in inputs are treated
+      literally.
+    * ``"dict"`` — flat mapping suitable for backends whose filter API
+      consumes a dict (e.g. pgvector). A single label lands as
+      ``{"label": "Column"}``; multiple labels become ``{"label": [...]}``
+      (which langchain-pgvector interprets as an ``IN``-list).
+
+    Returns ``None`` when neither *labels* nor *database_name* is supplied.
     """
+    if not labels and not database_name:
+        return None
+
+    if fmt == "dict":
+        out: dict = {}
+        if labels:
+            out["label"] = labels[0] if len(labels) == 1 else list(labels)
+        if database_name:
+            out["database_name"] = database_name
+        return out
+
     parts: list[str] = []
     if labels:
         label_preds = [f"""metadata LIKE '%"label":"{_escape_like(lab)}"%' ESCAPE '\\'""" for lab in labels]
@@ -118,6 +154,20 @@ def _build_metadata_where_clause(
     if database_name:
         parts.append(f"""metadata LIKE '%"database_name":"{_escape_like(database_name)}"%' ESCAPE '\\'""")
     return " AND ".join(parts) if parts else None
+
+
+def _metadata_filter_format(retriever: "Retriever") -> MetadataFilterFormat:
+    """Read the per-VDB filter format off the retriever's plugged-in VDB.
+
+    Tabular callers construct the VDB themselves and pass it as
+    ``Retriever(vdb_kwargs={"vdb": instance})``, so the instance is reachable
+    through ``retriever.vdb_kwargs["vdb"]``. Falls back to ``"sql"`` when no
+    instance is exposed (e.g. the reference :class:`LanceDB` reached via
+    ``vdb_op="lancedb"``), preserving historical behavior.
+    """
+    vdb = (getattr(retriever, "vdb_kwargs", None) or {}).get("vdb")
+    fmt = getattr(vdb, "metadata_filter_format", "sql")
+    return fmt if fmt in ("sql", "dict") else "sql"
 
 
 def _hits_to_semantic_rows(
@@ -169,13 +219,17 @@ def search_semantic_index(
 ) -> list[dict]:
     """Vector search via the injected :class:`~nemo_retriever.retriever.Retriever`.
 
-    Runs one query **per label** with a server-side ``where`` predicate on the
-    ``metadata`` JSON column (label + database_name), requesting exactly
-    the label-specific *k* rows.  *per_label_k* can be a single int or a
-    ``{label: k}`` dict (e.g. ``{"Column": 10, "CustomAnalysis": 3}``).
-    When no *label_filter* is given, falls back to a single query with
-    ``DEFAULT_FETCH_LIMIT``.
+    Runs one query **per label** with a server-side metadata filter on
+    ``label`` + ``database_name``, requesting exactly the label-specific *k*
+    rows.  *per_label_k* can be a single int or a ``{label: k}`` dict
+    (e.g. ``{"Column": 10, "CustomAnalysis": 3}``). When no *label_filter*
+    is given, falls back to a single query with ``DEFAULT_FETCH_LIMIT``.
+
+    The filter format (SQL string vs. dict) is read off the VDB the caller
+    plugged into the retriever — see :func:`_metadata_filter_format`.
     """
+    fmt = _metadata_filter_format(retriever)
+
     allowed_labels = {str(x) for x in (label_filter or []) if x is not None} or None
     labels_to_query = list(allowed_labels) if allowed_labels else [None]
 
@@ -184,6 +238,7 @@ def search_semantic_index(
         where_clause = _build_metadata_where_clause(
             labels=[label] if label else None,
             database_name=database_name,
+            fmt=fmt,
         )
         vdb_kwargs = {"where": where_clause} if where_clause else None
         top_k = _resolve_label_k(per_label_k, label) if where_clause else DEFAULT_FETCH_LIMIT

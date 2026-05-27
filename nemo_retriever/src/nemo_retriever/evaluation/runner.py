@@ -125,6 +125,8 @@ def run_eval_sweep(
             api_base=judge_model_cfg.get("api_base"),
             api_key=judge_model_cfg.get("api_key"),
             extra_params=judge_model_cfg.get("extra_params"),
+            temperature=judge_model_cfg.get("temperature"),
+            max_tokens=judge_model_cfg.get("max_tokens"),
             timeout=judge_model_cfg.get("timeout", default_timeout),
         )
 

@@ -2,12 +2,16 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Any, Literal, Tuple
-import torch.nn as nn
+from typing import TYPE_CHECKING, Any, Literal, Tuple
+
+if TYPE_CHECKING:
+    import torch.nn as nn
 
 
-RunMode = Literal["local", "NIM", "build-endpoint"]
+ModelRunMode = Literal["local", "NIM", "build-endpoint"]
 
 
 class BaseModel(ABC):
@@ -37,7 +41,7 @@ class BaseModel(ABC):
 
     @property
     @abstractmethod
-    def model_runmode(self) -> RunMode:
+    def model_runmode(self) -> ModelRunMode:
         """Execution mode: local, NIM, or build-endpoint."""
         pass
 

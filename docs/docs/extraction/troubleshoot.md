@@ -8,8 +8,6 @@ NeMo Retriever Library is designed to process language and language-length strin
 If you submit a document that contains extremely long, or non-language text strings, 
 such as a DNA sequence, errors or unexpected results occur.
 
-
-
 ## Can't process malformed input files
 
 When you run a job you might see errors similar to the following:
@@ -22,7 +20,43 @@ When you run a job you might see errors similar to the following:
 These errors can occur when your input file is malformed. 
 Verify or fix the format of your input file, and try resubmitting your job.
 
+## Audio or video extraction reports missing media dependencies { #audio-or-video-extraction-reports-missing-media-dependencies }
 
+When you run audio or video extraction, you might see an error similar to one
+of the following:
+
+```text
+Audio extraction requires media dependencies; missing: ffmpeg.
+VideoFrameActor requires media dependencies; missing: ffprobe.
+```
+
+The `ffmpeg-python` wrapper and `nemo-retriever[multimedia]` do not install the
+`ffmpeg` or `ffprobe` binaries the pipeline executes.
+
+For air-gapped or locked-down clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+
+**Connected environments:**
+
+On Debian or Ubuntu hosts:
+
+```bash
+sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+```
+
+For the bundled service container at runtime:
+
+```bash
+docker run -e INSTALL_FFMPEG=true nemo-retriever-service
+```
+
+For Helm, when package-repo egress and the image security policy allow startup install:
+
+```yaml
+service:
+  installFfmpeg: true
+```
+
+This path fails with `allowPrivilegeEscalation: false` or `readOnlyRootFilesystem: true`.
 
 ## Can't start new thread error
 
@@ -65,6 +99,30 @@ you must set `EMBEDDER_BATCH_SIZE=3` in your environment.
 You can set the variable in your .env file or directly in your environment.
 
 
+
+## ModuleNotFoundError: No module named open_clip when using nemotron_parse { #modulenotfounderror-no-module-named-open-clip-when-using-nemotron-parse }
+
+When you run PDF extraction with `extract_method="nemotron_parse"`, you might see an error similar to the following:
+
+```text
+ModuleNotFoundError: No module named 'open_clip'
+```
+
+The Nemotron Parse NIM client requires the `open_clip` Python module, provided by `open-clip-torch`. That package is not part of the default `nemo-retriever` install or the `[local]` extra.
+
+Install the dedicated PyPI extra before running Nemotron Parse extraction:
+
+```bash
+pip install "nemo-retriever[nemotron-parse]"
+```
+
+For local GPU inference with Nemotron Parse, combine extras:
+
+```bash
+pip install "nemo-retriever[local,nemotron-parse]"
+```
+
+See also [What is NeMo Retriever Library?](overview.md) and [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#software-requirements).
 
 ## Extract method nemotron-parse doesn't support image files
 
@@ -127,3 +185,5 @@ ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
+- [NeMo Retriever Library — prerequisites / deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (supported **Helm** charts)
+- [Docker Compose (unsupported, developer)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md)

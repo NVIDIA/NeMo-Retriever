@@ -10,7 +10,7 @@ Concrete implementations are provided by runmodes:
 
 - inprocess: local Python process, no framework assumptions
 - batch: large-scale batch execution
-- fused: low-latency single-actor GPU model fusion
+- service: remote ingestion service
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from nemo_retriever.params import EmbedParams
 from nemo_retriever.params import ExtractParams
 from nemo_retriever.params import IngestExecuteParams
 from nemo_retriever.params import IngestorCreateParams
-from nemo_retriever.params import RunMode
+from nemo_retriever.params import IngestorRunMode
 from nemo_retriever.params import StoreParams
 from nemo_retriever.params import VdbUploadParams
 from nemo_retriever.params import WebhookParams
@@ -42,7 +42,7 @@ def _merge_params[T](params: T | None, kwargs: dict[str, Any]) -> T:
 
 def create_ingestor(
     *,
-    run_mode: RunMode = "inprocess",
+    run_mode: IngestorRunMode = "inprocess",
     params: IngestorCreateParams | None = None,
     **kwargs: Any,
 ) -> "Ingestor":

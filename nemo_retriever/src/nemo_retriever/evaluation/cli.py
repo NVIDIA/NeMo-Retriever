@@ -112,7 +112,9 @@ _ENV_DEFAULTS = {
     "GEN_MODEL": "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
     "GEN_MODEL_NAME": "generator",
     "GEN_TEMPERATURE": "0.0",
-    "JUDGE_MODEL": "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
+    "JUDGE_MODEL": "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    "JUDGE_TEMPERATURE": "0.1",
+    "JUDGE_MAX_TOKENS": "4096",
     "QA_TOP_K": "5",
     "QA_MAX_WORKERS": "4",
     "QA_LIMIT": "0",
@@ -147,6 +149,8 @@ def _build_env_config() -> tuple[dict, str, str, str, float]:
     gen_temperature = float(os.environ.get("GEN_TEMPERATURE", _ENV_DEFAULTS["GEN_TEMPERATURE"]))
 
     judge_model = os.environ.get("JUDGE_MODEL", _ENV_DEFAULTS["JUDGE_MODEL"])
+    judge_temperature = float(os.environ.get("JUDGE_TEMPERATURE", _ENV_DEFAULTS["JUDGE_TEMPERATURE"]))
+    judge_max_tokens = int(os.environ.get("JUDGE_MAX_TOKENS", _ENV_DEFAULTS["JUDGE_MAX_TOKENS"]))
     judge_api_base = os.environ.get("JUDGE_API_BASE")
     gen_model = os.environ.get("GEN_MODEL", _ENV_DEFAULTS["GEN_MODEL"])
     gen_name = os.environ.get("GEN_MODEL_NAME", _ENV_DEFAULTS["GEN_MODEL_NAME"])
@@ -184,6 +188,8 @@ def _build_env_config() -> tuple[dict, str, str, str, float]:
         "model": judge_model,
         "api_base": judge_api_base,
         "api_key": judge_api_key,
+        "temperature": judge_temperature,
+        "max_tokens": judge_max_tokens,
     }
 
     results_dir = os.environ.get(
