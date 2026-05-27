@@ -146,7 +146,7 @@ Or query via the Retriever Python client (`nemo_retriever/README.md`):
 ```python
 from nemo_retriever.retriever import Retriever
 
-retriever = Retriever(lancedb_uri="lancedb", lancedb_table="nv-ingest", top_k=5)
+retriever = Retriever(vdb_kwargs={"uri": "lancedb", "table_name": "nv-ingest"}, top_k=5)
 hits = retriever.query(
     "Given their activities, which animal is responsible for the typos?"
 )
