@@ -284,6 +284,26 @@ def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | No
     return resolved
 
 
+def _resolve_service_extraction_mode(
+    extraction_mode: str,
+    filename: str,
+) -> str:
+    """Pick the worker extraction mode for a single uploaded file.
+
+    When the client leaves ``extraction_mode`` at ``"auto"`` (the service
+    default), infer ``"text"`` / ``"html"`` / … from the filename so HTML
+    and TXT uploads use the typed splitters instead of falling through a
+    mis-routed graph.
+    """
+    mode = (extraction_mode or "auto").strip().lower()
+    if mode != "auto":
+        return mode
+    from nemo_retriever.service.utils.file_type import infer_extraction_mode_from_filename
+
+    inferred = infer_extraction_mode_from_filename(filename)
+    return inferred or "auto"
+
+
 def _request_needs_asr_params(extraction_mode: str | None, filename: str) -> bool:
     """True iff the request is audio/video and should carry ``_asr_params``.
 
@@ -382,7 +402,8 @@ def _build_graph_ingestor_from_spec(
     )
 
     spec = spec or {}
-    extraction_mode = spec.get("extraction_mode", "auto")
+    extraction_mode = _resolve_service_extraction_mode(spec.get("extraction_mode", "auto"), filename)
+    split_config = spec.get("split_config")
 
     extract_kwargs = _merge_server_owned(base_extract, spec.get("extract_params"), _TRUST_OWNED_EXTRACT_KEYS)
     extract_params = ExtractParams(**extract_kwargs)
@@ -416,11 +437,15 @@ def _build_graph_ingestor_from_spec(
     ingestor = ingestor.buffers([(filename, BytesIO(payload))])
 
     if extraction_mode == "image":
-        ingestor = ingestor.extract_image_files(extract_params, split_config=spec.get("split_config"))
+        ingestor = ingestor.extract_image_files(extract_params, split_config=split_config)
+    elif extraction_mode == "text" and split_config is None:
+        ingestor = ingestor.extract_txt()
+    elif extraction_mode == "html" and split_config is None:
+        ingestor = ingestor.extract_html()
     else:
         ingestor = ingestor.extract(
             extract_params,
-            split_config=spec.get("split_config"),
+            split_config=split_config,
             extraction_mode=extraction_mode,
         )
         # Only attach the worker-wide ASR params to the per-request ingestor
@@ -545,6 +570,16 @@ def _run_pipeline_in_process(
     elapsed = time.monotonic() - t0
 
     row_count = len(result_df)
+
+    from nemo_retriever.service.utils.file_type import is_text_like_filename
+
+    if row_count == 0 and is_text_like_filename(filename):
+        raise ValueError(
+            f"Extraction produced no rows for {filename!r}. "
+            "Supported HTML and TXT inputs must yield at least one text chunk. "
+            "If you need custom chunking, pass split_config for the matching "
+            "source type (see README: split_config for text/html)."
+        )
 
     if vectordb_url and row_count > 0 and not has_per_request_vdb:
         # Skip the out-of-graph fan-out when the client already wired
