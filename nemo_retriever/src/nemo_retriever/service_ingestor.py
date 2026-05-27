@@ -15,7 +15,10 @@ Three execution surfaces are exposed:
 1. :meth:`ServiceIngestor.ingest` — sync, blocks until every document has
    finished, returns a :class:`ServiceIngestResult` (a ``list`` subclass
    holding per-document completion events, plus ``job_id`` / ``failures``
-   / ``document_ids`` / ``elapsed_s`` / ``job_status`` attributes). Each
+   / ``document_ids`` / ``elapsed_s`` / ``job_status`` / ``dataframe``
+   attributes). By default ``return_results=True`` fetches each
+   completed document's rows from the status endpoint into
+   ``result.dataframe``. Each
    call implicitly opens one server-side job aggregate sized to
    ``len(documents)`` via ``POST /v1/ingest/job``, then submits every
    document under that ``job_id``.
@@ -77,12 +80,10 @@ from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple, Union
 
 import httpx
 
+from nemo_retriever.ingest_results import concat_ingest_results
 from nemo_retriever.ingestor import _merge_params, ingestor
 from nemo_retriever.params import (
     CaptionParams,
-    DedupParams,
-    EmbedParams,
-    ExtractParams,
     IngestExecuteParams,
     PdfSplitParams,
     StoreParams,
@@ -126,6 +127,14 @@ class ServiceIngestResult(list):
         lifecycle event was observed during the run. ``None`` if the
         stream closed without a terminal job event (e.g. SSE fallback
         only delivered per-document completions).
+    dataframe
+        When :meth:`ServiceIngestor.ingest` is called with
+        ``return_results=True`` (the default), a ``pandas.DataFrame``
+        of all successfully ingested rows fetched from the service via
+        ``GET /v1/ingest/status/{document_id}``, concatenated in upload
+        order with the same column layout as ``GraphIngestor.ingest()``
+        in ``inprocess`` / ``batch`` run modes. ``None`` when
+        ``return_results=False``.
     """
 
     def __init__(self, items: list[dict[str, Any]] | None = None) -> None:
@@ -135,6 +144,7 @@ class ServiceIngestResult(list):
         self.document_ids: list[str] = []
         self.elapsed_s: float = 0.0
         self.job_status: str | None = None
+        self.dataframe: Any = None
 
     def __repr__(self) -> str:
         return (
@@ -384,28 +394,29 @@ class ServiceIngestor(ingestor):
         if name not in order:
             order.append(name)
 
-    def _save_document_to_disk(self, document_id: str) -> Path:
-        """Fetch ``result_data`` for *document_id* and write a JSON artifact.
+    def _fetch_document_result_data(self, document_id: str) -> list[dict[str, Any]]:
+        """Fetch ``result_data`` for *document_id* from the status endpoint.
 
-        Returns the path that was written. Raises if the document_id is
-        missing or the fetch fails. The status endpoint consumes
-        ``result_data`` on first read, so callers must invoke this
-        exactly once per document.
+        The status endpoint consumes ``result_data`` on first read, so
+        callers must invoke this exactly once per document.
         """
-        import gzip
-        import json as _json
-
         if not document_id:
-            raise ValueError("_save_document_to_disk(): empty document_id")
-        if self._save_to_disk_dir is None:
-            raise RuntimeError("_save_document_to_disk(): save_to_disk was never enabled")
+            raise ValueError("_fetch_document_result_data(): empty document_id")
 
         url = f"{self._base_url}/v1/ingest/status/{document_id}"
         with httpx.Client(timeout=self._request_timeout_s, headers=self._auth_headers) as client:
             resp = client.get(url)
             resp.raise_for_status()
             body = resp.json()
-        result_data = body.get("result_data") or []
+        return list(body.get("result_data") or [])
+
+    def _write_result_data_to_disk(self, document_id: str, result_data: list[dict[str, Any]]) -> Path:
+        """Write *result_data* for *document_id* to the configured output directory."""
+        import gzip
+        import json as _json
+
+        if self._save_to_disk_dir is None:
+            raise RuntimeError("_write_result_data_to_disk(): save_to_disk was never enabled")
 
         suffix = ".json.gz" if self._save_to_disk_compression == "gzip" else ".json"
         out_path = self._save_to_disk_dir / f"{document_id}{suffix}"
@@ -419,6 +430,31 @@ class ServiceIngestor(ingestor):
         else:
             out_path.write_bytes(payload)
         return out_path
+
+    def _save_document_to_disk(self, document_id: str) -> Path:
+        """Fetch ``result_data`` for *document_id* and write a JSON artifact.
+
+        Returns the path that was written. Raises if the document_id is
+        missing or the fetch fails.
+        """
+        if self._save_to_disk_dir is None:
+            raise RuntimeError("_save_document_to_disk(): save_to_disk was never enabled")
+        result_data = self._fetch_document_result_data(document_id)
+        return self._write_result_data_to_disk(document_id, result_data)
+
+    def _materialize_completed_document(
+        self,
+        document_id: str,
+        *,
+        return_results: bool,
+    ) -> list[dict[str, Any]] | None:
+        """Fetch (once) and optionally persist rows for a completed document."""
+        if not return_results and self._save_to_disk_dir is None:
+            return None
+        result_data = self._fetch_document_result_data(document_id)
+        if self._save_to_disk_dir is not None:
+            self._write_result_data_to_disk(document_id, result_data)
+        return result_data if return_results else None
 
     def _pipeline_payload(self) -> dict[str, Any] | None:
         """Return the spec dict to send on the wire, or ``None`` when empty.
@@ -500,9 +536,10 @@ class ServiceIngestor(ingestor):
 
     def dedup(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
         """Record a dedup stage with optional :class:`DedupParams` overrides."""
-        merged = _merge_params(params, kwargs) if (params or kwargs) else DedupParams()
-        params_dict = _strip_server_owned(_params_to_dict(merged), "dedup")
-        self._pipeline_spec["dedup_params"] = params_dict
+        if params is not None or kwargs:
+            merged = _merge_params(params, kwargs)
+            params_dict = _strip_server_owned(_params_to_dict(merged), "dedup")
+            self._pipeline_spec["dedup_params"] = params_dict
         self._record_stage("dedup")
         return self
 
@@ -512,9 +549,10 @@ class ServiceIngestor(ingestor):
         Embedding endpoint URL and API key are server-owned and will be
         rejected if set here.
         """
-        merged = _merge_params(params, kwargs) if (params or kwargs) else EmbedParams()
-        params_dict = _strip_server_owned(_params_to_dict(merged), "embed")
-        self._pipeline_spec["embed_params"] = params_dict
+        if params is not None or kwargs:
+            merged = _merge_params(params, kwargs)
+            params_dict = _strip_server_owned(_params_to_dict(merged), "embed")
+            self._pipeline_spec["embed_params"] = params_dict
         self._record_stage("embed")
         return self
 
@@ -531,10 +569,16 @@ class ServiceIngestor(ingestor):
         ``extraction_mode`` selects the worker's extraction path
         (``'auto'`` default — dispatches by file extension; ``'pdf'``
         forces the PDF path for all inputs, etc.).
+
+        When no ``ExtractParams`` overrides are supplied, ``extract_params``
+        is omitted from the wire payload so the worker applies the
+        service's server-owned defaults (and the allow-list is not tripped
+        by client-side model defaults).
         """
-        merged = _merge_params(params, kwargs) if (params or kwargs) else ExtractParams()
-        params_dict = _strip_server_owned(_params_to_dict(merged), "extract")
-        self._pipeline_spec["extract_params"] = params_dict
+        if params is not None or kwargs:
+            merged = _merge_params(params, kwargs)
+            params_dict = _strip_server_owned(_params_to_dict(merged), "extract")
+            self._pipeline_spec["extract_params"] = params_dict
         self._pipeline_spec["extraction_mode"] = extraction_mode
         if split_config is not None:
             self._pipeline_spec["split_config"] = split_config
@@ -545,9 +589,10 @@ class ServiceIngestor(ingestor):
         self, params: Any = None, *, split_config: Optional[dict[str, Any]] = None, **kwargs: Any
     ) -> "ServiceIngestor":
         """Record image-file extraction (``extraction_mode='image'``)."""
-        merged = _merge_params(params, kwargs) if (params or kwargs) else ExtractParams()
-        params_dict = _strip_server_owned(_params_to_dict(merged), "extract_image_files")
-        self._pipeline_spec["extract_params"] = params_dict
+        if params is not None or kwargs:
+            merged = _merge_params(params, kwargs)
+            params_dict = _strip_server_owned(_params_to_dict(merged), "extract_image_files")
+            self._pipeline_spec["extract_params"] = params_dict
         self._pipeline_spec["extraction_mode"] = "image"
         if split_config is not None:
             self._pipeline_spec["split_config"] = split_config
@@ -784,8 +829,9 @@ class ServiceIngestor(ingestor):
 
         Each completed document produces one JSON file (or ``.json.gz`` when
         ``compression='gzip'``) named ``<document_id>.json[.gz]`` whose
-        contents are the worker's :func:`_sanitize_result_data` output —
-        the same rows reported via ``/v1/ingest/status/{id}``.
+        contents are the worker's transport-serialized pipeline rows
+        (see :mod:`nemo_retriever.ingest_results`) — the same column
+        layout as ``GraphIngestor.ingest()`` in local run modes.
 
         Important differences from graph mode:
 
@@ -925,13 +971,20 @@ class ServiceIngestor(ingestor):
         params
             Optional :class:`IngestExecuteParams` (or plain ``dict``)
             carrying execute-time flags.  In service run_mode only
-            ``return_failures`` / ``return_traces`` are honored — every
-            other field is recorded on the server-side pipeline spec.
+            ``return_failures`` / ``return_traces`` / ``return_results``
+            are honored — every other field is recorded on the
+            server-side pipeline spec.
         **kwargs
             Same execute-time flags may be passed individually.  Anything
             not recognised is silently ignored (server-side execution
             in service mode is driven by the pipeline spec, not by
             execute-time knobs).
+        return_results
+            When ``True`` (default), fetch each completed document's
+            ``result_data`` from ``GET /v1/ingest/status/{id}`` and
+            expose the combined rows on ``result.dataframe`` as a
+            ``pandas.DataFrame``. Set to ``False`` to skip those HTTP
+            round-trips when only job metadata is needed.
 
         Returns
         -------
@@ -939,7 +992,7 @@ class ServiceIngestor(ingestor):
             When neither ``return_failures`` nor ``return_traces`` is
             set — a list subclass of per-document completion events with
             extra ``job_id`` / ``failures`` / ``document_ids`` /
-            ``elapsed_s`` / ``job_status`` attributes.
+            ``elapsed_s`` / ``job_status`` / ``dataframe`` attributes.
         tuple
             With ``return_failures=True`` only — ``(result, failures)``.
             With ``return_traces=True`` only — ``(result, traces)``.
@@ -948,10 +1001,11 @@ class ServiceIngestor(ingestor):
             of raw SSE event dicts observed during the run, useful for
             debugging pipeline behaviour without re-running the job.
         """
-        return_failures, return_traces = self._resolve_artifact_flags(params, kwargs)
+        return_failures, return_traces, return_results = self._resolve_execute_flags(params, kwargs)
         del params, kwargs
         result = ServiceIngestResult()
         traces: list[dict[str, Any]] = []
+        rows_by_document: dict[str, list[dict[str, Any]]] = {}
         t0 = time.monotonic()
 
         documents_completed = 0
@@ -1006,13 +1060,19 @@ class ServiceIngestor(ingestor):
                     result.failures.append((doc_id, error))
                 else:
                     documents_completed += 1
-                    if self._save_to_disk_dir is not None:
-                        doc_id = evt.get("document_id", "")
+                    doc_id = evt.get("document_id", "")
+                    if return_results or self._save_to_disk_dir is not None:
                         try:
-                            self._save_document_to_disk(doc_id)
+                            rows = self._materialize_completed_document(
+                                doc_id,
+                                return_results=return_results,
+                            )
+                            if rows is not None and return_results:
+                                rows_by_document[doc_id] = rows
                         except Exception as exc:
-                            logger.warning("save_to_disk: failed to persist %s: %s", doc_id, exc)
-                            result.failures.append((doc_id, f"save_to_disk: {exc}"))
+                            label = "return_results" if return_results else "save_to_disk"
+                            logger.warning("%s: failed to fetch/persist %s: %s", label, doc_id, exc)
+                            result.failures.append((doc_id, f"{label}: {exc}"))
                 result.append(evt)
                 print(
                     f"\r  Job {result.job_id or '?'}  |  "
@@ -1033,6 +1093,9 @@ class ServiceIngestor(ingestor):
 
         result.document_ids = list(self._document_ids)
         result.elapsed_s = time.monotonic() - t0
+        if return_results:
+            doc_order = [d for d in self._document_ids if d in rows_by_document] or list(rows_by_document)
+            result.dataframe = concat_ingest_results(rows_by_document, doc_order)
         self._last_run_elapsed_s = result.elapsed_s
         # Cache the job_id on the ingestor for the get_status() /
         # remaining_jobs() accessors so they can target the job
@@ -1049,26 +1112,37 @@ class ServiceIngestor(ingestor):
         return result
 
     @staticmethod
-    def _resolve_artifact_flags(params: Any, kwargs: dict[str, Any]) -> tuple[bool, bool]:
-        """Read ``return_failures`` / ``return_traces`` from either source.
+    def _resolve_execute_flags(params: Any, kwargs: dict[str, Any]) -> tuple[bool, bool, bool]:
+        """Read execute-time flags from ``params`` and/or ``kwargs``.
 
         kwargs take precedence over fields on ``params`` when both supply
         the same flag, mirroring the precedence used by
         :func:`nemo_retriever.ingestor._merge_params`.
         """
 
-        def _from_params(name: str) -> bool:
+        def _from_params(name: str, *, default: bool) -> bool:
             if isinstance(params, IngestExecuteParams):
-                return bool(getattr(params, name, False))
+                return bool(getattr(params, name, default))
             if isinstance(params, dict):
-                return bool(params.get(name, False))
-            return False
+                if name in params:
+                    return bool(params[name])
+                return default
+            return default
 
         return_failures = (
-            bool(kwargs["return_failures"]) if "return_failures" in kwargs else _from_params("return_failures")
+            bool(kwargs["return_failures"])
+            if "return_failures" in kwargs
+            else _from_params("return_failures", default=False)
         )
-        return_traces = bool(kwargs["return_traces"]) if "return_traces" in kwargs else _from_params("return_traces")
-        return return_failures, return_traces
+        return_traces = (
+            bool(kwargs["return_traces"]) if "return_traces" in kwargs else _from_params("return_traces", default=False)
+        )
+        return_results = (
+            bool(kwargs["return_results"])
+            if "return_results" in kwargs
+            else _from_params("return_results", default=True)
+        )
+        return return_failures, return_traces, return_results
 
     # ------------------------------------------------------------------
     # Execution — sync streaming
@@ -1160,6 +1234,7 @@ class ServiceIngestor(ingestor):
         *,
         return_failures: bool = False,
         return_traces: bool = False,
+        return_results: bool = True,
     ) -> Any:
         """Run :meth:`ingest` on a background thread; return a ``Future``.
 
@@ -1174,6 +1249,7 @@ class ServiceIngestor(ingestor):
             self.ingest,
             return_failures=return_failures,
             return_traces=return_traces,
+            return_results=return_results,
         )
 
     # ------------------------------------------------------------------

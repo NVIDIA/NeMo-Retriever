@@ -36,6 +36,13 @@ The chart ships two deployable layers behind feature flags:
 > the service at one replica. The chart already exposes the HPA scaffolding
 > so it's a one-line change once the planned PostgreSQL backend lands.
 
+> For behavioral consistency between local HuggingFace deployments and Helm service deployments: 
+> `results = ingestor.ingest(...return_results=True)
+> return_results defaults to True. This incurs a significant performance and system memory usage cost. 
+> Unless you know explicitly you need to fetch extraction results to the client, you should use:
+> return_results=False
+> If you must return results, you may need to increase pod memory specs to support the increased pod memory usage.
+
 ---
 
 ## Layout
