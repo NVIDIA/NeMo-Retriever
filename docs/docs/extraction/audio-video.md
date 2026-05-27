@@ -118,7 +118,7 @@ Instead of running the pipeline locally, you can call Parakeet through [build.nv
         .files("./data/*.mp3")
         .extract_audio(
             asr_params=ASRParams(
-                audio_endpoints=("grpc.nvcf.nvidia.com:443", None),
+                audio_endpoints=("grpc.nvcf.nvidia.com:443", None),  # (grpc_endpoint, http_endpoint)
                 function_id="<function ID>",
                 auth_token="<API key>",
                 segment_audio=True,

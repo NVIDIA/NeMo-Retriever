@@ -142,7 +142,7 @@ def test_extract_rejects_unknown_kwargs() -> None:
     with pytest.raises(TypeError, match="garbage_kwarg"):
         ingestor.extract(garbage_kwarg="x")
 
-    with pytest.raises(TypeError, match="extract_audio_params") as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ingestor.extract(
             document_type="mp3",
             extract_method="audio",
@@ -154,8 +154,10 @@ def test_extract_rejects_unknown_kwargs() -> None:
             },
         )
     message = str(exc_info.value)
-    assert "extract_method" in message
-    assert "document_type" in message
+    # Pin the rejected-keys list as a single repr so this test fails loudly if
+    # any of these keys ever become real ExtractParams fields.
+    expected_rejected = repr(sorted(["document_type", "extract_method", "extract_audio_params"]))
+    assert expected_rejected in message
     assert "asr_params" in message
 
 
