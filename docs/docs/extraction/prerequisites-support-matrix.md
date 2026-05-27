@@ -101,13 +101,11 @@ These NIM microservices are **optional** for the default extraction pipeline. Th
 
 For 26.05, use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above.
 
-#### Caption scope (26.05) { #caption-scope-2605 }
-
-!!! important "PDF chart regions are not captioned by Omni (26.05)"
+!!! important "PDF chart regions are not captioned by Omni"
 
     When **nemotron-page-elements-v3** classifies a PDF region as **chart**, that region is processed through layout detection and OCR—not the Omni caption stage. Enabling the caption NIM and the `caption` pipeline stage does **not** send chart-labeled figures to `/v1/chat/completions`.
 
-    In 26.05 RC2, the caption stage covers:
+    The caption stage covers:
 
     - Unstructured content in the `images` column (standalone image files and page-element regions **not** classified as table, chart, or infographic)
     - Optional infographic regions when you set `caption_infographics=True` on `CaptionParams` (the VLM caption is stored in `caption`, separate from OCR `text`)
