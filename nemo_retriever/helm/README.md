@@ -68,7 +68,7 @@ nemo_retriever/helm/
     └── nims/
         ├── nemotron-page-elements-v3.yaml     # NIMCache + NIMService
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
-        ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
+        ├── nemotron-ocr-v2.yaml               # NIMCache + NIMService
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
         ├── llama-nemotron-rerank-vl-1b-v2.yaml  # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
@@ -229,7 +229,7 @@ The chart auto-wires the operator-managed in-cluster URLs of the four
 | --- | ------------------------ | ----------- |
 | `nimOperator.page_elements`   | `nemotron-page-elements-v3`   | `/v1/infer`      |
 | `nimOperator.table_structure` | `nemotron-table-structure-v1` | `/v1/infer`      |
-| `nimOperator.ocr`             | `nemotron-ocr-v1`             | `/v1/infer`      |
+| `nimOperator.ocr`             | `nemotron-ocr-v2`             | `/v1/infer`      |
 | `nimOperator.vlm_embed`       | `llama-nemotron-embed-vl-1b-v2` | `/v1/embeddings` |
 
 Track operator reconciliation with:
@@ -327,6 +327,8 @@ pair gated on three conditions ALL holding:
 | `nimOperator.page_elements.enabled`    | `true`  | Page-elements detector NIM. |
 | `nimOperator.table_structure.enabled`  | `true`  | Table-structure detector NIM. |
 | `nimOperator.ocr.enabled`              | `true`  | OCR NIM. |
+| `nimOperator.ocr.nimServiceName`       | `nemotron-ocr-v2` | NIMService / in-cluster DNS name. |
+| `nimOperator.ocr.image`              | `nvcr.io/nim/nvidia/nemotron-ocr-v2:1.4` | Default OCR NIM image. |
 | `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
 | `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
 | `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
@@ -909,7 +911,7 @@ Verify tags on the Git branch or tag you ship (for example `26.05` or
 | Retriever service | — | `service.image.repository`:`service.image.tag` (override for production) |
 | Page elements | `page_elements` | `nvcr.io/nim/nvidia/nemotron-page-elements-v3:1.8.0` |
 | Table structure | `table_structure` | `nvcr.io/nim/nvidia/nemotron-table-structure-v1:1.8.0` |
-| OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0` |
+| OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v2:1.4` |
 | VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` |
 | VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:1.10.0` |
 | Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |

@@ -54,7 +54,7 @@ Services:
    - nemotron-table-structure-v1 → http://nemotron-table-structure-v1:{{ .Values.nimOperator.table_structure.expose.service.port }}/v1/infer
 {{- end }}
 {{- if .Values.nimOperator.ocr.enabled }}
-   - nemotron-ocr-v1             → http://nemotron-ocr-v1:{{ .Values.nimOperator.ocr.expose.service.port }}/v1/infer
+   - {{ .Values.nimOperator.ocr.nimServiceName }} → http://{{ .Values.nimOperator.ocr.nimServiceName }}:{{ .Values.nimOperator.ocr.expose.service.port }}/v1/infer
 {{- end }}
 {{- if .Values.nimOperator.vlm_embed.enabled }}
    - {{ .Values.nimOperator.vlm_embed.nimServiceName }} → http://{{ .Values.nimOperator.vlm_embed.nimServiceName }}:{{ .Values.nimOperator.vlm_embed.expose.service.port }}/v1/embeddings
