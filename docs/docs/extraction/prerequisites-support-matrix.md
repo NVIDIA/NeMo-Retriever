@@ -142,7 +142,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 | Reranker | ~3.1 GiB (llama-nemotron-rerank-vl-1b-v2) | With Core Pipeline | Yes | Yes | Yes | Yes | Yes | No* | No* | No* | No* |
 | Reranker | — | Standalone (recall only) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
-¹ On supported datacenter GPUs, Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`) may require a runtime TensorRT engine build when the NIM image has no prebuilt profile for your GPU. The first startup can take longer than the Helm chart default `startupProbe` window; wait for the audio NIM pod to reach Ready before you submit audio jobs (see footnote ⁵ for RTX SKUs).
+¹ On other supported GPUs, Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`) may require a runtime TensorRT engine build (no prebuilt profile in the chart image).
 
 ⁴ **B200** does **not** support the [audio/video extraction](audio-video.md) path when Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`) runs self-hosted via Helm + NIM Operator. Video workflows that depend on Parakeet for speech transcription are affected the same way. `NIMService` for `nimOperator.audio` may stay not Ready or enter `CrashLoopBackOff` (for example ONNX Runtime IR version, cuDNN visibility, or FP8 tactic errors). Use a non-B200 dedicated GPU, [hosted Parakeet on build.nvidia.com](audio-video.md#parakeet-hosted-inference-build-nvidia), or set `nimOperator.audio.enabled=false`.
 
