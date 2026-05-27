@@ -39,10 +39,7 @@ spec:
   replicas: {{ .Values.nimOperator.page_elements.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.page_elements.nodeSelector | indent 4 }}
-  {{- with .Values.nimOperator.page_elements.resources }}
-  resources:
-{{ toYaml . | indent 4 }}
-  {{- end }}
+  {{- include "nemo-retriever.nimServiceResources" (dict "context" $ "resources" .Values.nimOperator.page_elements.resources) | nindent 2 }}
   tolerations:
 {{ toYaml .Values.nimOperator.page_elements.tolerations | indent 4 }}
   expose:

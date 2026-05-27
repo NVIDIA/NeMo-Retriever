@@ -37,10 +37,7 @@ spec:
   replicas: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.nodeSelector | indent 4 }}
-  {{- with .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.resources }}
-  resources:
-{{ toYaml . | indent 4 }}
-  {{- end }}
+  {{- include "nemo-retriever.nimServiceResources" (dict "context" $ "resources" .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.resources) | nindent 2 }}
   tolerations:
 {{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.tolerations | indent 4 }}
   expose:

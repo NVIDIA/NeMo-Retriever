@@ -37,10 +37,7 @@ spec:
   replicas: {{ .Values.nimOperator.rerankqa.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.rerankqa.nodeSelector | indent 4 }}
-  {{- with .Values.nimOperator.rerankqa.resources }}
-  resources:
-{{ toYaml . | indent 4 }}
-  {{- end }}
+  {{- include "nemo-retriever.nimServiceResources" (dict "context" $ "resources" .Values.nimOperator.rerankqa.resources) | nindent 2 }}
   tolerations:
 {{ toYaml .Values.nimOperator.rerankqa.tolerations | indent 4 }}
   expose:

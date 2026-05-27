@@ -332,7 +332,8 @@ pair gated on three conditions ALL holding:
 | `nimOperator.<key>.authSecret`         | `ngc-api`      | NIM auth Secret name. |
 | `nimOperator.<key>.storage.pvc.size`   | `25Gi` (50Gi for vlm_embed/rerankqa, 100Gi parse, 300Gi VL) | NIMCache PVC size. |
 | `nimOperator.<key>.replicas`           | `1`     | Per-NIMService replica count. |
-| `nimOperator.<key>.resources`          | `{}`    | GPU/CPU/memory limits for the NIM pod. Defaults to empty so the NIM Operator stays the single owner of `spec.resources.limits.nvidia.com/gpu`; setting a non-empty value here makes Helm claim that field too and produces SSA UPGRADE conflicts on subsequent `helm upgrade --install` (see [GPU limits and `helm upgrade`](#gpu-limits-and-helm-upgrade)). |
+| `nimOperator.nimServiceGpuLimit`       | `1`     | Default `nvidia.com/gpu` limit on every NIMService when per-NIM `resources` is `{}`. Set to `null` for operator-only reconciliation (not reliable on all NIM Operator versions — see [GPU limits and `helm upgrade`](#gpu-limits-and-helm-upgrade)). |
+| `nimOperator.<key>.resources`          | `{}`    | Per-NIM override of the whole `resources` block. Empty uses `nimServiceGpuLimit`; non-empty replaces the chart default (may require `--force-conflicts` on later `helm upgrade`). |
 | `nimOperator.modelProfile`             | `{}`    | Chart-wide NIMCache GPU/profile filter. Applied to every NIMCache that does not have its own override. See [Filtering cached GPU profiles](#filtering-cached-gpu-profiles). |
 | `nimOperator.<key>.modelProfile`       | `{}`    | Per-NIM NIMCache GPU/profile filter. Non-empty values REPLACE the chart-wide default (no merge). See [Filtering cached GPU profiles](#filtering-cached-gpu-profiles). |
 | `nimOperator.<key>.expose.service.port` | `8000` (9000 for audio) | HTTP port. |
@@ -485,11 +486,17 @@ different VLM SKU.
 
 #### GPU limits and `helm upgrade` { #gpu-limits-and-helm-upgrade }
 
-`NIMService.spec.resources.limits.nvidia.com/gpu` is **reconciled by the
-NIM Operator** from the model profile.  If the chart also writes that
-field, both Helm and the operator become server-side-apply owners of
-it, and a subsequent `helm upgrade --install` — even a no-op one with
-identical values — fails with:
+The chart defaults to **`nimOperator.nimServiceGpuLimit: 1`**, which
+renders `spec.resources.limits.nvidia.com/gpu: 1` on every NIMService
+unless a per-NIM `resources` map overrides it. This is required on
+NIM Operator **v3.1.1** (and other versions tested on A100/H100): when
+the chart omits the `resources` block entirely, the operator often
+**does not** populate GPU limits from the model profile, and NIM pods
+start without GPU access (`The NVIDIA Driver was not detected`).
+
+**Trade-off:** Helm and the NIM Operator may both server-side-apply
+`spec.resources.limits.nvidia.com/gpu`. A later `helm upgrade --install`
+can then fail with:
 
 ```
 Error: UPGRADE FAILED: conflict occurred while applying object
@@ -499,21 +506,22 @@ Error: UPGRADE FAILED: conflict occurred while applying object
     .spec.resources.limits.nvidia.com/gpu
 ```
 
-To keep `helm upgrade --install` idempotent the chart now defaults
-`nimOperator.<key>.resources` to `{}` and skips the `resources:` block
-on every `templates/nims/*.yaml` when empty, so the operator stays the
-single owner of the field.
+**Operator-only mode** (omit GPU limits from Helm — only if your NIM
+Operator version reliably reconciles them):
 
-If you do need to pin a non-default value (e.g. `nvidia.com/gpu: 2`)
-you have two supported routes:
+```yaml
+nimOperator:
+  nimServiceGpuLimit: null
+```
 
-1. **Edit the NIMService directly** after install:
-   `kubectl -n <ns> edit nimservice <name>` — keeps Helm out of the
-   ownership graph.
-2. **Set the value in Helm values** *and* pass
-   `--force-conflicts=true --server-side` to `helm upgrade --install`
-   on every subsequent run.  This explicitly takes the field back from
-   the operator on every reconcile cycle.
+**If upgrades hit SSA conflicts** after the operator has reconciled GPU
+limits, use one of:
+
+1. `helm upgrade --install … --force-conflicts --server-side`
+2. `kubectl -n <ns> edit nimservice <name>` to set GPU limits outside Helm
+
+To pin a non-default GPU count chart-wide, set `nimServiceGpuLimit: 2`
+(or set per-NIM `resources.limits.nvidia.com/gpu`).
 
 ### Nemotron OCR v2 language mode { #nemotron-ocr-v2-language-mode }
 

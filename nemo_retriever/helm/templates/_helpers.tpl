@@ -202,30 +202,38 @@ nemo-retriever.role.configMapName
 
 {{/*
 =============================================================================
-NIM Operator field ownership notes
+NIMService GPU resources
 =============================================================================
 
-`NIMService.spec.resources` (and specifically
-`spec.resources.limits.nvidia.com/gpu`) is reconciled by the NIM
-Operator from the resolved model profile. Rendering even an empty
-`resources: {}` block from this chart makes Helm a server-side-apply
-owner of `spec.resources.limits.nvidia.com/gpu` once the operator
-writes the field, and the next `helm upgrade` then fails with
+By default the chart sets ``spec.resources.limits.nvidia.com/gpu`` on
+every NIMService (see ``nimOperator.nimServiceGpuLimit``) because the
+NIM Operator does **not** reliably populate that field from the model
+profile on all tested versions (for example v3.1.1 on A100/H100), which
+otherwise leaves NIM pods without GPU access.
 
-    conflict with "manager" using apps.nvidia.com/v1alpha1:
-    .spec.resources.limits.nvidia.com/gpu
+Helm and the operator may both server-side-apply the same field; a
+later ``helm upgrade --install`` can then fail with an SSA conflict on
+``.spec.resources.limits.nvidia.com/gpu``. See README §GPU limits and
+``helm upgrade``.
 
-For that reason every `templates/nims/*.yaml` template wraps the
-`resources:` block in `{{ with .Values.nimOperator.<key>.resources }}`
-and the defaults in `values.yaml` are `{}` — when the user does not
-override the value, the chart emits nothing and the operator is the
-single owner of the field.
-
-Users who set `nimOperator.<key>.resources` to a non-empty value get
-the block back, and accept that running `helm upgrade --install`
-afterwards may need `--force-conflicts` to take ownership away from the
-operator.  See README §NIM Operator for details.
+Per-NIM ``nimOperator.<key>.resources`` replaces the whole block when
+non-empty. When it is ``{}`` (the default), the chart-wide GPU limit
+applies. Set ``nimOperator.nimServiceGpuLimit`` to ``null`` to omit the
+``resources:`` block entirely (operator-only mode).
 */}}
+{{- define "nemo-retriever.nimServiceResources" -}}
+{{- $root := .context -}}
+{{- $nimResources := .resources -}}
+{{- $gpuLimit := $root.Values.nimOperator.nimServiceGpuLimit -}}
+{{- if and $nimResources (gt (len $nimResources) 0) -}}
+resources:
+{{ toYaml $nimResources | indent 2 }}
+{{- else if and (not (eq $gpuLimit nil)) $gpuLimit -}}
+resources:
+  limits:
+    nvidia.com/gpu: {{ $gpuLimit }}
+{{- end -}}
+{{- end -}}
 
 {{/*
 =============================================================================
