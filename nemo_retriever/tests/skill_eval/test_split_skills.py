@@ -9,6 +9,8 @@ from pathlib import Path
 from nemo_retriever.skill_eval.dataset import DatasetEntry, _normalize_slash_command
 from nemo_retriever.skill_eval.runner import _copy_skills, _render_prompt, _render_setup_prompt
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
 
 def _write_skill(root: Path, name: str) -> None:
     skill_dir = root / name
@@ -102,3 +104,12 @@ def test_manifest_slash_aliases_rewrite_to_split_skills() -> None:
     assert _normalize_slash_command("/vidore-ingest ./pdfs/") == "/nemo-retriever-ingest ./pdfs/"
     assert _normalize_slash_command("/vidore What was revenue?") == "/nemo-retriever-query What was revenue?"
     assert _normalize_slash_command("/vidore_hr Find relevant pages") == "/nemo-retriever-query Find relevant pages"
+
+
+def test_evaluate_skill_is_not_packaged_for_agents() -> None:
+    for path in (
+        REPO_ROOT / "nemo_retriever/src/nemo_retriever/.agents/skills/nemo-retriever-evaluate",
+        REPO_ROOT / ".agents/skills/nemo-retriever-evaluate",
+        REPO_ROOT / ".claude/skills/nemo-retriever-evaluate",
+    ):
+        assert not path.exists(), f"{path} should not be installed as an agent skill"

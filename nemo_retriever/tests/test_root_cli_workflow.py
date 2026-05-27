@@ -8,6 +8,7 @@ import importlib
 import json
 import logging
 import os
+import re
 import sys
 from typing import Any
 from unittest.mock import create_autospec
@@ -30,6 +31,34 @@ from nemo_retriever.params import (
 
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.adapters.cli.main")
+
+
+def test_root_help_labels_experimental_subcommands() -> None:
+    result = RUNNER.invoke(cli_main.app, ["--help"])
+
+    assert result.exit_code == 0
+    for command in (
+        "audio",
+        "benchmark",
+        "chart",
+        "compare",
+        "eval",
+        "harness",
+        "html",
+        "image",
+        "local",
+        "pdf",
+        "recall",
+        "service",
+        "skill-eval",
+        "txt",
+    ):
+        assert command in result.output
+    assert result.output.count("Experimental, not product-supported") >= 14
+    for command in ("ingest", "query", "pipeline"):
+        assert command in result.output
+        assert re.search(rf"{command}\s+Experimental, not product-supported", result.output) is None
+    assert "End-to-end graph-based ingestion pipeline" in result.output
 
 
 class _FakeAsrParams:
