@@ -524,7 +524,21 @@ class GraphIngestor(ingestor):
         :class:`MultiTypeExtractOperator`.
         Chunking is opt-in: pass ``split_config={"<key>": {...}}`` to enable
         post-extract token chunking for that source type.
+
+        Unknown ``**kwargs`` raise :class:`TypeError`. Only fields declared
+        on :class:`ExtractParams` are accepted as extra kwargs; ASR / audio
+        configuration belongs on :class:`ASRParams` (pass ``asr_params=``
+        or use :meth:`extract_audio`).
         """
+        unknown = set(kwargs) - set(ExtractParams.model_fields)
+        if unknown:
+            raise TypeError(
+                f"extract() got unexpected keyword argument(s) {sorted(unknown)!r}. "
+                f"Allowed extra kwargs must be fields of ExtractParams. "
+                f"For ASR / audio configuration, pass asr_params=ASRParams(...) "
+                f"or use .extract_audio(asr_params=ASRParams(...)) "
+                f"(see docs/extraction/audio-video.md)."
+            )
         self._extraction_mode = extraction_mode
         self._extract_params = _resolve_api_key(_coerce(params, kwargs, default_factory=ExtractParams))
         if text_params is not None:

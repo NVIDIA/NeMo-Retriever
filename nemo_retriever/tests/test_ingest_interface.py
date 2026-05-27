@@ -126,6 +126,41 @@ def test_extract_unified_defaults() -> None:
     assert all(ingestor._split_config[k] is None for k in ("text", "html", "pdf", "audio", "image", "video"))
 
 
+def test_extract_rejects_unknown_kwargs() -> None:
+    """`.extract()` must fail loudly on kwargs that are not fields of ExtractParams.
+
+    The audio-video.md hosted-Parakeet snippet historically passed
+    ``extract_method``/``extract_audio_params`` (and ``document_type``) into
+    ``.extract()``; those silently flowed through ``_coerce()`` /
+    ``params.model_copy(update=...)``, bypassing ``ExtractParams``'s
+    ``extra="forbid"`` config. Audio credentials never reached the ASR actor,
+    which then fell back to the local HF model with no signal to the user.
+    Regression-guard the strict validation that fixes that silent drop.
+    """
+    ingestor = GraphIngestor(run_mode="inprocess")
+
+    with pytest.raises(TypeError, match="garbage_kwarg"):
+        ingestor.extract(garbage_kwarg="x")
+
+    with pytest.raises(TypeError) as exc_info:
+        ingestor.extract(
+            document_type="mp3",
+            extract_method="audio",
+            extract_audio_params={
+                "grpc_endpoint": "grpc.nvcf.nvidia.com:443",
+                "auth_token": "fake-key",
+                "function_id": "fake-function-id",
+                "segment_audio": True,
+            },
+        )
+    message = str(exc_info.value)
+    # Pin the rejected-keys list as a single repr so this test fails loudly if
+    # any of these keys ever become real ExtractParams fields.
+    expected_rejected = repr(sorted(["document_type", "extract_method", "extract_audio_params"]))
+    assert expected_rejected in message
+    assert "asr_params" in message
+
+
 def test_extract_default_pdf_only_builds_dedicated_pdf_graph(tmp_path) -> None:
     document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
