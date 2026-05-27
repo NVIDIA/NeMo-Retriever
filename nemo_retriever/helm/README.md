@@ -44,7 +44,6 @@ The chart ships two deployable layers behind feature flags:
 nemo_retriever/helm/
 ├── Chart.yaml
 ├── values.yaml
-├── openshift-values.yaml  # optional overrides for OpenShift (restricted-v2 / PSA)
 ├── README.md            <-- this file
 ├── .helmignore
 └── templates/
@@ -654,8 +653,8 @@ SCC validation, emits PSA warnings, or crashes on log paths the random UID canno
 write.
 
 We do **not** change chart defaults for OpenShift-only behavior (that would affect
-other platforms). Use the overrides below on OpenShift, or save them as
-`openshift-values.yaml` and pass `-f openshift-values.yaml`.
+other platforms). Use the overrides below on OpenShift, or save the YAML block
+into a local values file and pass `-f <file>`.
 
 ### Cluster posture (typical QA / hardened namespaces)
 
@@ -678,11 +677,11 @@ fields become hard rejections, not warnings.
 | `CreateContainerConfigError`: non-numeric image `USER nemo` on **vectordb** | Vectordb container has no `securityContext` block for SCC to annotate | Disable vectordb for smoke tests, or patch the vectordb Deployment after install (below) |
 | PSA warnings on **otel-collector** | Otel Deployment has no `securityContext` in the chart | `topology.otel.enabled=false` unless you patch that Deployment |
 
-### Recommended values (`openshift-values.yaml`)
+### Recommended value overrides
 
 ```yaml
 # OpenShift overrides for nemo-retriever Helm chart (restricted-v2 / PSA restricted).
-# Use: helm install retriever ./nemo_retriever/helm -f openshift-values.yaml ...
+# Save locally, then: helm install retriever ./nemo_retriever/helm -f <your-file>.yaml ...
 
 service:
   podSecurityContext:
@@ -730,7 +729,7 @@ oc create secret generic ngc-api -n nemo-retriever \
   --from-literal=NGC_CLI_API_KEY="$NGC_API_KEY"
 
 helm install retriever ./nemo_retriever/helm -n nemo-retriever \
-  -f openshift-values.yaml \
+  -f <your-openshift-overrides>.yaml \
   --set ngcImagePullSecret.create=false \
   --set ngcApiSecret.create=false \
   --set nims.enabled=false \
