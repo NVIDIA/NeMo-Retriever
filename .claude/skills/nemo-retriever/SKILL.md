@@ -7,17 +7,21 @@ description: Use when the user wants to search, index, or answer questions over 
 
 The `retriever` CLI indexes a folder of PDFs into LanceDB (`retriever ingest`) and serves vector search over it (`retriever query`). For any task about searching/answering questions across a folder of PDFs, use this CLI — do not write a custom RAG.
 
+## Install (if `retriever` is missing)
+
+If `command -v retriever` returns nothing, follow `references/install.md` to install the NeMo Retriever Library before proceeding. It prints `RETRIEVER_VENV=<path>`; substitute that path for `<RETRIEVER_VENV>` in every example below.
+
 ## Setup turn (when `./lancedb/nv-ingest.lance` doesn't exist)
 
 `retriever ingest ./pdfs/` runs the full pipeline (text extraction + page-element detection + OCR + embedding + LanceDB insert). On corpora >~800 pages this often won't fit a typical setup turn budget (10 min) — the OCR + page-element stages dominate and scale roughly linearly with page count. Always build an index — pick the recipe by corpus size:
 
 ```bash
-TOTAL_PAGES=$(python -c "import pypdfium2, glob; print(sum(len(pypdfium2.PdfDocument(p)) for p in glob.glob('./pdfs/*.pdf')))" 2>/dev/null || echo 0)
+TOTAL_PAGES=$(<RETRIEVER_VENV>/bin/python -c "import pypdfium2, glob; print(sum(len(pypdfium2.PdfDocument(p)) for p in glob.glob('./pdfs/*.pdf')))" 2>/dev/null || echo 0)
 echo "total_pages=$TOTAL_PAGES"
 if [ "$TOTAL_PAGES" -le 800 ]; then
-  retriever ingest ./pdfs/ --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --quiet
+  <RETRIEVER_VENV>/bin/retriever ingest ./pdfs/ --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --quiet
 else
-  retriever pipeline run ./pdfs/ --run-mode inprocess --method pdfium --no-extract-tables --no-extract-charts --no-extract-page-as-image --evaluation-mode none --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --quiet
+  <RETRIEVER_VENV>/bin/retriever pipeline run ./pdfs/ --run-mode inprocess --method pdfium --no-extract-tables --no-extract-charts --no-extract-page-as-image --evaluation-mode none --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --quiet
 fi
 ```
 
@@ -30,22 +34,22 @@ Don't pre-OCR, don't pre-chunk, don't write Python wrappers — the CLI handles 
 ## Query turn — the WHOLE workflow
 
 ```bash
-retriever query "<the user's question>" --top-k 10 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --rerank \
+<RETRIEVER_VENV>/bin/retriever query "<the user's question>" --top-k 10 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --rerank \
   | tee /tmp/hits.json \
-  | jq -r '.[] | "rank=\(.rank // 0) page=\(.page_number) pdf=\(.pdf_basename) type=\(.metadata.type // "?") text=\(.text[:200])"'
+  | <RETRIEVER_VENV>/bin/python -c "import json,sys; [print(f'rank={h.get(\"rank\",0)} page={h[\"page_number\"]} pdf={h[\"pdf_basename\"]} type={h.get(\"metadata\",{}).get(\"type\",\"?\")} text={h[\"text\"][:200]}') for h in json.load(sys.stdin)]"
 ```
 
-Run that **exactly** as a single pipeline — do not split it into `HITS=$(...)` + `echo "$HITS" | jq ...` (the assignment swallows stdout, the pipe sees nothing, you waste 3 bash calls recovering). Stdout is clean JSON (model-init logs are silenced at the CLI layer); leave stderr unredirected so real errors surface on the first call. The full JSON sits at `/tmp/hits.json` if you need to re-parse it (`jq '.[6]' /tmp/hits.json`), but in the common case the jq summary above is all you need.
+Run that **exactly** as a single pipeline — do not split it into `HITS=$(...)` + `echo "$HITS" | <RETRIEVER_VENV>/bin/python -c ...` (the assignment swallows stdout, the pipe sees nothing, you waste 3 bash calls recovering). Stdout is clean JSON (model-init logs are silenced at the CLI layer); leave stderr unredirected so real errors surface on the first call. The full JSON sits at `/tmp/hits.json` if you need to re-parse it (`<RETRIEVER_VENV>/bin/python -c "import json; print(json.load(open('/tmp/hits.json'))[6])"` for the rank-7 hit), but in the common case the summary above is all you need.
 
 That's your FIRST tool call on every query turn. Do not Read, Glob, Grep, or list PDFs before this — those duplicate what `retriever query` already did.
 
-**No narration between tool calls.** Do not write "Let me search…", "I'll now analyze…", "The retriever returned…", or any other commentary. Every assistant token you emit between the `retriever query` Bash call and the `Write` of `./output.json` becomes input tokens (and cached input tokens) for every subsequent turn in this session — quadratic cost. Go straight from reading the jq summary to writing the JSON file. The only assistant text in a query turn should be the tool calls themselves.
+**No narration between tool calls.** Do not write "Let me search…", "I'll now analyze…", "The retriever returned…", or any other commentary. Every assistant token you emit between the `retriever query` Bash call and the `Write` of `./output.json` becomes input tokens (and cached input tokens) for every subsequent turn in this session — quadratic cost. Go straight from reading the summary to writing the JSON file. The only assistant text in a query turn should be the tool calls themselves.
 
 Each hit has: `text`, `pdf_basename`, `page_number` (int, **1-indexed**: the first page of a PDF is page `1`), `pdf_page` (string composite key `"<basename>_<page_number>"` — not a number, don't use it as one), `_distance`, and `metadata` (JSON with `type` ∈ `text|table|chart|image`).
 
 **Then write `./output.json` directly from $HITS:**
 
-- `final_answer`: synthesize from the top hits' `text`. Include the exact number / name / date / row / column the question asks for, plus the source PDF and 0-indexed page. One paragraph. No restating the question, no hedging caveats. If the chunks talk *around* the fact but don't state it, run ONE `retriever pdf stage page-elements ./pdfs --method pdfium --json-output-dir /tmp/pdf_text --compact-json` and read `/tmp/pdf_text/<top_pdf>.pdf.pdf_extraction.json` for the rank-1 page (or rank-2 if rank-1 is metadata) — that almost always surfaces the exact figure. Then synthesize. **If after both calls the asked-for fact still isn't in the evidence, write `final_answer` that says so explicitly** — e.g. "The retrieved pages do not state [X] for [entity]; the closest content is [Y]." Do NOT invent, extrapolate, or generate plausible-sounding content from adjacent material. A confidently-wrong answer scores worse than an honest "not in the retrieved pages".
+- `final_answer`: synthesize from the top hits' `text`. Include the exact number / name / date / row / column the question asks for, plus the source PDF and 0-indexed page. One paragraph. No restating the question, no hedging caveats. If the chunks talk *around* the fact but don't state it, run ONE `<RETRIEVER_VENV>/bin/retriever pdf stage page-elements ./pdfs --method pdfium --json-output-dir /tmp/pdf_text --compact-json` and read `/tmp/pdf_text/<top_pdf>.pdf.pdf_extraction.json` for the rank-1 page (or rank-2 if rank-1 is metadata) — that almost always surfaces the exact figure. Then synthesize. **If after both calls the asked-for fact still isn't in the evidence, write `final_answer` that says so explicitly** — e.g. "The retrieved pages do not state [X] for [entity]; the closest content is [Y]." Do NOT invent, extrapolate, or generate plausible-sounding content from adjacent material. A confidently-wrong answer scores worse than an honest "not in the retrieved pages".
 - `ranked_retrieved`: one entry per hit in the order `retriever query` returned: `{"doc_id": "<pdf_basename without .pdf>", "page_number": <int>, "rank": <i+1>}`. Up to 10. Duplicate `(doc, page)` is fine. **Indexing:** the retriever's `page_number` is 1-indexed. If the task's output schema says 0-indexed (e.g. "first page is page 0"), emit `hit.page_number - 1`; if the task says 1-indexed or doesn't specify, emit `hit.page_number` as-is.
 
 **Before writing `final_answer`, re-read the question.** If it lists multiple entities, years, or categories, your answer must address each one explicitly — even if for some of them the chunks say "not provided" or contain no data. Missing entities lose more judge points than imprecise numbers.
@@ -78,12 +82,12 @@ After writing the file, STOP. No print, no summary, no further tool calls.
 Means ingest didn't complete (e.g. the text-only pipeline still hit the turn wall, or the table is empty). Tight fallback using the retriever's own pdfium-based extractor (always available — same binary the agent just used for `retriever query`):
 1. `ls ./pdfs/` (one call) to see filenames.
 2. Pick the SINGLE PDF whose name best matches the question.
-3. ONE call: `retriever pdf stage page-elements ./pdfs --method pdfium --json-output-dir /tmp/pdf_text --compact-json`. This emits a JSON sidecar per PDF at `/tmp/pdf_text/<basename>.pdf.pdf_extraction.json` containing per-page text primitives — pdfium only, no OCR, no NIM, fast.
-4. `jq` (or read directly) `/tmp/pdf_text/<name>.pdf.pdf_extraction.json` for the chosen PDF and synthesize from the per-page text. If the answer isn't there, still write your best guess based on the filename + extracted pages plus a one-sentence acknowledgement of uncertainty in `final_answer`. Then stop.
+3. ONE call: `<RETRIEVER_VENV>/bin/retriever pdf stage page-elements ./pdfs --method pdfium --json-output-dir /tmp/pdf_text --compact-json`. This emits a JSON sidecar per PDF at `/tmp/pdf_text/<basename>.pdf.pdf_extraction.json` containing per-page text primitives — pdfium only, no OCR, no NIM, fast.
+4. Read `/tmp/pdf_text/<name>.pdf.pdf_extraction.json` for the chosen PDF and synthesize from the per-page text. If the answer isn't there, still write your best guess based on the filename + extracted pages plus a one-sentence acknowledgement of uncertainty in `final_answer`. Then stop.
 
 Do NOT keep doing text-extract calls across many PDFs to hunt — that exhausts the turn budget. Better to answer partially than to time out. Never re-run `retriever ingest`.
 
-For an unlisted subcommand: `retriever <subcommand> --help`.
+For an unlisted subcommand: `<RETRIEVER_VENV>/bin/retriever <subcommand> --help`.
 
 ## Failure modes
 
