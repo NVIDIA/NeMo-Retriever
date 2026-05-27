@@ -446,14 +446,38 @@ def _resolve_execution_inputs(
 
 def _should_build_audio_graph(
     *,
+    extraction_mode: str | None,
     extract_params: Any | None,
     asr_params: Any | None,
 ) -> bool:
+    """True iff the audio-only ``MediaChunkActor → ASRActor`` graph applies.
+
+    The audio-only shortcut graph is dedicated to **audio inputs**: it
+    constructs :class:`MediaChunkActor` unconditionally and has no
+    dispatch path for PDF / image / text / HTML uploads. Routing a
+    non-audio request through this branch is the bug that surfaces as
+    ``RuntimeError: MediaChunkActor requires media dependencies; missing:
+    ffmpeg, ffprobe`` for PDF ingestion.
+
+    Returning ``True`` therefore requires an explicit audio signal:
+
+    * ``extraction_mode == "audio"`` — the caller (or the upstream
+      auto-detector in :meth:`GraphIngestor._resolve_effective_extraction_inputs`)
+      classified the inputs as audio.
+    * ``extract_params.method == "audio"`` — the legacy params-driven
+      opt-in used by tests and a few direct callers.
+
+    The mere presence of ``asr_params`` is **not** a sufficient signal:
+    in service mode ``asr_params`` is auto-derived from the cluster's
+    ``audio_grpc_endpoint`` and would otherwise force every PDF upload
+    through the audio-only graph.
+    """
+    if (extraction_mode or "").strip().lower() == "audio":
+        return True
     method = str(getattr(extract_params, "method", "") or "").strip().lower()
     if method == "audio":
         return True
-    if asr_params is not None:
-        return True
+    _ = asr_params  # kept for backwards-compatible kw signature
     return False
 
 
@@ -658,6 +682,7 @@ def build_graph(
             graph = graph >> AudioVisualFuser(params=av_fuse_params)
         graph = _maybe_append_chunk_actor(graph, split_config, "video")
     elif _should_build_audio_graph(
+        extraction_mode=extraction_mode,
         extract_params=extract_params,
         asr_params=asr_params,
     ):

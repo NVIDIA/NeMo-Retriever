@@ -83,6 +83,7 @@ from nemo_retriever.params import (
     DedupParams,
     EmbedParams,
     ExtractParams,
+    IngestExecuteParams,
     PdfSplitParams,
     StoreParams,
     VdbUploadParams,
@@ -910,7 +911,7 @@ class ServiceIngestor(ingestor):
     # Execution — sync materialized
     # ------------------------------------------------------------------
 
-    def ingest(self, params: Any = None, **kwargs: Any) -> ServiceIngestResult:
+    def ingest(self, params: Any = None, **kwargs: Any) -> Any:
         """Block until every document has finished processing on the server.
 
         Internally opens exactly one server-side job aggregate for the
@@ -919,15 +920,38 @@ class ServiceIngestor(ingestor):
         exposed on :class:`ServiceIngestResult` so the caller can call
         ``GET /v1/ingest/job/{job_id}`` for follow-up status.
 
+        Parameters
+        ----------
+        params
+            Optional :class:`IngestExecuteParams` (or plain ``dict``)
+            carrying execute-time flags.  In service run_mode only
+            ``return_failures`` / ``return_traces`` are honored — every
+            other field is recorded on the server-side pipeline spec.
+        **kwargs
+            Same execute-time flags may be passed individually.  Anything
+            not recognised is silently ignored (server-side execution
+            in service mode is driven by the pipeline spec, not by
+            execute-time knobs).
+
         Returns
         -------
         ServiceIngestResult
-            A list of per-document completion events, with extra
-            ``job_id`` / ``failures`` / ``document_ids`` / ``elapsed_s``
-            / ``job_status`` attributes.
+            When neither ``return_failures`` nor ``return_traces`` is
+            set — a list subclass of per-document completion events with
+            extra ``job_id`` / ``failures`` / ``document_ids`` /
+            ``elapsed_s`` / ``job_status`` attributes.
+        tuple
+            With ``return_failures=True`` only — ``(result, failures)``.
+            With ``return_traces=True`` only — ``(result, traces)``.
+            With both — ``(result, failures, traces)``.  ``failures``
+            mirrors ``result.failures``; ``traces`` is the ordered list
+            of raw SSE event dicts observed during the run, useful for
+            debugging pipeline behaviour without re-running the job.
         """
+        return_failures, return_traces = self._resolve_artifact_flags(params, kwargs)
         del params, kwargs
         result = ServiceIngestResult()
+        traces: list[dict[str, Any]] = []
         t0 = time.monotonic()
 
         documents_completed = 0
@@ -935,6 +959,8 @@ class ServiceIngestor(ingestor):
         total_uploaded = 0
 
         for evt in self.ingest_stream():
+            if return_traces:
+                traces.append(evt)
             event_type = evt.get("event")
 
             if event_type == "job_created":
@@ -1013,7 +1039,36 @@ class ServiceIngestor(ingestor):
         # aggregate endpoints once J6 wiring is opted in (kept
         # backwards compatible — get_status() still uses document_ids).
         self._last_job_id = result.job_id
+
+        if return_failures and return_traces:
+            return result, list(result.failures), traces
+        if return_failures:
+            return result, list(result.failures)
+        if return_traces:
+            return result, traces
         return result
+
+    @staticmethod
+    def _resolve_artifact_flags(params: Any, kwargs: dict[str, Any]) -> tuple[bool, bool]:
+        """Read ``return_failures`` / ``return_traces`` from either source.
+
+        kwargs take precedence over fields on ``params`` when both supply
+        the same flag, mirroring the precedence used by
+        :func:`nemo_retriever.ingestor._merge_params`.
+        """
+
+        def _from_params(name: str) -> bool:
+            if isinstance(params, IngestExecuteParams):
+                return bool(getattr(params, name, False))
+            if isinstance(params, dict):
+                return bool(params.get(name, False))
+            return False
+
+        return_failures = (
+            bool(kwargs["return_failures"]) if "return_failures" in kwargs else _from_params("return_failures")
+        )
+        return_traces = bool(kwargs["return_traces"]) if "return_traces" in kwargs else _from_params("return_traces")
+        return return_failures, return_traces
 
     # ------------------------------------------------------------------
     # Execution — sync streaming
@@ -1106,12 +1161,20 @@ class ServiceIngestor(ingestor):
         return_failures: bool = False,
         return_traces: bool = False,
     ) -> Any:
-        """Run :meth:`ingest` on a background thread; return a ``Future``."""
-        del return_failures, return_traces
+        """Run :meth:`ingest` on a background thread; return a ``Future``.
+
+        The flags are forwarded to :meth:`ingest`, so calling
+        ``future.result()`` produces the same tuple/list shape that a
+        direct synchronous call with the same flags would return.
+        """
         from concurrent.futures import ThreadPoolExecutor
 
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ServiceIngestorAsync")
-        return executor.submit(self.ingest)
+        return executor.submit(
+            self.ingest,
+            return_failures=return_failures,
+            return_traces=return_traces,
+        )
 
     # ------------------------------------------------------------------
     # Status & document-counter accessors

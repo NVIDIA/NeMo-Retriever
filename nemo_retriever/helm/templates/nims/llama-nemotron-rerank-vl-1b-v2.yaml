@@ -2,7 +2,7 @@
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
-  name: llama-nemotron-rerank-1b-v2
+  name: llama-nemotron-rerank-vl-1b-v2
   annotations:
     helm.sh/resource-policy: keep
 spec:
@@ -11,6 +11,7 @@ spec:
       modelPuller: "{{ .Values.nimOperator.rerankqa.image.repository }}:{{ .Values.nimOperator.rerankqa.image.tag }}"
       pullSecret: "{{ index .Values.nimOperator.rerankqa.image.pullSecrets 0 }}"
       authSecret: {{ .Values.nimOperator.rerankqa.authSecret }}
+      {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "rerankqa") | nindent 6 }}
   storage:
     pvc:
       create: {{ .Values.nimOperator.rerankqa.storage.pvc.create }}
@@ -21,7 +22,7 @@ spec:
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMService
 metadata:
-  name: llama-nemotron-rerank-1b-v2
+  name: llama-nemotron-rerank-vl-1b-v2
 spec:
   image:
     repository: {{ .Values.nimOperator.rerankqa.image.repository }}
@@ -32,12 +33,14 @@ spec:
   authSecret: {{ .Values.nimOperator.rerankqa.authSecret }}
   storage:
     nimCache:
-      name: llama-nemotron-rerank-1b-v2
+      name: llama-nemotron-rerank-vl-1b-v2
   replicas: {{ .Values.nimOperator.rerankqa.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.rerankqa.nodeSelector | indent 4 }}
+  {{- with .Values.nimOperator.rerankqa.resources }}
   resources:
-{{ toYaml .Values.nimOperator.rerankqa.resources | indent 4 }}
+{{ toYaml . | indent 4 }}
+  {{- end }}
   tolerations:
 {{ toYaml .Values.nimOperator.rerankqa.tolerations | indent 4 }}
   expose:

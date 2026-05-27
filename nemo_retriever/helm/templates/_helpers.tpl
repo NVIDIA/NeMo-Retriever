@@ -202,6 +202,33 @@ nemo-retriever.role.configMapName
 
 {{/*
 =============================================================================
+NIM Operator field ownership notes
+=============================================================================
+
+`NIMService.spec.resources` (and specifically
+`spec.resources.limits.nvidia.com/gpu`) is reconciled by the NIM
+Operator from the resolved model profile. Rendering even an empty
+`resources: {}` block from this chart makes Helm a server-side-apply
+owner of `spec.resources.limits.nvidia.com/gpu` once the operator
+writes the field, and the next `helm upgrade` then fails with
+
+    conflict with "manager" using apps.nvidia.com/v1alpha1:
+    .spec.resources.limits.nvidia.com/gpu
+
+For that reason every `templates/nims/*.yaml` template wraps the
+`resources:` block in `{{ with .Values.nimOperator.<key>.resources }}`
+and the defaults in `values.yaml` are `{}` — when the user does not
+override the value, the chart emits nothing and the operator is the
+single owner of the field.
+
+Users who set `nimOperator.<key>.resources` to a non-empty value get
+the block back, and accept that running `helm upgrade --install`
+afterwards may need `--force-conflicts` to take ownership away from the
+operator.  See README §NIM Operator for details.
+*/}}
+
+{{/*
+=============================================================================
 NIM Operator endpoint resolution
 =============================================================================
 
@@ -211,14 +238,83 @@ file name under templates/nims/<model>.yaml) so the retriever-service
 config can address each NIM as `http://<service-name>:<port><invokePath>`.
 
 Mapping (key -> Service name, default invokePath):
-  page_elements   -> nemotron-page-elements-v3      /v1/infer
-  table_structure -> nemotron-table-structure-v1    /v1/infer
-  ocr             -> nemotron-ocr-v1                /v1/infer
-  vlm_embed       -> llama-nemotron-embed-vl-1b-v2  /v1/embeddings
+  page_elements                          -> nemotron-page-elements-v3                /v1/infer
+  table_structure                        -> nemotron-table-structure-v1              /v1/infer
+  ocr                                    -> nemotron-ocr-v1                          /v1/infer
+  vlm_embed                              -> llama-nemotron-embed-vl-1b-v2            /v1/embeddings
+  nemotron_3_nano_omni_30b_a3b_reasoning -> nemotron-3-nano-omni-30b-a3b-reasoning   /v1/chat/completions
 
 Audio ASR (Parakeet) is configured directly via
   serviceConfig.nimEndpoints.audioGrpcEndpoint (no NIM Operator auto-wire).
 */}}
+
+{{/*
+=============================================================================
+NIMCache model-profile filter
+=============================================================================
+
+The NIM Operator's NIMCache CRD supports an optional
+``spec.source.ngc.model`` block that restricts which model profiles the
+cache job downloads.  Two filter dimensions are supported:
+
+  spec.source.ngc.model.gpus      — list of {ids: [...], product: ...}
+                                    selectors (PCI device IDs + display
+                                    name); only profiles compatible with
+                                    a listed GPU are downloaded.
+  spec.source.ngc.model.profiles  — list of profile UUIDs; only those
+                                    exact profiles are downloaded.
+
+Without a filter the operator caches every profile applicable to the
+GPUs it detects in the cluster, which on heterogeneous clusters (or any
+cluster where the chart provisions ≥ 3 NIMs) wastes tens of GiB of PVC
+storage, NGC bandwidth, and cache-job time.
+
+Two knobs control the rendered ``model:`` block:
+
+  .Values.nimOperator.modelProfile        — chart-wide default applied
+                                            to every NIMCache that does
+                                            not have its own override.
+  .Values.nimOperator.<key>.modelProfile  — per-NIM override; when
+                                            non-empty, REPLACES (does
+                                            not merge with) the
+                                            chart-wide default.
+
+Both default to ``{}`` so the chart's behaviour is unchanged unless
+the operator explicitly sets one of them. The mapping is rendered
+verbatim under ``spec.source.ngc.model``, so the shape lines up 1:1
+with the NIMCache CRD.
+
+Usage inside ``templates/nims/<file>.yaml``:
+
+  spec:
+    source:
+      ngc:
+        modelPuller: "..."
+        pullSecret: "..."
+        authSecret: ...
+        {{- include "nemo-retriever.nimcache.modelBlock"
+              (dict "context" $ "key" "page_elements") | nindent 6 }}
+*/}}
+{{- define "nemo-retriever.nimcache.modelBlock" -}}
+{{- $ctx := .context -}}
+{{- $key := .key -}}
+{{- $cfg := index $ctx.Values.nimOperator $key -}}
+{{- $perNim := dict -}}
+{{- if and $cfg (hasKey $cfg "modelProfile") -}}
+{{- $perNim = ($cfg.modelProfile | default dict) -}}
+{{- end -}}
+{{- $global := ($ctx.Values.nimOperator.modelProfile | default dict) -}}
+{{- $effective := dict -}}
+{{- if $perNim -}}
+{{- $effective = $perNim -}}
+{{- else if $global -}}
+{{- $effective = $global -}}
+{{- end -}}
+{{- if $effective -}}
+model:
+{{ toYaml $effective | indent 2 -}}
+{{- end -}}
+{{- end -}}
 
 {{/*
 nemo-retriever.nimOperator.url

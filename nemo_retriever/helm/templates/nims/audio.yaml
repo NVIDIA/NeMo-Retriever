@@ -11,6 +11,7 @@ spec:
       modelPuller: "{{ .Values.nimOperator.audio.image.repository }}:{{ .Values.nimOperator.audio.image.tag }}"
       pullSecret: "{{ index .Values.nimOperator.audio.image.pullSecrets 0 }}"
       authSecret: {{ .Values.nimOperator.audio.authSecret }}
+      {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "audio") | nindent 6 }}
   storage:
     pvc:
       create: {{ .Values.nimOperator.audio.storage.pvc.create }}
@@ -36,8 +37,10 @@ spec:
   replicas: {{ .Values.nimOperator.audio.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.audio.nodeSelector | indent 4 }}
+  {{- with .Values.nimOperator.audio.resources }}
   resources:
-{{ toYaml .Values.nimOperator.audio.resources | indent 4 }}
+{{ toYaml . | indent 4 }}
+  {{- end }}
   tolerations:
 {{ toYaml .Values.nimOperator.audio.tolerations | indent 4 }}
   expose:

@@ -11,6 +11,7 @@ spec:
       modelPuller: "{{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.repository }}:{{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.tag }}"
       pullSecret: "{{ index .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.pullSecrets 0 }}"
       authSecret: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.authSecret }}
+      {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "nemotron_3_nano_omni_30b_a3b_reasoning") | nindent 6 }}
   storage:
     pvc:
       create: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.storage.pvc.create }}
@@ -36,8 +37,10 @@ spec:
   replicas: {{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.replicas }}
   nodeSelector:
 {{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.nodeSelector | indent 4 }}
+  {{- with .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.resources }}
   resources:
-{{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.resources | indent 4 }}
+{{ toYaml . | indent 4 }}
+  {{- end }}
   tolerations:
 {{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.tolerations | indent 4 }}
   expose:

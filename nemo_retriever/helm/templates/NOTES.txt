@@ -60,13 +60,16 @@ Services:
    - {{ .Values.nimOperator.vlm_embed.nimServiceName }} → http://{{ .Values.nimOperator.vlm_embed.nimServiceName }}:{{ .Values.nimOperator.vlm_embed.expose.service.port }}/v1/embeddings
 {{- end }}
 {{- if .Values.nimOperator.rerankqa.enabled }}
-   - llama-nemotron-rerank-1b-v2 → http://llama-nemotron-rerank-1b-v2:{{ .Values.nimOperator.rerankqa.expose.service.port }}
+   - llama-nemotron-rerank-vl-1b-v2 → http://llama-nemotron-rerank-vl-1b-v2:{{ .Values.nimOperator.rerankqa.expose.service.port }}
 {{- end }}
 {{- if .Values.nimOperator.nemotron_parse.enabled }}
    - nemotron-parse              → http://nemotron-parse:{{ .Values.nimOperator.nemotron_parse.expose.service.port }}
 {{- end }}
 {{- if .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled }}
-   - nemotron-3-nano-omni-30b-a3b-reasoning → http://nemotron-3-nano-omni-30b-a3b-reasoning:{{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.expose.service.port }}
+   - nemotron-3-nano-omni-30b-a3b-reasoning → http://nemotron-3-nano-omni-30b-a3b-reasoning:{{ .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.expose.service.port }}/v1/chat/completions
+     (auto-wired into the retriever service config as
+      `nim_endpoints.caption_invoke_url`; image-caption stage is gated
+      on this URL — see Helm README "Image captioning (Omni 30B)")
 {{- end }}
 {{- if .Values.nimOperator.audio.enabled }}
    - audio                       → http://audio:{{ .Values.nimOperator.audio.expose.service.port }}

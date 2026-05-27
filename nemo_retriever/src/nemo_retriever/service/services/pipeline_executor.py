@@ -284,6 +284,46 @@ def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | No
     return resolved
 
 
+def _request_needs_asr_params(extraction_mode: str | None, filename: str) -> bool:
+    """True iff the request is audio/video and should carry ``_asr_params``.
+
+    The worker holds a single ``ASRParams`` derived from
+    ``serviceConfig.nimEndpoints.audioGrpcEndpoint``. Attaching that to
+    every per-request ingestor is what caused the
+    ``RuntimeError: MediaChunkActor requires media dependencies; missing:
+    ffmpeg, ffprobe`` for PDF uploads — the audio-only graph branch then
+    won the routing decision regardless of file type. We restrict the
+    attachment to:
+
+    * ``extraction_mode == "audio"`` or ``"video"`` — explicit caller
+      intent; the user already opted into media routing.
+    * ``extraction_mode == "auto"`` plus an audio/video file extension —
+      ``MultiTypeExtractOperator`` dispatches at row level and only
+      needs ASR when the row is actually media.
+
+    Anything else (``"pdf"``, ``"image"``, ``"text"``, ``"html"``, or a
+    non-media extension under ``"auto"``) must not pin ASR params.
+    """
+    mode = (extraction_mode or "").strip().lower()
+    if mode in {"audio", "video"}:
+        return True
+    if mode != "auto":
+        return False
+
+    from nemo_retriever.service.utils.file_type import (
+        FileClassifier,
+        category_requires_media_deps,
+    )
+
+    dot = filename.rfind(".")
+    suffix = filename[dot:].lower() if dot != -1 else ""
+    entry = FileClassifier.SUFFIX_MAP.get(suffix)
+    if entry is None:
+        return False
+    category, _ = entry
+    return category_requires_media_deps(category)
+
+
 def _materialize_sidecar_bytes(vdb_kwargs: dict[str, Any]) -> dict[str, Any]:
     """Convert resolved sidecar bytes into a pandas DataFrame in place.
 
@@ -383,7 +423,16 @@ def _build_graph_ingestor_from_spec(
             split_config=spec.get("split_config"),
             extraction_mode=extraction_mode,
         )
-        if asr_params is not None:
+        # Only attach the worker-wide ASR params to the per-request ingestor
+        # when the request is genuinely audio/video. ``asr_params`` is
+        # auto-derived from the cluster's ``audio_grpc_endpoint`` and would
+        # otherwise taint every PDF / image / text / HTML upload with audio
+        # state — which then mis-routes the request through the audio-only
+        # graph in :func:`nemo_retriever.graph.ingestor_runtime.build_graph`
+        # and crashes inside ``MediaChunkActor`` when ffmpeg/ffprobe are
+        # absent. The graph builder also gates on extraction_mode now, so
+        # this is defence in depth.
+        if asr_params is not None and _request_needs_asr_params(extraction_mode, filename):
             ingestor._asr_params = asr_params
 
     stage_order = spec.get("stage_order") or []
