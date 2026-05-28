@@ -198,6 +198,39 @@ async def _enqueue_or_reject(pool_type: PoolType, item: WorkItem) -> None:
         )
 
 
+async def _fetch_result_data_from_workers(document_id: str) -> list[dict[str, Any]] | None:
+    """Pull cached rows from the batch/realtime pod that processed *document_id*."""
+    proxy = get_proxy()
+    if proxy is None:
+        return None
+    for pool_type in (PoolType.BATCH, PoolType.REALTIME):
+        client = proxy._client_for(pool_type)
+        try:
+            resp = await client.get(f"/v1/internal/document-result/{document_id}")
+        except Exception as exc:
+            logger.debug(
+                "Worker result fetch from %s failed for %s: %s",
+                pool_type.value,
+                document_id,
+                exc,
+            )
+            continue
+        if resp.status_code == 404:
+            continue
+        if resp.status_code != 200:
+            logger.warning(
+                "Worker result fetch from %s returned HTTP %d for %s",
+                pool_type.value,
+                resp.status_code,
+                document_id,
+            )
+            continue
+        rows = resp.json().get("result_data")
+        if rows is not None:
+            return rows
+    return None
+
+
 def _build_callback_url(request: Request) -> str:
     """Build the internal callback URL pointing to THIS specific gateway pod.
 
@@ -1024,12 +1057,13 @@ async def submit_whole_document_to_job(
 # ------------------------------------------------------------------
 
 
-def _status_response(request: Request, item_id: str) -> JSONResponse:
+async def _status_response(request: Request, item_id: str) -> JSONResponse:
     """Look up document status and return the appropriate HTTP code.
 
     Returns 200 for completed/failed, 202 for pending/processing, 404 if unknown.
     When returning a terminal (200) response, result_data is consumed from the
-    tracker so memory is freed after the client has retrieved it.
+    tracker (or, in gateway mode, from the worker pod that ran the pipeline)
+    so memory is freed after the client has retrieved it.
     """
     from nemo_retriever.service.services.job_tracker import DocumentStatus
 
@@ -1045,6 +1079,8 @@ def _status_response(request: Request, item_id: str) -> JSONResponse:
 
     is_terminal = rec.status in (DocumentStatus.COMPLETED, DocumentStatus.FAILED)
     result_data = tracker.consume_result_data(item_id) if is_terminal else None
+    if is_terminal and result_data is None and rec.result_rows and _is_gateway(request):
+        result_data = await _fetch_result_data_from_workers(item_id)
 
     body = JobStatusResponse(
         id=rec.id,
@@ -1191,7 +1227,7 @@ async def delete_sidecar(request: Request, sidecar_id: str) -> Response:
     responses={200: {"model": JobStatusResponse}, 202: {"model": JobStatusResponse}},
 )
 async def ingest_status(request: Request, item_id: str) -> JSONResponse:
-    return _status_response(request, item_id)
+    return await _status_response(request, item_id)
 
 
 @router.get(
@@ -1200,7 +1236,7 @@ async def ingest_status(request: Request, item_id: str) -> JSONResponse:
     responses={200: {"model": JobStatusResponse}, 202: {"model": JobStatusResponse}},
 )
 async def ingest_page_status(request: Request, page_id: str) -> JSONResponse:
-    return _status_response(request, page_id)
+    return await _status_response(request, page_id)
 
 
 @router.get(
@@ -1209,7 +1245,7 @@ async def ingest_page_status(request: Request, page_id: str) -> JSONResponse:
     responses={200: {"model": JobStatusResponse}, 202: {"model": JobStatusResponse}},
 )
 async def ingest_document_status(request: Request, document_id: str) -> JSONResponse:
-    return _status_response(request, document_id)
+    return await _status_response(request, document_id)
 
 
 # ------------------------------------------------------------------
@@ -1328,8 +1364,27 @@ async def query(request: Request) -> Response:
 
 
 # ------------------------------------------------------------------
+# GET /v1/internal/document-result/{id}  — gateway ← worker row cache
 # POST /v1/internal/job-callback  — worker → gateway completion hook
 # ------------------------------------------------------------------
+
+
+@router.get(
+    "/internal/document-result/{document_id}",
+    summary="Fetch cached pipeline rows from a worker pod (split topology)",
+    include_in_schema=False,
+)
+async def worker_document_result(document_id: str) -> JSONResponse:
+    """Return rows stored by the worker pool after pipeline completion."""
+    from nemo_retriever.service.services.worker_result_store import consume_result_data
+
+    rows = consume_result_data(document_id)
+    if rows is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No cached result rows for document {document_id!r}",
+        )
+    return JSONResponse({"id": document_id, "result_data": rows})
 
 
 @router.post(
@@ -1355,6 +1410,13 @@ async def job_callback(request: Request) -> JSONResponse:
     if not item_id:
         raise HTTPException(status_code=400, detail="Missing 'id' field")
 
+    if body.get("result_data") is not None:
+        logger.warning(
+            "Ignoring inline result_data on internal callback for %s " "(%d row(s)); workers must store rows locally.",
+            item_id,
+            len(body.get("result_data") or []),
+        )
+
     tracker = get_job_tracker()
     if tracker is None:
         raise HTTPException(status_code=503, detail="Job tracker not available")
@@ -1376,7 +1438,6 @@ async def job_callback(request: Request) -> JSONResponse:
         outcome = tracker.mark_completed(
             item_id,
             result_rows=body.get("result_rows", 0),
-            result_data=body.get("result_data"),
             elapsed_s=body.get("elapsed_s"),
         )
 

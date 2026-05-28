@@ -716,15 +716,23 @@ nims:
 # (e.g. http://nemotron-page-elements-v3:8000/v1/infer). An explicit value
 # in `serviceConfig.nimEndpoints.*` always wins.
 #
-# NIMCache resources carry the `helm.sh/resource-policy: keep` annotation
-# so model downloads survive `helm uninstall` (they reference PersistentVolume
-# state that's expensive to rebuild).
+# NIMCache resources may carry `helm.sh/resource-policy: keep` so model
+# downloads survive `helm uninstall` (see nimOperator.nimCache.keepOnUninstall).
 nimOperator:
   # ---------------------------------------------------------------------------
   # NIMCache storage defaults (currently informational — each per-NIM block
   # carries its own storage.pvc settings).
   # ---------------------------------------------------------------------------
   nimCache:
+    # When true, every NIMCache is annotated `helm.sh/resource-policy: keep`
+    # and Helm will NOT delete it on uninstall (PVC + pulled weights remain).
+    # NIMService CRs are always removed by Helm uninstall. Set false on dev
+    # clusters when you want `helm uninstall` to delete caches too.
+    keepOnUninstall: true
+    # NIMCache/NIMService names retired from the chart. deploy.sh deletes these
+    # after each successful helm reconcile so they do not linger with keep-on-uninstall.
+    pruneRetiredNimResources:
+      - nemotron-ocr-v2
     pvc:
       create: true
       # If set, applies to every per-NIM PVC that doesn't override

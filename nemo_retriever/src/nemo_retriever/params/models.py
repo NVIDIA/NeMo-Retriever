@@ -118,6 +118,7 @@ class IngestExecuteParams(_ParamsModel):
     return_failures: bool = False
     save_to_disk: bool = False
     return_traces: bool = False
+    return_results: bool = True
     parallel: bool = False
     max_workers: Optional[int] = None
     gpu_devices: list[str] = Field(default_factory=list)

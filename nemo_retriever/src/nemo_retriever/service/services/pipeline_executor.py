@@ -29,8 +29,6 @@ from concurrent.futures.process import BrokenProcessPool
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
-import numpy as np
-
 if TYPE_CHECKING:
     from nemo_retriever.service.config import NimEndpointsConfig, ServiceConfig
     from nemo_retriever.service.services.pipeline_pool import WorkItem
@@ -80,51 +78,16 @@ def get_pipeline_configs() -> dict[str, dict[str, Any]]:
     return _pipeline_configs
 
 
-_LARGE_COLUMNS = frozenset(
-    {
-        "bytes",
-        "page_image",
-        "image_b64",
-        "images",
-        "charts",
-        "infographics",
-        "tables",
-    }
-)
-
-_MAX_STR_LEN = 500
-
-
-def _sanitize_value(val: Any) -> Any:
-    """Convert a single cell value to a JSON-safe, memory-friendly form."""
-    if val is None:
-        return None
-    if isinstance(val, (np.integer,)):
-        return int(val)
-    if isinstance(val, (np.floating,)):
-        return float(val)
-    if isinstance(val, np.ndarray):
-        return f"<ndarray shape={val.shape} dtype={val.dtype}>"
-    if isinstance(val, (list, tuple)) and len(val) > 20:
-        return f"<{type(val).__name__} len={len(val)}>"
-    if isinstance(val, bytes):
-        return f"<bytes len={len(val)}>"
-    if isinstance(val, str) and len(val) > _MAX_STR_LEN:
-        return val[:_MAX_STR_LEN] + f"…[{len(val)} chars total]"
-    return val
-
-
 def _sanitize_result_data(df: Any) -> list[dict[str, Any]]:
-    """Convert a pipeline DataFrame to lightweight JSON-safe dicts.
+    """Convert a pipeline DataFrame to JSON-safe dicts for the status API.
 
-    Drops large binary/image columns entirely and truncates remaining
-    values so the result can be stored in memory and returned via the
-    status endpoint without risk of OOM.
+    Column layout matches the in-process ``GraphIngestor.ingest()``
+    frame; cell values are sanitized for transport (see
+    :mod:`nemo_retriever.ingest_results`).
     """
-    cols_to_keep = [c for c in df.columns if c not in _LARGE_COLUMNS]
-    light_df = df[cols_to_keep]
-    records = light_df.to_dict(orient="records")
-    return [{k: _sanitize_value(v) for k, v in row.items()} for row in records]
+    from nemo_retriever.ingest_results import dataframe_to_transport_records
+
+    return dataframe_to_transport_records(df)
 
 
 # ── Process pool registry ────────────────────────────────────────────

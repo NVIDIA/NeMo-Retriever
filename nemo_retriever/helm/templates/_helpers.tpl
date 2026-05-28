@@ -257,6 +257,18 @@ Audio ASR (Parakeet) is configured directly via
 */}}
 
 {{/*
+Emit ``helm.sh/resource-policy: keep`` on NIMCache when
+``nimOperator.nimCache.keepOnUninstall`` is true (default). Helm uninstall
+then retains the cache CR (and its PVC) so model downloads are not discarded.
+*/}}
+{{- define "nemo-retriever.nimcache.keepPolicy" -}}
+{{- if .Values.nimOperator.nimCache.keepOnUninstall }}
+annotations:
+  helm.sh/resource-policy: keep
+{{- end }}
+{{- end }}
+
+{{/*
 =============================================================================
 NIMCache model-profile filter
 =============================================================================

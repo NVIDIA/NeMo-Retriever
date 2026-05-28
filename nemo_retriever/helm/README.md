@@ -36,6 +36,13 @@ The chart ships two deployable layers behind feature flags:
 > the service at one replica. The chart already exposes the HPA scaffolding
 > so it's a one-line change once the planned PostgreSQL backend lands.
 
+> For behavioral consistency between local HuggingFace deployments and Helm service deployments: 
+> `results = ingestor.ingest(...return_results=True)
+> return_results defaults to True. This incurs a significant performance and system memory usage cost. 
+> Unless you know explicitly you need to fetch extraction results to the client, you should use:
+> return_results=False
+> If you must return results, you may need to increase pod memory specs to support the increased pod memory usage.
+
 ---
 
 ## Layout
@@ -232,9 +239,43 @@ kubectl get nimcache,nimservice -n <namespace>
 kubectl describe nimservice nemotron-page-elements-v3 -n <namespace>
 ```
 
-First-time NIMCache reconciliation downloads model weights to a PVC; the
-NIMCache resources carry the `helm.sh/resource-policy: keep` annotation so
-those downloads survive `helm uninstall`.
+First-time NIMCache reconciliation downloads model weights to a PVC. By
+default (`nimOperator.nimCache.keepOnUninstall: true`) every **NIMCache**
+carries `helm.sh/resource-policy: keep` so those downloads survive
+`helm uninstall`. **NIMService** CRs do not use `keep` and are removed by
+Helm on uninstall.
+
+### Why NIM resources still exist after `helm uninstall`
+
+| What you see | Typical cause |
+|--------------|----------------|
+| `NIMCache` + PVC remain | **Expected** when `keepOnUninstall` is true (default). Helm intentionally skips deleting caches so you do not re-pull multi‑GiB weights. |
+| `NIMService` CR remains | **Not expected** on a normal uninstall. Usually an **orphan** from a failed install/upgrade (release never recorded the resource, or the chart renamed the NIM, e.g. `nemotron-ocr-v1` → `nemotron-ocr-v2`). |
+| Deployments / GPU pods still running | Often the operator workload for a **kept** `NIMCache`, or a stale `NIMService` that Helm did not own. Check `kubectl get nimservice,nimcache -n <ns>`. |
+| `nemotron-*-job-*` pods in `Error` | The NIM Operator's **model-download Job** for a `NIMCache` (not the retriever service). Failed cache pulls retry and leave Error pods until the Job or `NIMCache` is deleted. Common after a failed `helm install` when the release is rolled back but `keep` retains the cache CR. |
+| `helm uninstall` appears to do nothing | Release may be missing or failed (`helm list -n <ns> -a`). CRs created before a failed install can be left without a release to clean them up. |
+
+**Full teardown** (dev cluster — deletes caches and PVCs Helm kept):
+
+```bash
+NS=retriever
+REL=nemo-retriever
+
+helm uninstall "${REL}" -n "${NS}" 2>/dev/null || true
+
+# Orphans and kept NIMCaches (Helm keep does not block kubectl delete):
+kubectl delete nimservice,nimcache -n "${NS}" --all
+# Optional: drop model PVCs if you will re-pull from NGC
+kubectl delete pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator' 2>/dev/null || true
+```
+
+**Dev installs** that should not retain caches on uninstall:
+
+```bash
+helm upgrade --install "${REL}" ./nemo_retriever/helm -n "${NS}" \
+  --set nimOperator.nimCache.keepOnUninstall=false \
+  ...
+```
 
 ---
 
@@ -258,6 +299,17 @@ short list of knobs you'll touch first.
 For audio and video extraction, set `service.installFfmpeg=true` when your
 cluster allows runtime package installation. For air-gapped clusters, see
 [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
+
+### Audio and video (Parakeet ASR) { #audio-video-parakeet }
+
+To run self-hosted Parakeet for [audio and video extraction](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md):
+
+1. Set `nimOperator.audio.enabled=true` (it is on by default; disable other optional NIMs you do not need per [Recommended minimal install (26.05)](#recommended-minimal-install-2605)).
+2. Pin the ASR `NIMService` to a **dedicated GPU** with `nimOperator.audio.resources`, `nodeSelector`, or `tolerations` (see [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html)).
+3. Confirm the GPU SKU in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) (footnote ⁴ lists Blackwell limitations).
+4. Set `service.installFfmpeg=true` when the retriever service will process audio or video (see `service.installFfmpeg` above).
+
+The retriever service picks up the in-cluster ASR endpoint when `nimOperator.audio` is enabled; see [NIM Operator sub-stack](#nim-operator-sub-stack).
 
 ### Service configuration (rendered into `retriever-service.yaml`)
 
@@ -320,6 +372,7 @@ pair gated on three conditions ALL holding:
 | `nimOperator.page_elements.enabled`    | `true`  | Page-elements detector NIM. |
 | `nimOperator.table_structure.enabled`  | `true`  | Table-structure detector NIM. |
 | `nimOperator.ocr.enabled`              | `true`  | OCR NIM. |
+| `nimOperator.ocr.image`              | `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0` | Default OCR NIM image. |
 | `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
 | `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
 | `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
@@ -532,6 +585,7 @@ and `image.tag` before you upgrade.
 
 | Path | Role |
 |------|------|
+| `nimOperator.nimCache.keepOnUninstall` | `true` | When true, NIMCache CRs survive `helm uninstall` (`helm.sh/resource-policy: keep`). NIMService CRs are always removed. Set `false` for dev clusters that should fully tear down on uninstall. |
 | `nimOperator.ocr.enabled` | Reconcile the OCR `NIMService` |
 | `nimOperator.ocr.image.repository` | NIM image (for example `nvcr.io/nim/nvidia/nemotron-ocr-v2`) |
 | `nimOperator.ocr.image.tag` | Pin the image tag for reproducible upgrades |
@@ -908,6 +962,8 @@ Verify tags on the Git branch or tag you ship (for example `26.05` or
 | Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
 | Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` |
 | Parakeet ASR (optional) | `audio` | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` |
+
+GPU SKU support for `audio` is in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements).
 
 Also mirror images for the vectordb sidecar, Redis, or other subcharts if
 your values enable them.
