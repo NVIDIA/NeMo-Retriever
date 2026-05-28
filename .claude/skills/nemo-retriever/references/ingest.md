@@ -42,13 +42,6 @@ Large text-only PDF fallback:
 retriever ingest data/pdfs/ --profile fast-text --quiet
 ```
 
-Audio and video:
-
-```bash
-retriever ingest data/audio/ --quiet
-retriever ingest data/video/ --quiet
-```
-
 Optional VLM captioning:
 
 ```bash

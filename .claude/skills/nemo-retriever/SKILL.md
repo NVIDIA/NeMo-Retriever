@@ -25,13 +25,6 @@ Always pass `--quiet` on whichever branch fires. It suppresses progress bars, Hu
 
 The `else` branch uses the `fast-text` profile, which skips page-element detection, OCR-heavy extraction, image extraction, table extraction, chart extraction, infographic extraction, and page images — only pdfium text extraction + embedding. Embedding runs locally via the bundled HuggingFace model by default (no remote NIM needed). It's strictly better to have a text-only index than no index at all: the per-query pdfium text-extract fallback re-extracts a full PDF *per query*, which is both slow and expensive. Page-element detection may emit warning logs when its remote endpoint isn't reachable; the warnings are non-fatal as long as the embedding step itself succeeds (and are silenced by `--quiet` on a successful run).
 
-Audio and video use the default `auto` profile; manifest routing selects ASR and video processing from file types:
-
-```bash
-retriever ingest ./audio --quiet
-retriever ingest ./video --quiet
-```
-
 VLM captioning is optional and must be requested explicitly:
 
 ```bash
