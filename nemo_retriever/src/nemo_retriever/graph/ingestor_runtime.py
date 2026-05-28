@@ -722,6 +722,7 @@ def build_graph(
             asr_params=asr_params,
             caption_params=caption_params,
             video_frame_params=video_frame_params,
+            video_text_dedup_params=video_text_dedup_params,
             av_fuse_params=av_fuse_params,
             split_config=split_config,
         )

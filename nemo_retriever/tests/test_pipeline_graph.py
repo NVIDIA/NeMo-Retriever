@@ -26,7 +26,7 @@ from nemo_retriever.graph.multi_type_extract_operator import (
 )
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
-from nemo_retriever.params import EmbedParams, ExtractParams, TextChunkParams
+from nemo_retriever.params import ASRParams, EmbedParams, ExtractParams, TextChunkParams, VideoFrameTextDedupParams
 from nemo_retriever.utils.input_files import INPUT_TYPE_EXTENSIONS
 from nemo_retriever.utils.ray_resource_hueristics import Resources
 
@@ -73,6 +73,19 @@ def test_auto_extract_extension_sets_share_manifest_registry() -> None:
     assert AUDIO_EXTENSIONS == INPUT_TYPE_EXTENSIONS["audio"]
     assert IMAGE_EXTENSIONS == INPUT_TYPE_EXTENSIONS["image"]
     assert VIDEO_EXTENSIONS == INPUT_TYPE_EXTENSIONS["video"]
+
+
+def test_auto_build_graph_forwards_video_text_dedup_params_to_multitype() -> None:
+    dedup_params = VideoFrameTextDedupParams(enabled=False)
+
+    graph = build_graph(
+        extraction_mode="auto",
+        extract_params=ExtractParams(),
+        video_text_dedup_params=dedup_params,
+    )
+
+    assert isinstance(graph.roots[0].operator, MultiTypeExtractOperator)
+    assert graph.roots[0].operator_kwargs["video_text_dedup_params"] is dedup_params
 
 
 # ---------------------------------------------------------------------------
@@ -653,6 +666,24 @@ class TestGraphExecute:
 # MultiTypeExtractOperator tests
 # =====================================================================
 class TestMultiTypeExtractOperator:
+    def test_auto_mode_preserves_audio_video_compat_defaults(self, monkeypatch):
+        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+
+        monkeypatch.setattr(
+            "nemo_retriever.graph.multi_type_extract_operator.asr_params_from_env",
+            lambda: ASRParams(segment_audio=True),
+        )
+
+        op = MultiTypeExtractCPUActor(extraction_mode="auto")
+
+        assert op.audio_chunk_params.split_type == "size"
+        assert op.audio_chunk_params.split_interval == 500000
+        assert op.asr_params.segment_audio is False
+        assert op.video_frame_params.fps == 0.5
+        assert op.video_frame_params.dedup is True
+        assert op.video_text_dedup_params.enabled is True
+        assert op.video_text_dedup_params.max_dropped_frames == 2
+
     def test_group_files_by_type(self):
         """Test file grouping logic."""
 
