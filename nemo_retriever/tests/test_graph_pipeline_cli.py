@@ -521,6 +521,33 @@ def test_graph_pipeline_cli_service_mode_lists_all_incompatible_flags(tmp_path) 
     assert "--embed-granularity" in result.output
 
 
+def test_graph_pipeline_cli_service_mode_rejects_vdb_flags(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    result_no_vdb = RUNNER.invoke(
+        batch_pipeline.app,
+        [str(dataset_dir), "--run-mode", "service", "--no-vdb"],
+    )
+    assert result_no_vdb.exit_code != 0
+    assert "--no-vdb" in result_no_vdb.output
+
+    result_overwrite = RUNNER.invoke(
+        batch_pipeline.app,
+        [str(dataset_dir), "--run-mode", "service", "--vdb-overwrite"],
+    )
+    assert result_overwrite.exit_code != 0
+    assert "--vdb-overwrite" in result_overwrite.output
+
+    result_append = RUNNER.invoke(
+        batch_pipeline.app,
+        [str(dataset_dir), "--run-mode", "service", "--vdb-append"],
+    )
+    assert result_append.exit_code != 0
+    assert "--vdb-overwrite" in result_append.output
+
+
 def test_graph_pipeline_cli_service_mode_accepts_allowlisted_flags(tmp_path, monkeypatch) -> None:
     import nemo_retriever.service_ingestor as service_ingestor_module
 

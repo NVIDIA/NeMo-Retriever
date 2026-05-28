@@ -190,8 +190,10 @@ _SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
     ("--nemotron-parse-gpus-per-actor", "nemotron_parse_gpus_per_actor"),
     ("--nemotron-parse-batch-size", "nemotron_parse_batch_size"),
     # In-graph VDB / sidecar metadata (not wired through ServiceIngestor by the CLI)
+    ("--no-vdb", "no_vdb"),
     ("--vdb-op", "vdb_op"),
     ("--vdb-kwargs-json", "vdb_kwargs_json"),
+    ("--vdb-overwrite/--vdb-append", "vdb_overwrite"),
     ("--meta-dataframe", "meta_dataframe"),
     ("--meta-source-field", "meta_source_field"),
     ("--meta-fields", "meta_fields"),
