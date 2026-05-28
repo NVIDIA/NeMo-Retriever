@@ -1197,6 +1197,6 @@ nimOperator:
         grpcPort: 50051
     env:
       - name: NIM_TAGS_SELECTOR
-        value: "name=parakeet-1-1b-ctc-en-us,mode=str,vad=default,diarizer=disabled"
+        value: "name=parakeet-1-1b-ctc-en-us,mode=ofl,vad=default,diarizer=disabled"
       - name: NIM_TRITON_LOG_VERBOSE
         value: "1"

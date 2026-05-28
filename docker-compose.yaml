@@ -247,7 +247,7 @@ services:
     ulimits:
       nofile: 2048
     environment:
-      - NIM_TAGS_SELECTOR=name=parakeet-1-1b-ctc-en-us,mode=str,vad=default,diarizer=disabled
+      - NIM_TAGS_SELECTOR=name=parakeet-1-1b-ctc-en-us,mode=ofl,vad=default,diarizer=disabled
       - NIM_TRITON_LOG_VERBOSE=1
       - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
     deploy:
