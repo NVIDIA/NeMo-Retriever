@@ -16,7 +16,7 @@ Output is a **Ray Dataset** (Ray Data) or **pandas** `DataFrame` listing extract
 
 ## Embeddings and retrieval
 
-Optionally, the library can compute **embeddings** for extracted content and store vectors in [LanceDB](https://lancedb.com/) for downstream semantic or hybrid search in your application. For multimodal (VLM) embedding options, see [Multimodal embeddings (VLM)](embedding.md).
+Optionally, the library can compute **embeddings** for extracted content and store vectors in [LanceDB](https://lancedb.com/) for downstream semantic search in your application. For upload and retrieval APIs, see [Vector databases](vdbs.md). For multimodal (VLM) embedding options, see [Multimodal embeddings (VLM)](embedding.md).
 
 ## Chunking { #chunking }
 

@@ -132,13 +132,12 @@ Each hit's `metadata` field is a JSON string. Use **`parse_hit_content_metadata(
 
 ## Limitations { #limitations }
 
-- **Hybrid search** — Metadata filters on the precomputed-vector retrieval path apply to **dense vector search only**. `LanceDB.retrieval` raises `NotImplementedError` when `hybrid=True`; see [Vector databases](vdbs.md#hybrid-search-lancedb).
 - **Predicate shape** — `where` uses substring `LIKE` on compact JSON in `metadata`; design keys and values accordingly.
 - **Sidecar updates** — Changing sidecar data requires re-ingesting affected documents so LanceDB rows pick up new metadata.
 
 ## Related content { #related-content }
 
-- [Vector databases](vdbs.md) — LanceDB upload, retrieval, and hybrid notes
+- [Vector databases](vdbs.md) — LanceDB upload and retrieval (canonical VDB guide)
 - [nemo_retriever_retriever_query_metadata_filter.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) — end-to-end metadata filtering with `Retriever`
 - [nemo_retriever_metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_metadata_and_filtered_search.ipynb) — graph ingest with sidecar metadata
 - [Vector DB operators (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering) — canonical developer reference for this page
