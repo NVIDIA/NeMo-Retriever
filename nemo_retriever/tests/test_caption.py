@@ -412,6 +412,31 @@ def test_caption_cpu_actor_defaults_to_hosted_endpoint_when_api_key_is_configure
     assert infer_kwargs["model_name"] == "nvidia/nemotron-nano-12b-v2-vl"
 
 
+@patch("nemo_retriever.caption.caption._create_remote_client")
+def test_caption_cpu_actor_default_endpoint_reads_api_key_from_runtime_env(mock_create_client, monkeypatch):
+    from nemo_retriever.caption.caption import CaptionCPUActor
+    from nemo_retriever.params import CaptionParams
+
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+    params = CaptionParams()
+    assert params.api_key is None
+
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-env")
+    mock_nim = MagicMock()
+    mock_nim.infer.return_value = ["remote cap"]
+    mock_create_client.return_value = mock_nim
+
+    actor = CaptionCPUActor(params)
+    actor.process(_make_page_df(num_images=1))
+
+    assert actor._kwargs["api_key"] == "nvapi-env"
+    mock_create_client.assert_called_once_with(
+        "https://integrate.api.nvidia.com/v1/chat/completions",
+        "nvapi-env",
+    )
+
+
 def test_caption_cpu_actor_default_endpoint_requires_api_key(monkeypatch):
     from nemo_retriever.caption.caption import CaptionCPUActor
     from nemo_retriever.params import CaptionParams

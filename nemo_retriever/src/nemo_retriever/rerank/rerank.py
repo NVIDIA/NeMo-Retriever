@@ -70,12 +70,8 @@ logger = logging.getLogger(__name__)
 
 _render_warned = False
 _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
-_DEFAULT_RERANK_INVOKE_URL = (
-    "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
-)
-_DEFAULT_VL_RERANK_INVOKE_URL = (
-    "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
-)
+_DEFAULT_RERANK_INVOKE_URL = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
+_DEFAULT_VL_RERANK_INVOKE_URL = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
 _DEFAULT_MAX_LENGTH = 512
 _DEFAULT_BATCH_SIZE = 32
 _SCORE_COLUMN = "rerank_score"

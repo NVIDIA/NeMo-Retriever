@@ -902,9 +902,8 @@ def _raise_for_empty_ingest(
             "or the configured local/remote endpoints."
         )
 
-    noun = "row" if n_rows == 1 else "rows"
     raise RuntimeError(
-        f"retriever ingest produced {n_rows} {noun} in LanceDB {target} for {len(documents)} input file(s). "
+        f"retriever ingest produced 0 rows in LanceDB {target} for {len(documents)} input file(s). "
         "This usually means extraction or embedding failed before any rows were written; check the captured "
         "stage logs above, and verify NVIDIA_API_KEY/NGC_API_KEY or the configured local/remote endpoints."
     )
