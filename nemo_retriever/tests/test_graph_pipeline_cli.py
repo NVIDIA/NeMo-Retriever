@@ -473,3 +473,92 @@ def test_graph_pipeline_cli_accepts_harness_runtime_metric_flags(tmp_path, monke
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["recall_details"] is False
     assert payload["evaluation_mode"] == "beir"
+
+
+def test_graph_pipeline_cli_service_mode_rejects_ingest_flag(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--run-mode",
+            "service",
+            "--method",
+            "nemoretriever_parse",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--run-mode=service" in result.output
+    assert "--method" in result.output
+
+
+def test_graph_pipeline_cli_service_mode_lists_all_incompatible_flags(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--run-mode",
+            "service",
+            "--method",
+            "nemoretriever_parse",
+            "--text-chunk",
+            "--embed-granularity",
+            "page",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--method" in result.output
+    assert "--text-chunk" in result.output
+    assert "--embed-granularity" in result.output
+
+
+def test_graph_pipeline_cli_service_mode_accepts_allowlisted_flags(tmp_path, monkeypatch) -> None:
+    import nemo_retriever.service_ingestor as service_ingestor_module
+
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+    save_dir = tmp_path / "save"
+
+    class _FakeServiceIngestor(list):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__()
+
+        def files(self, _files):
+            return self
+
+        def ingest(self, *args, **kwargs):
+            return self
+
+    monkeypatch.setattr(service_ingestor_module, "ServiceIngestor", _FakeServiceIngestor)
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--run-mode",
+            "service",
+            "--service-url",
+            "http://localhost:7670",
+            "--service-concurrency",
+            "2",
+            "--embed-model-name",
+            "nvidia/llama-3.2-nv-embedqa-1b-v2",
+            "--evaluation-mode",
+            "none",
+            "--save-intermediate",
+            str(save_dir),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
