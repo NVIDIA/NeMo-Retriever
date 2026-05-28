@@ -553,9 +553,13 @@ def test_ingest_documents_validates_run_mode_before_creating_ingestor(monkeypatc
 def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
     retriever_calls: list[dict[str, Any]] = []
     query_calls: list[str] = []
-    hits = [
-        {"text": "passage", "page_number": 1, "_distance": 0.2},
-        {"text": "other", "page_number": 2, "_distance": 0.4},
+    raw_hits = [
+        {"text": "passage", "source": "a.pdf", "page_number": 1, "_distance": 0.2},
+        {"text": "other", "source": "b.pdf", "page_number": 2, "_distance": 0.4},
+    ]
+    # query_documents exposes only text / source / page_number (no scores or extra keys).
+    public_hits = [
+        {"text": h["text"], "source": h["source"], "page_number": h["page_number"]} for h in raw_hits
     ]
 
     class FakeRetriever:
@@ -564,7 +568,7 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
 
         def query(self, query: str) -> list[dict[str, Any]]:
             query_calls.append(query)
-            return hits
+            return raw_hits
 
     monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
 

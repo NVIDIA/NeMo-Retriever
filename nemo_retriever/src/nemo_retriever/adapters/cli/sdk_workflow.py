@@ -497,4 +497,6 @@ def query_documents(
             retriever_kwargs["rerank_kwargs"] = rerank_kwargs
 
     retriever = Retriever(**retriever_kwargs)
-    return retriever.query(query)
+    hits = retriever.query(query)
+    hits = [{"text": hit.get("text", ""), "source": hit.get("source", ""), "page_number": hit.get("page_number")} for hit in hits]
+    return hits
