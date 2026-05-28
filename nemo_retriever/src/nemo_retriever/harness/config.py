@@ -284,10 +284,7 @@ def _parse_scalar(value: str) -> Any:
         return _parse_bool(value)
     if low in {"null", "none"}:
         return None
-    try:
-        return _parse_number(value)
-    except ValueError:
-        return value
+    return value
 
 
 def _parse_helm_set_items(items: list[str] | None) -> dict[str, Any]:

@@ -258,6 +258,39 @@ def test_load_harness_config_supports_managed_helm_fields(tmp_path: Path, monkey
     assert cfg.helm_sudo is True
 
 
+def test_cli_helm_set_preserves_decimal_like_version_strings(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "  run_mode: service",
+                "  manage_service: true",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                "    recall_required: false",
+                "    evaluation_mode: none",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_harness_config(
+        config_file=str(cfg_path),
+        cli_helm_set=["service.image.tag=26.10", "nims.enabled=false"],
+    )
+
+    assert cfg.helm_set["service.image.tag"] == "26.10"
+    assert cfg.helm_set["nims.enabled"] is False
+
+
 def test_load_harness_config_fails_when_recall_required_without_query(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
