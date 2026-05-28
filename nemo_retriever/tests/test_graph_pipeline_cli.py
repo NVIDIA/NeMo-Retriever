@@ -563,6 +563,12 @@ def test_graph_pipeline_cli_service_mode_accepts_allowlisted_flags(tmp_path, mon
         def files(self, _files):
             return self
 
+        def extract(self, *args, **kwargs):
+            return self
+
+        def embed(self, *args, **kwargs):
+            return self
+
         def ingest(self, *args, **kwargs):
             return self
 

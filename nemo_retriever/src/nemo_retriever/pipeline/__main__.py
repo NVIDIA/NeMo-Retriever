@@ -208,12 +208,14 @@ def _reject_service_incompatible_flags(ctx: typer.Context) -> None:
     ``ENVIRONMENT`` are treated as user-supplied — flags carrying their
     declared default do not trigger the error.
     """
-    from click.core import ParameterSource
-
+    # Compare by enum *name*, not identity: depending on the environment,
+    # typer may return a source from its vendored ``typer._click.core`` enum
+    # rather than ``click.core.ParameterSource``, and the two enums are
+    # distinct objects whose members never compare equal via ``in``.
     user_set: list[str] = []
     for cli_flag, param_name in _SERVICE_INCOMPATIBLE_FLAGS:
         source = ctx.get_parameter_source(param_name)
-        if source in (ParameterSource.COMMANDLINE, ParameterSource.ENVIRONMENT):
+        if getattr(source, "name", None) in {"COMMANDLINE", "ENVIRONMENT"}:
             user_set.append(cli_flag)
     if not user_set:
         return
