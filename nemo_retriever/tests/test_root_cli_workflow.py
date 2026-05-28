@@ -290,6 +290,45 @@ def test_root_ingest_passes_batch_tuning_options(monkeypatch, tmp_path) -> None:
     assert "Ingested 1 document(s) into LanceDB lancedb/nv-ingest." in result.output
 
 
+def test_ingest_documents_accepts_legacy_public_api_kwargs(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "legacy-public-api.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = sdk_workflow.ingest_documents(
+        [str(document)],
+        input_type="pdf",
+        table_output_format="markdown",
+        local_ingest_embed_backend="hf",
+        page_elements_gpus_per_actor=0.2,
+        ocr_gpus_per_actor=0.3,
+        table_structure_workers=6,
+        table_structure_batch_size=12,
+        table_structure_cpus_per_actor=0.4,
+        table_structure_gpus_per_actor=0.25,
+        embed_gpus_per_actor=0.5,
+    )
+
+    assert result["documents"] == [str(document)]
+    extract_params = fake_ingestor.extract.call_args.args[0]
+    assert isinstance(extract_params, ExtractParams)
+    assert extract_params.use_table_structure is True
+    assert extract_params.table_output_format == "markdown"
+    assert extract_params.batch_tuning.gpu_page_elements == 0.2
+    assert extract_params.batch_tuning.gpu_ocr == 0.3
+    assert extract_params.batch_tuning.table_structure_workers == 6
+    assert extract_params.batch_tuning.table_structure_batch_size == 12
+    assert extract_params.batch_tuning.table_structure_cpus_per_actor == 0.4
+    assert extract_params.batch_tuning.gpu_table_structure == 0.25
+
+    embed_params = fake_ingestor.embed.call_args.args[0]
+    assert isinstance(embed_params, EmbedParams)
+    assert embed_params.local_ingest_embed_backend == "hf"
+    assert embed_params.batch_tuning.gpu_embed == 0.5
+
+
 def test_root_ingest_reports_empty_directory_error(tmp_path) -> None:
     result = RUNNER.invoke(cli_main.app, ["ingest", str(tmp_path)])
 

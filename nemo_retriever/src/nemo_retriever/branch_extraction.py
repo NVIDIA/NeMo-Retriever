@@ -115,6 +115,7 @@ class ExtractionBranchExecutor:
             vdb_upload_params=self.vdb_upload_params,
             webhook_params=self.webhook_params,
             stage_order=self.post_extract_order,
+            reshape_content_before_embed=self._should_reshape_content_before_embed(),
         )
         post_overrides = batch_tuning_to_node_overrides(
             None,
@@ -151,8 +152,12 @@ class ExtractionBranchExecutor:
             vdb_upload_params=self.vdb_upload_params,
             webhook_params=self.webhook_params,
             stage_order=self.post_extract_order,
+            reshape_content_before_embed=self._should_reshape_content_before_embed(),
         )
         return InprocessExecutor(post_graph, show_progress=self.show_progress).ingest(combined)
+
+    def _should_reshape_content_before_embed(self) -> bool:
+        return any(branch.family in {"pdf", "image"} for branch in self.branches)
 
     def _resolve_branch(self, branch: ExtractionBranchPlan) -> ResolvedExtractionInputs:
         return resolve_branch_extraction_inputs(
@@ -219,6 +224,23 @@ def merge_node_overrides(
     derived_overrides: dict[str, dict[str, Any]],
     explicit_overrides: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
+    """Merge generated and caller-supplied Ray node override dictionaries.
+
+    Parameters
+    ----------
+    derived_overrides
+        Overrides calculated from runtime resource heuristics and tuning
+        parameters.
+    explicit_overrides
+        Overrides provided directly by the caller. Values here take precedence
+        over matching keys from ``derived_overrides``.
+
+    Returns
+    -------
+    dict[str, dict[str, Any]]
+        A merged override mapping keyed by graph node name.
+    """
+
     merged_overrides: dict[str, dict[str, Any]] = {}
     for node_name in set(derived_overrides) | set(explicit_overrides):
         merged_overrides[node_name] = {
@@ -229,6 +251,21 @@ def merge_node_overrides(
 
 
 def concat_dataframes(frames: list[Any]) -> Any:
+    """Concatenate branch DataFrames while preserving the union of columns.
+
+    Parameters
+    ----------
+    frames
+        Pandas DataFrames produced by extraction branches.
+
+    Returns
+    -------
+    Any
+        A pandas DataFrame with every column seen across the inputs. When
+        ``frames`` is empty, returns an empty frame with ``bytes`` and ``path``
+        columns.
+    """
+
     import pandas as pd
 
     if not frames:
@@ -245,6 +282,22 @@ def concat_dataframes(frames: list[Any]) -> Any:
 
 
 def normalize_ray_branch_datasets(branch_datasets: list[Any]) -> list[Any]:
+    """Pad Ray branch datasets to a common schema before unioning them.
+
+    Parameters
+    ----------
+    branch_datasets
+        Ray ``Dataset`` objects produced by manifest extraction branches.
+
+    Returns
+    -------
+    list[Any]
+        Datasets whose pandas batches are projected to a stable column order.
+        If any dataset lacks an already-known schema, the original datasets are
+        returned unchanged so Ray does not eagerly execute extraction just to
+        discover schema information.
+    """
+
     columns: list[str] = []
     seen: set[str] = set()
     for dataset in branch_datasets:
@@ -271,6 +324,25 @@ def normalize_ray_branch_datasets(branch_datasets: list[Any]) -> list[Any]:
 
 
 def ray_dataset_columns(dataset: Any) -> tuple[str, ...]:
+    """Return known column names from a Ray dataset without forcing execution.
+
+    Parameters
+    ----------
+    dataset
+        Ray ``Dataset`` or test double exposing ``schema``.
+
+    Returns
+    -------
+    tuple[str, ...]
+        Column names if Ray already has schema metadata, otherwise an empty
+        tuple.
+
+    Raises
+    ------
+    Exception
+        Propagates non-compatibility errors raised by ``dataset.schema``.
+    """
+
     try:
         schema = dataset.schema(fetch_if_missing=False)
     except TypeError:
@@ -291,4 +363,18 @@ def ray_dataset_columns(dataset: Any) -> tuple[str, ...]:
 
 
 def format_post_stage_summary(post_extract_order: tuple[str, ...]) -> str:
+    """Format post-extraction stage names for log messages.
+
+    Parameters
+    ----------
+    post_extract_order
+        Ordered stage names that will run after branch union.
+
+    Returns
+    -------
+    str
+        Comma-separated stage names, or ``"none"`` when no post stages are
+        configured.
+    """
+
     return ", ".join(post_extract_order) if post_extract_order else "none"

@@ -180,8 +180,31 @@ def test_inprocess_branch_execution_unions_schemas_and_runs_post_once(monkeypatc
     assert all(call.get("embed_params") is None for call in extraction_calls)
     assert len(post_calls) == 1
     assert post_calls[0]["embed_params"] is not None
+    assert post_calls[0]["reshape_content_before_embed"] is True
     assert set(result.columns) == {"path", "pdf_value", "image_value", "text_value", "post_extract"}
     assert result["post_extract"].tolist() == [True, True, True]
+
+
+def test_text_html_branch_execution_skips_content_reshape_before_embed(monkeypatch, tmp_path) -> None:
+    text = tmp_path / "notes.txt"
+    html = tmp_path / "index.html"
+    text.write_text("notes", encoding="utf-8")
+    html.write_text("<html></html>", encoding="utf-8")
+    post_calls: list[dict[str, Any]] = []
+
+    def fake_build_graph(**kwargs: Any) -> Graph:
+        return _graph_with(_TagOperator(tag=kwargs["extraction_mode"]))
+
+    def fake_post_graph(**kwargs: Any) -> Graph:
+        post_calls.append(kwargs)
+        return _graph_with(_PostOperator())
+
+    monkeypatch.setattr("nemo_retriever.branch_extraction.build_graph", fake_build_graph)
+    monkeypatch.setattr("nemo_retriever.branch_extraction.build_post_extract_graph", fake_post_graph)
+
+    GraphIngestor(run_mode="inprocess", show_progress=False).files([str(text), str(html)]).extract().embed().ingest()
+
+    assert post_calls[0]["reshape_content_before_embed"] is False
 
 
 class _FakeDataset:

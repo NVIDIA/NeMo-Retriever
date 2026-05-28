@@ -16,9 +16,18 @@ from nemo_retriever.graph import FileListLoaderOperator, MultiTypeExtractOperato
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.ingestor_runtime import build_graph, build_post_extract_graph
+from nemo_retriever.graph.multi_type_extract_operator import (
+    AUDIO_EXTENSIONS,
+    HTML_EXTENSIONS,
+    IMAGE_EXTENSIONS,
+    PDF_EXTENSIONS,
+    TEXT_EXTENSIONS,
+    VIDEO_EXTENSIONS,
+)
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.params import EmbedParams, ExtractParams, TextChunkParams
+from nemo_retriever.utils.input_files import INPUT_TYPE_EXTENSIONS
 from nemo_retriever.utils.ray_resource_hueristics import Resources
 
 
@@ -36,9 +45,15 @@ def _graph_node_names(graph: Graph) -> list[str]:
 
 
 def test_post_extract_graph_uses_explicit_content_reshape_flag() -> None:
-    graph = build_post_extract_graph(embed_params=EmbedParams())
+    graph = build_post_extract_graph(embed_params=EmbedParams(), reshape_content_before_embed=True)
 
     assert "ExplodeContentToRows" in _graph_node_names(graph)
+
+
+def test_post_extract_graph_can_skip_content_reshape() -> None:
+    graph = build_post_extract_graph(embed_params=EmbedParams(), reshape_content_before_embed=False)
+
+    assert "ExplodeContentToRows" not in _graph_node_names(graph)
 
 
 def test_text_build_graph_does_not_use_modal_content_reshape() -> None:
@@ -49,6 +64,15 @@ def test_text_build_graph_does_not_use_modal_content_reshape() -> None:
     )
 
     assert "ExplodeContentToRows" not in _graph_node_names(graph)
+
+
+def test_auto_extract_extension_sets_share_manifest_registry() -> None:
+    assert PDF_EXTENSIONS == INPUT_TYPE_EXTENSIONS["pdf"] | INPUT_TYPE_EXTENSIONS["doc"]
+    assert TEXT_EXTENSIONS == INPUT_TYPE_EXTENSIONS["txt"]
+    assert HTML_EXTENSIONS == INPUT_TYPE_EXTENSIONS["html"]
+    assert AUDIO_EXTENSIONS == INPUT_TYPE_EXTENSIONS["audio"]
+    assert IMAGE_EXTENSIONS == INPUT_TYPE_EXTENSIONS["image"]
+    assert VIDEO_EXTENSIONS == INPUT_TYPE_EXTENSIONS["video"]
 
 
 # ---------------------------------------------------------------------------
