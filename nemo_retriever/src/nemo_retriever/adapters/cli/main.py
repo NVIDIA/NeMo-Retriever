@@ -27,6 +27,7 @@ from nemo_retriever.adapters.cli.sdk_workflow import (
     ingest_documents,
     query_documents,
 )
+from nemo_retriever.vdb.records import RetrievalHit
 from nemo_retriever.version import get_version_info
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,14 @@ for _name, _module, _attr in _LAZY_SUBAPPS:
         logger.debug("Skipping '%s' sub-command (import failed)", _name)
 
 _ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError, ValidationError)
+
+
+def _query_cli_hit(hit: RetrievalHit) -> dict[str, object]:
+    return {
+        "source": hit.get("source", ""),
+        "page_number": hit.get("page_number"),
+        "text": hit.get("text", ""),
+    }
 
 
 def _silence_noisy_libraries() -> None:
@@ -263,7 +272,10 @@ def ingest_command(
     caption_invoke_url: str | None = typer.Option(
         None,
         "--caption-invoke-url",
-        help="VLM caption endpoint URL. If omitted with --caption, local VLM captioning is used.",
+        help=(
+            "VLM caption endpoint URL. If omitted with --caption, GPU hosts use local captioning; "
+            "CPU-only runs use the hosted default endpoint with NVIDIA_API_KEY/NGC_API_KEY."
+        ),
     ),
     caption_model_name: str | None = typer.Option(
         None,
@@ -480,10 +492,9 @@ def ingest_command(
 
     # Report input-file count alongside the actual landed-row count from the
     # LanceDB table — they diverge whenever one document explodes into multiple
-    # chunks (PDFs → page elements, video → audio_visual segments) or
-    # shrinks to zero rows when every NIM call failed. The previous message
-    # only reported inputs and hid both cases. ``n_rows`` is None when the
-    # table read itself failed (caller can still see file count + URI).
+    # chunks (PDFs → page elements, video → audio_visual segments). The SDK
+    # rejects empty or unverifiable ingests before we get here; the ``None``
+    # branch below is defensive for direct SDK callers.
     n_files = len(summary["documents"])
     table_path = f"{summary['lancedb_uri']}/{summary['table_name']}"
     n_rows = summary.get("n_rows")
@@ -553,7 +564,7 @@ def query_command(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
-    typer.echo(json.dumps(list(hits), indent=2, sort_keys=True, default=str))
+    typer.echo(json.dumps([_query_cli_hit(hit) for hit in hits], indent=2, sort_keys=True, default=str))
 
 
 @app.callback()
