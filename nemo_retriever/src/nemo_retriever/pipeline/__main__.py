@@ -98,6 +98,136 @@ _PANEL_OBS = "Observability"
 _PANEL_SERVICE = "Service Mode"
 
 
+# CLI flags that configure the local ingest graph and are silently dropped
+# by ServiceIngestor. When --run-mode=service is used we reject any of
+# these that the user explicitly supplied so the user knows the values
+# would not take effect (the server owns pipeline configuration).
+#
+# Intentionally NOT in this list (still consumed in service mode):
+#   --embed-model-name, --embed-modality, --embed-invoke-url, --api-key
+#       (client-side query embedding during evaluation)
+#   --save-intermediate, --detection-summary-file
+#       (post-ingest local outputs)
+#   --audio-match-tolerance-secs
+#       (audio recall evaluation)
+#   everything in I/O, Service, Evaluation, Observability panels
+_SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
+    # Extract
+    ("--method", "method"),
+    ("--dpi", "dpi"),
+    ("--extract-text/--no-extract-text", "extract_text"),
+    ("--extract-tables/--no-extract-tables", "extract_tables"),
+    ("--extract-charts/--no-extract-charts", "extract_charts"),
+    ("--extract-infographics/--no-extract-infographics", "extract_infographics"),
+    ("--extract-page-as-image/--no-extract-page-as-image", "extract_page_as_image"),
+    ("--use-page-elements/--no-use-page-elements", "use_page_elements"),
+    ("--use-graphic-elements", "use_graphic_elements"),
+    ("--use-table-structure", "use_table_structure"),
+    ("--table-output-format", "table_output_format"),
+    # Remote NIM endpoints that only drive the local extract graph
+    ("--page-elements-invoke-url", "page_elements_invoke_url"),
+    ("--ocr-invoke-url", "ocr_invoke_url"),
+    ("--ocr-version", "ocr_version"),
+    ("--ocr-lang", "ocr_lang"),
+    ("--graphic-elements-invoke-url", "graphic_elements_invoke_url"),
+    ("--table-structure-invoke-url", "table_structure_invoke_url"),
+    # Embed (ingest-only knobs)
+    ("--embed-granularity", "embed_granularity"),
+    ("--local-ingest-embed-backend", "local_ingest_embed_backend"),
+    ("--text-elements-modality", "text_elements_modality"),
+    ("--structured-elements-modality", "structured_elements_modality"),
+    # Dedup / Caption
+    ("--dedup/--no-dedup", "dedup"),
+    ("--dedup-iou-threshold", "dedup_iou_threshold"),
+    ("--caption/--no-caption", "caption"),
+    ("--caption-invoke-url", "caption_invoke_url"),
+    ("--caption-model-name", "caption_model_name"),
+    ("--caption-device", "caption_device"),
+    ("--caption-context-text-max-chars", "caption_context_text_max_chars"),
+    ("--caption-gpu-memory-utilization", "caption_gpu_memory_utilization"),
+    ("--caption-gpus-per-actor", "caption_gpus_per_actor"),
+    ("--caption-temperature", "caption_temperature"),
+    ("--caption-top-p", "caption_top_p"),
+    ("--caption-max-tokens", "caption_max_tokens"),
+    # Storage / chunking
+    ("--store-images-uri", "store_images_uri"),
+    ("--text-chunk", "text_chunk"),
+    ("--text-chunk-max-tokens", "text_chunk_max_tokens"),
+    ("--text-chunk-overlap-tokens", "text_chunk_overlap_tokens"),
+    # Audio
+    ("--segment-audio/--no-segment-audio", "segment_audio"),
+    ("--audio-split-type", "audio_split_type"),
+    ("--audio-split-interval", "audio_split_interval"),
+    # Video
+    ("--video-extract-audio/--no-video-extract-audio", "video_extract_audio"),
+    ("--video-extract-frames/--no-video-extract-frames", "video_extract_frames"),
+    ("--video-frame-fps", "video_frame_fps"),
+    ("--video-frame-dedup/--no-video-frame-dedup", "video_frame_dedup"),
+    ("--video-frame-text-dedup/--no-video-frame-text-dedup", "video_frame_text_dedup"),
+    ("--video-frame-text-dedup-max-dropped-frames", "video_frame_text_dedup_max_dropped_frames"),
+    ("--video-av-fuse/--no-video-av-fuse", "video_av_fuse"),
+    # Ray / batch tuning
+    ("--ray-address", "ray_address"),
+    ("--ray-log-to-driver/--no-ray-log-to-driver", "ray_log_to_driver"),
+    ("--ocr-actors", "ocr_actors"),
+    ("--ocr-batch-size", "ocr_batch_size"),
+    ("--ocr-cpus-per-actor", "ocr_cpus_per_actor"),
+    ("--ocr-gpus-per-actor", "ocr_gpus_per_actor"),
+    ("--page-elements-actors", "page_elements_actors"),
+    ("--page-elements-batch-size", "page_elements_batch_size"),
+    ("--page-elements-cpus-per-actor", "page_elements_cpus_per_actor"),
+    ("--page-elements-gpus-per-actor", "page_elements_gpus_per_actor"),
+    ("--embed-actors", "embed_actors"),
+    ("--embed-batch-size", "embed_batch_size"),
+    ("--embed-cpus-per-actor", "embed_cpus_per_actor"),
+    ("--embed-gpus-per-actor", "embed_gpus_per_actor"),
+    ("--store-actors", "store_actors"),
+    ("--pdf-split-batch-size", "pdf_split_batch_size"),
+    ("--pdf-extract-batch-size", "pdf_extract_batch_size"),
+    ("--pdf-extract-tasks", "pdf_extract_tasks"),
+    ("--pdf-extract-cpus-per-task", "pdf_extract_cpus_per_task"),
+    ("--nemotron-parse-actors", "nemotron_parse_actors"),
+    ("--nemotron-parse-gpus-per-actor", "nemotron_parse_gpus_per_actor"),
+    ("--nemotron-parse-batch-size", "nemotron_parse_batch_size"),
+    # In-graph VDB / sidecar metadata (not wired through ServiceIngestor by the CLI)
+    ("--no-vdb", "no_vdb"),
+    ("--vdb-op", "vdb_op"),
+    ("--vdb-kwargs-json", "vdb_kwargs_json"),
+    ("--vdb-overwrite/--vdb-append", "vdb_overwrite"),
+    ("--meta-dataframe", "meta_dataframe"),
+    ("--meta-source-field", "meta_source_field"),
+    ("--meta-fields", "meta_fields"),
+    ("--meta-join-key", "meta_join_key"),
+)
+
+
+def _reject_service_incompatible_flags(ctx: typer.Context) -> None:
+    """Raise ``typer.BadParameter`` if any ingest-only flag was user-supplied.
+
+    Only flags whose click parameter source is ``COMMANDLINE`` or
+    ``ENVIRONMENT`` are treated as user-supplied — flags carrying their
+    declared default do not trigger the error.
+    """
+    # Compare by enum *name*, not identity: depending on the environment,
+    # typer may return a source from its vendored ``typer._click.core`` enum
+    # rather than ``click.core.ParameterSource``, and the two enums are
+    # distinct objects whose members never compare equal via ``in``.
+    user_set: list[str] = []
+    for cli_flag, param_name in _SERVICE_INCOMPATIBLE_FLAGS:
+        source = ctx.get_parameter_source(param_name)
+        if getattr(source, "name", None) in {"COMMANDLINE", "ENVIRONMENT"}:
+            user_set.append(cli_flag)
+    if not user_set:
+        return
+    raise typer.BadParameter(
+        "--run-mode=service delegates pipeline configuration to the "
+        "retriever service; the following flag(s) cannot be set on the "
+        "client and would be silently dropped: " + ", ".join(user_set) + ". "
+        "Remove them, or use --run-mode batch/inprocess to apply them locally. "
+        "Server-side pipeline configuration lives in retriever-service.yaml."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Logging helpers
 # ---------------------------------------------------------------------------
@@ -1343,7 +1473,6 @@ def run(
 ) -> None:
     """Run the end-to-end graph ingestion pipeline against ``INPUT_PATH``."""
 
-    _ = ctx
     if quiet:
         # Imported lazily to avoid a cycle (main.py lazy-imports this module).
         from nemo_retriever.adapters.cli.main import _silence_noisy_libraries
@@ -1357,6 +1486,8 @@ def run(
     try:
         if run_mode not in {"batch", "inprocess", "service"}:
             raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
+        if run_mode == "service":
+            _reject_service_incompatible_flags(ctx)
         if audio_split_type not in {"size", "time", "frame"}:
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
         if evaluation_mode not in {"none", "audio_recall", "beir", "qa"}:
