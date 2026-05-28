@@ -207,6 +207,27 @@ _SERVER_OWNED_KEYS: frozenset[str] = frozenset(
 )
 
 
+def _filter_policy_allowed(params_dict: dict[str, Any], allowed: frozenset[str]) -> dict[str, Any]:
+    """Keep only keys the default service policy allowlist admits per stage."""
+    return {key: value for key, value in params_dict.items() if key in allowed}
+
+
+def _wire_client_stage_params(
+    spec: dict[str, Any],
+    spec_key: str,
+    merged: Any,
+    *,
+    method: str,
+    allowed: frozenset[str],
+) -> None:
+    """Serialize client overrides for one pipeline stage onto ``spec``."""
+    params_dict = _filter_policy_allowed(
+        _strip_server_owned(_params_to_dict(merged), method),
+        allowed,
+    )
+    _set_stage_params(spec, spec_key, params_dict)
+
+
 def _strip_server_owned(params_dict: dict[str, Any], method: str) -> dict[str, Any]:
     """Raise if the caller set a server-owned key; otherwise return as-is.
 
@@ -242,18 +263,28 @@ def _require_remote_uri(uri: str, method: str, field: str) -> None:
 def _params_to_dict(value: Any) -> dict[str, Any]:
     """Normalise a fluent-method argument (model | dict | None) to a dict.
 
-    Removes server-owned keys eagerly so they never leak into transport.
+    Serialises only fields the caller explicitly set on a Pydantic params
+    model (``exclude_unset=True``) so service-mode overrides do not include
+    model defaults or validator-populated server fields (API keys, timeouts,
+    ``batch_tuning``, etc.) that the worker policy allowlist would reject.
+
     Drops ``None`` values so the server's defaults can fill them in.
     """
     if value is None:
         return {}
     if hasattr(value, "model_dump"):
-        d = value.model_dump(mode="json", exclude_none=True)
+        d = value.model_dump(mode="json", exclude_none=True, exclude_unset=True)
     elif isinstance(value, dict):
         d = {k: v for k, v in value.items() if v is not None}
     else:
         raise TypeError(f"Cannot serialise {type(value).__name__!r} to a params dict")
     return d
+
+
+def _set_stage_params(spec: dict[str, Any], key: str, params_dict: dict[str, Any]) -> None:
+    """Attach a stage-params block only when the client supplied overrides."""
+    if params_dict:
+        spec[key] = params_dict
 
 
 # ----------------------------------------------------------------------
@@ -537,9 +568,16 @@ class ServiceIngestor(ingestor):
     def dedup(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
         """Record a dedup stage with optional :class:`DedupParams` overrides."""
         if params is not None or kwargs:
+            from nemo_retriever.service.policy import _DEFAULT_ALLOWED_DEDUP_KEYS
+
             merged = _merge_params(params, kwargs)
-            params_dict = _strip_server_owned(_params_to_dict(merged), "dedup")
-            self._pipeline_spec["dedup_params"] = params_dict
+            _wire_client_stage_params(
+                self._pipeline_spec,
+                "dedup_params",
+                merged,
+                method="dedup",
+                allowed=_DEFAULT_ALLOWED_DEDUP_KEYS,
+            )
         self._record_stage("dedup")
         return self
 
@@ -550,9 +588,16 @@ class ServiceIngestor(ingestor):
         rejected if set here.
         """
         if params is not None or kwargs:
+            from nemo_retriever.service.policy import _DEFAULT_ALLOWED_EMBED_KEYS
+
             merged = _merge_params(params, kwargs)
-            params_dict = _strip_server_owned(_params_to_dict(merged), "embed")
-            self._pipeline_spec["embed_params"] = params_dict
+            _wire_client_stage_params(
+                self._pipeline_spec,
+                "embed_params",
+                merged,
+                method="embed",
+                allowed=_DEFAULT_ALLOWED_EMBED_KEYS,
+            )
         self._record_stage("embed")
         return self
 
@@ -576,9 +621,16 @@ class ServiceIngestor(ingestor):
         by client-side model defaults).
         """
         if params is not None or kwargs:
+            from nemo_retriever.service.policy import _DEFAULT_ALLOWED_EXTRACT_KEYS
+
             merged = _merge_params(params, kwargs)
-            params_dict = _strip_server_owned(_params_to_dict(merged), "extract")
-            self._pipeline_spec["extract_params"] = params_dict
+            _wire_client_stage_params(
+                self._pipeline_spec,
+                "extract_params",
+                merged,
+                method="extract",
+                allowed=_DEFAULT_ALLOWED_EXTRACT_KEYS,
+            )
         self._pipeline_spec["extraction_mode"] = extraction_mode
         if split_config is not None:
             self._pipeline_spec["split_config"] = split_config
@@ -590,9 +642,16 @@ class ServiceIngestor(ingestor):
     ) -> "ServiceIngestor":
         """Record image-file extraction (``extraction_mode='image'``)."""
         if params is not None or kwargs:
+            from nemo_retriever.service.policy import _DEFAULT_ALLOWED_EXTRACT_KEYS
+
             merged = _merge_params(params, kwargs)
-            params_dict = _strip_server_owned(_params_to_dict(merged), "extract_image_files")
-            self._pipeline_spec["extract_params"] = params_dict
+            _wire_client_stage_params(
+                self._pipeline_spec,
+                "extract_params",
+                merged,
+                method="extract_image_files",
+                allowed=_DEFAULT_ALLOWED_EXTRACT_KEYS,
+            )
         self._pipeline_spec["extraction_mode"] = "image"
         if split_config is not None:
             self._pipeline_spec["split_config"] = split_config
@@ -653,7 +712,10 @@ class ServiceIngestor(ingestor):
         for k in list(params_dict):
             if k != "storage_uri" and k in _SERVER_OWNED_KEYS:
                 raise ValueError(f"ServiceIngestor.store(): key {k!r} is server-owned in " "run_mode='service'.")
-        self._pipeline_spec["store_params"] = params_dict
+        from nemo_retriever.service.policy import _DEFAULT_ALLOWED_STORE_KEYS
+
+        params_dict = _filter_policy_allowed(params_dict, _DEFAULT_ALLOWED_STORE_KEYS)
+        _set_stage_params(self._pipeline_spec, "store_params", params_dict)
         self._record_stage("store")
         return self
 
