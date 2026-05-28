@@ -173,6 +173,19 @@ def test_ingest_plan_fast_text_profile_is_pdf_text_only(tmp_path) -> None:
     assert plan.extract_params.use_page_elements is False
 
 
+def test_ingest_plan_fast_text_allows_extract_images_override(tmp_path) -> None:
+    pdf = tmp_path / "manual.pdf"
+    pdf.write_bytes(b"pdf")
+
+    plan = resolve_ingest_plan([str(pdf)], profile="fast-text", extract_images=True)
+
+    assert plan.extract_params.extract_images is True
+    assert plan.extract_params.extract_tables is False
+    assert plan.extract_params.extract_charts is False
+    assert plan.extract_params.extract_infographics is False
+    assert plan.extract_params.use_page_elements is False
+
+
 def test_ingest_plan_caption_is_absent_by_default_and_optional(tmp_path) -> None:
     pdf = tmp_path / "manual.pdf"
     pdf.write_bytes(b"pdf")
@@ -212,6 +225,9 @@ def test_dry_run_secret_redaction_covers_common_credential_names() -> None:
         "bearer_token": "bearer-test",
         "credential_path": "/tmp/credentials",
         "nested": [{"refreshToken": "refresh-test", "plain": "value"}],
+        "max_tokens": 1024,
+        "num_tokens_per_batch": 256,
+        "tokenizer_path": "/tmp/tokenizer",
         "safe": "visible",
     }
 
@@ -225,6 +241,9 @@ def test_dry_run_secret_redaction_covers_common_credential_names() -> None:
         "bearer_token": "<redacted>",
         "credential_path": "<redacted>",
         "nested": [{"refreshToken": "<redacted>", "plain": "value"}],
+        "max_tokens": 1024,
+        "num_tokens_per_batch": 256,
+        "tokenizer_path": "/tmp/tokenizer",
         "safe": "visible",
     }
 

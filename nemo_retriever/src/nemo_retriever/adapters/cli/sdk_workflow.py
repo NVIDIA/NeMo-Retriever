@@ -68,7 +68,9 @@ _SUPPORTED_INPUT_TYPES: tuple[IngestInputTypeValue, ...] = (
 _AUDIO_SPLIT_INTERVAL = 500000
 _VIDEO_FRAME_FPS = 0.5
 _VIDEO_TEXT_DEDUP_MAX_DROPPED_FRAMES = 2
-_DRY_RUN_SECRET_FIELD_PATTERNS = ("api_key", "auth_token", "password", "secret", "credential", "bearer", "token")
+DEFAULT_LANCEDB_URI = "lancedb"
+DEFAULT_TABLE_NAME = "nemo-retriever"
+_DRY_RUN_SECRET_FIELD_PATTERNS = ("api_key", "password", "secret", "credential", "bearer")
 
 
 def _validate_run_mode(run_mode: str) -> IngestRunModeValue:
@@ -206,12 +208,19 @@ def _params_to_dry_run_dict(params: Any | None) -> dict[str, Any] | None:
     return _strip_secret_values(data)
 
 
+def _is_dry_run_secret_field(key: Any) -> bool:
+    normalized_key = str(key).lower().replace("-", "_")
+    return normalized_key.endswith("token") or any(
+        pattern in normalized_key for pattern in _DRY_RUN_SECRET_FIELD_PATTERNS
+    )
+
+
 def _strip_secret_values(value: Any) -> Any:
+    """Redact secrets from dry-run reporting only."""
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for key, nested in value.items():
-            normalized_key = str(key).lower()
-            if any(pattern in normalized_key for pattern in _DRY_RUN_SECRET_FIELD_PATTERNS):
+            if _is_dry_run_secret_field(key):
                 out[key] = "<redacted>" if nested else nested
             else:
                 out[key] = _strip_secret_values(nested)
@@ -500,6 +509,7 @@ def resolve_ingest_plan(
     method: str | None = None,
     dpi: int | None = None,
     extract_text: bool | None = None,
+    extract_images: bool | None = None,
     extract_tables: bool | None = None,
     extract_charts: bool | None = None,
     extract_infographics: bool | None = None,
@@ -522,8 +532,8 @@ def resolve_ingest_plan(
     caption_infographics: bool | None = None,
     ray_address: str | None = None,
     ray_log_to_driver: bool | None = None,
-    lancedb_uri: str = "lancedb",
-    table_name: str = "nv-ingest",
+    lancedb_uri: str = DEFAULT_LANCEDB_URI,
+    table_name: str = DEFAULT_TABLE_NAME,
     overwrite: bool = True,
     page_elements_invoke_url: str | None = None,
     ocr_invoke_url: str | None = None,
@@ -559,7 +569,8 @@ def resolve_ingest_plan(
 
     Root ``retriever ingest`` intentionally defaults to ``run_mode="batch"``.
     Programmatic callers that need Ray-free local execution should pass
-    ``run_mode="inprocess"`` explicitly.
+    ``run_mode="inprocess"`` explicitly. ``input_type`` remains a private
+    expansion/validation constraint; extraction still routes from the manifest.
     """
 
     validated_run_mode = _validate_run_mode(run_mode)
@@ -578,6 +589,7 @@ def resolve_ingest_plan(
                 "method": method,
                 "dpi": dpi,
                 "extract_text": extract_text,
+                "extract_images": extract_images,
                 "extract_tables": extract_tables,
                 "extract_charts": extract_charts,
                 "extract_infographics": extract_infographics,
@@ -699,6 +711,7 @@ def ingest_documents(
     method: str | None = None,
     dpi: int | None = None,
     extract_text: bool | None = None,
+    extract_images: bool | None = None,
     extract_tables: bool | None = None,
     extract_charts: bool | None = None,
     extract_infographics: bool | None = None,
@@ -721,8 +734,8 @@ def ingest_documents(
     caption_infographics: bool | None = None,
     ray_address: str | None = None,
     ray_log_to_driver: bool | None = None,
-    lancedb_uri: str = "lancedb",
-    table_name: str = "nv-ingest",
+    lancedb_uri: str = DEFAULT_LANCEDB_URI,
+    table_name: str = DEFAULT_TABLE_NAME,
     overwrite: bool = True,
     page_elements_invoke_url: str | None = None,
     ocr_invoke_url: str | None = None,
@@ -779,6 +792,7 @@ def ingest_documents(
         method=method,
         dpi=dpi,
         extract_text=extract_text,
+        extract_images=extract_images,
         extract_tables=extract_tables,
         extract_charts=extract_charts,
         extract_infographics=extract_infographics,
@@ -874,8 +888,8 @@ def query_documents(
     query: str,
     *,
     top_k: int = 10,
-    lancedb_uri: str = "lancedb",
-    table_name: str = "nv-ingest",
+    lancedb_uri: str = DEFAULT_LANCEDB_URI,
+    table_name: str = DEFAULT_TABLE_NAME,
     embed_invoke_url: str | None = None,
     embed_model_name: str | None = None,
     reranker_invoke_url: str | None = None,

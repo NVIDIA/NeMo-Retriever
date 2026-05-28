@@ -18,6 +18,8 @@ import typer
 
 from nemo_retriever.adapters.cli.sdk_workflow import (
     AudioSplitTypeValue,
+    DEFAULT_LANCEDB_URI,
+    DEFAULT_TABLE_NAME,
     IngestProfileValue,
     IngestRunModeValue,
     OcrLangValue,
@@ -151,8 +153,8 @@ def ingest_command(
         "--profile",
         help="Ingest profile: auto or fast-text.",
     ),
-    lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
-    table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
+    lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
+    table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),
     run_mode: IngestRunModeValue = typer.Option(
         "batch",
         "--run-mode",
@@ -169,6 +171,11 @@ def ingest_command(
         None,
         "--extract-text/--no-extract-text",
         help="Enable or disable PDF text extraction.",
+    ),
+    extract_images: bool | None = typer.Option(
+        None,
+        "--extract-images/--no-extract-images",
+        help="Enable or disable PDF image extraction.",
     ),
     extract_tables: bool | None = typer.Option(
         None,
@@ -416,6 +423,7 @@ def ingest_command(
                 method=method,
                 dpi=dpi,
                 extract_text=extract_text,
+                extract_images=extract_images,
                 extract_tables=extract_tables,
                 extract_charts=extract_charts,
                 extract_infographics=extract_infographics,
@@ -489,8 +497,8 @@ def ingest_command(
 def query_command(
     query: str = typer.Argument(..., help="Query text."),
     top_k: int = typer.Option(10, "--top-k", min=1, help="Number of hits to retrieve."),
-    lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
-    table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
+    lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
+    table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),
     embed_invoke_url: str | None = typer.Option(None, "--embed-invoke-url", help="Embedding NIM endpoint URL."),
     embed_model_name: str | None = typer.Option(
         None,

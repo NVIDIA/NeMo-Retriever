@@ -33,21 +33,20 @@ retriever ingest data/multimodal_test.pdf
 Default PDF ingest:
 
 ```bash
-retriever ingest data/pdfs/ --quiet
+retriever ingest data/pdfs/
 ```
 
 Large text-only PDF fallback:
 
 ```bash
-retriever ingest data/pdfs/ --profile fast-text --quiet
+retriever ingest data/pdfs/ --profile fast-text
 ```
 
 Optional local VLM captioning:
 
 ```bash
 retriever ingest data/pdfs/ --caption \
-  --caption-infographics \
-  --quiet
+  --caption-infographics
 ```
 
 Add `--caption-invoke-url` only when a remote OpenAI-compatible VLM endpoint is already deployed.
@@ -90,7 +89,7 @@ retriever ingest data/multimodal_test.pdf \
 | Flag | Default | Notes |
 |---|---|---|
 | `--lancedb-uri` | `lancedb` | Path or URI of the LanceDB database. |
-| `--table-name` | `nv-ingest` | LanceDB table to write into. Must match `retriever query`'s table on read. |
+| `--table-name` | `nemo-retriever` | LanceDB table to write into. Must match `retriever query`'s table on read. |
 | `--profile` | `auto` | `auto` is normal manifest-routed ingest. `fast-text` disables expensive PDF recall stages for a text-only fallback. |
 | `--caption` | `false` | Optional VLM captioning stage after extraction. Never enabled by profiles. |
 | `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, local VLM captioning is used. |

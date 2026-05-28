@@ -77,8 +77,8 @@ def test_root_ingest_runs_default_sdk_chain(monkeypatch, tmp_path) -> None:
     assert fake_ingestor.embed.call_args.args == ()
     vdb_upload_params = fake_ingestor.vdb_upload.call_args.args[0]
     assert vdb_upload_params.vdb_op == "lancedb"
-    assert vdb_upload_params.vdb_kwargs == {"uri": "lancedb", "table_name": "nv-ingest", "overwrite": True}
-    assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nv-ingest." in result.output
+    assert vdb_upload_params.vdb_kwargs == {"uri": "lancedb", "table_name": "nemo-retriever", "overwrite": True}
+    assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
 
 def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> None:
@@ -137,7 +137,7 @@ def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> N
     assert result.exit_code == 0
     assert fake_ingestor.vdb_upload.call_args.args[0].vdb_kwargs == {
         "uri": "lancedb",
-        "table_name": "nv-ingest",
+        "table_name": "nemo-retriever",
         "overwrite": False,
     }
 
@@ -302,7 +302,7 @@ def test_root_ingest_passes_batch_tuning_options(monkeypatch, tmp_path) -> None:
     assert embed_params.batch_tuning.embed_workers == 7
     assert embed_params.batch_tuning.embed_batch_size == 16
     assert embed_params.batch_tuning.embed_cpus_per_actor == 0.25
-    assert "Ingested 1 file(s) → 42 row(s) in LanceDB lancedb/nv-ingest." in result.output
+    assert "Ingested 1 file(s) → 42 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
 
 def test_ingest_documents_accepts_legacy_public_api_kwargs(monkeypatch, tmp_path) -> None:
@@ -383,6 +383,7 @@ def test_root_ingest_help_does_not_expose_input_type() -> None:
     assert "--input-type" not in result.output
     assert "--profile" in result.output
     assert "[auto|fast-text]" in result.output
+    assert "--extract-images" in result.output
     assert "--caption" in result.output
     assert "Defaults to" in result.output
     assert "[default: batch]" in result.output
@@ -427,6 +428,7 @@ def test_root_ingest_passes_extract_overrides_without_ocr_profile(monkeypatch, t
             "--dpi",
             "250",
             "--no-extract-tables",
+            "--no-extract-images",
             "--no-extract-charts",
             "--no-extract-infographics",
             "--no-extract-page-as-image",
@@ -440,6 +442,7 @@ def test_root_ingest_passes_extract_overrides_without_ocr_profile(monkeypatch, t
     assert extract_params.method == "pdfium"
     assert extract_params.dpi == 250
     assert extract_params.extract_text is True
+    assert extract_params.extract_images is False
     assert extract_params.extract_tables is False
     assert extract_params.extract_charts is False
     assert extract_params.extract_infographics is False
@@ -716,7 +719,7 @@ def test_root_query_passes_embed_options(monkeypatch) -> None:
     assert retriever_calls == [
         {
             "top_k": 10,
-            "vdb_kwargs": {"uri": "lancedb", "table_name": "nv-ingest"},
+            "vdb_kwargs": {"uri": "lancedb", "table_name": "nemo-retriever"},
             "embed_kwargs": {
                 "embed_invoke_url": "http://embed:8000/v1/embeddings",
                 "embedding_endpoint": "http://embed:8000/v1/embeddings",
@@ -758,7 +761,7 @@ def test_root_query_passes_reranker_url(monkeypatch) -> None:
     assert retriever_calls == [
         {
             "top_k": 10,
-            "vdb_kwargs": {"uri": "lancedb", "table_name": "nv-ingest"},
+            "vdb_kwargs": {"uri": "lancedb", "table_name": "nemo-retriever"},
             "rerank": True,
             "rerank_kwargs": {
                 "rerank_invoke_url": "http://rerank:8000/v1/ranking",
@@ -789,7 +792,7 @@ def test_root_query_rerank_flag_enables_local_rerank(monkeypatch) -> None:
     assert retriever_calls == [
         {
             "top_k": 10,
-            "vdb_kwargs": {"uri": "lancedb", "table_name": "nv-ingest"},
+            "vdb_kwargs": {"uri": "lancedb", "table_name": "nemo-retriever"},
             "rerank": True,
             "rerank_kwargs": {"model_name": "nvidia/llama-nemotron-rerank-vl-1b-v2"},
         }
@@ -930,4 +933,4 @@ def test_root_ingest_quiet_invokes_silencing_and_capture(monkeypatch, tmp_path) 
     assert result.exit_code == 0
     assert silenced == [True]
     assert captured_use == [True]
-    assert "Ingested 1 file(s) → 3 row(s) in LanceDB lancedb/nv-ingest." in result.output
+    assert "Ingested 1 file(s) → 3 row(s) in LanceDB lancedb/nemo-retriever." in result.output
