@@ -163,6 +163,32 @@ def test_display_command_redacts_secret_inline_values(tmp_path: Path) -> None:
     assert "service.image.tag=26.05-RC6" in display
 
 
+def test_stop_uninstalls_release_when_port_forward_signal_is_denied(monkeypatch, tmp_path: Path) -> None:
+    cfg = _managed_cfg(tmp_path)
+    manager = HelmServiceManager(cfg)
+    fake_proc = SimpleNamespace(pid=12345)
+    manager.port_forward_processes = [fake_proc]
+    calls: dict[str, object] = {}
+
+    import nemo_retriever.harness.helm_manager as helm_manager
+
+    monkeypatch.setattr(helm_manager.os, "getpgid", lambda _pid: 67890)
+
+    def fake_killpg(_pgid, _signal):
+        raise PermissionError("operation not permitted")
+
+    def fake_run(cmd, **_kwargs):
+        calls["uninstall"] = cmd
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(helm_manager.os, "killpg", fake_killpg)
+    monkeypatch.setattr(helm_manager.subprocess, "run", fake_run)
+
+    assert manager.stop() == 0
+    assert calls["uninstall"] == ["sudo", "microk8s", "helm", "uninstall", "nrl-smoke", "--namespace", "nrl-smoke-ns"]
+    assert manager.port_forward_processes == []
+
+
 def test_optional_nimcache_wait_uses_completed_condition(monkeypatch, tmp_path: Path) -> None:
     cfg = _managed_cfg(tmp_path)
     manager = HelmServiceManager(cfg)

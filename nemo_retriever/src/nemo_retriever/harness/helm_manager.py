@@ -228,9 +228,15 @@ class HelmServiceManager:
             try:
                 os.killpg(pgid, signal.SIGTERM)
                 proc.wait(timeout=5)
+            except PermissionError as exc:
+                logger.warning("Could not signal port-forward process group %s for pid %s: %s", pgid, proc.pid, exc)
             except subprocess.TimeoutExpired:
                 try:
                     os.killpg(pgid, signal.SIGKILL)
+                except PermissionError as exc:
+                    logger.warning(
+                        "Could not force-kill port-forward process group %s for pid %s: %s", pgid, proc.pid, exc
+                    )
                 except ProcessLookupError:
                     pass
             except ProcessLookupError:
