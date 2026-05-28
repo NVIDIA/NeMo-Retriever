@@ -63,7 +63,7 @@ nemo_retriever/helm/
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
         ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
-        ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (optional; not auto-wired)
+        ├── llama-nemotron-rerank-vl-1b-v2.yaml   # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-3-nano-omni-30b-a3b-reasoning.yaml  # NIMCache + NIMService (optional; not auto-wired)
         └── audio.yaml                         # NIMCache + NIMService (optional; not auto-wired)
@@ -171,7 +171,7 @@ helm install retriever ./nemo_retriever/helm \
 
 ### Recommended minimal install (26.05)
 
-Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`). Disable optional NIMs unless your workload needs reranking, Nemotron Parse, Omni captioning, or ASR:
+Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`). The multimodal reranker (`rerankqa`) is **disabled by default** in `values.yaml`. Disable the other optional NIMs unless your workload needs Nemotron Parse, Omni captioning, or ASR:
 
 ```bash
 helm install retriever ./nemo_retriever/helm \
@@ -179,11 +179,12 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcImagePullSecret.password=$NGC_API_KEY \
   --set ngcApiSecret.create=true \
   --set ngcApiSecret.password=$NGC_API_KEY \
-  --set nimOperator.rerankqa.enabled=false \
   --set nimOperator.nemotron_parse.enabled=false \
   --set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=false \
   --set nimOperator.audio.enabled=false
 ```
+
+To deploy the VL reranker NIM (`llama-nemotron-rerank-vl-1b-v2`), add `--set nimOperator.rerankqa.enabled=true`.
 
 The chart auto-wires the operator-managed in-cluster URLs of the four
 "core" NIMs into the service's `nim_endpoints` block:
@@ -269,7 +270,9 @@ pair gated on three conditions ALL holding:
 | `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
 | `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
 | `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
-| `nimOperator.rerankqa.enabled`         | `true`  | Reranker NIM (optional; not auto-wired). Set `false` for [minimal install](#recommended-minimal-install-2605). |
+| `nimOperator.rerankqa.enabled`         | `false` | Multimodal (VL) reranker NIM (optional; not auto-wired). Set `true` when you need reranking. |
+| `nimOperator.rerankqa.nimServiceName`  | `llama-nemotron-rerank-vl-1b-v2` | NIMService / in-cluster DNS name. |
+| `nimOperator.rerankqa.image`           | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:1.11.0` | Default VL rerank NIM image. |
 | `nimOperator.nemotron_parse.enabled`   | `true`  | Structured-parse NIM (optional). Set `false` unless using `extract_method="nemotron_parse"`. |
 | `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `true` | Omni caption NIM (optional). Set `false` unless enabling image captioning. |
 | `nimOperator.audio.enabled`            | `true`  | ASR NIM (optional). Set `false` unless using audio/video transcription. |
@@ -642,6 +645,157 @@ sanity check before opening Grafana.
 
 ---
 
+## OpenShift deployment { #openshift-deployment }
+
+The chart defaults target generic Kubernetes clusters that allow fixed numeric
+UIDs (`runAsUser` / `runAsGroup` / `fsGroup` **1000**). **OpenShift 4.x**
+namespaces under the default **restricted-v2** Security Context Constraint (SCC)
+and **Pod Security Admission (PSA) `restricted`** profile assign a per-namespace
+UID/GID range instead. A stock `helm install` without overrides therefore fails
+SCC validation, emits PSA warnings, or crashes on log paths the random UID cannot
+write.
+
+We do **not** change chart defaults for OpenShift-only behavior (that would affect
+other platforms). Use the overrides below on OpenShift, or save the YAML block
+into a local values file and pass `-f <file>`.
+
+### Cluster posture (typical QA / hardened namespaces)
+
+| Control | Typical default on a new OpenShift project |
+| --- | --- |
+| SCC | **restricted-v2** (first match in priority order) |
+| PSA | `pod-security.kubernetes.io/warn=restricted` (and often `audit=restricted`; `enforce` may be unset on dev clusters) |
+| UID assignment | SCC injects `runAsUser` / `fsGroup` from the namespace range (for example `1000750000–1000759999`) |
+
+On clusters with **PSA `enforce=restricted`**, missing container `securityContext`
+fields become hard rejections, not warnings.
+
+### Override reference (maps to chart limitations)
+
+| Symptom on stock install | Cause | Helm override |
+| --- | --- | --- |
+| `FailedCreate`: UID/GID **1000** not in namespace range | Hardcoded `service.podSecurityContext` UID/GID/fsGroup | Omit `runAsUser`, `runAsGroup`, and `fsGroup`; keep only `runAsNonRoot: true` |
+| PSA warning: `allowPrivilegeEscalation`, capabilities, `seccompProfile` | Empty `service.securityContext` | Set restricted baseline on `service.securityContext` (see sample below) |
+| `PermissionError` on `/var/lib/nemo-retriever/retriever-service.log` when `persistence.enabled=false` | Default log path is image-owned; random UID cannot write without a PVC | Point `serviceConfig.logging.file` at `/tmp/...` (chart mounts `emptyDir` at `/tmp`) |
+| `CreateContainerConfigError`: non-numeric image `USER nemo` on **vectordb** | Vectordb container has no `securityContext` block for SCC to annotate | Disable vectordb for smoke tests, or patch the vectordb Deployment after install (below) |
+| PSA warnings on **otel-collector** | Otel Deployment has no `securityContext` in the chart | `topology.otel.enabled=false` unless you patch that Deployment |
+
+### Recommended value overrides
+
+```yaml
+# OpenShift overrides for nemo-retriever Helm chart (restricted-v2 / PSA restricted).
+# Save locally, then: helm install retriever ./nemo_retriever/helm -f <your-file>.yaml ...
+
+service:
+  podSecurityContext:
+    runAsNonRoot: true
+    # Do NOT set runAsUser, runAsGroup, or fsGroup — OpenShift SCC assigns them.
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+serviceConfig:
+  logging:
+    # Writable without persistence PVC (chart always mounts emptyDir at /tmp).
+    file: /tmp/retriever-service.log
+  vectordb:
+    # Set false for minimal service-only validation; see vectordb patch below if enabled.
+    enabled: false
+
+topology:
+  otel:
+    enabled: false
+```
+
+When **`persistence.enabled=true`**, you can keep the default log path under
+`persistence.mountPath` (`/var/lib/nemo-retriever`) because the PVC is mounted and
+SCC-assigned `fsGroup` applies. When persistence is off, always relocate logs to
+`/tmp` (or another path backed by `service.extraVolumes`).
+
+### Example install on OpenShift 4.20 (service-only smoke test)
+
+Matches QA validation with external NIMs disabled, no persistence, and no results
+PVC:
+
+```bash
+oc new-project nemo-retriever
+
+oc create secret docker-registry ngc-secret -n nemo-retriever \
+  --docker-server=nvcr.io --docker-username='$oauthtoken' \
+  --docker-password="$NGC_API_KEY"
+
+oc create secret generic ngc-api -n nemo-retriever \
+  --from-literal=NGC_API_KEY="$NGC_API_KEY" \
+  --from-literal=NGC_CLI_API_KEY="$NGC_API_KEY"
+
+helm install retriever ./nemo_retriever/helm -n nemo-retriever \
+  -f <your-openshift-overrides>.yaml \
+  --set ngcImagePullSecret.create=false \
+  --set ngcApiSecret.create=false \
+  --set nims.enabled=false \
+  --set persistence.enabled=false \
+  --set retrieverResults.enabled=false \
+  --set service.image.repository=nvcr.io/nvstaging/nim/nrl-service \
+  --set service.image.tag=26.05-RC4
+```
+
+Verify pods:
+
+```bash
+oc get pods -n nemo-retriever
+oc describe pod -l app.kubernetes.io/name=nemo-retriever -n nemo-retriever
+```
+
+You should see SCC-assigned numeric `runAsUser` on containers that declare a
+`securityContext` block, and no PSA warnings once overrides are applied.
+
+### Enabling the vectordb Deployment on OpenShift
+
+`serviceConfig.vectordb.enabled=true` renders a **vectordb** container from the
+same image (`USER nemo`, non-numeric). The chart does not yet expose a
+`securityContext` value for that container. After `helm install`, patch the
+Deployment so OpenShift can inject a numeric UID into the container spec:
+
+```bash
+RELEASE=retriever
+NS=nemo-retriever
+VDB_DEPLOY="${RELEASE}-nemo-retriever-vectordb"
+
+oc patch deployment "$VDB_DEPLOY" -n "$NS" --type=json -p='[
+  {"op": "add", "path": "/spec/template/spec/containers/0/securityContext", "value": {
+    "allowPrivilegeEscalation": false,
+    "capabilities": {"drop": ["ALL"]},
+    "runAsNonRoot": true,
+    "seccompProfile": {"type": "RuntimeDefault"}
+  }}
+]'
+```
+
+Re-apply the patch after `helm upgrade` if the Deployment is recreated. A future
+chart release may add first-class `topology.vectordb.securityContext` values.
+
+### Enabling the OpenTelemetry collector on OpenShift
+
+The chart’s otel-collector Deployment likewise lacks `securityContext` fields.
+Prefer `topology.otel.enabled=false` (as in the sample values) unless you operate
+your own collector or patch `*-otel` the same way as vectordb.
+
+### What we intentionally do not require on OpenShift
+
+Do **not** bind the namespace to **anyuid** SCC or set PSA `enforce=privileged`
+unless your security team explicitly approves it. The overrides above are intended
+to keep **restricted-v2** / PSA **restricted** posture.
+
+### Related documentation
+
+- [Pre-Requisites & Support Matrix](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md)
+- [Deployment options](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md)
+
+---
+
 ## Air-gapped deployment { #air-gapped-deployment }
 
 See [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment) for overview and workflow. Chart-specific reference for mirroring:
@@ -659,7 +813,7 @@ Verify tags on the Git branch or tag you ship (for example `26.05` or
 | Table structure | `table_structure` | `nvcr.io/nim/nvidia/nemotron-table-structure-v1:1.8.0` |
 | OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0` |
 | VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` |
-| Reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-1b-v2:1.10.0` |
+| Reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:1.11.0` |
 | Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
 | Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` |
 | Parakeet ASR (optional) | `audio` | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` |
