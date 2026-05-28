@@ -2037,7 +2037,7 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.83.0"
+version = "1.87.0rc2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2053,9 +2053,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/22/92/6ce9737554994ca8e536e5f4f6a87cc7c4774b656c9eb9add071caf7d54b/litellm-1.83.0.tar.gz", hash = "sha256:860bebc76c4bb27b4cf90b4a77acd66dba25aced37e3db98750de8a1766bfb7a", size = 17333062, upload-time = "2026-03-31T05:08:25.331Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/2b/f63b50f7cee2405089ddffcb1ef85cd9768c9b1c6e958333b4abeb0c9292/litellm-1.87.0rc2.tar.gz", hash = "sha256:589c43213e21b773840eae1f134a70bbfcdf2bacff51a92c37a7ebe73b33c500", size = 15455428, upload-time = "2026-05-27T01:43:50.069Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/19/2c/a670cc050fcd6f45c6199eb99e259c73aea92edba8d5c2fc1b3686d36217/litellm-1.83.0-py3-none-any.whl", hash = "sha256:88c536d339248f3987571493015784671ba3f193a328e1ea6780dbebaa2094a8", size = 15610306, upload-time = "2026-03-31T05:08:21.987Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/86/69720af428bf36f2a8cb0c57b3efca332106530ad967d8d915c49018ce3d/litellm-1.87.0rc2-py3-none-any.whl", hash = "sha256:302c2ead6a16ec079d182fe897683b1c04dcb63a003119db4a0067e026cb7e2e", size = 17103711, upload-time = "2026-05-27T01:43:41.814Z" },
 ]
 
 [[package]]
@@ -2487,17 +2487,17 @@ all = [
     { name = "nemotron-table-structure-v1" },
     { name = "neo4j" },
     { name = "nvidia-ml-py" },
-    { name = "nvidia-riva-client" },
     { name = "open-clip-torch" },
+    { name = "opencv-python-headless" },
     { name = "psutil" },
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "soundfile" },
     { name = "timm" },
     { name = "tokenizers" },
-    { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
     { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-    { name = "torchvision", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "torchvision", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
     { name = "torchvision", version = "0.26.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "transformers" },
     { name = "tritonclient" },
@@ -2529,13 +2529,14 @@ local = [
     { name = "nemotron-page-elements-v3" },
     { name = "nemotron-table-structure-v1" },
     { name = "nvidia-ml-py" },
+    { name = "opencv-python-headless" },
     { name = "psutil" },
     { name = "scikit-learn" },
     { name = "timm" },
     { name = "tokenizers" },
-    { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
     { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-    { name = "torchvision", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "torchvision", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
     { name = "torchvision", version = "0.26.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "transformers" },
     { name = "tritonclient" },
@@ -2557,7 +2558,6 @@ service = [
     { name = "easydict" },
     { name = "glom" },
     { name = "librosa" },
-    { name = "nvidia-riva-client" },
     { name = "psutil" },
     { name = "scikit-learn" },
 ]
@@ -2599,10 +2599,10 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "lancedb" },
     { name = "langchain-nvidia-ai-endpoints", specifier = ">=0.3.0" },
-    { name = "langgraph", marker = "extra == 'tabular'", specifier = ">=1.1.0" },
+    { name = "langgraph", marker = "extra == 'tabular'", specifier = ">=1.1.0a2" },
     { name = "librosa", marker = "extra == 'multimedia'", specifier = ">=0.10.2" },
     { name = "librosa", marker = "extra == 'service'", specifier = ">=0.10.2" },
-    { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.40.0" },
+    { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.86.0rc1" },
     { name = "markitdown" },
     { name = "nemo-retriever", extras = ["benchmarks", "llm", "local", "multimedia", "nemotron-parse", "service", "tabular"], marker = "extra == 'all'" },
     { name = "nemotron-graphic-elements-v1", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
@@ -2614,9 +2614,9 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "nvidia-ml-py", marker = "extra == 'local'" },
     { name = "nvidia-riva-client", specifier = ">=2.25.1" },
-    { name = "nvidia-riva-client", marker = "extra == 'service'", specifier = ">=2.25.1" },
     { name = "open-clip-torch", marker = "extra == 'benchmarks'", specifier = "==3.2.0" },
     { name = "open-clip-torch", marker = "extra == 'nemotron-parse'", specifier = "==3.2.0" },
+    { name = "opencv-python-headless", marker = "extra == 'local'", specifier = ">=4.8.0" },
     { name = "pandas", specifier = ">=2.0,<3" },
     { name = "pillow", specifier = "==12.2.0" },
     { name = "prometheus-fastapi-instrumentator", specifier = ">=7.0,<8" },
@@ -2638,10 +2638,12 @@ requires-dist = [
     { name = "sqlglot", specifier = ">=30.0.0" },
     { name = "timm", marker = "extra == 'local'", specifier = "==1.0.22" },
     { name = "tokenizers", marker = "extra == 'local'", specifier = ">=0.21.1" },
-    { name = "torch", marker = "(sys_platform == 'linux' and extra == 'local') or (sys_platform == 'win32' and extra == 'local')", specifier = "~=2.11.0", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'local'", specifier = "~=2.11.0" },
-    { name = "torchvision", marker = "(sys_platform == 'linux' and extra == 'local') or (sys_platform == 'win32' and extra == 'local')", specifier = ">=0.26.0,<0.27", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torchvision", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'local'", specifier = ">=0.26.0,<0.27" },
+    { name = "torch", marker = "sys_platform == 'darwin' and extra == 'local'", specifier = "==2.11.0" },
+    { name = "torch", marker = "sys_platform == 'linux' and extra == 'local'", specifier = "==2.11.0", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torch", marker = "sys_platform == 'win32' and extra == 'local'", specifier = "==2.11.0", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torchvision", marker = "sys_platform == 'darwin' and extra == 'local'", specifier = "==0.26.0" },
+    { name = "torchvision", marker = "sys_platform == 'linux' and extra == 'local'", specifier = "==0.26.0", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torchvision", marker = "sys_platform == 'win32' and extra == 'local'", specifier = "==0.26.0", index = "https://download.pytorch.org/whl/cu130" },
     { name = "tqdm", specifier = ">=4.66.0" },
     { name = "transformers", marker = "extra == 'local'", specifier = ">=4.57.6,<5" },
     { name = "tritonclient", marker = "extra == 'local'" },
