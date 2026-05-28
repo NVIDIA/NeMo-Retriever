@@ -951,6 +951,90 @@ def test_run_service_mode_uses_finalized_service_ingest_result_contract(monkeypa
     assert payloads["result"]["service_job_id"] == "job-1"
 
 
+def test_run_service_mode_evaluates_beir_recall_against_service(monkeypatch, tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    input_file = dataset_dir / "doc.pdf"
+    input_file.write_bytes(b"%PDF-1.4\n")
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query_id,query,pdf_basename\nq1,hello,doc.pdf\n", encoding="utf-8")
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="base",
+        run_mode="service",
+        service_url="http://localhost:17670",
+        service_max_concurrency=2,
+        query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_dataset_name="jp20",
+        beir_doc_id_field="pdf_basename",
+        beir_ks=(1, 5, 10),
+        recall_required=True,
+    )
+
+    class FakeResult(list):
+        def __init__(self) -> None:
+            super().__init__([{"document_id": "doc-1", "status": "completed"}])
+            self.job_id = "job-1"
+            self.document_ids = ["doc-1"]
+            self.failures = []
+            self.elapsed_s = 2.0
+            self.job_status = "completed"
+
+    class FakeServiceIngestor:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def ingest(self) -> FakeResult:
+            return FakeResult()
+
+    captured_beir: dict[str, object] = {}
+
+    class FakeBeirDataset:
+        query_ids = ["q1"]
+
+    def _fake_evaluate_service_beir(beir_cfg):
+        captured_beir["cfg"] = beir_cfg
+        return FakeBeirDataset(), [[{"metadata": {"pdf_basename": "doc.pdf"}}]], {"q1": {"doc.pdf": 1.0}}, {
+            "recall@1": 0.0,
+            "recall@5": 1.0,
+            "ndcg@10": 0.5,
+        }
+
+    import nemo_retriever.recall.beir as beir
+    import nemo_retriever.service_ingestor as service_ingestor
+
+    monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
+    monkeypatch.setattr(beir, "evaluate_service_beir", _fake_evaluate_service_beir)
+    monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: [input_file])
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+    monkeypatch.setattr(harness_run, "_collect_run_metadata", lambda: {"host": "builder-01"})
+
+    payloads: dict[str, dict] = {}
+    monkeypatch.setattr(harness_run, "write_json", lambda _path, payload: payloads.setdefault("result", payload))
+
+    result = harness_run._run_service_mode(cfg, artifact_dir, run_id="r1")
+
+    beir_cfg = captured_beir["cfg"]
+    assert beir_cfg.service_url == "http://localhost:17670"
+    assert beir_cfg.dataset_name == str(query_csv.resolve())
+    assert beir_cfg.loader == "jp20_csv"
+    assert beir_cfg.ks == (1, 5, 10)
+    assert result["success"] is True
+    assert result["metrics"]["recall_5"] == 1.0
+    assert result["summary_metrics"]["recall_5"] == 1.0
+    assert result["summary_metrics"]["ndcg_10"] == 0.5
+    assert result["runtime_summary"]["evaluation_metrics"]["recall@5"] == 1.0
+    assert result["runtime_summary"]["evaluation_count"] == 1
+    assert payloads["result"]["metrics"]["recall_5"] == 1.0
+
+
 def test_execute_runs_does_not_write_sweep_results_file(monkeypatch, tmp_path: Path) -> None:
     session_dir = tmp_path / "nightly_session"
     session_dir.mkdir(parents=True, exist_ok=True)

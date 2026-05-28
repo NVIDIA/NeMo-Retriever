@@ -1,4 +1,5 @@
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -256,6 +257,67 @@ def test_load_harness_config_supports_managed_helm_fields(tmp_path: Path, monkey
     assert cfg.helm_bin == "microk8s helm"
     assert cfg.kubectl_sudo is True
     assert cfg.helm_sudo is True
+
+
+def test_managed_helm_nrl_2605_example_config_is_parseable_and_secret_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for key in list(os.environ):
+        if key.startswith("HARNESS_"):
+            monkeypatch.delenv(key, raising=False)
+
+    example_path = (
+        harness_config.NEMO_RETRIEVER_ROOT / "harness" / "examples" / "managed-helm-nrl-26.05.yaml"
+    )
+    source = example_path.read_text(encoding="utf-8")
+
+    assert "password:" not in source
+    assert "ngcImagePullSecret.password" not in source
+    assert "ngcApiSecret.password" not in source
+    assert "x-nrl-chart-version: &nrl_chart_version" in source
+    assert "x-nrl-service-image-tag: &nrl_service_image_tag" in source
+    assert "x-a100-mig-1g-resource: &a100_mig_1g_resource" in source
+    assert "x-a100-mig-2g-resource: &a100_mig_2g_resource" in source
+    assert "helm_chart_version: *nrl_chart_version" in source
+    assert "service.image.tag: *nrl_service_image_tag" in source
+
+    original_exists = Path.exists
+
+    def _example_path_exists(path_self: Path) -> bool:
+        if path_self == Path("/datasets/nv-ingest/bo767"):
+            return True
+        return original_exists(path_self)
+
+    monkeypatch.setattr(Path, "exists", _example_path_exists)
+
+    cfg = load_harness_config(config_file=str(example_path))
+
+    assert cfg.dataset_label == "bo767"
+    assert Path(cfg.dataset_dir).name == "bo767"
+    assert cfg.run_mode == "service"
+    assert cfg.manage_service is True
+    assert cfg.keep_up is False
+    assert cfg.helm_bin == "microk8s helm"
+    assert cfg.kubectl_bin == "microk8s kubectl"
+    assert cfg.helm_sudo is True
+    assert cfg.kubectl_sudo is True
+    assert cfg.helm_chart == "nim-nvstaging/nemo-retriever"
+    assert cfg.helm_chart_version == "26.05-RC6"
+    assert cfg.helm_values_file == str(
+        (harness_config.NEMO_RETRIEVER_ROOT / "harness" / "helm-profiles" / "core.yaml").resolve()
+    )
+    assert cfg.helm_set["service.image.repository"] == "nvcr.io/nvstaging/nim/nrl-service"
+    assert cfg.helm_set["service.image.tag"] == "26.05-RC6"
+    assert cfg.helm_set["service.image.pullPolicy"] == "Always"
+    assert cfg.helm_set["ngcImagePullSecret.create"] is False
+    assert cfg.helm_set["ngcImagePullSecret.name"] == "ngc-secret"
+    assert cfg.helm_set["ngcApiSecret.create"] is False
+    assert cfg.helm_set["ngcApiSecret.name"] == "ngc-api"
+    assert cfg.helm_set["nimOperator.page_elements.resources"] == {"limits": {"nvidia.com/mig-1g.10gb": 1}}
+    assert cfg.helm_set["nimOperator.table_structure.resources"] == {"limits": {"nvidia.com/mig-1g.10gb": 1}}
+    assert cfg.helm_set["nimOperator.ocr.resources"] == {"limits": {"nvidia.com/mig-2g.20gb": 1}}
+    assert cfg.helm_set["nimOperator.vlm_embed.resources"] == {"limits": {"nvidia.com/mig-2g.20gb": 1}}
+    assert "nimOperator.rerankqa.enabled" not in cfg.helm_set
 
 
 def test_cli_helm_set_preserves_decimal_like_version_strings(tmp_path: Path) -> None:

@@ -1071,6 +1071,50 @@ def _run_graph_pipeline(
     return result_payload
 
 
+def _service_beir_dataset_name(cfg: HarnessConfig) -> str:
+    dataset_name = cfg.beir_dataset_name or cfg.dataset_label
+    if cfg.beir_loader in {"bo767_csv", "bo10k_csv", "earnings_csv", "financebench_json", "jp20_csv"} and cfg.query_csv:
+        return str(Path(cfg.query_csv).resolve())
+    return str(dataset_name)
+
+
+def _run_service_beir_evaluation(cfg: HarnessConfig) -> tuple[float, dict[str, float], int]:
+    import time as _time
+
+    from nemo_retriever.recall.beir import BeirConfig, evaluate_service_beir, resolve_beir_dataset_options
+
+    beir_options = resolve_beir_dataset_options(
+        dataset_name=_service_beir_dataset_name(cfg),
+        loader=cfg.beir_loader,
+        doc_id_field=cfg.beir_doc_id_field,
+        ks=cfg.beir_ks,
+    )
+    if not beir_options.loader:
+        raise ValueError("beir_loader is required for service-mode BEIR evaluation")
+    if not beir_options.dataset_name:
+        raise ValueError("beir_dataset_name is required for service-mode BEIR evaluation")
+
+    beir_cfg = BeirConfig(
+        lancedb_uri=str(cfg.lancedb_uri or "lancedb"),
+        lancedb_table=str(cfg.lancedb_table_name or "nv-ingest"),
+        embedding_model=cfg.embed_model_name,
+        loader=str(beir_options.loader),
+        dataset_name=str(beir_options.dataset_name),
+        split=str(cfg.beir_split),
+        query_language=cfg.beir_query_language,
+        doc_id_field=str(beir_options.doc_id_field),
+        ks=beir_options.ks,
+        hybrid=bool(cfg.hybrid),
+        service_url=cfg.service_url,
+        service_api_token=cfg.api_key,
+        service_max_concurrent=int(cfg.service_max_concurrency),
+    )
+
+    eval_start = _time.perf_counter()
+    beir_dataset, _raw_hits, _run, metrics = evaluate_service_beir(beir_cfg)
+    return _time.perf_counter() - eval_start, metrics, len(beir_dataset.query_ids)
+
+
 def _run_service_mode(
     cfg: HarnessConfig,
     artifact_dir: Path,
@@ -1162,15 +1206,45 @@ def _run_service_mode(
         "pages_per_sec_ingest": pps,
     }
 
-    summary_metrics: dict[str, Any] = {
-        "pages": total_pages,
-        "files": len(input_files),
-        "ingest_secs": round(elapsed, 2),
-        "pages_per_sec_ingest": pps,
-    }
+    runtime_summary: dict[str, Any] | None = None
+    evaluation_metrics: dict[str, float] = {}
+    recall_metrics: dict[str, float] = {}
+    evaluation_failure: str | None = None
+    if cfg.evaluation_mode == "beir":
+        typer.echo("  Running service-mode BEIR evaluation...")
+        try:
+            evaluation_secs, evaluation_metrics, evaluation_count = _run_service_beir_evaluation(cfg)
+            recall_metrics = {name: value for name, value in evaluation_metrics.items() if name.startswith("recall@")}
+            metrics_payload.update({_normalize_recall_metric_key(name): value for name, value in evaluation_metrics.items()})
+            runtime_summary = {
+                "evaluation_label": "BEIR",
+                "evaluation_time_secs": round(evaluation_secs, 2),
+                "evaluation_metrics": evaluation_metrics,
+                "evaluation_count": evaluation_count,
+            }
+        except Exception as exc:
+            evaluation_failure = f"{type(exc).__name__}: {exc}"
+    elif cfg.evaluation_mode != "none":
+        evaluation_failure = f"evaluation_mode={cfg.evaluation_mode!r} is not supported in service mode"
 
-    success = pages_failed == 0
-    failure_reason = f"{pages_failed} page(s) failed during service ingestion" if pages_failed > 0 else None
+    effective_rc, failure_reason, success = _evaluate_run_outcome(
+        process_rc=0,
+        evaluation_mode=cfg.evaluation_mode,
+        recall_required=bool(cfg.recall_required),
+        recall_metrics=recall_metrics,
+        evaluation_metrics=evaluation_metrics,
+    )
+    if pages_failed:
+        success = False
+        effective_rc = 1
+        failure_reason = f"{pages_failed} page(s) failed during service ingestion"
+    if evaluation_failure:
+        success = False
+        effective_rc = 1
+        failure_reason = evaluation_failure
+
+    summary_metrics = _resolve_summary_metrics(cfg, metrics_payload, runtime_summary, subprocess_elapsed_secs=elapsed)
+    summary_metrics["files"] = len(input_files)
 
     run_metadata = _collect_run_metadata()
     run_metadata["ray_cluster_mode"] = "none (service mode)"
@@ -1179,8 +1253,8 @@ def _run_service_mode(
         "timestamp": now_timestr(),
         "latest_commit": last_commit(),
         "success": success,
-        "return_code": 0 if success else 1,
-        "failure_reason": failure_reason,
+        "return_code": effective_rc,
+        "failure_reason": failure_reason or None,
         "test_config": {
             "dataset_label": cfg.dataset_label,
             "dataset_dir": cfg.dataset_dir,
@@ -1190,11 +1264,21 @@ def _run_service_mode(
             "service_max_concurrency": cfg.service_max_concurrency,
             "input_type": cfg.input_type,
             "api_key": "(set)" if cfg.api_key else None,
+            "query_csv": cfg.query_csv,
+            "effective_query_csv": cfg.query_csv if cfg.evaluation_mode == "beir" else None,
+            "recall_required": cfg.recall_required,
+            "evaluation_mode": cfg.evaluation_mode,
+            "beir_loader": cfg.beir_loader,
+            "beir_dataset_name": cfg.beir_dataset_name,
+            "beir_split": cfg.beir_split,
+            "beir_query_language": cfg.beir_query_language,
+            "beir_doc_id_field": cfg.beir_doc_id_field,
+            "beir_ks": list(cfg.beir_ks),
         },
         "metrics": metrics_payload,
         "summary_metrics": summary_metrics,
         "run_metadata": run_metadata,
-        "runtime_summary": None,
+        "runtime_summary": runtime_summary,
         "detection_summary": None,
         "service_job_id": getattr(result_obj, "job_id", None),
         "service_document_ids": document_ids,
@@ -1222,6 +1306,8 @@ def _run_service_mode(
     typer.echo(f"\n  Service ingestion complete: {total_pages} pages in {elapsed:.1f}s ({pps_text} pages/sec)")
     if pages_failed:
         typer.echo(f"  WARNING: {pages_failed} page(s) failed")
+    if evaluation_failure:
+        typer.echo(f"  WARNING: service evaluation failed: {evaluation_failure}")
 
     return result_payload
 
