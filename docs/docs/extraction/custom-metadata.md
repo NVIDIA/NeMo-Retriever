@@ -84,7 +84,6 @@ ingestor = (
             vdb_op="lancedb",
             uri=lancedb_uri,
             table_name=table_name,
-            hybrid=False,
         )
 )
 results = ingestor.ingest_async().result()
@@ -108,12 +107,12 @@ The following are the best practices when you work with custom metadata:
 ## Use Custom Metadata to Filter Results During Retrieval
 
 You can use custom metadata to filter documents during retrieval operations.
-For **predicate pushdown**, use [LanceDB SQL](https://lancedb.github.io/lancedb/sql/) on an opened table (see the native query sketch below). The **`lancedb_retrieval` helper does not accept a server-side filter**: it always returns up to `top_k` hits from the index, so any list comprehension over those hits is **application-side only**—raise `top_k` if your matches might sit outside the first `top_k` neighbors, or use a native `table.search(...).where(...)` query instead.
+For **predicate pushdown**, pass a `where` SQL predicate through [`Retriever.query`](nemo-retriever-api-reference.md) (see [Vector databases](vdbs.md)) or chain `.where(...)` on a native LanceDB `table.search(...)` query. Application-side filtering on returned hits does not change what the database evaluates—raise `top_k` if matches might sit outside the first neighbors.
 
 
 ### Example filter ideas
 
-Typical keys to filter on include `category`, `department`, `priority`, and `timestamp` (use comparable ISO-8601 strings for time ranges). Encode predicates in LanceDB SQL against your table columns (often the serialized `metadata` string), or inspect `hit["entity"]["content_metadata"]` after search as in the `lancedb_retrieval` example below.
+Typical keys to filter on include `category`, `department`, `priority`, and `timestamp` (use comparable ISO-8601 strings for time ranges). Encode predicates in LanceDB SQL against your table columns (often the serialized `metadata` string), or inspect parsed hit metadata after search as in the example below.
 
 ### Example: Use a Filter Expression in Search
 
@@ -131,45 +130,29 @@ table = db.open_table("nemo_retriever_collection")
 # table.search(YOUR_VECTOR, vector_column_name="vector").where(YOUR_PREDICATE).limit(10).to_list()
 ```
 
-**`lancedb_retrieval` + post-filter:** the helper only returns `top_k` rows with no `where` argument; filtering in Python is for illustration and does **not** change what the database evaluates.
+**`Retriever.query` + `where`:** LanceDB applies the predicate before ranking. For post-filter logic in Python, use a wider `top_k` first.
 
 ```python
-Use the lancedb_retrieval helper from the same LanceDB module you use with create_ingestor (see Python API).
+from nemo_retriever.retriever import Retriever
 
-hostname = "localhost"
-table_name = "nemo_retriever_collection"
-lancedb_uri = "./lancedb_data"
-top_k = 5
-model_name = "nvidia/llama-nemotron-embed-vl-1b-v2"
+retriever = Retriever(
+    vdb_kwargs={"uri": "./lancedb_data", "table_name": "nemo_retriever_collection"},
+    embed_kwargs={
+        "model_name": "nvidia/llama-nemotron-embed-1b-v2",
+        "embed_model_name": "nvidia/llama-nemotron-embed-1b-v2",
+    },
+)
 
-queries = ["this is expensive"]
-q_results = []
-for que in queries:
-    batch = lancedb_retrieval(
-        [que],
-        table_path=lancedb_uri,
-        table_name=table_name,
-        embedding_endpoint=f"http://{hostname}:8012/v1",
-        top_k=top_k,
-        model_name=model_name,
-    )
-    # Application-side only: fewer than top_k hits if Engineering rows are not in this batch
-    filtered = [
-        hit
-        for hit in batch[0]
-        if hit.get("entity", {})
-        .get("content_metadata", {})
-        .get("department")
-        == "Engineering"
-    ]
-    q_results.append(filtered)
-
-print(f"{q_results}")
+hits = retriever.query(
+    "this is expensive",
+    top_k=16,
+    vdb_kwargs={"where": "metadata LIKE '%\"department\":\"Engineering\"%'"},
+)
 ```
 
 
 
 ## Related Content
 
-- For a notebook that uses the CLI to add custom metadata and filter query results, refer to [metadata_and_filtered_search.ipynb
-](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb).
+- [Vector databases](vdbs.md) — canonical LanceDB upload and retrieval guide
+- [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb) — CLI and graph ingest with sidecar metadata
