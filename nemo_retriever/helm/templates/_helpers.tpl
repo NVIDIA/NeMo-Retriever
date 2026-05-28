@@ -248,13 +248,25 @@ config can address each NIM as `http://<service-name>:<port><invokePath>`.
 Mapping (key -> Service name, default invokePath):
   page_elements                          -> nemotron-page-elements-v3                /v1/infer
   table_structure                        -> nemotron-table-structure-v1              /v1/infer
-  ocr                                    -> nimOperator.ocr.nimServiceName             /v1/infer
+  ocr                                    -> nemotron-ocr-v1                          /v1/infer
   vlm_embed                              -> llama-nemotron-embed-vl-1b-v2            /v1/embeddings
   nemotron_3_nano_omni_30b_a3b_reasoning -> nemotron-3-nano-omni-30b-a3b-reasoning   /v1/chat/completions
 
 Audio ASR (Parakeet) is configured directly via
   serviceConfig.nimEndpoints.audioGrpcEndpoint (no NIM Operator auto-wire).
 */}}
+
+{{/*
+Emit ``helm.sh/resource-policy: keep`` on NIMCache when
+``nimOperator.nimCache.keepOnUninstall`` is true (default). Helm uninstall
+then retains the cache CR (and its PVC) so model downloads are not discarded.
+*/}}
+{{- define "nemo-retriever.nimcache.keepPolicy" -}}
+{{- if .Values.nimOperator.nimCache.keepOnUninstall }}
+annotations:
+  helm.sh/resource-policy: keep
+{{- end }}
+{{- end }}
 
 {{/*
 =============================================================================

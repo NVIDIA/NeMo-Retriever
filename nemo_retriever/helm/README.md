@@ -68,7 +68,7 @@ nemo_retriever/helm/
     └── nims/
         ├── nemotron-page-elements-v3.yaml     # NIMCache + NIMService
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
-        ├── nemotron-ocr-v2.yaml               # NIMCache + NIMService
+        ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
         ├── llama-nemotron-rerank-vl-1b-v2.yaml  # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
@@ -229,7 +229,7 @@ The chart auto-wires the operator-managed in-cluster URLs of the four
 | --- | ------------------------ | ----------- |
 | `nimOperator.page_elements`   | `nemotron-page-elements-v3`   | `/v1/infer`      |
 | `nimOperator.table_structure` | `nemotron-table-structure-v1` | `/v1/infer`      |
-| `nimOperator.ocr`             | `nemotron-ocr-v2`             | `/v1/infer`      |
+| `nimOperator.ocr`             | `nemotron-ocr-v1`             | `/v1/infer`      |
 | `nimOperator.vlm_embed`       | `llama-nemotron-embed-vl-1b-v2` | `/v1/embeddings` |
 
 Track operator reconciliation with:
@@ -239,9 +239,43 @@ kubectl get nimcache,nimservice -n <namespace>
 kubectl describe nimservice nemotron-page-elements-v3 -n <namespace>
 ```
 
-First-time NIMCache reconciliation downloads model weights to a PVC; the
-NIMCache resources carry the `helm.sh/resource-policy: keep` annotation so
-those downloads survive `helm uninstall`.
+First-time NIMCache reconciliation downloads model weights to a PVC. By
+default (`nimOperator.nimCache.keepOnUninstall: true`) every **NIMCache**
+carries `helm.sh/resource-policy: keep` so those downloads survive
+`helm uninstall`. **NIMService** CRs do not use `keep` and are removed by
+Helm on uninstall.
+
+### Why NIM resources still exist after `helm uninstall`
+
+| What you see | Typical cause |
+|--------------|----------------|
+| `NIMCache` + PVC remain | **Expected** when `keepOnUninstall` is true (default). Helm intentionally skips deleting caches so you do not re-pull multi‑GiB weights. |
+| `NIMService` CR remains | **Not expected** on a normal uninstall. Usually an **orphan** from a failed install/upgrade (release never recorded the resource, or the chart renamed the NIM, e.g. `nemotron-ocr-v1` → `nemotron-ocr-v2`). |
+| Deployments / GPU pods still running | Often the operator workload for a **kept** `NIMCache`, or a stale `NIMService` that Helm did not own. Check `kubectl get nimservice,nimcache -n <ns>`. |
+| `nemotron-*-job-*` pods in `Error` | The NIM Operator's **model-download Job** for a `NIMCache` (not the retriever service). Failed cache pulls retry and leave Error pods until the Job or `NIMCache` is deleted. Common after a failed `helm install` when the release is rolled back but `keep` retains the cache CR. |
+| `helm uninstall` appears to do nothing | Release may be missing or failed (`helm list -n <ns> -a`). CRs created before a failed install can be left without a release to clean them up. |
+
+**Full teardown** (dev cluster — deletes caches and PVCs Helm kept):
+
+```bash
+NS=retriever
+REL=nemo-retriever
+
+helm uninstall "${REL}" -n "${NS}" 2>/dev/null || true
+
+# Orphans and kept NIMCaches (Helm keep does not block kubectl delete):
+kubectl delete nimservice,nimcache -n "${NS}" --all
+# Optional: drop model PVCs if you will re-pull from NGC
+kubectl delete pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator' 2>/dev/null || true
+```
+
+**Dev installs** that should not retain caches on uninstall:
+
+```bash
+helm upgrade --install "${REL}" ./nemo_retriever/helm -n "${NS}" \
+  --set nimOperator.nimCache.keepOnUninstall=false \
+  ...
+```
 
 ---
 
@@ -338,8 +372,7 @@ pair gated on three conditions ALL holding:
 | `nimOperator.page_elements.enabled`    | `true`  | Page-elements detector NIM. |
 | `nimOperator.table_structure.enabled`  | `true`  | Table-structure detector NIM. |
 | `nimOperator.ocr.enabled`              | `true`  | OCR NIM. |
-| `nimOperator.ocr.nimServiceName`       | `nemotron-ocr-v2` | NIMService / in-cluster DNS name. |
-| `nimOperator.ocr.image`              | `nvcr.io/nim/nvidia/nemotron-ocr-v2:1.4` | Default OCR NIM image. |
+| `nimOperator.ocr.image`              | `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0` | Default OCR NIM image. |
 | `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
 | `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
 | `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
@@ -552,6 +585,7 @@ and `image.tag` before you upgrade.
 
 | Path | Role |
 |------|------|
+| `nimOperator.nimCache.keepOnUninstall` | `true` | When true, NIMCache CRs survive `helm uninstall` (`helm.sh/resource-policy: keep`). NIMService CRs are always removed. Set `false` for dev clusters that should fully tear down on uninstall. |
 | `nimOperator.ocr.enabled` | Reconcile the OCR `NIMService` |
 | `nimOperator.ocr.image.repository` | NIM image (for example `nvcr.io/nim/nvidia/nemotron-ocr-v2`) |
 | `nimOperator.ocr.image.tag` | Pin the image tag for reproducible upgrades |
@@ -922,7 +956,7 @@ Verify tags on the Git branch or tag you ship (for example `26.05` or
 | Retriever service | — | `service.image.repository`:`service.image.tag` (override for production) |
 | Page elements | `page_elements` | `nvcr.io/nim/nvidia/nemotron-page-elements-v3:1.8.0` |
 | Table structure | `table_structure` | `nvcr.io/nim/nvidia/nemotron-table-structure-v1:1.8.0` |
-| OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v2:1.4` |
+| OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0` |
 | VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` |
 | VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:1.10.0` |
 | Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |

@@ -4,8 +4,7 @@ apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:
   name: {{ $name }}
-  annotations:
-    helm.sh/resource-policy: keep
+  {{- include "nemo-retriever.nimcache.keepPolicy" . | nindent 2 }}
 spec:
   source:
     ngc:
