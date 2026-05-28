@@ -131,6 +131,20 @@ def batch_tuning_to_node_overrides(
     embed_tuning = _batch_tuning(embed_params)
     embed_concurrency: int = 0
     embed_cpus: float = 1.0
+    local_caption_concurrency: int | None = None
+    local_caption_gpus_per_actor: float | None = None
+    if caption_params is not None and cluster_resources is not None:
+        caption_invoke_url = _positive(getattr(caption_params, "endpoint_url", None))
+        if not effective_allow_no_gpu and not caption_invoke_url:
+            available_gpus = max(1, int(cluster_resources.available_gpu_count()))
+            local_caption_gpus_per_actor = (
+                _resolve(caption_gpus_per_actor, plan.caption_gpus_per_actor if plan else None) or 1.0
+            )
+            # Local captioning is the visual-workload bottleneck. On DGX-class
+            # hosts, use the GPU pool for caption actors and leave one GPU's
+            # budget for downstream embedding.
+            local_caption_concurrency = 1 if available_gpus <= 1 else max(1, available_gpus - 1)
+
     if embed_params is not None:
         embed_invoke_url = _positive(getattr(embed_params, "embed_invoke_url", None))
         explicit_bs = getattr(embed_tuning, "embed_batch_size", None) if embed_tuning is not None else None
@@ -138,10 +152,25 @@ def batch_tuning_to_node_overrides(
         _set(_BatchEmbedActor.__name__, "batch_size", embed_bs)
         if embed_bs:
             overrides.setdefault(_BatchEmbedActor.__name__, {})["target_num_rows_per_block"] = embed_bs
+        explicit_embed_workers = getattr(embed_tuning, "embed_workers", None) if embed_tuning is not None else None
+        embed_workers_fallback = plan.embed_initial_actors if plan else None
+        if (
+            local_caption_concurrency is not None
+            and local_caption_gpus_per_actor is not None
+            and _positive(explicit_embed_workers) is None
+            and cluster_resources is not None
+            and plan is not None
+        ):
+            caption_gpu_budget = local_caption_concurrency * local_caption_gpus_per_actor
+            remaining_gpu_budget = max(0.0, float(cluster_resources.available_gpu_count()) - caption_gpu_budget)
+            if remaining_gpu_budget > 0 and plan.embed_gpus_per_actor > 0:
+                embed_workers_fallback = max(1, int(remaining_gpu_budget // plan.embed_gpus_per_actor))
+            else:
+                embed_workers_fallback = 1
         embed_concurrency = (
             _resolve(
-                getattr(embed_tuning, "embed_workers", None) if embed_tuning is not None else None,
-                plan.embed_initial_actors if plan else None,
+                explicit_embed_workers,
+                embed_workers_fallback,
             )
             or 0
         )
@@ -167,6 +196,8 @@ def batch_tuning_to_node_overrides(
         if effective_allow_no_gpu:
             _force_cpu_only(CaptionActor.__name__)
         elif not caption_invoke_url:
+            if local_caption_concurrency is not None:
+                overrides.setdefault(CaptionActor.__name__, {})["concurrency"] = local_caption_concurrency
             _set_gpu(
                 CaptionActor.__name__,
                 caption_gpus_per_actor,

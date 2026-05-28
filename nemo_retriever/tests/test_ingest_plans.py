@@ -347,6 +347,25 @@ def test_batch_tuning_to_node_overrides_auto_cpu_only_when_no_gpus(ocr_version: 
     assert overrides["NemotronParseActor"]["concurrency"] == 2
 
 
+def test_batch_tuning_to_node_overrides_scales_local_caption_on_multi_gpu() -> None:
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=224, gpu_count=8),
+        available_resources=Resources(cpu_count=224, gpu_count=8),
+    )
+
+    overrides = batch_tuning_to_node_overrides(
+        extract_params=ExtractParams(),
+        embed_params=EmbedParams(model_name="nvidia/llama-nemotron-embed-1b-v2"),
+        caption_params=CaptionParams(),
+        cluster_resources=cluster,
+    )
+
+    assert overrides["CaptionActor"]["concurrency"] == 7
+    assert overrides["CaptionActor"]["num_gpus"] == 1.0
+    assert overrides["_BatchEmbedActor"]["concurrency"] == 2
+    assert overrides["_BatchEmbedActor"]["num_gpus"] == 0.5
+
+
 def test_batch_tuning_to_node_overrides_honors_table_structure_tuning() -> None:
     extract_params = ExtractParams(
         use_table_structure=True,

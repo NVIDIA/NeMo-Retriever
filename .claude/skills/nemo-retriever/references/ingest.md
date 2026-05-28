@@ -1,7 +1,7 @@
 # retriever ingest
 
 End-to-end ingestion of supported documents and media into a LanceDB table — runs the full
-extract → embed → vector-DB pipeline in a single command.
+extract -> embed -> vector-DB flow in a single command.
 
 If flags below look stale, re-check `retriever ingest --help`.
 
@@ -9,14 +9,14 @@ If flags below look stale, re-check `retriever ingest --help`.
 
 - You have one or more supported files (or a directory/glob of files) and want them
   searchable via `retriever query`.
-- You want the default pipeline: PDF split → extraction → page-element
-  detection → OCRv2 → embedding → LanceDB insert. No per-stage tuning needed.
+- You want an auto-routed ingest: supported file families are detected from
+  the manifest, then routed through document/image/text/audio/video extraction
+  branches before embedding and LanceDB insert.
 
 **Use a different command when:**
 
 - You only need a single stage (e.g. just extract text, no embeddings) →
   `retriever pdf`, `retriever chart`, `retriever image`, etc.
-- You want fine-grained control over the pipeline graph → `retriever pipeline`.
 - You need a long-running service rather than one-shot CLI → `retriever service`.
 - You're benchmarking throughput → `retriever benchmark`.
 - You're iterating on the pipeline locally and want a non-distributed runner →
@@ -29,6 +29,27 @@ Ingest a single PDF into the default table (`lancedb/nemo-retriever.lance`):
 ```bash
 retriever ingest data/multimodal_test.pdf
 ```
+
+Default PDF ingest:
+
+```bash
+retriever ingest data/pdfs/
+```
+
+Large text-only PDF fallback:
+
+```bash
+retriever ingest data/pdfs/ --profile fast-text
+```
+
+Optional local VLM captioning:
+
+```bash
+retriever ingest data/pdfs/ --caption \
+  --caption-infographics
+```
+
+Add `--caption-invoke-url` only when a remote OpenAI-compatible VLM endpoint is already deployed.
 
 Ingest a directory of supported files:
 
@@ -69,20 +90,20 @@ retriever ingest data/multimodal_test.pdf \
 |---|---|---|
 | `--lancedb-uri` | `lancedb` | Path or URI of the LanceDB database. |
 | `--table-name` | `nemo-retriever` | LanceDB table to write into. Must match `retriever query`'s table on read. |
-| `--run-mode` | `inprocess` | `inprocess` for local runs; `batch` for the SDK batch ingestor. |
+| `--profile` | `auto` | `auto` is normal manifest-routed ingest. `fast-text` disables expensive PDF recall stages for a text-only fallback. |
+| `--caption` | `false` | Optional VLM captioning stage after extraction. Never enabled by profiles. |
+| `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, local VLM captioning is used. |
+| `--caption-context-text-max-chars` | default | Include nearby extracted text in caption prompts. |
+| `--caption-infographics` | default | Caption infographic crops in addition to extracted images. |
+| `--run-mode` | `batch` | `batch` for the SDK batch ingestor; pass `inprocess` to skip Ray for local debug or CI. |
+| `--dry-run` | `false` | Print the resolved manifest/profile JSON without creating an ingestor. |
 
 ## Pipeline shape
 
-The default `ingest` runs 8 stages, in order:
-
-1. `DocToPdfConversionActor` — non-PDF inputs → PDF (no-op for PDFs).
-2. `PDFSplitActor` — split into per-page tasks.
-3. `PDFExtractionActor` — extract native text/structure.
-4. `PageElementDetectionActor` — detect tables, charts, images, text blocks.
-5. `OCRV2Actor` — OCR text where native extraction is missing/poor.
-6. `UDFOperator` — user-defined transforms (passthrough by default).
-7. `_BatchEmbedActor` — embed primitives with `llama-nemotron-embed-1b-v2`.
-8. `IngestVdbOperator` — insert rows into LanceDB.
+The default `ingest` entrypoint expands inputs, builds a manifest, resolves the
+selected profile into normal params, and calls `GraphIngestor.extract(...)`.
+The manifest planner routes PDF/document, image, text, HTML, audio, and video
+branches without relying on `retriever pipeline`.
 
 ## Common failure modes
 
@@ -103,5 +124,3 @@ The default `ingest` runs 8 stages, in order:
 - [[query]] — search the table this command writes.
 - `retriever vector-store --help` — utilities for inspecting/moving LanceDB
   tables.
-- `retriever pipeline --help` — same end-to-end ingest but exposes per-stage
-  knobs.
