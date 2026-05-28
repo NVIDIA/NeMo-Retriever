@@ -883,12 +883,17 @@ def _raise_for_empty_ingest(
     n_rows: int | None,
     initial_n_rows: int | None,
 ) -> None:
+    target = f"{lancedb_uri}/{table_name}"
     if n_rows is None:
-        return
+        raise RuntimeError(
+            f"retriever ingest could not verify rows in LanceDB {target} for {len(documents)} input file(s). "
+            "This usually means the LanceDB table was not created or could not be read after ingestion; check "
+            "the captured stage logs above, and verify NVIDIA_API_KEY/NGC_API_KEY or the configured local/remote "
+            "endpoints."
+        )
     if n_rows > 0 and (initial_n_rows is None or n_rows > initial_n_rows):
         return
 
-    target = f"{lancedb_uri}/{table_name}"
     if initial_n_rows is not None:
         raise RuntimeError(
             f"retriever ingest did not add rows to LanceDB {target}; row count stayed at {n_rows} "
@@ -908,11 +913,9 @@ def _raise_for_empty_ingest(
 def _count_lancedb_rows(lancedb_uri: str, table_name: str) -> int | None:
     """Return the actual row count in ``<lancedb_uri>/<table_name>`` or ``None``.
 
-    Best-effort: the CLI surfaces the value purely as a more honest replacement
-    for the legacy "Ingested N document(s)" message (which counted *inputs*, not
-    landed rows). Failures here must never break ingestion — swallow any
-    exception and report ``None``. Tests stub this helper rather than poking a
-    real LanceDB.
+    The low-level reader is best-effort so callers can decide whether an
+    unknown count is acceptable. Root ingest treats an unknown final count as a
+    failure because agents need proof that rows landed.
     """
     try:
         import lancedb  # local import — keeps the CLI startup snappy

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import importlib
+import itertools
 import json
 import logging
 import os
@@ -34,6 +35,13 @@ from nemo_retriever.params import (
 
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.adapters.cli.main")
+
+
+@pytest.fixture(autouse=True)
+def _successful_row_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Most tests fake GraphIngestor; default row counts should look like a successful write.
+    counts = itertools.count(1)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: next(counts))
 
 
 def _make_fake_ingestor() -> Any:

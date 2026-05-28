@@ -265,7 +265,7 @@ def ingest_command(
         "--caption-invoke-url",
         help=(
             "VLM caption endpoint URL. If omitted with --caption, GPU hosts use local captioning; "
-            "CPU-only runs use the hosted default endpoint."
+            "CPU-only runs use the hosted default endpoint with NVIDIA_API_KEY/NGC_API_KEY."
         ),
     ),
     caption_model_name: str | None = typer.Option(
@@ -484,8 +484,8 @@ def ingest_command(
     # Report input-file count alongside the actual landed-row count from the
     # LanceDB table — they diverge whenever one document explodes into multiple
     # chunks (PDFs → page elements, video → audio_visual segments). The SDK
-    # rejects known-empty ingests before we get here; ``n_rows`` is None when
-    # the table read itself failed (caller can still see file count + URI).
+    # rejects empty or unverifiable ingests before we get here; the ``None``
+    # branch below is defensive for direct SDK callers.
     n_files = len(summary["documents"])
     table_path = f"{summary['lancedb_uri']}/{summary['table_name']}"
     n_rows = summary.get("n_rows")
