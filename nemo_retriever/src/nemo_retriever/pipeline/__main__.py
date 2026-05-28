@@ -605,8 +605,8 @@ def _build_ingestor(
         ).files(resolved_files)
     else:
         node_overrides: dict[str, dict[str, Any]] = {}
-    if caption_gpus_per_actor is not None:
-        node_overrides["CaptionActor"] = {"num_gpus": caption_gpus_per_actor}
+        if caption_gpus_per_actor is not None:
+            node_overrides["CaptionActor"] = {"num_gpus": caption_gpus_per_actor}
 
         ingestor = GraphIngestor(
             run_mode=run_mode,

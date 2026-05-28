@@ -68,7 +68,7 @@ nemo_retriever/helm/
     └── nims/
         ├── nemotron-page-elements-v3.yaml     # NIMCache + NIMService
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
-        ├── nemotron-ocr-v2.yaml               # NIMCache + NIMService (OCR)
+        ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService (OCR)
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
         ├── llama-nemotron-rerank-vl-1b-v2.yaml  # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
@@ -250,7 +250,7 @@ Helm on uninstall.
 | What you see | Typical cause |
 |--------------|----------------|
 | `NIMCache` + PVC remain | **Expected** when `keepOnUninstall` is true (default). Helm intentionally skips deleting caches so you do not re-pull multi‑GiB weights. |
-| `NIMService` CR remains | **Not expected** on a normal uninstall. Usually an **orphan** from a failed install/upgrade (release never recorded the resource, or the chart renamed the NIM, e.g. `nemotron-ocr-v1` → `nemotron-ocr-v2`). |
+| `NIMService` CR remains | **Not expected** on a normal uninstall. Usually an **orphan** from a failed install/upgrade (release never recorded the resource, or the chart renamed a NIM). |
 | Deployments / GPU pods still running | Often the operator workload for a **kept** `NIMCache`, or a stale `NIMService` that Helm did not own. Check `kubectl get nimservice,nimcache -n <ns>`. |
 | `nemotron-*-job-*` pods in `Error` | The NIM Operator's **model-download Job** for a `NIMCache` (not the retriever service). Failed cache pulls retry and leave Error pods until the Job or `NIMCache` is deleted. Common after a failed `helm install` when the release is rolled back but `keep` retains the cache CR. |
 | `helm uninstall` appears to do nothing | Release may be missing or failed (`helm list -n <ns> -a`). CRs created before a failed install can be left without a release to clean them up. |
@@ -576,18 +576,16 @@ limits, use one of:
 To pin a non-default GPU count chart-wide, set `nimServiceGpuLimit: 2`
 (or set per-NIM `resources.limits.nvidia.com/gpu`).
 
-### Nemotron OCR v2 language mode { #nemotron-ocr-v2-language-mode }
+### OCR NIM configuration { #ocr-nim-configuration }
 
 The core OCR NIM is configured under [`nimOperator.ocr`](./values.yaml) (the `ocr:`
-block). When `image.repository` targets **nemotron-ocr-v2** for your release, the
-deployed NIM runs in **multilingual** mode by default. Confirm `image.repository`
-and `image.tag` before you upgrade.
+block). Confirm `image.repository` and `image.tag` before you upgrade.
 
 | Path | Role |
 |------|------|
-| `nimOperator.nimCache.keepOnUninstall` | `true` | When true, NIMCache CRs survive `helm uninstall` (`helm.sh/resource-policy: keep`). NIMService CRs are always removed. Set `false` for dev clusters that should fully tear down on uninstall. |
+| `nimOperator.nimCache.keepOnUninstall` | When `true`, NIMCache CRs survive `helm uninstall` (`helm.sh/resource-policy: keep`). NIMService CRs are always removed. Set `false` for dev clusters that should fully tear down on uninstall. |
 | `nimOperator.ocr.enabled` | Reconcile the OCR `NIMService` |
-| `nimOperator.ocr.image.repository` | NIM image (for example `nvcr.io/nim/nvidia/nemotron-ocr-v2`) |
+| `nimOperator.ocr.image.repository` | NIM image (default `nvcr.io/nim/nvidia/nemotron-ocr-v1`) |
 | `nimOperator.ocr.image.tag` | Pin the image tag for reproducible upgrades |
 
 Override the auto-wired in-cluster URL with `serviceConfig.nimEndpoints.ocrInvokeUrl`
