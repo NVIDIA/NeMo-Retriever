@@ -8,6 +8,7 @@ import importlib
 import json
 import logging
 import os
+import re
 import sys
 from typing import Any
 from unittest.mock import create_autospec
@@ -18,7 +19,17 @@ from typer.testing import CliRunner
 
 import nemo_retriever.adapters.cli.sdk_workflow as sdk_workflow
 from nemo_retriever.graph_ingestor import GraphIngestor
-from nemo_retriever.params import EmbedParams, ExtractParams
+from nemo_retriever.params import (
+    ASRParams,
+    AudioChunkParams,
+    AudioVisualFuseParams,
+    CaptionParams,
+    EmbedParams,
+    ExtractParams,
+    TextChunkParams,
+    VideoFrameParams,
+    VideoFrameTextDedupParams,
+)
 
 
 RUNNER = CliRunner()
@@ -29,6 +40,7 @@ def _make_fake_ingestor() -> Any:
     fake_ingestor = create_autospec(GraphIngestor, instance=True, spec_set=True)
     fake_ingestor.files.return_value = fake_ingestor
     fake_ingestor.extract.return_value = fake_ingestor
+    fake_ingestor.caption.return_value = fake_ingestor
     fake_ingestor.embed.return_value = fake_ingestor
     fake_ingestor.vdb_upload.return_value = fake_ingestor
     fake_ingestor.ingest.return_value = [{"status": "ok"}]
@@ -51,7 +63,7 @@ def test_root_ingest_runs_default_sdk_chain(monkeypatch, tmp_path) -> None:
     result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
 
     assert result.exit_code == 0
-    assert create_calls == [{"run_mode": "inprocess"}]
+    assert create_calls == [{"run_mode": "batch"}]
     assert [method_call[0] for method_call in fake_ingestor.method_calls] == [
         "files",
         "extract",
@@ -361,7 +373,7 @@ def test_root_ingest_routes_text_inputs_by_default_to_auto_planner(monkeypatch, 
     assert result.exit_code == 0
     assert fake_ingestor.files.call_args.args == ([str(document)],)
     assert isinstance(fake_ingestor.extract.call_args.args[0], ExtractParams)
-    assert fake_ingestor.extract.call_args.kwargs == {}
+    assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
 def test_root_ingest_help_does_not_expose_input_type() -> None:
@@ -369,6 +381,207 @@ def test_root_ingest_help_does_not_expose_input_type() -> None:
 
     assert result.exit_code == 0
     assert "--input-type" not in result.output
+    assert "--profile" in result.output
+    assert "--caption" in result.output
+    assert re.search(r"--no-caption(?!-)", result.output) is None
+
+
+def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, tmp_path) -> None:
+    document = tmp_path / "fast.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    def fail_create_ingestor(**_kwargs: Any) -> Any:
+        raise AssertionError("create_ingestor should not be called for --dry-run")
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", fail_create_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--profile", "fast-text", "--dry-run"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["dry_run"] is True
+    assert payload["profile"] == "fast-text"
+    assert payload["create_ingestor"] == {"run_mode": "batch"}
+    assert payload["extract"]["method"] == "pdfium"
+    assert payload["extract"]["use_page_elements"] is False
+    assert payload["extract"]["extract_tables"] is False
+
+
+def test_root_ingest_passes_ocr_profile_and_extract_overrides(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "ocr.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--profile",
+            "ocr",
+            "--method",
+            "pdfium",
+            "--dpi",
+            "250",
+            "--no-extract-tables",
+            "--no-extract-charts",
+            "--no-extract-infographics",
+            "--no-extract-page-as-image",
+            "--no-use-page-elements",
+        ],
+    )
+
+    assert result.exit_code == 0
+    extract_params = fake_ingestor.extract.call_args.args[0]
+    assert isinstance(extract_params, ExtractParams)
+    assert extract_params.method == "pdfium"
+    assert extract_params.dpi == 250
+    assert extract_params.extract_text is True
+    assert extract_params.extract_tables is False
+    assert extract_params.extract_charts is False
+    assert extract_params.extract_infographics is False
+    assert extract_params.extract_page_as_image is False
+    assert extract_params.use_page_elements is False
+
+
+def test_root_ingest_caption_is_optional_and_passes_minimal_caption_params(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "captioned.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--caption",
+            "--caption-invoke-url",
+            "http://vlm:8000/v1/chat/completions",
+            "--caption-model-name",
+            "nvidia/test-vlm",
+            "--caption-context-text-max-chars",
+            "512",
+            "--caption-infographics",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert [method_call[0] for method_call in fake_ingestor.method_calls] == [
+        "files",
+        "extract",
+        "caption",
+        "embed",
+        "vdb_upload",
+        "ingest",
+    ]
+    caption_params = fake_ingestor.caption.call_args.args[0]
+    assert isinstance(caption_params, CaptionParams)
+    assert caption_params.endpoint_url == "http://vlm:8000/v1/chat/completions"
+    assert caption_params.model_name == "nvidia/test-vlm"
+    assert caption_params.context_text_max_chars == 512
+    assert caption_params.caption_infographics is True
+
+
+def test_root_ingest_rejects_caption_options_without_caption(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "not-captioned.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", str(document), "--caption-invoke-url", "http://vlm:8000/v1/chat/completions"],
+    )
+
+    assert result.exit_code == 1
+    assert "Caption options require --caption" in result.output
+    fake_ingestor.caption.assert_not_called()
+    fake_ingestor.embed.assert_not_called()
+
+
+def test_root_ingest_audio_profile_passes_audio_params(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "meeting.wav"
+    document.write_bytes(b"audio")
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--profile",
+            "audio",
+            "--segment-audio",
+            "--audio-split-type",
+            "time",
+            "--audio-split-interval",
+            "42",
+        ],
+    )
+
+    assert result.exit_code == 0
+    kwargs = fake_ingestor.extract.call_args.kwargs
+    assert isinstance(kwargs["audio_chunk_params"], AudioChunkParams)
+    assert kwargs["audio_chunk_params"].split_type == "time"
+    assert kwargs["audio_chunk_params"].split_interval == 42
+    assert isinstance(kwargs["asr_params"], ASRParams)
+    assert kwargs["asr_params"].segment_audio is True
+
+
+def test_root_ingest_video_profile_passes_video_params(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "demo.mp4"
+    document.write_bytes(b"video")
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--profile",
+            "video",
+            "--no-video-extract-audio",
+            "--video-frame-fps",
+            "0.25",
+            "--no-video-frame-dedup",
+            "--no-video-frame-text-dedup",
+            "--video-frame-text-dedup-max-dropped-frames",
+            "5",
+            "--no-video-av-fuse",
+        ],
+    )
+
+    assert result.exit_code == 0
+    extract_params = fake_ingestor.extract.call_args.args[0]
+    assert isinstance(extract_params, ExtractParams)
+    assert extract_params.method == "ocr"
+    kwargs = fake_ingestor.extract.call_args.kwargs
+    assert isinstance(kwargs["audio_chunk_params"], AudioChunkParams)
+    assert kwargs["audio_chunk_params"].enabled is False
+    assert isinstance(kwargs["video_frame_params"], VideoFrameParams)
+    assert kwargs["video_frame_params"].fps == 0.25
+    assert kwargs["video_frame_params"].dedup is False
+    assert isinstance(kwargs["video_text_dedup_params"], VideoFrameTextDedupParams)
+    assert kwargs["video_text_dedup_params"].enabled is False
+    assert kwargs["video_text_dedup_params"].max_dropped_frames == 5
+    assert isinstance(kwargs["av_fuse_params"], AudioVisualFuseParams)
+    assert kwargs["av_fuse_params"].enabled is False
+
+
+def test_root_ingest_rejects_media_profile_family_mismatch(tmp_path) -> None:
+    document = tmp_path / "not-audio.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--profile", "audio"])
+
+    assert result.exit_code == 1
+    assert "--profile audio only supports audio inputs" in result.output
 
 
 def test_root_ingest_routes_tiff_inputs_by_default_to_auto_planner(monkeypatch, tmp_path) -> None:
@@ -405,7 +618,7 @@ def test_root_ingest_auto_mixed_directory_uses_auto_extraction(monkeypatch, tmp_
     assert result.exit_code == 0
     assert set(fake_ingestor.files.call_args.args[0]) == {str(pdf.resolve()), str(text.resolve()), str(image.resolve())}
     assert isinstance(fake_ingestor.extract.call_args.args[0], ExtractParams)
-    assert fake_ingestor.extract.call_args.kwargs == {}
+    assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
 def test_root_ingest_reports_os_errors(monkeypatch) -> None:
@@ -446,7 +659,7 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             retriever_calls.append(kwargs)
 
-        def query(self, query: str) -> list[dict[str, Any]]:
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
             query_calls.append(query)
             return hits
 
@@ -474,6 +687,45 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
     assert result.output == json.dumps(hits, indent=2, sort_keys=True, default=str) + "\n"
 
 
+def test_root_query_passes_candidate_dedup_and_content_filters(monkeypatch) -> None:
+    query_kwargs: list[dict[str, Any]] = []
+
+    class FakeRetriever:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def query(self, query: str, **kwargs: Any) -> list[dict[str, Any]]:
+            query_kwargs.append(kwargs)
+            return [
+                {"text": "text row", "metadata": {"type": "text"}, "page_number": 1},
+                {"text": "chart row", "metadata": {"type": "chart"}, "page_number": 2},
+            ]
+
+    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "deployment?",
+            "--top-k",
+            "1",
+            "--candidate-k",
+            "3",
+            "--page-dedup",
+            "--content-types",
+            "text,table",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert query_kwargs == [{"candidate_k": 3, "page_dedup": True, "content_types": "text,table"}]
+    assert json.loads(result.output) == [
+        {"metadata": {"type": "text"}, "page_number": 1, "text": "text row"},
+        {"metadata": {"type": "chart"}, "page_number": 2, "text": "chart row"},
+    ]
+
+
 def test_root_query_passes_embed_options(monkeypatch) -> None:
     retriever_calls: list[dict[str, Any]] = []
     query_calls: list[str] = []
@@ -482,7 +734,7 @@ def test_root_query_passes_embed_options(monkeypatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             retriever_calls.append(kwargs)
 
-        def query(self, query: str) -> list[dict[str, Any]]:
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
             query_calls.append(query)
             return []
 
@@ -527,7 +779,7 @@ def test_root_query_passes_reranker_url(monkeypatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             retriever_calls.append(kwargs)
 
-        def query(self, query: str) -> list[dict[str, Any]]:
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
             query_calls.append(query)
             return []
 
@@ -567,7 +819,7 @@ def test_root_query_rerank_flag_enables_local_rerank(monkeypatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             retriever_calls.append(kwargs)
 
-        def query(self, query: str) -> list[dict[str, Any]]:
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
             return []
 
     monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
@@ -593,7 +845,7 @@ def test_root_query_rerank_off_by_default(monkeypatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             retriever_calls.append(kwargs)
 
-        def query(self, query: str) -> list[dict[str, Any]]:
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
             return []
 
     monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
@@ -615,7 +867,7 @@ def test_root_query_reranker_model_name_override(monkeypatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             retriever_calls.append(kwargs)
 
-        def query(self, query: str) -> list[dict[str, Any]]:
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
             return []
 
     monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)

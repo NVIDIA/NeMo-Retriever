@@ -10,6 +10,7 @@ from nemo_retriever.graph import Graph
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.branch_extraction import normalize_ray_branch_datasets
 from nemo_retriever.graph_ingestor import GraphIngestor
+from nemo_retriever.adapters.cli.sdk_workflow import resolve_ingest_plan
 from nemo_retriever.ingest_manifest import (
     build_input_manifest,
     plan_extraction_branches,
@@ -136,6 +137,149 @@ def test_manifest_planner_empty_glob_does_not_invent_modal_branches(tmp_path) ->
     branches = plan_extraction_branches(build_input_manifest([str(tmp_path / "*.wav")]))
 
     assert [(branch.family, branch.input_paths) for branch in branches] == [("pdf", (str(tmp_path / "*.wav"),))]
+
+
+def test_ingest_plan_auto_profile_preserves_manifest_defaults(tmp_path) -> None:
+    pdf = tmp_path / "manual.pdf"
+    pdf.write_bytes(b"pdf")
+
+    plan = resolve_ingest_plan([str(pdf)], profile="auto")
+
+    assert plan.profile == "auto"
+    assert [branch.family for branch in plan.branches] == ["pdf"]
+    assert plan.extract_params.method == "pdfium"
+    assert plan.extract_params.dpi == 200
+    assert plan.create_kwargs == {"run_mode": "batch"}
+
+
+def test_ingest_plan_ocr_profile_enables_high_recall_document_defaults(tmp_path) -> None:
+    pdf = tmp_path / "scan.pdf"
+    pdf.write_bytes(b"pdf")
+
+    plan = resolve_ingest_plan([str(pdf)], profile="ocr")
+
+    assert plan.extract_params.method == "ocr"
+    assert plan.extract_params.dpi == 300
+    assert plan.extract_params.extract_text is True
+    assert plan.extract_params.extract_tables is True
+    assert plan.extract_params.extract_charts is True
+    assert plan.extract_params.extract_infographics is True
+    assert plan.extract_params.extract_page_as_image is True
+    assert plan.extract_params.use_page_elements is True
+
+
+def test_ingest_plan_fast_text_profile_is_pdf_text_only(tmp_path) -> None:
+    pdf = tmp_path / "manual.pdf"
+    pdf.write_bytes(b"pdf")
+
+    plan = resolve_ingest_plan([str(pdf)], profile="fast-text")
+
+    assert plan.extract_params.method == "pdfium"
+    assert plan.extract_params.extract_text is True
+    assert plan.extract_params.extract_tables is False
+    assert plan.extract_params.extract_charts is False
+    assert plan.extract_params.extract_infographics is False
+    assert plan.extract_params.extract_page_as_image is False
+    assert plan.extract_params.use_page_elements is False
+
+
+def test_ingest_plan_caption_is_absent_by_default_and_optional(tmp_path) -> None:
+    pdf = tmp_path / "manual.pdf"
+    pdf.write_bytes(b"pdf")
+
+    default_plan = resolve_ingest_plan([str(pdf)])
+    caption_plan = resolve_ingest_plan(
+        [str(pdf)],
+        caption=True,
+        caption_invoke_url="http://vlm:8000/v1/chat/completions",
+        caption_model_name="nvidia/test-vlm",
+        caption_context_text_max_chars=256,
+        caption_infographics=True,
+    )
+
+    assert default_plan.caption_params is None
+    assert caption_plan.caption_params is not None
+    assert caption_plan.caption_params.endpoint_url == "http://vlm:8000/v1/chat/completions"
+    assert caption_plan.caption_params.model_name == "nvidia/test-vlm"
+    assert caption_plan.caption_params.context_text_max_chars == 256
+    assert caption_plan.caption_params.caption_infographics is True
+
+
+def test_ingest_plan_caption_options_require_caption(tmp_path) -> None:
+    pdf = tmp_path / "manual.pdf"
+    pdf.write_bytes(b"pdf")
+
+    with pytest.raises(ValueError, match="Caption options require --caption"):
+        resolve_ingest_plan([str(pdf)], caption_invoke_url="http://vlm:8000/v1/chat/completions")
+
+
+def test_ingest_plan_audio_profile_builds_audio_params(monkeypatch, tmp_path) -> None:
+    audio = tmp_path / "clip.wav"
+    audio.write_bytes(b"audio")
+    monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
+
+    plan = resolve_ingest_plan([str(audio)], profile="audio", segment_audio=True)
+
+    assert [branch.family for branch in plan.branches] == ["audio"]
+    assert plan.audio_chunk_params is not None
+    assert plan.audio_chunk_params.split_type == "size"
+    assert plan.audio_chunk_params.split_interval == 500000
+    assert plan.asr_params is not None
+    assert plan.asr_params.segment_audio is True
+    assert plan.video_frame_params is None
+
+
+def test_ingest_plan_video_profile_builds_video_params(monkeypatch, tmp_path) -> None:
+    video = tmp_path / "scene.mp4"
+    video.write_bytes(b"video")
+    monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
+
+    plan = resolve_ingest_plan([str(video)], profile="video")
+
+    assert [branch.family for branch in plan.branches] == ["video"]
+    assert plan.extract_params.method == "ocr"
+    assert plan.audio_chunk_params is not None
+    assert plan.audio_chunk_params.enabled is True
+    assert plan.video_frame_params is not None
+    assert plan.video_frame_params.fps == 0.5
+    assert plan.video_frame_params.dedup is True
+    assert plan.video_text_dedup_params is not None
+    assert plan.video_text_dedup_params.max_dropped_frames == 2
+    assert plan.av_fuse_params is not None
+    assert plan.av_fuse_params.enabled is True
+
+
+def test_ingest_plan_multimodal_profile_allows_mixed_supported_branches(monkeypatch, tmp_path) -> None:
+    pdf = tmp_path / "manual.pdf"
+    audio = tmp_path / "clip.wav"
+    video = tmp_path / "scene.mp4"
+    pdf.write_bytes(b"pdf")
+    audio.write_bytes(b"audio")
+    video.write_bytes(b"video")
+    monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
+
+    plan = resolve_ingest_plan([str(pdf), str(audio), str(video)], profile="multimodal")
+
+    assert [branch.family for branch in plan.branches] == ["pdf", "audio", "video"]
+    assert plan.extract_params.method == "ocr"
+    assert plan.audio_chunk_params is not None
+    assert plan.video_frame_params is not None
+
+
+@pytest.mark.parametrize(
+    ("profile", "filename", "message"),
+    [
+        ("audio", "manual.pdf", "--profile audio only supports audio inputs"),
+        ("video", "clip.wav", "--profile video only supports video inputs"),
+        ("fast-text", "scan.png", "--profile fast-text only supports PDF/document inputs"),
+    ],
+)
+def test_ingest_plan_profiles_validate_input_families(profile: str, filename: str, message: str, tmp_path) -> None:
+    path = tmp_path / filename
+    path.write_bytes(b"data")
+
+    with pytest.raises(ValueError, match=message):
+        resolve_ingest_plan([str(path)], profile=profile)  # type: ignore[arg-type]
 
 
 def test_explicit_extraction_mode_bypasses_manifest_planning(tmp_path) -> None:

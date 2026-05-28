@@ -17,6 +17,8 @@ from pydantic import ValidationError
 import typer
 
 from nemo_retriever.adapters.cli.sdk_workflow import (
+    AudioSplitTypeValue,
+    IngestProfileValue,
     IngestRunModeValue,
     OcrLangValue,
     OcrVersionValue,
@@ -144,12 +146,133 @@ def ingest_command(
         ...,
         help="One or more files, directories, or globs. Supported file types are detected automatically.",
     ),
+    profile: IngestProfileValue = typer.Option(
+        "auto",
+        "--profile",
+        help="Ingest profile: auto, ocr, fast-text, audio, video, or multimodal.",
+    ),
     lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
     table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
     run_mode: IngestRunModeValue = typer.Option(
-        "inprocess",
+        "batch",
         "--run-mode",
         help="Execution mode for the SDK ingestor.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Print the resolved ingest plan as JSON without creating an ingestor.",
+    ),
+    method: str | None = typer.Option(None, "--method", help="PDF text extraction method."),
+    dpi: int | None = typer.Option(None, "--dpi", min=72, help="Render DPI for PDF page images."),
+    extract_text: bool | None = typer.Option(
+        None,
+        "--extract-text/--no-extract-text",
+        help="Enable or disable PDF text extraction.",
+    ),
+    extract_tables: bool | None = typer.Option(
+        None,
+        "--extract-tables/--no-extract-tables",
+        help="Enable or disable PDF table extraction.",
+    ),
+    extract_charts: bool | None = typer.Option(
+        None,
+        "--extract-charts/--no-extract-charts",
+        help="Enable or disable PDF chart extraction.",
+    ),
+    extract_infographics: bool | None = typer.Option(
+        None,
+        "--extract-infographics/--no-extract-infographics",
+        help="Enable or disable PDF infographic extraction.",
+    ),
+    extract_page_as_image: bool | None = typer.Option(
+        None,
+        "--extract-page-as-image/--no-extract-page-as-image",
+        help="Enable or disable full-page image extraction.",
+    ),
+    use_page_elements: bool | None = typer.Option(
+        None,
+        "--use-page-elements/--no-use-page-elements",
+        help="Enable or disable page-element detection for OCR/table/chart extraction.",
+    ),
+    segment_audio: bool | None = typer.Option(
+        None,
+        "--segment-audio/--no-segment-audio",
+        help="Enable or disable ASR-side audio segmentation.",
+    ),
+    audio_split_type: AudioSplitTypeValue = typer.Option(
+        "size",
+        "--audio-split-type",
+        help="Audio/video audio split type: size, time, or frame.",
+    ),
+    audio_split_interval: int | None = typer.Option(
+        None,
+        "--audio-split-interval",
+        min=1,
+        help="Audio/video audio split interval.",
+    ),
+    video_extract_audio: bool | None = typer.Option(
+        None,
+        "--video-extract-audio/--no-video-extract-audio",
+        help="Enable or disable audio extraction from video.",
+    ),
+    video_extract_frames: bool | None = typer.Option(
+        None,
+        "--video-extract-frames/--no-video-extract-frames",
+        help="Enable or disable video frame extraction.",
+    ),
+    video_frame_fps: float | None = typer.Option(
+        None,
+        "--video-frame-fps",
+        min=0.001,
+        help="Video frame extraction frames per second.",
+    ),
+    video_frame_dedup: bool | None = typer.Option(
+        None,
+        "--video-frame-dedup/--no-video-frame-dedup",
+        help="Enable or disable perceptual video frame deduplication.",
+    ),
+    video_frame_text_dedup: bool | None = typer.Option(
+        None,
+        "--video-frame-text-dedup/--no-video-frame-text-dedup",
+        help="Enable or disable OCR-text deduplication across adjacent video frames.",
+    ),
+    video_frame_text_dedup_max_dropped_frames: int | None = typer.Option(
+        None,
+        "--video-frame-text-dedup-max-dropped-frames",
+        min=0,
+        help="Maximum dropped frames bridged by video frame text deduplication.",
+    ),
+    video_av_fuse: bool | None = typer.Option(
+        None,
+        "--video-av-fuse/--no-video-av-fuse",
+        help="Enable or disable audio/visual fusion rows for video.",
+    ),
+    caption: bool = typer.Option(
+        False,
+        "--caption",
+        help="Add an optional VLM captioning stage after extraction.",
+    ),
+    caption_invoke_url: str | None = typer.Option(
+        None,
+        "--caption-invoke-url",
+        help="VLM caption endpoint URL. If omitted with --caption, local VLM captioning is used.",
+    ),
+    caption_model_name: str | None = typer.Option(
+        None,
+        "--caption-model-name",
+        help="Optional VLM caption model name override.",
+    ),
+    caption_context_text_max_chars: int | None = typer.Option(
+        None,
+        "--caption-context-text-max-chars",
+        min=0,
+        help="Maximum nearby extracted text characters to include in caption prompts.",
+    ),
+    caption_infographics: bool | None = typer.Option(
+        None,
+        "--caption-infographics/--no-caption-infographics",
+        help="Caption infographic crops in addition to extracted images.",
     ),
     overwrite: bool = typer.Option(
         True,
@@ -287,7 +410,32 @@ def ingest_command(
         with capture:
             summary = ingest_documents(
                 documents,
+                profile=profile,
                 run_mode=run_mode,
+                dry_run=dry_run,
+                method=method,
+                dpi=dpi,
+                extract_text=extract_text,
+                extract_tables=extract_tables,
+                extract_charts=extract_charts,
+                extract_infographics=extract_infographics,
+                extract_page_as_image=extract_page_as_image,
+                use_page_elements=use_page_elements,
+                segment_audio=segment_audio,
+                audio_split_type=audio_split_type,
+                audio_split_interval=audio_split_interval,
+                video_extract_audio=video_extract_audio,
+                video_extract_frames=video_extract_frames,
+                video_frame_fps=video_frame_fps,
+                video_frame_dedup=video_frame_dedup,
+                video_frame_text_dedup=video_frame_text_dedup,
+                video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
+                video_av_fuse=video_av_fuse,
+                caption=caption,
+                caption_invoke_url=caption_invoke_url,
+                caption_model_name=caption_model_name,
+                caption_context_text_max_chars=caption_context_text_max_chars,
+                caption_infographics=caption_infographics,
                 ray_address=ray_address,
                 ray_log_to_driver=ray_log_to_driver,
                 lancedb_uri=lancedb_uri,
@@ -318,6 +466,10 @@ def ingest_command(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
+    if summary.get("dry_run") is True:
+        typer.echo(json.dumps(summary, indent=2, sort_keys=True, default=str))
+        return
+
     # Report input-file count alongside the actual landed-row count from the
     # LanceDB table — they diverge whenever one document explodes into multiple
     # chunks (PDFs → page elements, video → audio_visual segments) or
@@ -337,6 +489,22 @@ def ingest_command(
 def query_command(
     query: str = typer.Argument(..., help="Query text."),
     top_k: int = typer.Option(10, "--top-k", min=1, help="Number of hits to retrieve."),
+    candidate_k: int | None = typer.Option(
+        None,
+        "--candidate-k",
+        min=1,
+        help="Retrieve this many candidates before final filtering and truncation.",
+    ),
+    page_dedup: bool = typer.Option(
+        False,
+        "--page-dedup/--no-page-dedup",
+        help="Collapse hits to unique document pages.",
+    ),
+    content_types: str | None = typer.Option(
+        None,
+        "--content-types",
+        help="Comma-separated content types to keep, such as text,table.",
+    ),
     lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
     table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
     embed_invoke_url: str | None = typer.Option(None, "--embed-invoke-url", help="Embedding NIM endpoint URL."),
@@ -380,6 +548,9 @@ def query_command(
             hits = query_documents(
                 query,
                 top_k=top_k,
+                candidate_k=candidate_k,
+                page_dedup=page_dedup,
+                content_types=content_types,
                 lancedb_uri=lancedb_uri,
                 table_name=table_name,
                 embed_invoke_url=embed_invoke_url,

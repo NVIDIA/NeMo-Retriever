@@ -1,7 +1,7 @@
 # retriever query
 
 Embed a text query and return the top-k nearest rows from a LanceDB table
-previously written by `retriever ingest` (or any compatible pipeline).
+previously written by `retriever ingest`.
 
 If flags below look stale, re-check `retriever query --help`.
 
@@ -62,8 +62,11 @@ retriever query "gadget costs" | jq '[.[] | select(.metadata | fromjson.type == 
 | Flag | Default | Notes |
 |---|---|---|
 | `--top-k` | `10` | Max hits to return. Must be ≥ 1. |
+| `--candidate-k` | unset | Retrieve a wider candidate pool before final filtering/truncation. |
+| `--page-dedup` | `false` | Collapse results to unique document pages. |
+| `--content-types` | unset | Comma-separated content types to keep, such as `text,table`. |
 | `--lancedb-uri` | `lancedb` | Must match what `ingest` wrote to. |
-| `--table-name` | `nemo-retriever` | Must match what `ingest` wrote to. |
+| `--table-name` | `nv-ingest` | Must match what `ingest` wrote to. |
 
 ## Distance interpretation
 
