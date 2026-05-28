@@ -68,6 +68,7 @@ _SUPPORTED_INPUT_TYPES: tuple[IngestInputTypeValue, ...] = (
 _AUDIO_SPLIT_INTERVAL = 500000
 _VIDEO_FRAME_FPS = 0.5
 _VIDEO_TEXT_DEDUP_MAX_DROPPED_FRAMES = 2
+_DRY_RUN_SECRET_FIELD_PATTERNS = ("api_key", "auth_token", "password", "secret", "credential", "bearer", "token")
 
 
 def _validate_run_mode(run_mode: str) -> IngestRunModeValue:
@@ -209,7 +210,8 @@ def _strip_secret_values(value: Any) -> Any:
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for key, nested in value.items():
-            if "api_key" in key or "auth_token" in key or key == "token":
+            normalized_key = str(key).lower()
+            if any(pattern in normalized_key for pattern in _DRY_RUN_SECRET_FIELD_PATTERNS):
                 out[key] = "<redacted>" if nested else nested
             else:
                 out[key] = _strip_secret_values(nested)
@@ -265,9 +267,10 @@ def _build_asr_params(*, segment_audio: bool | None, needed: bool) -> ASRParams 
         return None
     from nemo_retriever.audio.asr_actor import asr_params_from_env
 
-    return asr_params_from_env().model_copy(
-        update={"segment_audio": bool(segment_audio) if segment_audio is not None else False}
-    )
+    params = asr_params_from_env()
+    if segment_audio is None:
+        return params
+    return params.model_copy(update={"segment_audio": bool(segment_audio)})
 
 
 def _resolve_media_params(
@@ -552,7 +555,12 @@ def resolve_ingest_plan(
     embed_cpus_per_actor: float | None = None,
     embed_gpus_per_actor: float | None = None,
 ) -> ResolvedIngestPlan:
-    """Resolve root ingest options into ordinary params for one extract call."""
+    """Resolve root ingest options into ordinary params for one extract call.
+
+    Root ``retriever ingest`` intentionally defaults to ``run_mode="batch"``.
+    Programmatic callers that need Ray-free local execution should pass
+    ``run_mode="inprocess"`` explicitly.
+    """
 
     validated_run_mode = _validate_run_mode(run_mode)
     validated_profile = _validate_profile(profile)
@@ -757,6 +765,9 @@ def ingest_documents(
     Batch tuning arguments are opt-in and are translated into
     ``BatchTuningParams`` for extraction or embedding; they are meaningful for
     ``run_mode="batch"`` and ignored by callers that leave them unset.
+    Root ``retriever ingest`` intentionally defaults to ``run_mode="batch"``;
+    pass ``run_mode="inprocess"`` explicitly for local debug or CI callers
+    that need to skip Ray startup.
     The legacy ``input_type`` argument constrains directory expansion and file
     validation only; extraction routing remains manifest-planned.
     """

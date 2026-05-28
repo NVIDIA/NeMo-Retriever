@@ -156,7 +156,7 @@ def ingest_command(
     run_mode: IngestRunModeValue = typer.Option(
         "batch",
         "--run-mode",
-        help="Execution mode for the SDK ingestor.",
+        help="Execution mode for the SDK ingestor. Defaults to batch; use inprocess to skip Ray for local debug/CI.",
     ),
     dry_run: bool = typer.Option(
         False,

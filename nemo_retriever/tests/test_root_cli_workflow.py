@@ -384,6 +384,8 @@ def test_root_ingest_help_does_not_expose_input_type() -> None:
     assert "--profile" in result.output
     assert "[auto|fast-text]" in result.output
     assert "--caption" in result.output
+    assert "Defaults to" in result.output
+    assert "[default: batch]" in result.output
     assert re.search(r"--no-caption(?!-)", result.output) is None
 
 

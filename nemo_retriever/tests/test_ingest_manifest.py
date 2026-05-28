@@ -10,7 +10,7 @@ from nemo_retriever.graph import Graph
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.branch_extraction import normalize_ray_branch_datasets
 from nemo_retriever.graph_ingestor import GraphIngestor
-from nemo_retriever.adapters.cli.sdk_workflow import resolve_ingest_plan
+from nemo_retriever.adapters.cli.sdk_workflow import _strip_secret_values, resolve_ingest_plan
 from nemo_retriever.ingest_manifest import (
     build_input_manifest,
     plan_extraction_branches,
@@ -203,6 +203,32 @@ def test_ingest_plan_caption_options_require_caption(tmp_path) -> None:
         resolve_ingest_plan([str(pdf)], caption_invoke_url="http://vlm:8000/v1/chat/completions")
 
 
+def test_dry_run_secret_redaction_covers_common_credential_names() -> None:
+    payload = {
+        "api_key": "nvapi-test",
+        "auth_token": "token-test",
+        "password": "pw-test",
+        "client_secret": "secret-test",
+        "bearer_token": "bearer-test",
+        "credential_path": "/tmp/credentials",
+        "nested": [{"refreshToken": "refresh-test", "plain": "value"}],
+        "safe": "visible",
+    }
+
+    redacted = _strip_secret_values(payload)
+
+    assert redacted == {
+        "api_key": "<redacted>",
+        "auth_token": "<redacted>",
+        "password": "<redacted>",
+        "client_secret": "<redacted>",
+        "bearer_token": "<redacted>",
+        "credential_path": "<redacted>",
+        "nested": [{"refreshToken": "<redacted>", "plain": "value"}],
+        "safe": "visible",
+    }
+
+
 def test_ingest_plan_auto_builds_audio_params(monkeypatch, tmp_path) -> None:
     audio = tmp_path / "clip.wav"
     audio.write_bytes(b"audio")
@@ -217,6 +243,17 @@ def test_ingest_plan_auto_builds_audio_params(monkeypatch, tmp_path) -> None:
     assert plan.asr_params is not None
     assert plan.asr_params.segment_audio is True
     assert plan.video_frame_params is None
+
+
+def test_ingest_plan_preserves_env_asr_segment_audio_when_cli_unset(monkeypatch, tmp_path) -> None:
+    audio = tmp_path / "clip.wav"
+    audio.write_bytes(b"audio")
+    monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=True))
+
+    plan = resolve_ingest_plan([str(audio)])
+
+    assert plan.asr_params is not None
+    assert plan.asr_params.segment_audio is True
 
 
 def test_ingest_plan_auto_builds_video_params(monkeypatch, tmp_path) -> None:

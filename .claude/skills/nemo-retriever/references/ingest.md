@@ -95,7 +95,7 @@ retriever ingest data/multimodal_test.pdf \
 | `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, local VLM captioning is used. |
 | `--caption-context-text-max-chars` | default | Include nearby extracted text in caption prompts. |
 | `--caption-infographics` | default | Caption infographic crops in addition to extracted images. |
-| `--run-mode` | `batch` | `batch` for the SDK batch ingestor; `inprocess` for local debug runs. |
+| `--run-mode` | `batch` | `batch` for the SDK batch ingestor; pass `inprocess` to skip Ray for local debug or CI. |
 | `--dry-run` | `false` | Print the resolved manifest/profile JSON without creating an ingestor. |
 
 ## Pipeline shape
