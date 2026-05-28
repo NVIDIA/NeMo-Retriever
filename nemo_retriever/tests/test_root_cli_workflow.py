@@ -655,7 +655,7 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             retriever_calls.append(kwargs)
 
-        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+        def query(self, query: str) -> list[dict[str, Any]]:
             query_calls.append(query)
             return hits
 
@@ -683,45 +683,6 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
     assert result.output == json.dumps(hits, indent=2, sort_keys=True, default=str) + "\n"
 
 
-def test_root_query_passes_candidate_dedup_and_content_filters(monkeypatch) -> None:
-    query_kwargs: list[dict[str, Any]] = []
-
-    class FakeRetriever:
-        def __init__(self, **_kwargs: Any) -> None:
-            pass
-
-        def query(self, query: str, **kwargs: Any) -> list[dict[str, Any]]:
-            query_kwargs.append(kwargs)
-            return [
-                {"text": "text row", "metadata": {"type": "text"}, "page_number": 1},
-                {"text": "chart row", "metadata": {"type": "chart"}, "page_number": 2},
-            ]
-
-    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
-
-    result = RUNNER.invoke(
-        cli_main.app,
-        [
-            "query",
-            "deployment?",
-            "--top-k",
-            "1",
-            "--candidate-k",
-            "3",
-            "--page-dedup",
-            "--content-types",
-            "text,table",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert query_kwargs == [{"candidate_k": 3, "page_dedup": True, "content_types": "text,table"}]
-    assert json.loads(result.output) == [
-        {"metadata": {"type": "text"}, "page_number": 1, "text": "text row"},
-        {"metadata": {"type": "chart"}, "page_number": 2, "text": "chart row"},
-    ]
-
-
 def test_root_query_passes_embed_options(monkeypatch) -> None:
     retriever_calls: list[dict[str, Any]] = []
     query_calls: list[str] = []
@@ -730,7 +691,7 @@ def test_root_query_passes_embed_options(monkeypatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             retriever_calls.append(kwargs)
 
-        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+        def query(self, query: str) -> list[dict[str, Any]]:
             query_calls.append(query)
             return []
 
@@ -775,7 +736,7 @@ def test_root_query_passes_reranker_url(monkeypatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             retriever_calls.append(kwargs)
 
-        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+        def query(self, query: str) -> list[dict[str, Any]]:
             query_calls.append(query)
             return []
 
@@ -815,7 +776,7 @@ def test_root_query_rerank_flag_enables_local_rerank(monkeypatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             retriever_calls.append(kwargs)
 
-        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+        def query(self, query: str) -> list[dict[str, Any]]:
             return []
 
     monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
@@ -841,7 +802,7 @@ def test_root_query_rerank_off_by_default(monkeypatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             retriever_calls.append(kwargs)
 
-        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+        def query(self, query: str) -> list[dict[str, Any]]:
             return []
 
     monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
@@ -863,7 +824,7 @@ def test_root_query_reranker_model_name_override(monkeypatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             retriever_calls.append(kwargs)
 
-        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+        def query(self, query: str) -> list[dict[str, Any]]:
             return []
 
     monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)

@@ -489,22 +489,6 @@ def ingest_command(
 def query_command(
     query: str = typer.Argument(..., help="Query text."),
     top_k: int = typer.Option(10, "--top-k", min=1, help="Number of hits to retrieve."),
-    candidate_k: int | None = typer.Option(
-        None,
-        "--candidate-k",
-        min=1,
-        help="Retrieve this many candidates before final filtering and truncation.",
-    ),
-    page_dedup: bool = typer.Option(
-        False,
-        "--page-dedup/--no-page-dedup",
-        help="Collapse hits to unique document pages.",
-    ),
-    content_types: str | None = typer.Option(
-        None,
-        "--content-types",
-        help="Comma-separated content types to keep, such as text,table.",
-    ),
     lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
     table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
     embed_invoke_url: str | None = typer.Option(None, "--embed-invoke-url", help="Embedding NIM endpoint URL."),
@@ -548,9 +532,6 @@ def query_command(
             hits = query_documents(
                 query,
                 top_k=top_k,
-                candidate_k=candidate_k,
-                page_dedup=page_dedup,
-                content_types=content_types,
                 lancedb_uri=lancedb_uri,
                 table_name=table_name,
                 embed_invoke_url=embed_invoke_url,

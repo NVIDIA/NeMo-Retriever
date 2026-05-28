@@ -863,9 +863,6 @@ def query_documents(
     query: str,
     *,
     top_k: int = 10,
-    candidate_k: int | None = None,
-    page_dedup: bool = False,
-    content_types: str | Sequence[str] | None = None,
     lancedb_uri: str = "lancedb",
     table_name: str = "nv-ingest",
     embed_invoke_url: str | None = None,
@@ -880,9 +877,6 @@ def query_documents(
     Reranking is opt-in: pass ``rerank=True`` (or any of the rerank-related
     args via the CLI, which implicitly set ``rerank=True``) to enable.
     """
-    if candidate_k is not None and int(candidate_k) < int(top_k):
-        raise ValueError("--candidate-k must be greater than or equal to --top-k.")
-
     embed_kwargs = _build_embed_kwargs(embed_invoke_url, embed_model_name)
     retriever_kwargs: dict[str, Any] = {
         "top_k": top_k,
@@ -897,9 +891,4 @@ def query_documents(
             retriever_kwargs["rerank_kwargs"] = rerank_kwargs
 
     retriever = Retriever(**retriever_kwargs)
-    return retriever.query(
-        query,
-        candidate_k=candidate_k,
-        page_dedup=page_dedup,
-        content_types=content_types,
-    )
+    return retriever.query(query)
