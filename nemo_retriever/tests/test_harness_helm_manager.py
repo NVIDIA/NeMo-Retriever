@@ -1,7 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from nemo_retriever.harness.config import HarnessConfig
 from nemo_retriever.harness.helm_manager import HelmServiceManager
@@ -100,6 +106,24 @@ def test_service_urls_use_forwarded_local_port_and_health_path(tmp_path: Path) -
 
     assert manager.get_service_url() == "http://localhost:17670"
     assert manager.get_service_url("health") == "http://localhost:17670/v1/health"
+
+
+def test_readiness_polling_does_not_swallow_unexpected_errors(monkeypatch, tmp_path: Path) -> None:
+    cfg = _managed_cfg(tmp_path)
+    manager = HelmServiceManager(cfg)
+
+    import nemo_retriever.harness.helm_manager as helm_manager
+
+    monkeypatch.setattr(
+        helm_manager.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad url")),
+    )
+    monkeypatch.setattr(helm_manager.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(helm_manager.time, "time", iter([0.0, 0.0, 2.0]).__next__)
+
+    with pytest.raises(ValueError, match="bad url"):
+        manager._poll_http_200("http://localhost:17670/v1/health", timeout_s=1)
 
 
 def test_main_service_resolution_falls_back_to_gateway_for_split_topology(monkeypatch, tmp_path: Path) -> None:

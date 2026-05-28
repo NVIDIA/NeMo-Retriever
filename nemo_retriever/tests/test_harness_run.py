@@ -1445,3 +1445,56 @@ def test_run_entry_dispatches_managed_service(monkeypatch, tmp_path: Path) -> No
     assert captured["tags"] == ["smoke"]
     assert result["run_name"] == "managed"
     assert result["artifact_dir"] == str((tmp_path / "managed").resolve())
+
+
+def test_managed_service_mode_does_not_mutate_source_config(monkeypatch, tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        run_mode="service",
+        manage_service=True,
+    )
+    captured: dict[str, object] = {}
+
+    class FakeHelmServiceManager:
+        def __init__(self, _cfg: HarnessConfig) -> None:
+            captured["manager_cfg"] = _cfg
+
+        def start(self) -> int:
+            return 0
+
+        def get_service_url(self) -> str:
+            return "http://localhost:17670"
+
+        def dump_logs(self, _artifact_dir: Path) -> int:
+            return 0
+
+        def stop(self, *, uninstall: bool = True) -> int:
+            captured["uninstall"] = uninstall
+            return 0
+
+    def _fake_run_service_mode(_cfg, _artifact_dir, *, run_id, tags=None, skip_local_history=False):
+        captured["service_cfg"] = _cfg
+        return {
+            "success": True,
+            "return_code": 0,
+            "failure_reason": None,
+            "artifacts": {"runtime_metrics_dir": str((_artifact_dir / "runtime_metrics").resolve())},
+        }
+
+    import nemo_retriever.harness.helm_manager as helm_manager
+
+    monkeypatch.setattr(helm_manager, "HelmServiceManager", FakeHelmServiceManager)
+    monkeypatch.setattr(harness_run, "_run_service_mode", _fake_run_service_mode)
+    monkeypatch.setattr(harness_run, "write_json", lambda _path, _payload: None)
+
+    result = harness_run._run_managed_service_mode(cfg, tmp_path, run_id="managed")
+
+    assert result["managed_service"]["service_url"] == "http://localhost:17670"
+    assert cfg.service_url is None
+    assert captured["manager_cfg"] is cfg
+    assert captured["service_cfg"] is not cfg
+    assert captured["service_cfg"].service_url == "http://localhost:17670"

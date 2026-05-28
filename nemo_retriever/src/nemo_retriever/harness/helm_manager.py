@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shlex
 import signal
@@ -15,6 +16,9 @@ from pathlib import Path
 from typing import Any
 
 from nemo_retriever.harness.config import HarnessConfig, NEMO_RETRIEVER_ROOT
+
+
+logger = logging.getLogger(__name__)
 
 
 class HelmServiceManager:
@@ -127,13 +131,13 @@ class HelmServiceManager:
 
         service_name = self.resolve_main_service_name(timeout_s=int(self.config.readiness_timeout))
         if not service_name:
-            print("Readiness timeout. Main service/gateway was not created.")
+            logger.warning("Readiness timeout. Main service/gateway was not created.")
             return 1
 
         try:
             self.start_port_forward(service_name)
         except RuntimeError as exc:
-            print(str(exc))
+            logger.warning("%s", exc)
             return 1
 
         if not self.check_readiness(timeout_s=int(self.config.readiness_timeout)):
@@ -154,7 +158,7 @@ class HelmServiceManager:
         return self._run(self.helm_cmd + ["uninstall", self.release_name, "--namespace", self.namespace])
 
     def _run(self, cmd: list[str]) -> int:
-        print("$ " + self.format_command(cmd))
+        logger.info("$ %s", self.format_command(cmd))
         return subprocess.run(cmd).returncode
 
     def _selector_for_component(self, component: str) -> str:
@@ -188,7 +192,9 @@ class HelmServiceManager:
             time.sleep(interval_s)
         return None
 
-    def start_port_forward(self, service_name: str, *, local_port: int | None = None, remote_port: int | None = None) -> None:
+    def start_port_forward(
+        self, service_name: str, *, local_port: int | None = None, remote_port: int | None = None
+    ) -> None:
         local = int(local_port or self.local_port)
         remote = int(remote_port or self.remote_port)
         self._forwarded_service_name = service_name
@@ -199,7 +205,7 @@ class HelmServiceManager:
             f"service/{service_name}",
             f"{local}:{remote}",
         ]
-        print("$ " + self.format_command(cmd) + " (background)")
+        logger.info("$ %s (background)", self.format_command(cmd))
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -244,10 +250,10 @@ class HelmServiceManager:
                 with urllib.request.urlopen(url, timeout=5) as resp:
                     if resp.status == 200:
                         return True
-            except Exception:
+            except OSError:
                 pass
             time.sleep(interval_s)
-        print(f"Readiness timeout. {url} did not return HTTP 200.")
+        logger.warning("Readiness timeout. %s did not return HTTP 200.", url)
         return False
 
     def check_readiness(self, *, timeout_s: int, interval_s: int = 3) -> bool:
@@ -267,7 +273,7 @@ class HelmServiceManager:
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s + 30)
         if result.returncode != 0:
-            print(f"Warning: chart pod readiness wait returned {result.returncode}: {result.stderr.strip()}")
+            logger.warning("Chart pod readiness wait returned %s: %s", result.returncode, result.stderr.strip())
             return False
         return True
 
@@ -281,7 +287,7 @@ class HelmServiceManager:
                 self.start_port_forward(vectordb_services[0], local_port=vdb_local_port, remote_port=7671)
                 ok = self._poll_http_200(f"http://localhost:{vdb_local_port}/v1/health", timeout_s=timeout_s) and ok
             except RuntimeError as exc:
-                print(f"Warning: VectorDB health check could not start: {exc}")
+                logger.warning("VectorDB health check could not start: %s", exc)
                 ok = False
 
         if not self._crd_exists("nimservices.apps.nvidia.com"):
@@ -330,7 +336,7 @@ class HelmServiceManager:
         ]
         waited = subprocess.run(wait_cmd, capture_output=True, text=True, timeout=timeout_s + 30)
         if waited.returncode != 0:
-            print(f"Warning: {kind} {name} did not become Ready: {waited.stderr.strip()}")
+            logger.warning("%s %s did not become Ready: %s", kind, name, waited.stderr.strip())
             return False
         return True
 

@@ -4,9 +4,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import errno
 from importlib import metadata
 import json
+import logging
 import os
 import pty
 import re
@@ -41,6 +43,7 @@ from nemo_retriever.utils.input_files import resolve_input_files
 
 
 ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+logger = logging.getLogger(__name__)
 
 
 def _collect_gpu_metadata() -> tuple[int | None, str | None]:
@@ -1223,7 +1226,6 @@ def _run_service_mode(
     return result_payload
 
 
-
 def _run_managed_service_mode(
     cfg: HarnessConfig,
     artifact_dir: Path,
@@ -1277,9 +1279,9 @@ def _run_managed_service_mode(
             write_json(artifact_dir / "results.json", result_payload)
             return result_payload
 
-        cfg.service_url = manager.get_service_url()
+        service_cfg = replace(cfg, service_url=manager.get_service_url())
         result = _run_service_mode(
-            cfg,
+            service_cfg,
             artifact_dir,
             run_id=run_id,
             tags=tags,
@@ -1288,7 +1290,7 @@ def _run_managed_service_mode(
         result["managed_service"] = {
             "helm_release": cfg.helm_release,
             "helm_namespace": cfg.helm_namespace or cfg.helm_release,
-            "service_url": cfg.service_url,
+            "service_url": service_cfg.service_url,
             "kept_up": bool(cfg.keep_up),
         }
         if not result.get("success"):
@@ -1309,7 +1311,7 @@ def _run_managed_service_mode(
         try:
             manager.stop(uninstall=not cfg.keep_up)
         except Exception as exc:
-            print(f"Warning: managed Helm cleanup failed: {exc}")
+            logger.warning("Managed Helm cleanup failed: %s", exc)
 
 
 def _run_entry(
@@ -1421,12 +1423,18 @@ def run_command(
         None, "--recall-required/--no-recall-required", help="Override recall-required gate for this run."
     ),
     managed: bool | None = typer.Option(None, "--managed/--no-managed", help="Manage the service with Helm."),
-    keep_up: bool | None = typer.Option(None, "--keep-up/--no-keep-up", help="Keep Helm release running after a managed run."),
+    keep_up: bool | None = typer.Option(
+        None, "--keep-up/--no-keep-up", help="Keep Helm release running after a managed run."
+    ),
     helm_chart: str | None = typer.Option(None, "--helm-chart", help="Helm chart path or remote chart ref."),
     helm_chart_version: str | None = typer.Option(None, "--helm-chart-version", help="Remote Helm chart version."),
     helm_release: str | None = typer.Option(None, "--helm-release", help="Helm release name for managed service."),
-    helm_namespace: str | None = typer.Option(None, "--helm-namespace", help="Kubernetes namespace for managed service."),
-    helm_values_file: str | None = typer.Option(None, "--helm-values-file", help="Helm values file for managed service."),
+    helm_namespace: str | None = typer.Option(
+        None, "--helm-namespace", help="Kubernetes namespace for managed service."
+    ),
+    helm_values_file: str | None = typer.Option(
+        None, "--helm-values-file", help="Helm values file for managed service."
+    ),
     helm_set: list[str] = typer.Option([], "--helm-set", help="Helm value override KEY=VALUE. Repeatable."),
     helm_timeout: int | None = typer.Option(None, "--helm-timeout", help="Helm install/upgrade timeout in seconds."),
     readiness_timeout: int | None = typer.Option(

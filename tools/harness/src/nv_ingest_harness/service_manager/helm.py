@@ -1,5 +1,6 @@
 """Helm service manager implementation."""
 
+import fnmatch
 import json
 import os
 import signal
@@ -198,11 +199,8 @@ class HelmManager(ServiceManager):
         Returns:
             List of matching service names
         """
-        # If no wildcards, return as-is
-        if "*" not in pattern:
-            return [pattern]
-
-        # Query kubectl for services in the namespace
+        # Query kubectl for services in the namespace. Even exact service names
+        # are checked so stale names do not create bogus port-forward wrappers.
         cmd = self.kubectl_cmd + ["get", "services", "-n", self.namespace, "-o", "name"]
 
         try:
@@ -214,13 +212,9 @@ class HelmManager(ServiceManager):
             # Parse output (format: "service/name")
             service_names = [line.split("/")[-1] for line in result.stdout.strip().split("\n") if line]
 
-            # Convert pattern to regex-like matching
-            import re
-
-            regex_pattern = pattern.replace("*", ".*")
-            matches = [svc for svc in service_names if re.search(regex_pattern, svc)]
-
-            return matches
+            if "*" in pattern:
+                return [svc for svc in service_names if fnmatch.fnmatch(svc, pattern)]
+            return [svc for svc in service_names if svc == pattern]
         except Exception as e:
             print(f"Warning: Error finding services: {e}")
             return []
@@ -229,8 +223,7 @@ class HelmManager(ServiceManager):
         """
         Wait for at least one service matching the pattern to appear, then return all matches.
 
-        For patterns without wildcards, returns [pattern] immediately (no wait).
-        For wildcard patterns, polls until matches are found or timeout.
+        Polls until matching services are found or timeout.
 
         Args:
             pattern: Service name or pattern (e.g., "nv-ingest", "*embed*")
@@ -240,9 +233,6 @@ class HelmManager(ServiceManager):
         Returns:
             List of matching service names (may be empty if timeout)
         """
-        if "*" not in pattern:
-            return [pattern]
-
         deadline = time.time() + timeout_s
         attempt = 0
         while time.time() < deadline:
@@ -260,39 +250,86 @@ class HelmManager(ServiceManager):
 
         return []
 
+    def _selector_for_component(self, component: str) -> str:
+        """Return the Helm label selector for a component in this release."""
+        return f"app.kubernetes.io/instance={self.release_name},app.kubernetes.io/component={component}"
+
+    def _find_services_by_selector(self, selector: str) -> list[str]:
+        """Find services matching a Kubernetes label selector."""
+        cmd = self.kubectl_cmd + ["get", "services", "-n", self.namespace, "-l", selector, "-o", "name"]
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                print(f"Warning: Could not list services for selector '{selector}': {result.stderr.strip()}")
+                return []
+
+            return [line.split("/")[-1] for line in result.stdout.strip().split("\n") if line]
+        except Exception as e:
+            print(f"Warning: Error finding services for selector '{selector}': {e}")
+            return []
+
+    def _wait_for_services_by_selector(self, selector: str, timeout_s: int = 120, interval_s: int = 5) -> list[str]:
+        """Wait for at least one service matching a Kubernetes label selector."""
+        deadline = time.time() + timeout_s
+        attempt = 0
+        while time.time() < deadline:
+            attempt += 1
+            service_names = self._find_services_by_selector(selector)
+            if service_names:
+                if attempt > 1:
+                    print(
+                        f"  Found {len(service_names)} service(s) for selector '{selector}' after {attempt} attempt(s)"
+                    )
+                return service_names
+            if attempt == 1:
+                print(
+                    f"Waiting for service(s) matching selector '{selector}' "
+                    f"(timeout: {timeout_s}s, poll every {interval_s}s)..."
+                )
+            time.sleep(interval_s)
+
+        return []
+
     def _start_port_forwards(self) -> None:
         """Start port forwarding for all configured services."""
         # Get port forward configuration
         port_forwards = getattr(self.config, "helm_port_forwards", None)
 
         if not port_forwards:
-            # Default: forward main service only (port 7670)
+            # Default: forward the main nemo-retriever service for this release.
             port_forwards = [
                 {
-                    "service": self.release_name,
+                    "component": "service",
                     "local_port": 7670,
                     "remote_port": 7670,
                 }
             ]
 
-        # Group port forwards by service (after resolving patterns)
+        # Group port forwards by service (after resolving patterns/selectors)
         # Map: service_name -> [(local_port, remote_port), ...]
         service_port_map = {}
 
         for pf_config in port_forwards:
             service_pattern = pf_config.get("service")
+            selector = pf_config.get("selector")
+            component = pf_config.get("component")
             local_port = pf_config.get("local_port")
             remote_port = pf_config.get("remote_port")
 
-            if not all([service_pattern, local_port, remote_port]):
+            if local_port is None or remote_port is None or not any([service_pattern, selector, component]):
                 print(f"Warning: Invalid port forward config: {pf_config}")
                 continue
 
-            # Find matching services (wait for pattern-matched services to appear)
-            service_names = self._wait_for_services_by_pattern(service_pattern)
+            # Find matching services (wait for pattern/selector-matched services to appear).
+            if service_pattern:
+                service_names = self._wait_for_services_by_pattern(service_pattern)
+            else:
+                effective_selector = selector or self._selector_for_component(component)
+                service_names = self._wait_for_services_by_selector(effective_selector)
 
             if not service_names:
-                print(f"Warning: No services found matching pattern '{service_pattern}'")
+                print(f"Warning: No services found for port forward config: {pf_config}")
                 continue
 
             # Add ports to each matching service
@@ -564,7 +601,7 @@ done
         if not port_forwards:
             port_forwards = [
                 {
-                    "service": self.release_name,
+                    "component": "service",
                     "local_port": 7670,
                     "remote_port": 7670,
                 }
@@ -575,14 +612,19 @@ done
 
         for pf in port_forwards:
             service_pattern = pf.get("service")
+            selector = pf.get("selector")
+            component = pf.get("component")
             local = pf.get("local_port")
             remote = pf.get("remote_port")
 
-            if not all([service_pattern, local, remote]):
+            if local is None or remote is None or not any([service_pattern, selector, component]):
                 continue
 
             # Find matching services
-            service_names = self._find_services_by_pattern(service_pattern)
+            if service_pattern:
+                service_names = self._find_services_by_pattern(service_pattern)
+            else:
+                service_names = self._find_services_by_selector(selector or self._selector_for_component(component))
 
             # Add ports to each matching service
             for service_name in service_names:
@@ -722,6 +764,28 @@ done
             print(f"Readiness timeout. Not ready: {', '.join(parts) or 'unknown'}")
         return False
 
+    def _main_service_local_port(self) -> int:
+        """Return the local port configured for the main service port-forward."""
+        port_forwards = getattr(self.config, "helm_port_forwards", None)
+        if not port_forwards:
+            return 7670
+
+        fallback_service_names = {self.release_name, f"{self.release_name}-nemo-retriever"}
+        for pf in port_forwards:
+            local_port = pf.get("local_port")
+            if local_port is None:
+                continue
+
+            if pf.get("component") == "service":
+                return int(local_port)
+
+            service_name = pf.get("service")
+            selector = pf.get("selector")
+            if service_name in fallback_service_names or selector:
+                return int(local_port)
+
+        return 7670
+
     def get_service_url(self, service: str = "api") -> str:
         """
         Get service URL for Helm deployment.
@@ -736,9 +800,10 @@ done
         # For Helm deployments, this is the port-forwarded localhost
         hostname = getattr(self.config, "hostname", "localhost")
 
+        main_port = self._main_service_local_port()
         if service == "health":
-            return f"http://{hostname}:7670/v1/health/ready"
-        return f"http://{hostname}:7670"
+            return f"http://{hostname}:{main_port}/v1/health"
+        return f"http://{hostname}:{main_port}"
 
     def dump_logs(self, artifacts_dir: Path) -> int:
         """
@@ -961,6 +1026,7 @@ done
         "nemoretriever-ocr-v1",
     )
     _NON_INGESTION_DEPLOYMENTS = (
+        "llama-nemotron-rerank-vl-1b-v2",
         "llama-nemotron-rerank-1b-v2",
         "llama-32-nv-rerankqa-1b-v2",
     )
@@ -1008,6 +1074,33 @@ done
         except Exception:
             return set()
 
+    def _get_deployments_by_component(self, component: str) -> set[str]:
+        """Return release deployments matching a nemo-retriever component label."""
+        selector = self._selector_for_component(component)
+        cmd = self.kubectl_cmd + [
+            "get",
+            "deployments",
+            "-n",
+            self.namespace,
+            "-l",
+            selector,
+            "-o",
+            "jsonpath={range .items[*]}{.metadata.name}{'\n'}{end}",
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode != 0:
+                return set()
+            return {n.strip() for n in result.stdout.strip().split("\n") if n.strip()}
+        except Exception:
+            return set()
+
+    def _get_main_deployment_names(self, existing: set[str]) -> list[str]:
+        """Find main retriever deployment names across old and nemo-retriever chart naming."""
+        discovered = self._get_deployments_by_component("service")
+        fallbacks = {self.release_name, f"{self.release_name}-nemo-retriever"}
+        return sorted((discovered | fallbacks) & existing)
+
     def _scale_deployment(self, name: str, replicas: int) -> int:
         """Scale a deployment to the given replica count. Returns 0 on success."""
         cmd = self.kubectl_cmd + [
@@ -1024,10 +1117,7 @@ done
     def stop_ingestion_services(self) -> int:
         """Stop only ingestion-related services (scale to 0) to free VRAM before recall."""
         existing = self._get_existing_deployments()
-        main_name = self.release_name
-        to_stop = ([main_name] if main_name in existing else []) + [
-            d for d in self._INGESTION_DEPLOYMENTS if d in existing
-        ]
+        to_stop = self._get_main_deployment_names(existing) + [d for d in self._INGESTION_DEPLOYMENTS if d in existing]
         if not to_stop:
             return 0
         print("Stopping ingestion-only services (minimize VRAM)...")
@@ -1040,10 +1130,7 @@ done
     def start_ingestion_services(self) -> int:
         """Start ingestion-related services (scale to 1) before the next dataset's e2e."""
         existing = self._get_existing_deployments()
-        main_name = self.release_name
-        to_start = ([main_name] if main_name in existing else []) + [
-            d for d in self._INGESTION_DEPLOYMENTS if d in existing
-        ]
+        to_start = self._get_main_deployment_names(existing) + [d for d in self._INGESTION_DEPLOYMENTS if d in existing]
         if not to_start:
             return 0
         print("Starting ingestion-only services...")
