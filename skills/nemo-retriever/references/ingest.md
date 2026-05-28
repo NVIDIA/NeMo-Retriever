@@ -28,34 +28,34 @@ If flags below look stale, re-check `retriever ingest --help`.
 Ingest a single file into the default table (`lancedb/nv-ingest.lance`):
 
 ```bash
-retriever ingest data/multimodal_test.pdf
+<RETRIEVER_VENV>/bin/retriever ingest data/multimodal_test.pdf
 ```
 
 Ingest a directory of supported files:
 
 ```bash
-retriever ingest data/corpus/
+<RETRIEVER_VENV>/bin/retriever ingest data/corpus/
 ```
 
 Ingest via glob:
 
 ```bash
-retriever ingest "data/**/*"
+<RETRIEVER_VENV>/bin/retriever ingest "data/**/*"
 ```
 
 Force a specific input family:
 
 ```bash
-retriever ingest data/slides/ --input-type doc
-retriever ingest data/images/ --input-type image
-retriever ingest data/audio/ --input-type audio
-retriever ingest data/video/ --input-type video
+<RETRIEVER_VENV>/bin/retriever ingest data/slides/ --input-type doc
+<RETRIEVER_VENV>/bin/retriever ingest data/images/ --input-type image
+<RETRIEVER_VENV>/bin/retriever ingest data/audio/ --input-type audio
+<RETRIEVER_VENV>/bin/retriever ingest data/video/ --input-type video
 ```
 
 Write to a custom DB / table:
 
 ```bash
-retriever ingest data/multimodal_test.pdf \
+<RETRIEVER_VENV>/bin/retriever ingest data/multimodal_test.pdf \
   --lancedb-uri ./my-lancedb \
   --table-name my-corpus
 ```
