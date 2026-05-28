@@ -394,6 +394,36 @@ def test_caption_cpu_actor_default_extra_body_does_not_repack_profile_extras(moc
 
 
 @patch("nemo_retriever.caption.caption._create_remote_client")
+def test_caption_cpu_actor_defaults_to_hosted_endpoint_when_api_key_is_configured(mock_create_client):
+    from nemo_retriever.caption.caption import CaptionCPUActor
+    from nemo_retriever.params import CaptionParams
+
+    mock_nim = MagicMock()
+    mock_nim.infer.return_value = ["remote cap"]
+    mock_create_client.return_value = mock_nim
+
+    actor = CaptionCPUActor(CaptionParams(api_key="nvapi-test"))
+    result = actor.process(_make_page_df(num_images=1))
+
+    assert result.iloc[0]["images"][0]["text"] == "remote cap"
+    mock_create_client.assert_called_once()
+    assert mock_create_client.call_args.args[0] == "https://integrate.api.nvidia.com/v1/chat/completions"
+    infer_kwargs = mock_nim.infer.call_args.kwargs
+    assert infer_kwargs["model_name"] == "nvidia/nemotron-nano-12b-v2-vl"
+
+
+def test_caption_cpu_actor_default_endpoint_requires_api_key(monkeypatch):
+    from nemo_retriever.caption.caption import CaptionCPUActor
+    from nemo_retriever.params import CaptionParams
+
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+
+    with pytest.raises(ValueError, match="no API key is configured"):
+        CaptionCPUActor(CaptionParams())
+
+
+@patch("nemo_retriever.caption.caption._create_remote_client")
 def test_remote_omni_user_extra_body_overrides_profile_defaults(mock_create_client):
     from nemo_retriever.caption.caption import caption_images
 

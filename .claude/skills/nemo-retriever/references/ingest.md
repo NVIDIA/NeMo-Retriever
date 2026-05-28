@@ -92,7 +92,7 @@ retriever ingest data/multimodal_test.pdf \
 | `--table-name` | `nemo-retriever` | LanceDB table to write into. Must match `retriever query`'s table on read. |
 | `--profile` | `auto` | `auto` is normal manifest-routed ingest. `fast-text` disables expensive PDF recall stages for a text-only fallback. |
 | `--caption` | `false` | Optional VLM captioning stage after extraction. Never enabled by profiles. |
-| `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, local VLM captioning is used. |
+| `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, GPU hosts use local captioning; CPU-only runs use the hosted default endpoint. |
 | `--caption-context-text-max-chars` | default | Include nearby extracted text in caption prompts. |
 | `--caption-infographics` | default | Caption infographic crops in addition to extracted images. |
 | `--run-mode` | `batch` | `batch` for the SDK batch ingestor; pass `inprocess` to skip Ray for local debug or CI. |

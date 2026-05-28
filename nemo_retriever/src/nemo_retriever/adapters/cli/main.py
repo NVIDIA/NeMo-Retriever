@@ -263,7 +263,10 @@ def ingest_command(
     caption_invoke_url: str | None = typer.Option(
         None,
         "--caption-invoke-url",
-        help="VLM caption endpoint URL. If omitted with --caption, local VLM captioning is used.",
+        help=(
+            "VLM caption endpoint URL. If omitted with --caption, GPU hosts use local captioning; "
+            "CPU-only runs use the hosted default endpoint."
+        ),
     ),
     caption_model_name: str | None = typer.Option(
         None,
