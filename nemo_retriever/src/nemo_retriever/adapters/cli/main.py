@@ -17,12 +17,9 @@ from pydantic import ValidationError
 import typer
 
 from nemo_retriever.adapters.cli.sdk_workflow import (
-    IngestInputTypeValue,
     IngestRunModeValue,
-    LocalIngestEmbedBackendValue,
     OcrLangValue,
     OcrVersionValue,
-    TableOutputFormatValue,
     ingest_documents,
     query_documents,
 )
@@ -145,12 +142,7 @@ def main() -> None:
 def ingest_command(
     documents: list[str] = typer.Argument(
         ...,
-        help="One or more file paths, directories, or globs to ingest.",
-    ),
-    input_type: IngestInputTypeValue = typer.Option(
-        "auto",
-        "--input-type",
-        help="Input type: auto, pdf, doc, txt, html, image, audio, or video.",
+        help="One or more files, directories, or globs. Supported file types are detected automatically.",
     ),
     lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
     table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
@@ -199,21 +191,11 @@ def ingest_command(
         "--table-structure-invoke-url",
         help="Table-structure NIM endpoint URL.",
     ),
-    table_output_format: TableOutputFormatValue | None = typer.Option(
-        None,
-        "--table-output-format",
-        help="Table text format. 'markdown' enables local table-structure extraction.",
-    ),
     embed_invoke_url: str | None = typer.Option(None, "--embed-invoke-url", help="Embedding NIM endpoint URL."),
     embed_model_name: str | None = typer.Option(
         None,
         "--embed-model-name",
         help="Optional embedding model name override.",
-    ),
-    local_ingest_embed_backend: LocalIngestEmbedBackendValue | None = typer.Option(
-        None,
-        "--local-ingest-embed-backend",
-        help="Local ingest-time text embedder when --embed-invoke-url is unset.",
     ),
     pdf_extract_workers: int | None = typer.Option(
         None,
@@ -251,12 +233,6 @@ def ingest_command(
         min=0.0,
         help="CPUs reserved per page-element detection actor in batch mode.",
     ),
-    page_elements_gpus_per_actor: float | None = typer.Option(
-        None,
-        "--page-elements-gpus-per-actor",
-        min=0.0,
-        help="GPUs reserved per local page-element detection actor in batch mode.",
-    ),
     ocr_workers: int | None = typer.Option(
         None,
         "--ocr-workers",
@@ -274,36 +250,6 @@ def ingest_command(
         "--ocr-cpus-per-actor",
         min=0.0,
         help="CPUs reserved per OCR actor in batch mode.",
-    ),
-    ocr_gpus_per_actor: float | None = typer.Option(
-        None,
-        "--ocr-gpus-per-actor",
-        min=0.0,
-        help="GPUs reserved per local OCR actor in batch mode.",
-    ),
-    table_structure_workers: int | None = typer.Option(
-        None,
-        "--table-structure-workers",
-        min=1,
-        help="Number of Ray actors for table-structure extraction in batch mode.",
-    ),
-    table_structure_batch_size: int | None = typer.Option(
-        None,
-        "--table-structure-batch-size",
-        min=1,
-        help="Table-structure extraction batch size per actor in batch mode.",
-    ),
-    table_structure_cpus_per_actor: float | None = typer.Option(
-        None,
-        "--table-structure-cpus-per-actor",
-        min=0.0,
-        help="CPUs reserved per table-structure actor in batch mode.",
-    ),
-    table_structure_gpus_per_actor: float | None = typer.Option(
-        None,
-        "--table-structure-gpus-per-actor",
-        min=0.0,
-        help="GPUs reserved per local table-structure actor in batch mode.",
     ),
     embed_workers: int | None = typer.Option(
         None,
@@ -323,12 +269,6 @@ def ingest_command(
         min=0.0,
         help="CPUs reserved per embedding actor in batch mode.",
     ),
-    embed_gpus_per_actor: float | None = typer.Option(
-        None,
-        "--embed-gpus-per-actor",
-        min=0.0,
-        help="GPUs reserved per local embedding actor in batch mode.",
-    ),
     quiet: bool = typer.Option(
         False,
         "--quiet",
@@ -347,7 +287,6 @@ def ingest_command(
         with capture:
             summary = ingest_documents(
                 documents,
-                input_type=input_type,
                 run_mode=run_mode,
                 ray_address=ray_address,
                 ray_log_to_driver=ray_log_to_driver,
@@ -360,29 +299,20 @@ def ingest_command(
                 ocr_lang=ocr_lang,
                 graphic_elements_invoke_url=graphic_elements_invoke_url,
                 table_structure_invoke_url=table_structure_invoke_url,
-                table_output_format=table_output_format,
                 embed_invoke_url=embed_invoke_url,
                 embed_model_name=embed_model_name,
-                local_ingest_embed_backend=local_ingest_embed_backend,
                 pdf_extract_workers=pdf_extract_workers,
                 pdf_extract_batch_size=pdf_extract_batch_size,
                 pdf_extract_cpus_per_task=pdf_extract_cpus_per_task,
                 page_elements_workers=page_elements_workers,
                 page_elements_batch_size=page_elements_batch_size,
                 page_elements_cpus_per_actor=page_elements_cpus_per_actor,
-                page_elements_gpus_per_actor=page_elements_gpus_per_actor,
                 ocr_workers=ocr_workers,
                 ocr_batch_size=ocr_batch_size,
                 ocr_cpus_per_actor=ocr_cpus_per_actor,
-                ocr_gpus_per_actor=ocr_gpus_per_actor,
-                table_structure_workers=table_structure_workers,
-                table_structure_batch_size=table_structure_batch_size,
-                table_structure_cpus_per_actor=table_structure_cpus_per_actor,
-                table_structure_gpus_per_actor=table_structure_gpus_per_actor,
                 embed_workers=embed_workers,
                 embed_batch_size=embed_batch_size,
                 embed_cpus_per_actor=embed_cpus_per_actor,
-                embed_gpus_per_actor=embed_gpus_per_actor,
             )
     except _ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)

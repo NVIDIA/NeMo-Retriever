@@ -10,25 +10,13 @@ import logging
 
 from nemo_retriever.ingestor import create_ingestor
 from nemo_retriever.ocr.config import OCRLang, OCRVersion
-from nemo_retriever.params import (
-    AudioChunkParams,
-    AudioVisualFuseParams,
-    BatchTuningParams,
-    EmbedParams,
-    ExtractParams,
-    HtmlChunkParams,
-    TextChunkParams,
-    VdbUploadParams,
-    VideoFrameParams,
-    VideoFrameTextDedupParams,
-)
+from nemo_retriever.params import BatchTuningParams, EmbedParams, ExtractParams, VdbUploadParams
 from nemo_retriever.params.utils import normalize_embed_kwargs
 from nemo_retriever.retriever import Retriever
 from nemo_retriever.utils.input_files import (
     AUTO_INPUT_EXTENSIONS,
     INPUT_TYPE_EXTENSIONS,
     expand_input_file_patterns,
-    input_type_for_path,
     resolve_input_files,
 )
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
@@ -36,8 +24,8 @@ from nemo_retriever.vdb.records import RetrievalHit
 
 logger = logging.getLogger(__name__)
 
-IngestInputTypeValue = Literal["auto", "pdf", "doc", "txt", "html", "image", "audio", "video"]
 IngestRunModeValue = Literal["inprocess", "batch"]
+IngestInputTypeValue = Literal["auto", "pdf", "doc", "txt", "html", "image", "audio", "video"]
 LocalIngestEmbedBackendValue = Literal["vllm", "hf"]
 OcrLangValue = OCRLang
 OcrVersionValue = OCRVersion
@@ -53,8 +41,6 @@ _SUPPORTED_INPUT_TYPES: tuple[IngestInputTypeValue, ...] = (
     "audio",
     "video",
 )
-_AUDIO_SPLIT_INTERVAL = 500000
-_VIDEO_FRAME_FPS = 0.5
 
 
 def _validate_run_mode(run_mode: str) -> IngestRunModeValue:
@@ -69,35 +55,21 @@ def _validate_input_type(input_type: str) -> IngestInputTypeValue:
     return cast(IngestInputTypeValue, input_type)
 
 
-def _input_type_for_extension(path: str) -> IngestInputTypeValue | None:
-    return cast(IngestInputTypeValue | None, input_type_for_path(path))
-
-
-def _validate_ingest_document_types(
-    documents: Sequence[str],
-    *,
-    input_type: IngestInputTypeValue,
-) -> None:
-    allowed = AUTO_INPUT_EXTENSIONS if input_type == "auto" else INPUT_TYPE_EXTENSIONS[input_type]
+# The ingest command accepts bare dataset directories; expand those to supported
+# files before passing file/glob inputs through the shared input normalizer.
+def _validate_ingest_document_types(documents: Sequence[str], *, input_type: IngestInputTypeValue) -> None:
+    allowed_extensions = AUTO_INPUT_EXTENSIONS if input_type == "auto" else INPUT_TYPE_EXTENSIONS[input_type]
     unsupported = [
         document
         for document in documents
-        if not any(ch in str(document) for ch in "*?[") and Path(document).suffix.lower() not in allowed
+        if not any(ch in str(document) for ch in "*?[") and Path(document).suffix.lower() not in allowed_extensions
     ]
     if unsupported:
         examples = ", ".join(unsupported[:3])
-        if input_type == "auto":
-            raise ValueError(f"Unsupported input file type(s) for retriever ingest: {examples}")
-        raise ValueError(f"Input file type(s) do not match --input-type={input_type!r}: {examples}")
+        raise ValueError(f"Unsupported input file type(s) for retriever ingest: {examples}")
 
 
-# The ingest command accepts bare dataset directories; expand those to supported
-# files before passing file/glob inputs through the shared input normalizer.
-def _expand_ingest_documents(
-    documents: Sequence[str],
-    *,
-    input_type: IngestInputTypeValue,
-) -> list[str]:
+def _expand_ingest_documents(documents: Sequence[str], *, input_type: IngestInputTypeValue = "auto") -> list[str]:
     inputs: list[str] = []
     for document in documents:
         raw_document = str(document)
@@ -105,9 +77,7 @@ def _expand_ingest_documents(
         if path.is_dir():
             directory_files = resolve_input_files(path, input_type)
             if not directory_files:
-                if input_type == "auto":
-                    raise FileNotFoundError(f"No supported ingest files found under directory: {path}")
-                raise FileNotFoundError(f"No {input_type} files found under directory: {path}")
+                raise FileNotFoundError(f"No supported ingest files found under directory: {path}")
             inputs.extend(str(file) for file in directory_files)
         else:
             inputs.append(raw_document)
@@ -115,83 +85,6 @@ def _expand_ingest_documents(
     document_list = expand_input_file_patterns(inputs)
     _validate_ingest_document_types(document_list, input_type=input_type)
     return document_list
-
-
-def _resolve_effective_input_type(
-    documents: Sequence[str],
-    *,
-    input_type: IngestInputTypeValue,
-) -> IngestInputTypeValue:
-    if input_type != "auto":
-        return "pdf" if input_type == "doc" else input_type
-
-    observed = {
-        resolved
-        for document in documents
-        if not any(ch in str(document) for ch in "*?[")
-        if (resolved := _input_type_for_extension(str(document))) is not None
-    }
-    if not observed:
-        return "auto"
-    if observed <= {"pdf", "doc"}:
-        return "pdf"
-    if len(observed) == 1:
-        only = next(iter(observed))
-        return "pdf" if only == "doc" else only
-    return "auto"
-
-
-def _default_asr_params() -> Any:
-    from nemo_retriever.audio import asr_params_from_env
-
-    return asr_params_from_env()
-
-
-def _attach_extract_stage(
-    ingestor: Any,
-    *,
-    input_type: IngestInputTypeValue,
-    extract_params: ExtractParams | None,
-) -> Any:
-    if input_type == "pdf":
-        params = extract_params or ExtractParams()
-        return ingestor.extract(params, extraction_mode="pdf")
-    if input_type == "txt":
-        return ingestor.extract_txt(TextChunkParams())
-    if input_type == "html":
-        return ingestor.extract_html(HtmlChunkParams())
-    if input_type == "image":
-        return ingestor.extract_image_files(extract_params or ExtractParams())
-    if input_type == "audio":
-        asr_params = _default_asr_params().model_copy(update={"segment_audio": False})
-        return ingestor.extract_audio(
-            params=AudioChunkParams(split_type="size", split_interval=_AUDIO_SPLIT_INTERVAL),
-            asr_params=asr_params,
-        )
-    if input_type == "video":
-        asr_params = _default_asr_params().model_copy(update={"segment_audio": False})
-        return ingestor.extract_video(
-            params=AudioChunkParams(
-                enabled=True,
-                split_type="size",
-                split_interval=_AUDIO_SPLIT_INTERVAL,
-            ),
-            asr_params=asr_params,
-            video_frame_params=VideoFrameParams(
-                enabled=True,
-                fps=_VIDEO_FRAME_FPS,
-                dedup=True,
-            ),
-            video_text_dedup_params=VideoFrameTextDedupParams(enabled=True, max_dropped_frames=2),
-            av_fuse_params=AudioVisualFuseParams(enabled=True),
-            extract_params=extract_params or ExtractParams(),
-        )
-    return ingestor.extract(
-        extract_params or ExtractParams(),
-        extraction_mode="auto",
-        text_params=TextChunkParams(),
-        html_params=HtmlChunkParams(),
-    )
 
 
 def _build_embed_kwargs(
@@ -313,7 +206,7 @@ def _build_rerank_kwargs(
             rerank_kwargs["api_key"] = api_key
         return rerank_kwargs
 
-    # Local GPU reranker - VL by default to pair with the local VL embedder.
+    # Local GPU reranker — VL by default to pair with the local VL embedder.
     # ``NemotronRerankGPUActor`` loads the model once per actor; the rerank
     # model is ~2 GB and coexists with the vLLM embedder (which respects
     # ``gpu_memory_utilization=0.45``).
@@ -365,16 +258,21 @@ def ingest_documents(
 ) -> dict[str, Any]:
     """Run the root CLI ingestion path through the SDK adapter.
 
+    Input families are inferred from concrete file extensions and routed by
+    the graph ingestor manifest planner; the root CLI intentionally has no
+    user-facing input-type selector.
+
     ``ray_address`` and ``ray_log_to_driver`` are forwarded only when the
     caller sets them, preserving the default ``create_ingestor`` behavior.
     Batch tuning arguments are opt-in and are translated into
     ``BatchTuningParams`` for extraction or embedding; they are meaningful for
     ``run_mode="batch"`` and ignored by callers that leave them unset.
+    The legacy ``input_type`` argument constrains directory expansion and file
+    validation only; extraction routing remains manifest-planned.
     """
     validated_run_mode = _validate_run_mode(run_mode)
     validated_input_type = _validate_input_type(input_type)
     document_list = _expand_ingest_documents(documents, input_type=validated_input_type)
-    effective_input_type = _resolve_effective_input_type(document_list, input_type=validated_input_type)
     extract_kwargs = {
         key: value
         for key, value in {
@@ -431,11 +329,7 @@ def ingest_documents(
         create_kwargs["ray_log_to_driver"] = ray_log_to_driver
 
     ingestor = create_ingestor(**create_kwargs).files(document_list)
-    ingestor = _attach_extract_stage(
-        ingestor,
-        input_type=effective_input_type,
-        extract_params=extract_params,
-    )
+    ingestor = ingestor.extract(extract_params or ExtractParams())
     ingestor = ingestor.embed(embed_params) if embed_params is not None else ingestor.embed()
     result = ingestor.vdb_upload(vdb_params).ingest()
     return {

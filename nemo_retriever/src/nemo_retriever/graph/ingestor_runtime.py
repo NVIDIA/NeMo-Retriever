@@ -249,7 +249,6 @@ def batch_tuning_to_node_overrides(
         _set(TableStructureActor.__name__, "batch_size", ts_bs)
         if ts_bs:
             overrides.setdefault(TableStructureActor.__name__, {})["target_num_rows_per_block"] = ts_bs
-        ts_concurrency: int = 0
         ts_concurrency = _resolve(
             getattr(extract_tuning, "table_structure_workers", None) if extract_tuning is not None else None,
             plan.table_structure_initial_actors if plan else None,
@@ -340,7 +339,7 @@ def batch_tuning_to_node_overrides(
                 + page_elements_concurrency * page_elements_cpus
                 + ocr_concurrency * ocr_cpus
                 + embed_concurrency * embed_cpus
-                + ts_concurrency * ts_cpus
+                + ts_concurrency * 1
                 + ge_concurrency * 1
             )
             pdf_extract_tasks = min(
@@ -495,7 +494,6 @@ def _maybe_append_chunk_actor(graph: Graph, split_config: dict[str, Any], key: s
 def _append_ordered_transform_stages(
     graph: Graph,
     *,
-    extraction_mode: str,
     dedup_params: Any | None,
     caption_params: Any | None,
     store_params: Any | None,
@@ -504,7 +502,7 @@ def _append_ordered_transform_stages(
     webhook_params: Any | None = None,
     stage_order: tuple[str, ...],
     supports_dedup: bool,
-    reshape_for_modal_content: bool,
+    reshape_content_before_embed: bool,
 ) -> Graph:
     """Append post-extraction transform stages in the exact recorded plan order."""
 
@@ -532,8 +530,7 @@ def _append_ordered_transform_stages(
         elif stage_name == "caption" and caption_params is not None:
             graph = graph >> CaptionActor(caption_params)
         elif stage_name == "embed" and embed_params is not None:
-            needs_content_reshape = reshape_for_modal_content and extraction_mode in {"pdf", "image", "auto"}
-            if needs_content_reshape:
+            if reshape_content_before_embed:
                 content_columns = (_CONTENT_COLUMNS + ("images",)) if caption_params is not None else _CONTENT_COLUMNS
                 if embed_params.embed_granularity == "page":
                     graph = graph >> UDFOperator(
@@ -568,6 +565,33 @@ def _append_ordered_transform_stages(
         graph = graph >> WebhookNotifyOperator(params=webhook_params)
 
     return graph
+
+
+def build_post_extract_graph(
+    *,
+    dedup_params: Any | None = None,
+    embed_params: Any | None = None,
+    caption_params: Any | None = None,
+    store_params: Any | None = None,
+    vdb_upload_params: VdbUploadParams | None = None,
+    webhook_params: Any | None = None,
+    stage_order: tuple[str, ...] = (),
+    reshape_content_before_embed: bool = True,
+) -> Graph:
+    """Build only the common stages that run after extraction branch union."""
+
+    return _append_ordered_transform_stages(
+        Graph(),
+        dedup_params=dedup_params,
+        caption_params=caption_params,
+        store_params=store_params,
+        embed_params=embed_params,
+        vdb_upload_params=vdb_upload_params,
+        webhook_params=webhook_params,
+        stage_order=stage_order,
+        supports_dedup=True,
+        reshape_content_before_embed=reshape_content_before_embed,
+    )
 
 
 def build_graph(
@@ -840,7 +864,6 @@ def build_graph(
 
     return _append_ordered_transform_stages(
         graph,
-        extraction_mode=extraction_mode,
         dedup_params=dedup_params,
         caption_params=caption_params,
         store_params=store_params,
@@ -849,7 +872,7 @@ def build_graph(
         webhook_params=webhook_params,
         stage_order=stage_order,
         supports_dedup=True,
-        reshape_for_modal_content=True,
+        reshape_content_before_embed=extraction_mode in {"pdf", "image", "auto"},
     )
 
 

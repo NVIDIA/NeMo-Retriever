@@ -348,10 +348,6 @@ def test_batch_tuning_to_node_overrides_auto_cpu_only_when_no_gpus(ocr_version: 
 
 
 def test_batch_tuning_to_node_overrides_honors_table_structure_tuning() -> None:
-    cluster = ClusterResources(
-        total_resources=Resources(cpu_count=64, gpu_count=8),
-        available_resources=Resources(cpu_count=64, gpu_count=8),
-    )
     extract_params = ExtractParams(
         use_table_structure=True,
         batch_tuning=BatchTuningParams(
@@ -362,15 +358,11 @@ def test_batch_tuning_to_node_overrides_honors_table_structure_tuning() -> None:
         ),
     )
 
-    overrides = batch_tuning_to_node_overrides(
-        extract_params=extract_params,
-        embed_params=None,
-        cluster_resources=cluster,
-    )
+    overrides = batch_tuning_to_node_overrides(extract_params=extract_params, embed_params=None)
 
+    assert overrides["TableStructureActor"]["concurrency"] == 6
     assert overrides["TableStructureActor"]["batch_size"] == 12
     assert overrides["TableStructureActor"]["target_num_rows_per_block"] == 12
-    assert overrides["TableStructureActor"]["concurrency"] == 6
     assert overrides["TableStructureActor"]["num_cpus"] == 0.4
     assert overrides["TableStructureActor"]["num_gpus"] == 0.25
 
