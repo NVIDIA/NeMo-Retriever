@@ -5,12 +5,12 @@ on:
   workflow_dispatch:
     inputs:
       source-branch:
-        description: '*** SOURCE BRANCH *** — Branch to build artifacts from (leave empty to use the branch selected above)'
+        description: 'Branch or tag to build from. When empty, uses `version` if set, else the branch selected in "Run workflow".'
         required: false
         type: string
         default: ''
       version:
-        description: 'Override release version (leave empty to derive from source branch name)'
+        description: 'Release version label (and default checkout ref when source-branch is empty)'
         required: false
         type: string
         default: ''
@@ -54,6 +54,8 @@ jobs:
         run: |
           if [ -n "${{ inputs.source-branch }}" ]; then
             SOURCE_REF="${{ inputs.source-branch }}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            SOURCE_REF="${{ inputs.version }}"
           else
             SOURCE_REF="${{ github.ref_name }}"
           fi
@@ -72,8 +74,12 @@ jobs:
           echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Version | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Source Branch | \`$SOURCE_REF\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Workflow Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Source ref (checkout) | \`$SOURCE_REF\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Workflow branch (workflow file) | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          if [ "$SOURCE_REF" != "${{ github.ref_name }}" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> Artifacts are built from **\`$SOURCE_REF\`**, not from the workflow branch **\`${{ github.ref_name }}\`**. CI script overlay (when refs differ) still uses \`${{ github.ref_name }}\` for \`ci/scripts/\` only." >> $GITHUB_STEP_SUMMARY
+          fi
           echo "| Dry Run | \`${{ inputs.dry-run }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Release Type | \`${{ inputs.release-type }}\` |" >> $GITHUB_STEP_SUMMARY
 
@@ -173,6 +179,7 @@ jobs:
           ref: ${{ needs.determine-version.outputs.source-ref }}
 
       - name: Overlay CI scripts from workflow branch
+        if: ${{ github.ref_name != needs.determine-version.outputs.source-ref }}
         run: |
           git fetch --depth=1 origin "${{ github.ref_name }}"
           git checkout FETCH_HEAD -- ci/scripts/
@@ -279,6 +286,7 @@ jobs:
           ref: ${{ needs.determine-version.outputs.source-ref }}
 
       - name: Overlay CI scripts from workflow branch
+        if: ${{ github.ref_name != needs.determine-version.outputs.source-ref }}
         run: |
           git fetch --depth=1 origin "${{ github.ref_name }}"
           git checkout FETCH_HEAD -- ci/scripts/
