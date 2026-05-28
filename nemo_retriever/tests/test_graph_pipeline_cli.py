@@ -5,6 +5,7 @@
 import sys
 import json
 from types import SimpleNamespace
+from typing import Any
 
 import pandas as pd
 from typer.testing import CliRunner
@@ -486,14 +487,14 @@ def test_graph_pipeline_cli_service_mode_rejects_ingest_flag(tmp_path) -> None:
             str(dataset_dir),
             "--run-mode",
             "service",
-            "--method",
-            "nemoretriever_parse",
+            "--ocr-invoke-url",
+            "http://localhost:9000/v1/infer",
         ],
     )
 
     assert result.exit_code != 0
     assert "--run-mode=service" in result.output
-    assert "--method" in result.output
+    assert "--ocr-invoke-url" in result.output
 
 
 def test_graph_pipeline_cli_service_mode_lists_all_incompatible_flags(tmp_path) -> None:
@@ -507,18 +508,96 @@ def test_graph_pipeline_cli_service_mode_lists_all_incompatible_flags(tmp_path) 
             str(dataset_dir),
             "--run-mode",
             "service",
-            "--method",
-            "nemoretriever_parse",
-            "--text-chunk",
-            "--embed-granularity",
-            "page",
+            "--ocr-invoke-url",
+            "http://localhost:9000/v1/infer",
+            "--ray-address",
+            "ray://localhost:10001",
+            "--caption-device",
+            "cuda:0",
         ],
     )
 
     assert result.exit_code != 0
-    assert "--method" in result.output
-    assert "--text-chunk" in result.output
-    assert "--embed-granularity" in result.output
+    assert "--ocr-invoke-url" in result.output
+    assert "--ray-address" in result.output
+    assert "--caption-device" in result.output
+
+
+def test_graph_pipeline_cli_service_mode_allows_extract_and_embed_flags(tmp_path, monkeypatch) -> None:
+    """Flags whose values flow through to ``ServiceIngestor`` must not be rejected."""
+    import nemo_retriever.service_ingestor as service_ingestor_module
+
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+    save_dir = tmp_path / "save"
+
+    captured: dict[str, Any] = {}
+
+    class _FakeServiceIngestor(list):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__()
+
+        def files(self, _files):
+            return self
+
+        def extract(self, params=None, *, split_config=None, extraction_mode="auto", **_kwargs):
+            captured["extract_params"] = params
+            captured["split_config"] = split_config
+            captured["extraction_mode"] = extraction_mode
+            return self
+
+        def dedup(self, params=None, **_kwargs):
+            captured["dedup_params"] = params
+            return self
+
+        def embed(self, params=None, **_kwargs):
+            captured["embed_params"] = params
+            return self
+
+        def ingest(self, *args, **kwargs):
+            return self
+
+    monkeypatch.setattr(service_ingestor_module, "ServiceIngestor", _FakeServiceIngestor)
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--run-mode",
+            "service",
+            "--service-url",
+            "http://localhost:7670",
+            "--embed-model-name",
+            "nvidia/llama-3.2-nv-embedqa-1b-v2",
+            "--method",
+            "ocr",
+            "--dpi",
+            "300",
+            "--no-extract-text",
+            "--embed-granularity",
+            "page",
+            "--dedup",
+            "--dedup-iou-threshold",
+            "0.6",
+            "--text-chunk",
+            "--text-chunk-max-tokens",
+            "64",
+            "--evaluation-mode",
+            "none",
+            "--save-intermediate",
+            str(save_dir),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["extract_params"].method == "ocr"
+    assert captured["extract_params"].dpi == 300
+    assert captured["extract_params"].extract_text is False
+    assert captured["embed_params"].embed_granularity == "page"
+    assert captured["dedup_params"].iou_threshold == 0.6
+    assert captured["split_config"]["pdf"]["max_tokens"] == 64
 
 
 def test_graph_pipeline_cli_service_mode_rejects_vdb_flags(tmp_path) -> None:
