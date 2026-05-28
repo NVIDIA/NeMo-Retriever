@@ -149,23 +149,12 @@ def test_ingest_plan_auto_profile_preserves_manifest_defaults(tmp_path) -> None:
     assert [branch.family for branch in plan.branches] == ["pdf"]
     assert plan.extract_params.method == "pdfium"
     assert plan.extract_params.dpi == 200
-    assert plan.create_kwargs == {"run_mode": "batch"}
-
-
-def test_ingest_plan_ocr_profile_enables_high_recall_document_defaults(tmp_path) -> None:
-    pdf = tmp_path / "scan.pdf"
-    pdf.write_bytes(b"pdf")
-
-    plan = resolve_ingest_plan([str(pdf)], profile="ocr")
-
-    assert plan.extract_params.method == "ocr"
-    assert plan.extract_params.dpi == 300
-    assert plan.extract_params.extract_text is True
+    assert plan.extract_params.extract_images is True
     assert plan.extract_params.extract_tables is True
     assert plan.extract_params.extract_charts is True
     assert plan.extract_params.extract_infographics is True
-    assert plan.extract_params.extract_page_as_image is True
     assert plan.extract_params.use_page_elements is True
+    assert plan.create_kwargs == {"run_mode": "batch"}
 
 
 def test_ingest_plan_fast_text_profile_is_pdf_text_only(tmp_path) -> None:
@@ -176,6 +165,7 @@ def test_ingest_plan_fast_text_profile_is_pdf_text_only(tmp_path) -> None:
 
     assert plan.extract_params.method == "pdfium"
     assert plan.extract_params.extract_text is True
+    assert plan.extract_params.extract_images is False
     assert plan.extract_params.extract_tables is False
     assert plan.extract_params.extract_charts is False
     assert plan.extract_params.extract_infographics is False
@@ -213,12 +203,12 @@ def test_ingest_plan_caption_options_require_caption(tmp_path) -> None:
         resolve_ingest_plan([str(pdf)], caption_invoke_url="http://vlm:8000/v1/chat/completions")
 
 
-def test_ingest_plan_audio_profile_builds_audio_params(monkeypatch, tmp_path) -> None:
+def test_ingest_plan_auto_builds_audio_params(monkeypatch, tmp_path) -> None:
     audio = tmp_path / "clip.wav"
     audio.write_bytes(b"audio")
     monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
 
-    plan = resolve_ingest_plan([str(audio)], profile="audio", segment_audio=True)
+    plan = resolve_ingest_plan([str(audio)], segment_audio=True)
 
     assert [branch.family for branch in plan.branches] == ["audio"]
     assert plan.audio_chunk_params is not None
@@ -229,15 +219,15 @@ def test_ingest_plan_audio_profile_builds_audio_params(monkeypatch, tmp_path) ->
     assert plan.video_frame_params is None
 
 
-def test_ingest_plan_video_profile_builds_video_params(monkeypatch, tmp_path) -> None:
+def test_ingest_plan_auto_builds_video_params(monkeypatch, tmp_path) -> None:
     video = tmp_path / "scene.mp4"
     video.write_bytes(b"video")
     monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
 
-    plan = resolve_ingest_plan([str(video)], profile="video")
+    plan = resolve_ingest_plan([str(video)])
 
     assert [branch.family for branch in plan.branches] == ["video"]
-    assert plan.extract_params.method == "ocr"
+    assert plan.extract_params.method == "pdfium"
     assert plan.audio_chunk_params is not None
     assert plan.audio_chunk_params.enabled is True
     assert plan.video_frame_params is not None
@@ -249,7 +239,7 @@ def test_ingest_plan_video_profile_builds_video_params(monkeypatch, tmp_path) ->
     assert plan.av_fuse_params.enabled is True
 
 
-def test_ingest_plan_multimodal_profile_allows_mixed_supported_branches(monkeypatch, tmp_path) -> None:
+def test_ingest_plan_auto_allows_mixed_supported_branches(monkeypatch, tmp_path) -> None:
     pdf = tmp_path / "manual.pdf"
     audio = tmp_path / "clip.wav"
     video = tmp_path / "scene.mp4"
@@ -258,27 +248,28 @@ def test_ingest_plan_multimodal_profile_allows_mixed_supported_branches(monkeypa
     video.write_bytes(b"video")
     monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
 
-    plan = resolve_ingest_plan([str(pdf), str(audio), str(video)], profile="multimodal")
+    plan = resolve_ingest_plan([str(pdf), str(audio), str(video)])
 
     assert [branch.family for branch in plan.branches] == ["pdf", "audio", "video"]
-    assert plan.extract_params.method == "ocr"
+    assert plan.extract_params.method == "pdfium"
     assert plan.audio_chunk_params is not None
     assert plan.video_frame_params is not None
 
 
-@pytest.mark.parametrize(
-    ("profile", "filename", "message"),
-    [
-        ("audio", "manual.pdf", "--profile audio only supports audio inputs"),
-        ("video", "clip.wav", "--profile video only supports video inputs"),
-        ("fast-text", "scan.png", "--profile fast-text only supports PDF/document inputs"),
-    ],
-)
-def test_ingest_plan_profiles_validate_input_families(profile: str, filename: str, message: str, tmp_path) -> None:
-    path = tmp_path / filename
+def test_ingest_plan_fast_text_validates_input_family(tmp_path) -> None:
+    path = tmp_path / "scan.png"
     path.write_bytes(b"data")
 
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(ValueError, match="--profile fast-text only supports PDF/document inputs"):
+        resolve_ingest_plan([str(path)], profile="fast-text")
+
+
+@pytest.mark.parametrize("profile", ["ocr", "audio", "video", "multimodal"])
+def test_ingest_plan_rejects_removed_profiles(profile: str, tmp_path) -> None:
+    path = tmp_path / "manual.pdf"
+    path.write_bytes(b"data")
+
+    with pytest.raises(ValueError, match="profile must be one of auto, fast-text"):
         resolve_ingest_plan([str(path)], profile=profile)  # type: ignore[arg-type]
 
 

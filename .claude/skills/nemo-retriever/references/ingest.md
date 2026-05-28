@@ -30,10 +30,10 @@ Ingest a single PDF into the default table (`lancedb/nemo-retriever.lance`):
 retriever ingest data/multimodal_test.pdf
 ```
 
-High-recall OCR/default PDF ingest:
+Default PDF ingest:
 
 ```bash
-retriever ingest data/pdfs/ --profile ocr --quiet
+retriever ingest data/pdfs/ --quiet
 ```
 
 Large text-only PDF fallback:
@@ -45,14 +45,14 @@ retriever ingest data/pdfs/ --profile fast-text --quiet
 Audio and video:
 
 ```bash
-retriever ingest data/audio/ --profile audio --quiet
-retriever ingest data/video/ --profile video --quiet
+retriever ingest data/audio/ --quiet
+retriever ingest data/video/ --quiet
 ```
 
 Optional VLM captioning:
 
 ```bash
-retriever ingest data/pdfs/ --profile ocr --caption \
+retriever ingest data/pdfs/ --caption \
   --caption-invoke-url http://vlm:8000/v1/chat/completions \
   --caption-infographics \
   --quiet
@@ -97,7 +97,7 @@ retriever ingest data/multimodal_test.pdf \
 |---|---|---|
 | `--lancedb-uri` | `lancedb` | Path or URI of the LanceDB database. |
 | `--table-name` | `nv-ingest` | LanceDB table to write into. Must match `retriever query`'s table on read. |
-| `--profile` | `auto` | `ocr`, `fast-text`, `audio`, `video`, and `multimodal` resolve to normal ingest params. |
+| `--profile` | `auto` | `auto` is normal manifest-routed ingest. `fast-text` disables expensive PDF recall stages for a text-only fallback. |
 | `--caption` | `false` | Optional VLM captioning stage after extraction. Never enabled by profiles. |
 | `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, local VLM captioning is used. |
 | `--caption-context-text-max-chars` | default | Include nearby extracted text in caption prompts. |

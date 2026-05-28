@@ -382,6 +382,7 @@ def test_root_ingest_help_does_not_expose_input_type() -> None:
     assert result.exit_code == 0
     assert "--input-type" not in result.output
     assert "--profile" in result.output
+    assert "[auto|fast-text]" in result.output
     assert "--caption" in result.output
     assert re.search(r"--no-caption(?!-)", result.output) is None
 
@@ -403,13 +404,14 @@ def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, 
     assert payload["profile"] == "fast-text"
     assert payload["create_ingestor"] == {"run_mode": "batch"}
     assert payload["extract"]["method"] == "pdfium"
+    assert payload["extract"]["extract_images"] is False
     assert payload["extract"]["use_page_elements"] is False
     assert payload["extract"]["extract_tables"] is False
 
 
-def test_root_ingest_passes_ocr_profile_and_extract_overrides(monkeypatch, tmp_path) -> None:
+def test_root_ingest_passes_extract_overrides_without_ocr_profile(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
-    document = tmp_path / "ocr.pdf"
+    document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
     monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
 
@@ -418,8 +420,6 @@ def test_root_ingest_passes_ocr_profile_and_extract_overrides(monkeypatch, tmp_p
         [
             "ingest",
             str(document),
-            "--profile",
-            "ocr",
             "--method",
             "pdfium",
             "--dpi",
@@ -501,7 +501,7 @@ def test_root_ingest_rejects_caption_options_without_caption(monkeypatch, tmp_pa
     fake_ingestor.embed.assert_not_called()
 
 
-def test_root_ingest_audio_profile_passes_audio_params(monkeypatch, tmp_path) -> None:
+def test_root_ingest_auto_passes_audio_params(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "meeting.wav"
     document.write_bytes(b"audio")
@@ -513,8 +513,6 @@ def test_root_ingest_audio_profile_passes_audio_params(monkeypatch, tmp_path) ->
         [
             "ingest",
             str(document),
-            "--profile",
-            "audio",
             "--segment-audio",
             "--audio-split-type",
             "time",
@@ -532,7 +530,7 @@ def test_root_ingest_audio_profile_passes_audio_params(monkeypatch, tmp_path) ->
     assert kwargs["asr_params"].segment_audio is True
 
 
-def test_root_ingest_video_profile_passes_video_params(monkeypatch, tmp_path) -> None:
+def test_root_ingest_auto_passes_video_params(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "demo.mp4"
     document.write_bytes(b"video")
@@ -544,8 +542,6 @@ def test_root_ingest_video_profile_passes_video_params(monkeypatch, tmp_path) ->
         [
             "ingest",
             str(document),
-            "--profile",
-            "video",
             "--no-video-extract-audio",
             "--video-frame-fps",
             "0.25",
@@ -560,7 +556,7 @@ def test_root_ingest_video_profile_passes_video_params(monkeypatch, tmp_path) ->
     assert result.exit_code == 0
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
-    assert extract_params.method == "ocr"
+    assert extract_params.method == "pdfium"
     kwargs = fake_ingestor.extract.call_args.kwargs
     assert isinstance(kwargs["audio_chunk_params"], AudioChunkParams)
     assert kwargs["audio_chunk_params"].enabled is False
@@ -574,14 +570,14 @@ def test_root_ingest_video_profile_passes_video_params(monkeypatch, tmp_path) ->
     assert kwargs["av_fuse_params"].enabled is False
 
 
-def test_root_ingest_rejects_media_profile_family_mismatch(tmp_path) -> None:
-    document = tmp_path / "not-audio.pdf"
+def test_root_ingest_rejects_removed_profiles(tmp_path) -> None:
+    document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
 
-    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--profile", "audio"])
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--profile", "ocr"])
 
-    assert result.exit_code == 1
-    assert "--profile audio only supports audio inputs" in result.output
+    assert result.exit_code == 2
+    assert "is not one of 'auto', 'fast-text'" in result.output
 
 
 def test_root_ingest_routes_tiff_inputs_by_default_to_auto_planner(monkeypatch, tmp_path) -> None:

@@ -149,7 +149,7 @@ def ingest_command(
     profile: IngestProfileValue = typer.Option(
         "auto",
         "--profile",
-        help="Ingest profile: auto, ocr, fast-text, audio, video, or multimodal.",
+        help="Ingest profile: auto or fast-text.",
     ),
     lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
     table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),

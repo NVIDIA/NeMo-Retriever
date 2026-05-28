@@ -46,14 +46,14 @@ logger = logging.getLogger(__name__)
 
 IngestRunModeValue = Literal["inprocess", "batch"]
 IngestInputTypeValue = Literal["auto", "pdf", "doc", "txt", "html", "image", "audio", "video"]
-IngestProfileValue = Literal["auto", "ocr", "fast-text", "audio", "video", "multimodal"]
+IngestProfileValue = Literal["auto", "fast-text"]
 AudioSplitTypeValue = Literal["size", "time", "frame"]
 LocalIngestEmbedBackendValue = Literal["vllm", "hf"]
 OcrLangValue = OCRLang
 OcrVersionValue = OCRVersion
 TableOutputFormatValue = Literal["pseudo_markdown", "markdown"]
 _SUPPORTED_RUN_MODES: tuple[IngestRunModeValue, ...] = ("inprocess", "batch")
-_SUPPORTED_PROFILES: tuple[IngestProfileValue, ...] = ("auto", "ocr", "fast-text", "audio", "video", "multimodal")
+_SUPPORTED_PROFILES: tuple[IngestProfileValue, ...] = ("auto", "fast-text")
 _SUPPORTED_AUDIO_SPLIT_TYPES: tuple[AudioSplitTypeValue, ...] = ("size", "time", "frame")
 _SUPPORTED_INPUT_TYPES: tuple[IngestInputTypeValue, ...] = (
     "auto",
@@ -241,14 +241,8 @@ def _require_branch_families(
 
 
 def _validate_profile_manifest(profile: IngestProfileValue, branches: Sequence[ExtractionBranchPlan]) -> None:
-    if profile == "ocr":
-        _require_branch_families(profile=profile, branches=branches, allowed={"pdf", "image"}, description="document/image")
-    elif profile == "fast-text":
+    if profile == "fast-text":
         _require_branch_families(profile=profile, branches=branches, allowed={"pdf"}, description="PDF/document")
-    elif profile == "audio":
-        _require_branch_families(profile=profile, branches=branches, allowed={"audio"}, description="audio")
-    elif profile == "video":
-        _require_branch_families(profile=profile, branches=branches, allowed={"video"}, description="video")
 
 
 def _profile_extract_defaults(profile: IngestProfileValue) -> dict[str, Any]:
@@ -256,22 +250,12 @@ def _profile_extract_defaults(profile: IngestProfileValue) -> dict[str, Any]:
         return {
             "method": "pdfium",
             "extract_text": True,
+            "extract_images": False,
             "extract_tables": False,
             "extract_charts": False,
             "extract_infographics": False,
             "extract_page_as_image": False,
             "use_page_elements": False,
-        }
-    if profile in {"ocr", "video", "multimodal"}:
-        return {
-            "method": "ocr",
-            "dpi": 300,
-            "extract_text": True,
-            "extract_tables": True,
-            "extract_charts": True,
-            "extract_infographics": True,
-            "extract_page_as_image": True,
-            "use_page_elements": True,
         }
     return {}
 
