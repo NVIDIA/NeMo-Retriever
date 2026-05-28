@@ -914,6 +914,8 @@ nimOperator:
   # Nemotron OCR v1. Used by the OCR stage of the pipeline.
   ocr:
     enabled: true
+    # NIMService / NIMCache resource name and in-cluster Service DNS label.
+    nimServiceName: nemotron-ocr-v1
     image:
       repository: nvcr.io/nim/nvidia/nemotron-ocr-v1
       tag: "1.3.0"
@@ -1195,6 +1197,6 @@ nimOperator:
         grpcPort: 50051
     env:
       - name: NIM_TAGS_SELECTOR
-        value: "name=parakeet-1-1b-ctc-en-us,mode=ofl"
+        value: "name=parakeet-1-1b-ctc-en-us,mode=str,vad=default,diarizer=disabled"
       - name: NIM_TRITON_LOG_VERBOSE
         value: "1"

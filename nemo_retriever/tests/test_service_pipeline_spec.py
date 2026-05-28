@@ -75,6 +75,32 @@ def test_extract_records_stage_and_params() -> None:
     assert payload["extract_params"]["dpi"] == 300
     assert "page_elements_invoke_url" not in payload["extract_params"]
     assert "api_key" not in payload["extract_params"]
+    assert "use_page_elements" not in payload["extract_params"]
+    assert "batch_tuning" not in payload["extract_params"]
+
+
+def test_extract_params_passes_default_policy_allowlist() -> None:
+    """Regression: public ExtractParams must not send model defaults to nrl-service."""
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing.extract(
+        params=ExtractParams(
+            extract_text=True,
+            extract_images=False,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+        )
+    )
+    spec = PipelineSpec.model_validate(ing._pipeline_spec)
+    validate_pipeline_spec(spec, PipelineOverridesConfig().to_policy())
+    assert set(spec.extract_params) <= {
+        "extract_text",
+        "extract_images",
+        "extract_tables",
+        "extract_charts",
+        "extract_infographics",
+        "table_output_format",
+    }
 
 
 def test_extract_image_files_sets_image_mode() -> None:
