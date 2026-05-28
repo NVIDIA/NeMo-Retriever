@@ -10,7 +10,7 @@ To upgrade the Helm charts for this release, refer to the [NeMo Retriever Librar
 
 Highlights for the 26.05 release include:
 
-### Breaking changes and migration
+### Upgrade notes
 
 - Text splitting for graph and library ingest moved into `.extract(split_config=...)` instead of standalone `.split()` on the graph ingest path (the service ingestor API may still expose `.split()` separately)  
 - Direct `Retriever(...)` construction uses `vdb_kwargs`, `embed_kwargs`, and `rerank` instead of flat `lancedb_uri`, `lancedb_table`, `embedder`, `embedding_endpoint`, `local_query_embed_backend`, and `reranker` arguments  
