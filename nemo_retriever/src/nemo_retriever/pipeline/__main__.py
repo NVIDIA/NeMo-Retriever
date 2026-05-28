@@ -505,6 +505,154 @@ def _build_embed_params(
     )
 
 
+def _service_extraction_mode(input_type: str) -> str:
+    """Map CLI ``--input-type`` to :class:`PipelineSpec` ``extraction_mode``."""
+    return {
+        "pdf": "pdf",
+        "doc": "pdf",
+        "txt": "text",
+        "html": "html",
+        "audio": "audio",
+        "video": "auto",
+    }.get(input_type, "auto")
+
+
+def _service_text_chunk_dict(text_chunk_params: TextChunkParams) -> dict[str, Any]:
+    """Serialize text-chunk knobs allowed by the service split_config policy."""
+    from nemo_retriever.service.policy import _DEFAULT_ALLOWED_SPLIT_KEYS
+
+    raw = text_chunk_params.model_dump(exclude_none=True)
+    return {key: value for key, value in raw.items() if key in _DEFAULT_ALLOWED_SPLIT_KEYS}
+
+
+def _attach_extract_stage(
+    ingestor: Any,
+    *,
+    run_mode: str,
+    input_type: str,
+    extract_params: ExtractParams,
+    enable_text_chunk: bool,
+    text_chunk_params: TextChunkParams,
+    segment_audio: bool,
+    audio_split_type: str,
+    audio_split_interval: int,
+    video_extract_audio: bool,
+    video_extract_frames: bool,
+    video_frame_fps: float,
+    video_frame_dedup: bool,
+    video_frame_text_dedup: bool,
+    video_frame_text_dedup_max_dropped_frames: int,
+    video_av_fuse: bool,
+) -> Any:
+    """Wire the extraction stage for local graph or remote service ingestors."""
+    if enable_text_chunk:
+        chunk_dict = (
+            _service_text_chunk_dict(text_chunk_params) if run_mode == "service" else text_chunk_params.model_dump()
+        )
+    else:
+        chunk_dict = None
+
+    if run_mode == "service":
+        if input_type == "image":
+            return ingestor.extract_image_files(
+                extract_params,
+                split_config={"image": chunk_dict} if chunk_dict else None,
+            )
+        return ingestor.extract(
+            extract_params,
+            split_config=_split_config_for_input_type(input_type, chunk_dict),
+            extraction_mode=_service_extraction_mode(input_type),
+        )
+
+    if not enable_text_chunk:
+        if input_type == "txt":
+            return ingestor.extract_txt(text_chunk_params)
+        if input_type == "html":
+            return ingestor.extract_html(text_chunk_params)
+        if input_type == "image":
+            return ingestor.extract_image_files(extract_params)
+        if input_type == "audio":
+            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+            return ingestor.extract_audio(
+                params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
+                asr_params=asr_params,
+            )
+        if input_type == "video":
+            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+            return ingestor.extract_video(
+                params=AudioChunkParams(
+                    enabled=bool(video_extract_audio),
+                    split_type=audio_split_type,
+                    split_interval=int(audio_split_interval),
+                ),
+                asr_params=asr_params,
+                video_frame_params=VideoFrameParams(
+                    enabled=bool(video_extract_frames),
+                    fps=float(video_frame_fps),
+                    dedup=bool(video_frame_dedup),
+                ),
+                video_text_dedup_params=VideoFrameTextDedupParams(
+                    enabled=bool(video_frame_text_dedup),
+                    max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
+                ),
+                av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
+                extract_params=extract_params,
+            )
+        return ingestor.extract(extract_params)
+
+    if input_type == "txt":
+        return ingestor.extract_txt(text_chunk_params)
+    if input_type == "html":
+        return ingestor.extract_html(text_chunk_params)
+    if input_type == "image":
+        return ingestor.extract_image_files(extract_params, split_config={"image": chunk_dict})
+    if input_type == "audio":
+        asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+        return ingestor.extract_audio(
+            params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
+            asr_params=asr_params,
+            split_config={"audio": chunk_dict},
+        )
+    if input_type == "video":
+        asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
+        return ingestor.extract_video(
+            params=AudioChunkParams(
+                enabled=bool(video_extract_audio),
+                split_type=audio_split_type,
+                split_interval=int(audio_split_interval),
+            ),
+            asr_params=asr_params,
+            video_frame_params=VideoFrameParams(
+                enabled=bool(video_extract_frames),
+                fps=float(video_frame_fps),
+                dedup=bool(video_frame_dedup),
+            ),
+            video_text_dedup_params=VideoFrameTextDedupParams(
+                enabled=bool(video_frame_text_dedup),
+                max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
+            ),
+            av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
+            extract_params=extract_params,
+            split_config={"video": chunk_dict, "audio": chunk_dict},
+        )
+    return ingestor.extract(extract_params, split_config={"pdf": chunk_dict})
+
+
+def _split_config_for_input_type(
+    input_type: str,
+    chunk_dict: Optional[dict[str, Any]],
+) -> Optional[dict[str, Any]]:
+    if chunk_dict is None:
+        return None
+    if input_type in {"pdf", "doc"}:
+        return {"pdf": chunk_dict}
+    if input_type == "audio":
+        return {"audio": chunk_dict}
+    if input_type == "video":
+        return {"video": chunk_dict, "audio": chunk_dict}
+    return None
+
+
 def _parse_vdb_kwargs_json(vdb_kwargs_json: Optional[str]) -> dict[str, Any]:
     """Parse opaque nv-ingest-client VDB constructor kwargs from CLI JSON."""
     if vdb_kwargs_json:
@@ -578,126 +726,75 @@ def _build_ingestor(
         if not resolved_files:
             raise typer.BadParameter("No files matched the input patterns for service mode.")
 
-        return ServiceIngestor(
+        ingestor = ServiceIngestor(
             base_url=service_url,
             max_concurrency=service_concurrency,
             api_token=service_api_token,
         ).files(resolved_files)
-
-    node_overrides: dict[str, dict[str, Any]] = {}
-    if caption_gpus_per_actor is not None:
-        node_overrides["CaptionActor"] = {"num_gpus": caption_gpus_per_actor}
-
-    ingestor = GraphIngestor(
-        run_mode=run_mode,
-        ray_address=ray_address,
-        ray_log_to_driver=ray_log_to_driver,
-        node_overrides=node_overrides or None,
-    )
-    ingestor = ingestor.files(file_patterns)
-
-    # Extraction stage is selected by input type, with split_config threaded
-    # through when text chunking is enabled.
-    if not enable_text_chunk:
-        # Original extraction-only construction.
-        if input_type == "txt":
-            ingestor = ingestor.extract_txt(text_chunk_params)
-        elif input_type == "html":
-            ingestor = ingestor.extract_html(text_chunk_params)
-        elif input_type == "image":
-            ingestor = ingestor.extract_image_files(extract_params)
-        elif input_type == "audio":
-            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
-            ingestor = ingestor.extract_audio(
-                params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
-                asr_params=asr_params,
-            )
-        elif input_type == "video":
-            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
-            ingestor = ingestor.extract_video(
-                params=AudioChunkParams(
-                    enabled=bool(video_extract_audio),
-                    split_type=audio_split_type,
-                    split_interval=int(audio_split_interval),
-                ),
-                asr_params=asr_params,
-                video_frame_params=VideoFrameParams(
-                    enabled=bool(video_extract_frames),
-                    fps=float(video_frame_fps),
-                    dedup=bool(video_frame_dedup),
-                ),
-                video_text_dedup_params=VideoFrameTextDedupParams(
-                    enabled=bool(video_frame_text_dedup),
-                    max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
-                ),
-                av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
-                extract_params=extract_params,
-            )
-        else:
-            ingestor = ingestor.extract(extract_params)
     else:
-        chunk_dict = text_chunk_params.model_dump()
-        if input_type == "txt":
-            ingestor = ingestor.extract_txt(text_chunk_params)
-        elif input_type == "html":
-            ingestor = ingestor.extract_html(text_chunk_params)
-        elif input_type == "image":
-            ingestor = ingestor.extract_image_files(
-                extract_params,
-                split_config={"image": chunk_dict},
-            )
-        elif input_type == "audio":
-            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
-            ingestor = ingestor.extract_audio(
-                params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
-                asr_params=asr_params,
-                split_config={"audio": chunk_dict},
-            )
-        elif input_type == "video":
-            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
-            ingestor = ingestor.extract_video(
-                params=AudioChunkParams(
-                    enabled=bool(video_extract_audio),
-                    split_type=audio_split_type,
-                    split_interval=int(audio_split_interval),
-                ),
-                asr_params=asr_params,
-                video_frame_params=VideoFrameParams(
-                    enabled=bool(video_extract_frames),
-                    fps=float(video_frame_fps),
-                    dedup=bool(video_frame_dedup),
-                ),
-                video_text_dedup_params=VideoFrameTextDedupParams(
-                    enabled=bool(video_frame_text_dedup),
-                    max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
-                ),
-                av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
-                extract_params=extract_params,
-                split_config={"video": chunk_dict, "audio": chunk_dict},
-            )
-        else:
-            ingestor = ingestor.extract(
-                extract_params,
-                split_config={"pdf": chunk_dict},
-            )
+        node_overrides: dict[str, dict[str, Any]] = {}
+        if caption_gpus_per_actor is not None:
+            node_overrides["CaptionActor"] = {"num_gpus": caption_gpus_per_actor}
+
+        ingestor = GraphIngestor(
+            run_mode=run_mode,
+            ray_address=ray_address,
+            ray_log_to_driver=ray_log_to_driver,
+            node_overrides=node_overrides or None,
+        )
+        ingestor = ingestor.files(file_patterns)
+
+    ingestor = _attach_extract_stage(
+        ingestor,
+        run_mode=run_mode,
+        input_type=input_type,
+        extract_params=extract_params,
+        enable_text_chunk=enable_text_chunk,
+        text_chunk_params=text_chunk_params,
+        segment_audio=segment_audio,
+        audio_split_type=audio_split_type,
+        audio_split_interval=audio_split_interval,
+        video_extract_audio=video_extract_audio,
+        video_extract_frames=video_extract_frames,
+        video_frame_fps=video_frame_fps,
+        video_frame_dedup=video_frame_dedup,
+        video_frame_text_dedup=video_frame_text_dedup,
+        video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
+        video_av_fuse=video_av_fuse,
+    )
 
     if enable_dedup:
         ingestor = ingestor.dedup(DedupParams(iou_threshold=dedup_iou_threshold))
 
     if enable_caption:
-        ingestor = ingestor.caption(
-            CaptionParams(
-                endpoint_url=caption_invoke_url,
-                api_key=caption_remote_api_key,
-                model_name=caption_model_name,
-                device=caption_device,
-                context_text_max_chars=caption_context_text_max_chars,
-                gpu_memory_utilization=caption_gpu_memory_utilization,
-                temperature=caption_temperature,
-                top_p=caption_top_p,
-                max_tokens=caption_max_tokens,
+        if run_mode == "service":
+            if caption_invoke_url is not None:
+                logger.warning(
+                    "Ignoring --caption-invoke-url in service mode; the retriever service "
+                    "uses its operator-configured caption endpoint."
+                )
+            ingestor = ingestor.caption(
+                CaptionParams(
+                    context_text_max_chars=caption_context_text_max_chars,
+                    temperature=caption_temperature,
+                    top_p=caption_top_p,
+                    max_tokens=caption_max_tokens,
+                )
             )
-        )
+        else:
+            ingestor = ingestor.caption(
+                CaptionParams(
+                    endpoint_url=caption_invoke_url,
+                    api_key=caption_remote_api_key,
+                    model_name=caption_model_name,
+                    device=caption_device,
+                    context_text_max_chars=caption_context_text_max_chars,
+                    gpu_memory_utilization=caption_gpu_memory_utilization,
+                    temperature=caption_temperature,
+                    top_p=caption_top_p,
+                    max_tokens=caption_max_tokens,
+                )
+            )
 
     ingestor = ingestor.embed(embed_params)
 
