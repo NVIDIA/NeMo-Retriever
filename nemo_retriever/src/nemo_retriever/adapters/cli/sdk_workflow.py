@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Literal, Sequence, cast
+import logging
 
 from nemo_retriever.ingestor import create_ingestor
 from nemo_retriever.ocr.config import OCRLang, OCRVersion
@@ -21,6 +22,7 @@ from nemo_retriever.utils.input_files import (
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 from nemo_retriever.vdb.records import RetrievalHit
 
+logger = logging.getLogger(__name__)
 
 IngestRunModeValue = Literal["inprocess", "batch"]
 IngestInputTypeValue = Literal["auto", "pdf", "doc", "txt", "html", "image", "audio", "video"]
@@ -335,7 +337,26 @@ def ingest_documents(
         "lancedb_uri": lancedb_uri,
         "result": result,
         "table_name": table_name,
+        "n_rows": _count_lancedb_rows(lancedb_uri, table_name),
     }
+
+
+def _count_lancedb_rows(lancedb_uri: str, table_name: str) -> int | None:
+    """Return the actual row count in ``<lancedb_uri>/<table_name>`` or ``None``.
+
+    Best-effort: the CLI surfaces the value purely as a more honest replacement
+    for the legacy "Ingested N document(s)" message (which counted *inputs*, not
+    landed rows). Failures here must never break ingestion — swallow any
+    exception and report ``None``. Tests stub this helper rather than poking a
+    real LanceDB.
+    """
+    try:
+        import lancedb  # local import — keeps the CLI startup snappy
+
+        return int(lancedb.connect(lancedb_uri).open_table(table_name).count_rows())
+    except Exception as exc:  # noqa: BLE001 — diagnostic only
+        logger.debug("could not count rows in %s/%s: %s", lancedb_uri, table_name, exc)
+        return None
 
 
 def query_documents(

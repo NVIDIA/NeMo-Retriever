@@ -318,10 +318,19 @@ def ingest_command(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
-    typer.echo(
-        f"Ingested {len(summary['documents'])} document(s) into LanceDB "
-        f"{summary['lancedb_uri']}/{summary['table_name']}."
-    )
+    # Report input-file count alongside the actual landed-row count from the
+    # LanceDB table — they diverge whenever one document explodes into multiple
+    # chunks (PDFs → page elements, video → audio_visual segments) or
+    # shrinks to zero rows when every NIM call failed. The previous message
+    # only reported inputs and hid both cases. ``n_rows`` is None when the
+    # table read itself failed (caller can still see file count + URI).
+    n_files = len(summary["documents"])
+    table_path = f"{summary['lancedb_uri']}/{summary['table_name']}"
+    n_rows = summary.get("n_rows")
+    if n_rows is None:
+        typer.echo(f"Ingested {n_files} file(s) into LanceDB {table_path} (row count unavailable).")
+    else:
+        typer.echo(f"Ingested {n_files} file(s) → {n_rows} row(s) in LanceDB {table_path}.")
 
 
 @app.command("query")

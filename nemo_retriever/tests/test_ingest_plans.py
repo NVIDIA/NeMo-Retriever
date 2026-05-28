@@ -499,3 +499,74 @@ def test_build_graph_uses_explicit_audio_graph_for_audio_extract_method() -> Non
         node = node.children[0]
 
     assert names == ["MediaChunkActor", "ASRActor"]
+
+
+def _root_names(graph: Graph) -> list[str]:
+    node = graph.roots[0]
+    names: list[str] = []
+    while True:
+        names.append(node.name)
+        if not node.children:
+            return names
+        node = node.children[0]
+
+
+def test_build_graph_pdf_does_not_route_through_audio_when_asr_params_set() -> None:
+    """Regression: a configured ``asr_params`` must not force PDF ingestion
+    through the audio-only ``MediaChunkActor → ASRActor`` graph.
+
+    When the retriever-service's ``serviceConfig.nimEndpoints.audioGrpcEndpoint``
+    is configured, the worker builds an ``ASRParams`` even for PDF uploads
+    (the value is auto-derived from cluster config, not user intent).
+    Previously this short-circuited :func:`build_graph` into the audio-only
+    branch and crashed inside ``MediaChunkActor.__init__`` with
+    ``RuntimeError: MediaChunkActor requires media dependencies; missing:
+    ffmpeg, ffprobe`` — even though the user only uploaded PDFs.
+    """
+    graph = build_graph(
+        extraction_mode="pdf",
+        extract_params=ExtractParams(method="pdfium"),
+        asr_params=ASRParams(audio_endpoints=("audio:50051", None)),
+    )
+
+    names = _root_names(graph)
+    assert "MediaChunkActor" not in names, (
+        f"PDF ingestion must not construct MediaChunkActor when asr_params is "
+        f"only present because the cluster has Parakeet configured. Got: {names}"
+    )
+    assert "ASRActor" not in names
+    assert names[0] == "DocToPdfConversionActor"
+
+
+def test_build_graph_auto_does_not_route_through_audio_when_asr_params_set() -> None:
+    """Same regression for ``extraction_mode='auto'`` (the service default).
+
+    ``MultiTypeExtractOperator`` is responsible for dispatching audio inputs
+    at row level. Forcing the audio-only graph at build time discards every
+    non-audio file in the batch.
+    """
+    graph = build_graph(
+        extraction_mode="auto",
+        extract_params=ExtractParams(method="pdfium"),
+        asr_params=ASRParams(audio_endpoints=("audio:50051", None)),
+    )
+
+    names = _root_names(graph)
+    assert "MediaChunkActor" not in names, (
+        f"extraction_mode='auto' must dispatch through MultiTypeExtractOperator, "
+        f"not the audio-only graph. Got: {names}"
+    )
+    assert names[0] == "MultiTypeExtractOperator"
+
+
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
+def test_build_graph_audio_mode_still_uses_audio_only_graph() -> None:
+    """``extraction_mode='audio'`` must continue to use the audio-only graph."""
+    graph = build_graph(
+        extraction_mode="audio",
+        extract_params=ExtractParams(),
+        audio_chunk_params=AudioChunkParams(),
+        asr_params=ASRParams(audio_endpoints=("audio:50051", None)),
+    )
+
+    assert _root_names(graph)[:2] == ["MediaChunkActor", "ASRActor"]

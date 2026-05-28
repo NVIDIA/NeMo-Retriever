@@ -81,6 +81,7 @@ _DEFAULT_ALLOWED_EXTRACT_KEYS: frozenset[str] = frozenset(
         "extract_infographics",
         "extract_page_as_image",
         "method",
+        "use_page_elements",
         "use_table_structure",
         "table_output_format",
         "use_graphic_elements",

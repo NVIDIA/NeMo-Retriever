@@ -17,9 +17,14 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from nemo_retriever.audio.asr_actor import ASRActor, ASRCPUActor
+from nemo_retriever.audio.asr_actor import ASRActor
+from nemo_retriever.audio.asr_actor import DEFAULT_NGC_ASR_FUNCTION_ID
 from nemo_retriever.audio.asr_actor import apply_asr_to_df
+from nemo_retriever.audio.asr_actor import asr_params_from_env
 from nemo_retriever.params import ASRParams
+
+
+NVCF_GRPC_ENDPOINT = "grpc.nvcf.nvidia.com:443"
 
 
 def test_strip_pad_from_transcript():
@@ -193,7 +198,10 @@ def test_apply_asr_to_df_segment_audio():
 
 
 def test_local_asr_does_not_call_get_client():
-    """When audio_endpoints are both null, ASRActor uses local model and does not call _get_client."""
+    """After the CPU/GPU split the local-Parakeet path is :class:`ASRGPUActor`,
+    which must never touch the remote ``_get_client`` factory."""
+    from nemo_retriever.audio.gpu_actor import ASRGPUActor
+
     mock_model = MagicMock()
     mock_model.transcribe_with_segments.return_value = [("mocked local transcript", [])]
     mock_class = MagicMock(return_value=mock_model)
@@ -204,10 +212,9 @@ def test_local_asr_does_not_call_get_client():
     try:
         with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
             params = ASRParams(audio_endpoints=(None, None))
-            actor = ASRCPUActor(params=params)
+            actor = ASRGPUActor(params=params)
 
             mock_get.assert_not_called()
-            assert actor._client is None
             assert actor._model is mock_model
 
             batch = pd.DataFrame(
@@ -239,8 +246,61 @@ def test_local_asr_does_not_call_get_client():
             sys.modules["nemo_retriever.model.local"] = prev_local
 
 
+def test_asr_params_from_env_default_grpc_endpoint_preserves_nvidia_auth(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+    monkeypatch.delenv("AUDIO_GRPC_ENDPOINT", raising=False)
+    monkeypatch.delenv("AUDIO_FUNCTION_ID", raising=False)
+
+    params = asr_params_from_env(default_grpc_endpoint=NVCF_GRPC_ENDPOINT)
+
+    assert params.audio_endpoints[0] == NVCF_GRPC_ENDPOINT
+    assert params.auth_token == "nvapi-test"
+    assert params.function_id == DEFAULT_NGC_ASR_FUNCTION_ID
+    assert params.audio_infer_protocol == "grpc"
+
+
+def test_asr_params_from_env_without_endpoint_drops_nvidia_auth(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+    monkeypatch.setenv("AUDIO_FUNCTION_ID", "function-test")
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+    monkeypatch.delenv("AUDIO_GRPC_ENDPOINT", raising=False)
+
+    params = asr_params_from_env()
+
+    assert params.audio_endpoints == (None, None)
+    assert params.auth_token is None
+    assert params.function_id is None
+    assert params.audio_infer_protocol == "grpc"
+
+
+def test_asr_cpu_actor_defaults_with_only_nvidia_auth_populate_remote_defaults(monkeypatch):
+    from nemo_retriever.audio.cpu_actor import ASRCPUActor
+
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+    monkeypatch.delenv("AUDIO_GRPC_ENDPOINT", raising=False)
+    monkeypatch.delenv("AUDIO_FUNCTION_ID", raising=False)
+
+    with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+        actor = ASRCPUActor(params=asr_params_from_env())
+
+    mock_get.assert_called_once()
+    assert actor._params.audio_endpoints[0] == NVCF_GRPC_ENDPOINT
+    assert actor._params.auth_token == "nvapi-test"
+    assert actor._params.function_id == DEFAULT_NGC_ASR_FUNCTION_ID
+    assert actor._params.audio_infer_protocol == "grpc"
+
+
 def test_local_asr_apply_asr_to_df():
-    """apply_asr_to_df with audio_endpoints=(None, None) uses local model when mocked."""
+    """apply_asr_to_df with audio_endpoints=(None, None) uses local model when mocked.
+
+    After the ASR CPU/GPU split, the archetype picks the local (GPU) variant
+    only when a GPU is detected, so we advertise one via the centralized
+    ``gather_local_resources`` source — every dispatch site (executor,
+    archetype, resolver, multi-type op) reads through that one attribute.
+    """
+    from nemo_retriever.utils.ray_resource_hueristics import Resources
+
     mock_model = MagicMock()
     mock_model.transcribe_with_segments.return_value = [("apply local text", [])]
     mock_class = MagicMock(return_value=mock_model)
@@ -249,7 +309,10 @@ def test_local_asr_apply_asr_to_df():
     prev_local = sys.modules.get("nemo_retriever.model.local")
     sys.modules["nemo_retriever.model.local"] = mock_local
     try:
-        with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+        with patch(
+            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            return_value=Resources(cpu_count=8, gpu_count=1),
+        ), patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
             batch = pd.DataFrame(
                 [
                     {

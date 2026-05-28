@@ -531,6 +531,93 @@ class TestNemotronParseActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
+    def test_remote_chat_completions_uses_v1_2_protocol(self):
+        from nemo_retriever.parse.nemotron_parse import (
+            NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
+            NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL,
+            nemotron_parse_pages,
+        )
+
+        class _FakeNIMClient:
+            def __init__(self):
+                self.kwargs = None
+
+            def invoke_chat_completions_images(self, **kwargs):
+                self.kwargs = kwargs
+                return ["<x_0><y_0>Hello world<x_1><y_1><class_Text>"]
+
+        client = _FakeNIMClient()
+        df = pd.DataFrame({"page_image": [{"image_b64": "aW1hZ2U="}]})
+
+        result = nemotron_parse_pages(
+            df,
+            invoke_url="http://nemotron-parse:8000/v1/chat/completions",
+            extract_text=True,
+            nim_client=client,
+        )
+
+        assert result["text"].tolist() == ["Hello world"]
+        assert client.kwargs["model"] == NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL
+        assert client.kwargs["task_prompt"] == NEMOTRON_PARSE_DEFAULT_TASK_PROMPT
+        assert client.kwargs["extra_body"] == {"max_tokens": 8192}
+
+    def test_remote_chat_completions_supports_legacy_tool_call_protocol(self):
+        from nemo_retriever.parse.nemotron_parse import nemotron_parse_pages
+
+        class _FakeNIMClient:
+            def __init__(self):
+                self.kwargs = None
+
+            def invoke_chat_completions_images(self, **kwargs):
+                self.kwargs = kwargs
+                return [
+                    '[{"type": "Text", "bbox": {"xmin": 0, "ymin": 0, "xmax": 1, "ymax": 1}, ' '"text": "Legacy text"}]'
+                ]
+
+        client = _FakeNIMClient()
+        df = pd.DataFrame({"page_image": [{"image_b64": "aW1hZ2U="}]})
+
+        result = nemotron_parse_pages(
+            df,
+            invoke_url="http://nemotron-parse:8000/v1/chat/completions",
+            nemotron_parse_model="nvidia/nemotron-parse-v1.1",
+            extract_text=True,
+            nim_client=client,
+        )
+
+        assert result["text"].tolist() == ["Legacy text"]
+        assert client.kwargs["task_prompt"] is None
+        assert client.kwargs["extra_body"] == {
+            "max_tokens": 8192,
+            "tools": [{"type": "function", "function": {"name": "markdown_bbox"}}],
+        }
+
+    def test_remote_chat_completions_does_not_treat_v1_10_as_legacy(self):
+        from nemo_retriever.parse.nemotron_parse import nemotron_parse_pages
+
+        class _FakeNIMClient:
+            def __init__(self):
+                self.kwargs = None
+
+            def invoke_chat_completions_images(self, **kwargs):
+                self.kwargs = kwargs
+                return ["<x_0><y_0>Future text<x_1><y_1><class_Text>"]
+
+        client = _FakeNIMClient()
+        df = pd.DataFrame({"page_image": [{"image_b64": "aW1hZ2U="}]})
+
+        result = nemotron_parse_pages(
+            df,
+            invoke_url="http://nemotron-parse:8000/v1/chat/completions",
+            nemotron_parse_model="nvidia/nemotron-parse-v1.10",
+            extract_text=True,
+            nim_client=client,
+        )
+
+        assert result["text"].tolist() == ["Future text"]
+        assert client.kwargs["task_prompt"] is not None
+        assert client.kwargs["extra_body"] == {"max_tokens": 8192}
+
     @patch("nemo_retriever.parse.nemotron_parse.nemotron_parse_pages", side_effect=RuntimeError("boom"))
     def test_call_error_handling(self, mock_fn):
         actor = self._make()

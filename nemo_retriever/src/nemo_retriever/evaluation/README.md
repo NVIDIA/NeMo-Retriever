@@ -54,7 +54,7 @@ End-to-end bo767 + LanceDB + full-page markdown touches these **artifacts** and 
  Ingest + Embed                 Index       Export           QA Eval
 +-----------------------------+ +--------+  +----------+  +------------------+
 | graph_pipeline              | | Parquet|  | LanceDB  |  | RetrievalLoader  |
-|  --lancedb-uri lancedb      | | -> page|->| queries  |->| >> Generation    |
+|  --vdb-kwargs-json ...      | | -> page|->| queries  |->| >> Generation    |
 |  [--save-intermediate <dir>]| | md idx |  | + pages  |  | >> Judging       |
 | (always: LanceDB output)   | +--------+  | -> JSON  |  | >> Scoring       |
 | (optional: Parquet output)  |             +----------+  +------------------+
@@ -108,7 +108,7 @@ cd /path/to/nemo-retriever
 
 # 1. Ingest + embed + save Parquet in one pass (~45-90 min)
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --lancedb-uri lancedb \
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
   --save-intermediate data/bo767_extracted
 
 # 2. Build page markdown index (~5-10 min)
@@ -142,7 +142,7 @@ cd /path/to/nemo-retriever
 
 # 1. Ingest + embed into LanceDB
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --lancedb-uri lancedb
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}'
 
 # 2. Export retrieval (sub-page chunks, no page index)
 retriever eval export \
@@ -169,7 +169,7 @@ cd /path/to/nemo-retriever
 
 # Single command: ingest -> page index -> LanceDB query -> QA eval
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --lancedb-uri lancedb \
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
   --evaluation-mode qa \
   --eval-config nemo_retriever/examples/eval_sweep.yaml \
   --query-csv data/bo767_annotations.csv \
@@ -269,7 +269,7 @@ to reconstruct full pages and generally yields better results on structured cont
 
 ```bash
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --lancedb-uri lancedb \
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
   --save-intermediate data/bo767_extracted
 ```
 
@@ -283,7 +283,7 @@ markdown.
 
 ```bash
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --lancedb-uri lancedb
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}'
 ```
 
 Output:
@@ -835,7 +835,7 @@ separate `build-page-index` step is needed.
 
 ```bash
 python -m nemo_retriever.examples.graph_pipeline /data/pdfs \
-    --lancedb-uri lancedb \
+    --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
     --evaluation-mode qa \
     --eval-config nemo_retriever/examples/eval_sweep.yaml \
     --query-csv data/bo767_annotations.csv \
@@ -868,10 +868,12 @@ from nemo_retriever.retriever import Retriever
 from nemo_retriever.llm import LiteLLMClient, LLMJudge
 
 retriever = Retriever(
-    lancedb_uri="lancedb",
-    lancedb_table="nemo-retriever",
-    embedder="nvidia/llama-nemotron-embed-1b-v2",
-    embedding_endpoint="https://integrate.api.nvidia.com/v1/embeddings",
+    vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
+    embed_kwargs={
+        "model_name": "nvidia/llama-nemotron-embed-1b-v2",
+        "embed_model_name": "nvidia/llama-nemotron-embed-1b-v2",
+        "embedding_endpoint": "https://integrate.api.nvidia.com/v1/embeddings",
+    },
     top_k=5,
 )
 

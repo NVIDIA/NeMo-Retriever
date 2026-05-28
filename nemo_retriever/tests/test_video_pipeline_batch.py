@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from tests import _have_ffmpeg_binary_for_png_frames
+from tests import _have_media_dependencies_for_jpeg_video_pipeline
 from tests import _make_test_mp4_with_av
 from nemo_retriever.params import (
     ASRParams,
@@ -51,7 +51,10 @@ def test_run_video_pipeline_forces_audio_demux_chunk_params_without_ffmpeg() -> 
         out = op._run_video_pipeline(pd.DataFrame([{"path": "/tmp/video.mp4"}]))
 
     chunk_params = MockChunk.call_args.kwargs["params"]
-    assert chunk_params.audio_only is True
+    # video_asr_audio_chunk_params no longer overrides audio_only; it now
+    # only forces video_audio_separate=False. The caller's audio_only=False
+    # must pass through unchanged.
+    assert chunk_params.audio_only is False
     assert chunk_params.video_audio_separate is False
     assert chunk_params.split_type == "time"
     assert chunk_params.split_interval == 10
@@ -59,8 +62,8 @@ def test_run_video_pipeline_forces_audio_demux_chunk_params_without_ffmpeg() -> 
 
 
 @pytest.mark.skipif(
-    not _have_ffmpeg_binary_for_png_frames(),
-    reason="ffmpeg with PNG encoder required for frame extraction",
+    not _have_media_dependencies_for_jpeg_video_pipeline(),
+    reason="ffmpeg/ffprobe with JPEG encoder required for video pipeline frame extraction",
 )
 def test_run_video_pipeline_emits_audio_frame_and_scene_rows(tmp_path: Path) -> None:
     """End-to-end through MultiTypeExtractOperator._run_video_pipeline.
@@ -124,7 +127,9 @@ def test_run_video_pipeline_emits_audio_frame_and_scene_rows(tmp_path: Path) -> 
         out = op._run_video_pipeline(batch)
 
     chunk_params = MockChunk.call_args.kwargs["params"]
-    assert chunk_params.audio_only is True
+    # audio_only is now caller-controlled (default False here); only
+    # video_audio_separate is forced by video_asr_audio_chunk_params.
+    assert chunk_params.audio_only is False
     assert chunk_params.video_audio_separate is False
 
     assert isinstance(out, pd.DataFrame)

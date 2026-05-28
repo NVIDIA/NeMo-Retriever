@@ -7,7 +7,8 @@ from __future__ import annotations
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
-from nemo_retriever.utils.ray_resource_hueristics import ClusterResources, Resources, gather_local_resources
+from nemo_retriever.utils import ray_resource_hueristics as _rrh
+from nemo_retriever.utils.ray_resource_hueristics import ClusterResources, Resources
 
 
 def resolve_operator_class(
@@ -68,4 +69,4 @@ def resolve_graph(
 
 
 def resolve_graph_for_local_execution(graph: Graph) -> Graph:
-    return resolve_graph(graph, gather_local_resources())
+    return resolve_graph(graph, _rrh.gather_local_resources())

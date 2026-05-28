@@ -54,7 +54,7 @@ Rows that use subcommands other than `ingest`, `query`, or `pipeline` are
 | Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/); **Docker Compose** (unsupported): [`docker.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/HEAD/nemo_retriever/docker.md) |
 | CLI reference | [below](#cli-reference) | Prior `cli-reference` pages under `docs/docs/extraction/` |
 | Client usage walk-through | [below](#client-usage-walk-through) | `client/client_examples/examples/cli_client_usage.ipynb` |
-| PDF split tuning | [Large PDF page batches](#large-pdf-page-batches) below | `docs/docs/extraction/v2-api-guide.md` |
+| PDF pre-splitting | [API guide](../../../docs/docs/extraction/nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest); [Large PDF page batches](#large-pdf-page-batches) below | Prior extraction docs |
 | Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
 
 <!-- --8<-- [start:quickstart] -->
@@ -146,7 +146,7 @@ Or query via the Retriever Python client (`nemo_retriever/README.md`):
 ```python
 from nemo_retriever.retriever import Retriever
 
-retriever = Retriever(lancedb_uri="lancedb", lancedb_table="nv-ingest", top_k=5)
+retriever = Retriever(vdb_kwargs={"uri": "lancedb", "table_name": "nv-ingest"}, top_k=5)
 hits = retriever.query(
     "Given their activities, which animal is responsible for the typos?"
 )
@@ -191,8 +191,10 @@ Results go to LanceDB (`./lancedb`, table `nv-ingest` by default) and, with
 
 ### Text chunking and PDF page batches
 
-Splitting is intrinsic to the pipeline. Control text chunks with `--text-chunk` and
-page-batch sizing with `--pdf-split-batch-size`:
+Splitting is intrinsic to the pipeline. Control text chunks with `--text-chunk`. For
+PDF pre-splitting and `--pdf-split-batch-size`, see
+[PDF pre-splitting](../../../docs/docs/extraction/nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest)
+and [Large PDF page batches](#large-pdf-page-batches):
 
 ```bash
 retriever pipeline run ./data/test.pdf \
@@ -204,6 +206,34 @@ retriever pipeline run ./data/test.pdf \
 
 There is no split-only mode without extraction; narrow flags to text extraction if you
 only need chunk boundaries.
+
+### Nemotron OCR v2 language mode { #nemotron-ocr-v2-language-mode }
+
+The default OCR engine for **local** extraction (Hugging Face weights, no remote
+`--ocr-invoke-url`) is **Nemotron OCR v2**, which runs in **multilingual** mode
+by default (`multi`).
+
+| Flag | Values | Notes |
+|------|--------|-------|
+| `--ocr-lang` | `multi` (default), `english` | v2 only — English-only selector |
+| `--ocr-version` | `v2` (default), `v1` | `v1` is the legacy English-only engine |
+
+```bash
+retriever pipeline run ./data/scanned.pdf \
+  --input-type pdf \
+  --method pdfium_hybrid \
+  --ocr-lang english
+
+retriever ingest ./data/scanned.pdf --ocr-version v1
+```
+
+Set the equivalent `ocr_lang` and `ocr_version` fields on `ExtractParams` (or the
+ingest API) in Python.
+
+Remote OCR NIM endpoints choose their own model and language behavior. Local
+`--ocr-lang` and `--ocr-version` are not sent on remote requests. For hosted
+examples until OCR v2 is published on build.nvidia.com, keep
+`--ocr-invoke-url` pointed at `nemotron-ocr-v1` (see [Quick start](#quick-start)).
 
 ### PDF and Office documents
 

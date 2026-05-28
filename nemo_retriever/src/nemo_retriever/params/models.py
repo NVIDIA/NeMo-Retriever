@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
-RunMode = Literal["inprocess", "batch", "fused", "service"]
+IngestorRunMode = Literal["inprocess", "batch", "service"]
 
 # Pass as an api_key value to suppress auto-resolution from environment variables.
 # Example: EmbedParams(api_key=NO_API_KEY)
@@ -118,6 +118,7 @@ class IngestExecuteParams(_ParamsModel):
     return_failures: bool = False
     save_to_disk: bool = False
     return_traces: bool = False
+    return_results: bool = True
     parallel: bool = False
     max_workers: Optional[int] = None
     gpu_devices: list[str] = Field(default_factory=list)
@@ -150,6 +151,16 @@ class AudioChunkParams(_ParamsModel):
     audio chunking and ASR on a video pipeline — useful for visual-only
     recall benchmarks. ``MediaChunkActor`` ignores this flag for the
     audio-only pipeline since chunking is the whole point there.
+
+    ``audio_only=True`` on a video input extracts only the audio track,
+    runs ASR over it, and skips the visual branch entirely — no frame
+    extraction, no OCR, no audio/visual fusion.
+
+    ``video_audio_separate`` is accepted for compatibility but ignored by
+    ``MediaChunkActor`` on video inputs: this ASR chunking path always demuxes
+    videos to ASR-safe audio chunks and does not emit video-container chunks.
+    Use ``VideoSplitActor`` or the video pipeline when you need audio+visual
+    video processing.
     """
 
     enabled: bool = True
@@ -160,10 +171,20 @@ class AudioChunkParams(_ParamsModel):
 
 
 class ASRParams(_ParamsModel):
-    """Params for ASR (Parakeet/Riva gRPC or local transformers backend)."""
+    """Params for ASR (Parakeet/Riva gRPC or local transformers backend).
+
+    Choice of remote-NIM vs local-model is made by the :class:`ASRActor`
+    archetype (CPU variant = remote, GPU variant = local), not by a flag here.
+    Pass ``audio_endpoints`` to force the remote variant on any host; leave
+    them empty to let the archetype pick GPU (local) when a GPU is present
+    and fall back to remote (NVCF default) when not.
+    """
 
     audio_endpoints: Tuple[Optional[str], Optional[str]] = (None, None)
     audio_infer_protocol: str = "grpc"
+    # ``auto``: streaming (online) for NVCF and Helm Parakeet NIM (``mode=str``).
+    # Set ``offline`` when the NIM uses an offline profile (``mode=ofl``).
+    audio_infer_mode: Literal["auto", "online", "offline"] = "auto"
     function_id: Optional[str] = None
     auth_token: Optional[str] = None
     segment_audio: bool = False
@@ -267,13 +288,6 @@ class BatchTuningParams(_ParamsModel):
     nemotron_parse_batch_size: Optional[int] = None
     store_workers: Optional[int] = None
     inference_batch_size: int = 8
-
-
-class FusedTuningParams(_ParamsModel):
-    fused_workers: int = 1
-    fused_batch_size: int = 64
-    fused_cpus_per_actor: float = 1
-    fused_gpus_per_actor: float = 1.0
 
 
 class GpuAllocationParams(_ParamsModel):
@@ -395,7 +409,6 @@ class EmbedParams(_ParamsModel):
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
-    fused_tuning: FusedTuningParams = Field(default_factory=FusedTuningParams)
 
     @field_validator("local_ingest_embed_backend", mode="before")
     @classmethod

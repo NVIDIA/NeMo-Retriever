@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
@@ -79,6 +80,7 @@ _DEFAULT_PAGE_ELEMENTS_COLUMN = "page_elements_v3"
 _DEFAULT_EMBED_COLUMN = "text_embeddings_1b_v2"
 _ERROR_MESSAGE_LIMIT = 256
 logger = logging.getLogger(__name__)
+_HTTP_STATUS_FIELDS: tuple[str, ...] = ("status_code", "http_status", "status", "code")
 _EXPLICIT_MODE_INPUT_TYPES: dict[str, frozenset[str]] = {
     "pdf": PDF_DOCUMENT_INPUT_TYPES,
     "image": frozenset({"image"}),
@@ -89,12 +91,49 @@ _EXPLICIT_MODE_INPUT_TYPES: dict[str, frozenset[str]] = {
 }
 
 
-class GraphIngestionError(RuntimeError):
-    """Raised when graph ingestion stages report structured row-level errors."""
+@dataclass(frozen=True)
+class _StageDiagnostic:
+    """Resolved diagnostic info for one stage error column.
 
-    def __init__(self, records: list[Any]) -> None:
+    The :class:`GraphIngestor` builds one of these per remote-NIM column
+    at error-raising time so the formatter can attribute each row-level
+    error to a concrete stage, NIM URL, and (when present in the payload)
+    HTTP status code. ``display_name`` and ``invoke_url`` are best-effort:
+    when the caller raises :class:`GraphIngestionError` directly (without
+    the resolver), they fall back to ``None`` and the formatter renders
+    the legacy ``row N, column X`` shape.
+    """
+
+    column: str
+    display_name: str
+    invoke_url: str | None
+    model_name: str | None = None
+    role: str | None = None
+
+
+class GraphIngestionError(RuntimeError):
+    """Raised when graph ingestion stages report structured row-level errors.
+
+    The exception message is built to be self-diagnosing: when the
+    caller provides ``stage_diagnostics`` (a mapping from the dataframe
+    column the error landed in to a :class:`_StageDiagnostic` describing
+    the originating NIM), each row in the rendered message names the
+    stage and the configured invoke URL, and the message gains a
+    ``Troubleshooting:`` footer with concrete next steps for the
+    observed (stage, HTTP status) tuples.
+
+    Backwards compatible signature: ``GraphIngestionError(records)``
+    still works and produces the legacy message shape.
+    """
+
+    def __init__(
+        self,
+        records: list[Any],
+        stage_diagnostics: dict[str, _StageDiagnostic] | None = None,
+    ) -> None:
         self.records = records
-        super().__init__(_format_stage_error_message(records))
+        self.stage_diagnostics = dict(stage_diagnostics) if stage_diagnostics else {}
+        super().__init__(_format_stage_error_message(records, self.stage_diagnostics))
 
 
 def _normalize_stage_error_record(record: Any) -> dict[str, Any] | None:
@@ -109,26 +148,177 @@ def _normalize_stage_error_record(record: Any) -> dict[str, Any] | None:
     return record
 
 
-def _format_stage_error_message(records: list[Any]) -> str:
+def _format_stage_error_message(
+    records: list[Any],
+    stage_diagnostics: dict[str, _StageDiagnostic] | None = None,
+) -> str:
     limit = 5
-    details = []
+    diagnostics = stage_diagnostics or {}
+    details: list[str] = []
+    observed_status_codes: dict[str, set[int | None]] = {}
+
     for raw in records[:limit]:
         record = _normalize_stage_error_record(raw)
         if record is None:
             continue
+        column = record.get("column")
+        diag = diagnostics.get(column) if isinstance(column, str) else None
+        status_code = _extract_http_status_code(record.get("error"))
+        if isinstance(column, str):
+            observed_status_codes.setdefault(column, set()).add(status_code)
+        stage_prefix = _render_stage_prefix(diag, status_code)
         details.append(
-            "row {row_index}, column {column}, path {path}: {summary}".format(
+            "row {row_index}, column {column}{stage}, path {path}: {summary}".format(
                 row_index=record.get("row_index"),
-                column=record.get("column"),
+                column=column,
+                stage=stage_prefix,
                 path=record.get("path"),
                 summary=_summarize_error_payload(record.get("error")),
             )
         )
+
     more = "" if len(records) <= limit else f" ({len(records) - limit} more)"
-    return (
-        "Graph ingestion detected row-level errors from an explicitly configured remote NIM endpoint"
+    troubleshooting = _format_troubleshooting_footer(
+        records=records,
+        diagnostics=diagnostics,
+        observed_status_codes=observed_status_codes,
+    )
+    body = (
+        "Graph ingestion detected row-level errors from an explicitly "
+        "configured remote NIM endpoint"
         f"{more}. " + "; ".join(details)
     )
+    if troubleshooting:
+        body = body + " " + troubleshooting
+    return body
+
+
+def _render_stage_prefix(diag: _StageDiagnostic | None, status_code: int | None) -> str:
+    """Build the bracketed ``[stage=… url=… http=…]`` suffix per row."""
+    parts: list[str] = []
+    if diag is not None:
+        parts.append(f"stage={diag.display_name}")
+        if diag.invoke_url:
+            parts.append(f"url={diag.invoke_url}")
+    if status_code is not None:
+        parts.append(f"http={status_code}")
+    if not parts:
+        return ""
+    return " [" + " ".join(parts) + "]"
+
+
+def _format_troubleshooting_footer(
+    *,
+    records: list[Any],
+    diagnostics: dict[str, _StageDiagnostic],
+    observed_status_codes: dict[str, set[int | None]],
+) -> str:
+    """Build a ``Troubleshooting:`` footer keyed off (stage, status) pairs.
+
+    Surfaces actionable next steps for the most common remote-NIM
+    failure modes (network unreachable, auth, 4xx vs 5xx). When no
+    diagnostics are available the footer is omitted to avoid printing
+    generic advice next to the legacy message shape.
+    """
+    if not diagnostics:
+        return ""
+
+    hints: list[str] = []
+    seen_columns: set[str] = set()
+    for raw in records:
+        record = _normalize_stage_error_record(raw)
+        if record is None:
+            continue
+        column = record.get("column")
+        if not isinstance(column, str) or column in seen_columns:
+            continue
+        seen_columns.add(column)
+        diag = diagnostics.get(column)
+        if diag is None:
+            continue
+        statuses = observed_status_codes.get(column, set())
+        hint = _hint_for_stage(diag, statuses)
+        if hint:
+            hints.append(hint)
+
+    if not hints:
+        return ""
+    return "Troubleshooting: " + " ".join(hints)
+
+
+def _hint_for_stage(diag: _StageDiagnostic, statuses: set[int | None]) -> str:
+    """Return a one-line, actionable hint for *diag* given observed *statuses*."""
+    bucket = _classify_status_codes(statuses)
+    url_clause = f" at {diag.invoke_url}" if diag.invoke_url else ""
+    name = diag.display_name
+
+    if bucket == "auth":
+        return (
+            f"{name}{url_clause} returned an auth error \u2014 verify "
+            "NGC_API_KEY / NVIDIA_API_KEY is set on the service pod and "
+            "that the NIM accepts the same credentials."
+        )
+    if bucket == "client":
+        return (
+            f"{name}{url_clause} returned a 4xx client error \u2014 "
+            "check the request payload shape (file format, page size, "
+            "model name) against the NIM's expected input schema."
+        )
+    if bucket == "server":
+        return (
+            f"{name}{url_clause} returned a 5xx server error \u2014 "
+            "inspect the NIM pod logs, GPU memory, and readiness "
+            "probes; the upstream model may be saturated or crashed."
+        )
+    return (
+        f"{name}{url_clause} reported a row-level error \u2014 verify "
+        "the NIM is reachable from the retriever service pod "
+        f"(e.g. `kubectl exec ... -- curl -sS {diag.invoke_url or '<invoke_url>'}` "
+        "should return a non-empty response) and that its readiness "
+        "endpoint is healthy."
+    )
+
+
+def _classify_status_codes(statuses: set[int | None]) -> str:
+    """Bucket a set of observed HTTP statuses into one diagnostic class."""
+    concrete = {s for s in statuses if isinstance(s, int)}
+    if any(s in (401, 403) for s in concrete):
+        return "auth"
+    if any(500 <= s < 600 for s in concrete):
+        return "server"
+    if any(400 <= s < 500 for s in concrete):
+        return "client"
+    return "generic"
+
+
+def _extract_http_status_code(error: Any) -> int | None:
+    """Return the first HTTP status integer found in common error payloads."""
+    if isinstance(error, dict):
+        for field in _HTTP_STATUS_FIELDS:
+            value = error.get(field)
+            coerced = _coerce_status_int(value)
+            if coerced is not None:
+                return coerced
+        for nested in error.values():
+            if isinstance(nested, dict):
+                code = _extract_http_status_code(nested)
+                if code is not None:
+                    return code
+    return None
+
+
+def _coerce_status_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        # ``True``/``False`` would otherwise coerce to 1/0 via int().
+        return None
+    if isinstance(value, int):
+        return value if 100 <= value < 1000 else None
+    if isinstance(value, str):
+        text = value.strip()
+        if text.isdigit():
+            code = int(text)
+            return code if 100 <= code < 1000 else None
+    return None
 
 
 def _summarize_error_payload(error: Any) -> str:
@@ -333,7 +523,21 @@ class GraphIngestor(ingestor):
         :class:`MultiTypeExtractOperator`.
         Chunking is opt-in: pass ``split_config={"<key>": {...}}`` to enable
         post-extract token chunking for that source type.
+
+        Unknown ``**kwargs`` raise :class:`TypeError`. Only fields declared
+        on :class:`ExtractParams` are accepted as extra kwargs; ASR / audio
+        configuration belongs on :class:`ASRParams` (pass ``asr_params=``
+        or use :meth:`extract_audio`).
         """
+        unknown = set(kwargs) - set(ExtractParams.model_fields)
+        if unknown:
+            raise TypeError(
+                f"extract() got unexpected keyword argument(s) {sorted(unknown)!r}. "
+                f"Allowed extra kwargs must be fields of ExtractParams. "
+                f"For ASR / audio configuration, pass asr_params=ASRParams(...) "
+                f"or use .extract_audio(asr_params=ASRParams(...)) "
+                f"(see docs/extraction/audio-video.md)."
+            )
         self._extraction_mode = extraction_mode
         self._extract_params = _resolve_api_key(_coerce(params, kwargs, default_factory=ExtractParams))
         if text_params is not None:
@@ -764,11 +968,19 @@ class GraphIngestor(ingestor):
         classified = self._classified_input_paths()
         if extraction_mode is not None:
             self._validate_explicit_extraction_mode_inputs(extraction_mode, classified)
+            text_params = self._text_params
+            html_params = self._html_params
+            if extraction_mode == "auto":
+                observed_input_types = {input_type for _, input_type in classified if input_type is not None}
+                if "txt" in observed_input_types:
+                    text_params = text_params or TextChunkParams()
+                if "html" in observed_input_types:
+                    html_params = html_params or HtmlChunkParams()
             return ResolvedExtractionInputs(
                 extraction_mode=extraction_mode,
                 extract_params=self._extract_params,
-                text_params=self._text_params,
-                html_params=self._html_params,
+                text_params=text_params,
+                html_params=html_params,
                 audio_chunk_params=self._audio_chunk_params,
                 asr_params=self._asr_params,
                 video_frame_params=self._video_frame_params,
@@ -890,33 +1102,89 @@ class GraphIngestor(ingestor):
         return any(cls._is_configured(cls._param_value(params, field)) for field in fields)
 
     def _remote_stage_error_columns(self) -> set[str]:
-        columns: set[str] = set()
+        """Backwards-compatible thin shim over :meth:`_remote_stage_diagnostics`.
 
-        if self._params_has_configured_field(self._extract_params, ("page_elements_invoke_url",)):
-            columns.add(self._param_value(self._extract_params, "output_column") or _DEFAULT_PAGE_ELEMENTS_COLUMN)
-        if self._params_has_configured_field(self._extract_params, ("ocr_invoke_url",)):
-            columns.add("ocr")
-        if self._params_has_configured_field(self._extract_params, ("table_structure_invoke_url",)):
-            columns.add("table_structure_ocr_v1")
-        if self._params_has_configured_field(self._extract_params, ("graphic_elements_invoke_url",)):
-            columns.add("graphic_elements_ocr_v1")
-        if self._params_has_configured_field(self._extract_params, ("invoke_url", "nemotron_parse_invoke_url")):
-            columns.add("nemotron_parse_v1_2")
+        Older callers (and existing tests) consume the set of columns
+        the strict-error-policy will gate on. The richer
+        :meth:`_remote_stage_diagnostics` mapping carries the same set
+        of keys plus per-stage NIM URL / display-name diagnostics that
+        :class:`GraphIngestionError` uses to format actionable messages.
+        """
+        return set(self._remote_stage_diagnostics().keys())
 
+    def _remote_stage_diagnostics(self) -> dict[str, _StageDiagnostic]:
+        """Build a column → :class:`_StageDiagnostic` map for remote-NIM stages.
+
+        Only stages that have an explicitly configured invoke URL appear
+        here — the ``"raise"`` error policy is scoped to remote endpoints
+        the operator opted into. The map's keys are the dataframe column
+        names emitted by each stage; the values carry the resolved
+        display name and URL so :class:`GraphIngestionError` can render
+        ``stage=… url=…`` per row and a ``Troubleshooting:`` footer.
+        """
+        diagnostics: dict[str, _StageDiagnostic] = {}
+
+        extract = self._extract_params
+        if self._params_has_configured_field(extract, ("page_elements_invoke_url",)):
+            column = self._param_value(extract, "output_column") or _DEFAULT_PAGE_ELEMENTS_COLUMN
+            diagnostics[column] = _StageDiagnostic(
+                column=column,
+                display_name="Page Elements NIM",
+                invoke_url=self._param_value(extract, "page_elements_invoke_url"),
+                role="page_elements",
+            )
+        if self._params_has_configured_field(extract, ("ocr_invoke_url",)):
+            diagnostics["ocr"] = _StageDiagnostic(
+                column="ocr",
+                display_name="OCR NIM",
+                invoke_url=self._param_value(extract, "ocr_invoke_url"),
+                role="ocr",
+            )
+        if self._params_has_configured_field(extract, ("table_structure_invoke_url",)):
+            diagnostics["table_structure_ocr_v1"] = _StageDiagnostic(
+                column="table_structure_ocr_v1",
+                display_name="Table Structure NIM",
+                invoke_url=self._param_value(extract, "table_structure_invoke_url"),
+                role="table_structure",
+            )
+        if self._params_has_configured_field(extract, ("graphic_elements_invoke_url",)):
+            diagnostics["graphic_elements_ocr_v1"] = _StageDiagnostic(
+                column="graphic_elements_ocr_v1",
+                display_name="Graphic Elements NIM",
+                invoke_url=self._param_value(extract, "graphic_elements_invoke_url"),
+                role="graphic_elements",
+            )
+        if self._params_has_configured_field(extract, ("invoke_url", "nemotron_parse_invoke_url")):
+            url = self._param_value(extract, "nemotron_parse_invoke_url") or self._param_value(extract, "invoke_url")
+            diagnostics["nemotron_parse_v1_2"] = _StageDiagnostic(
+                column="nemotron_parse_v1_2",
+                display_name="Nemotron Parse NIM",
+                invoke_url=url,
+                role="nemotron_parse",
+            )
         if self._params_has_configured_field(self._embed_params, _REMOTE_EMBED_ENDPOINT_FIELDS):
-            columns.add(self._param_value(self._embed_params, "output_column") or _DEFAULT_EMBED_COLUMN)
-
-        return columns
+            column = self._param_value(self._embed_params, "output_column") or _DEFAULT_EMBED_COLUMN
+            url = self._param_value(self._embed_params, "embed_invoke_url") or self._param_value(
+                self._embed_params, "embedding_endpoint"
+            )
+            diagnostics[column] = _StageDiagnostic(
+                column=column,
+                display_name="Embedding NIM",
+                invoke_url=url,
+                model_name=self._param_value(self._embed_params, "model_name"),
+                role="embed",
+            )
+        return diagnostics
 
     def _raise_for_stage_errors(self, result: Any) -> None:
         if self._error_policy == "collect":
             return
-        remote_columns = self._remote_stage_error_columns()
-        if not remote_columns:
+        diagnostics = self._remote_stage_diagnostics()
+        if not diagnostics:
             return
-        records = self._stage_error_records(result, columns=remote_columns)
+        records = self._stage_error_records(result, columns=set(diagnostics.keys()))
         if records:
-            raise GraphIngestionError(records)
+            raise GraphIngestionError(records, stage_diagnostics=diagnostics)
 
     @staticmethod
     def extract_error_rows(batch: Any) -> Any:

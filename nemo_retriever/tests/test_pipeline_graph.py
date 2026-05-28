@@ -518,8 +518,10 @@ class TestGraphExecute:
 
     def test_execute_resolves_archetypes_locally(self, monkeypatch):
         resources = Resources(cpu_count=8, gpu_count=0)
-        monkeypatch.setattr("nemo_retriever.graph.operator_resolution.gather_local_resources", lambda: resources)
-        monkeypatch.setattr("nemo_retriever.graph.operator_archetype.gather_local_resources", lambda: resources)
+        monkeypatch.setattr(
+            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            lambda: resources,
+        )
 
         g = Graph() >> AdaptiveAddOperator(5)
 
@@ -744,7 +746,7 @@ class TestMultiTypeExtractOperator:
 
         monkeypatch.setattr("nemo_retriever.graph.multi_type_extract_operator.resolve_operator_class", _fake_resolve)
         monkeypatch.setattr(
-            "nemo_retriever.graph.multi_type_extract_operator.gather_local_resources",
+            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
             lambda: Resources(cpu_count=8, gpu_count=1),
         )
 
@@ -801,7 +803,7 @@ class TestMultiTypeExtractOperator:
 
         monkeypatch.setattr("nemo_retriever.graph.multi_type_extract_operator.resolve_operator_class", _fake_resolve)
         monkeypatch.setattr(
-            "nemo_retriever.graph.multi_type_extract_operator.gather_local_resources",
+            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
             lambda: Resources(cpu_count=8, gpu_count=1),
         )
 
