@@ -5,12 +5,12 @@ on:
   workflow_dispatch:
     inputs:
       source-branch:
-        description: 'Branch or tag to build from. When empty, uses `version` if set, else the branch selected in "Run workflow".'
+        description: 'Git ref to build from (e.g. `26.05`). When empty, RC versions like `26.05-RC8` build from `26.05`; otherwise uses the branch selected in "Run workflow".'
         required: false
         type: string
         default: ''
       version:
-        description: 'Release version label (and default checkout ref when source-branch is empty)'
+        description: 'Release version for artifacts and git tag (e.g. `26.05-RC8`). Does not need to exist before the run.'
         required: false
         type: string
         default: ''
@@ -52,17 +52,22 @@ jobs:
       - name: Resolve source branch and version
         id: resolve
         run: |
+          VERSION_INPUT="${{ inputs.version }}"
+
           if [ -n "${{ inputs.source-branch }}" ]; then
             SOURCE_REF="${{ inputs.source-branch }}"
-          elif [ -n "${{ inputs.version }}" ]; then
-            SOURCE_REF="${{ inputs.version }}"
+          elif [ -n "$VERSION_INPUT" ] && [[ "$VERSION_INPUT" =~ ^(.+)-RC[0-9]+$ ]]; then
+            SOURCE_REF="${BASH_REMATCH[1]}"
+            echo "RC version $VERSION_INPUT: building from integration branch $SOURCE_REF"
+          elif [ -n "$VERSION_INPUT" ]; then
+            SOURCE_REF="$VERSION_INPUT"
           else
             SOURCE_REF="${{ github.ref_name }}"
           fi
           echo "source_ref=$SOURCE_REF" >> $GITHUB_OUTPUT
 
-          if [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
+          if [ -n "$VERSION_INPUT" ]; then
+            VERSION="$VERSION_INPUT"
             echo "Using explicit version: $VERSION"
           else
             VERSION="$SOURCE_REF"
@@ -73,12 +78,13 @@ jobs:
           echo "### Release Configuration" >> $GITHUB_STEP_SUMMARY
           echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Version | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version (artifacts + tag) | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Source ref (checkout) | \`$SOURCE_REF\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Workflow branch (workflow file) | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
           if [ "$SOURCE_REF" != "${{ github.ref_name }}" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "> Artifacts are built from **\`$SOURCE_REF\`**, not from the workflow branch **\`${{ github.ref_name }}\`**. CI script overlay (when refs differ) still uses \`${{ github.ref_name }}\` for \`ci/scripts/\` only." >> $GITHUB_STEP_SUMMARY
+            echo "> Artifacts are built from **\`$SOURCE_REF\`**. The git tag **\`$VERSION\`** is created on that commit at the end of the workflow." >> $GITHUB_STEP_SUMMARY
+            echo "> CI script overlay (when refs differ) uses \`${{ github.ref_name }}\` for \`ci/scripts/\` only." >> $GITHUB_STEP_SUMMARY
           fi
           echo "| Dry Run | \`${{ inputs.dry-run }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Release Type | \`${{ inputs.release-type }}\` |" >> $GITHUB_STEP_SUMMARY
