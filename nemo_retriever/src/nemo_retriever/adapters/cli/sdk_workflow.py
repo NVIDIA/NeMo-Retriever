@@ -929,6 +929,9 @@ def query_documents(
     query: str,
     *,
     top_k: int = 10,
+    candidate_k: int | None = None,
+    page_dedup: bool = False,
+    content_types: str | Sequence[str] | None = None,
     lancedb_uri: str = DEFAULT_LANCEDB_URI,
     table_name: str = DEFAULT_TABLE_NAME,
     embed_invoke_url: str | None = None,
@@ -957,4 +960,9 @@ def query_documents(
             retriever_kwargs["rerank_kwargs"] = rerank_kwargs
 
     retriever = Retriever(**retriever_kwargs)
-    return retriever.query(query)
+    return retriever.query(
+        query,
+        candidate_k=candidate_k,
+        page_dedup=page_dedup,
+        content_types=content_types,
+    )
