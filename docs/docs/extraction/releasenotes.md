@@ -76,10 +76,6 @@ Highlights for the 26.05 release include:
 - Documentation aligned to a Helm-first supported path; [Docker Compose for local development](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/docker.md) documented as unsupported developer tooling (not a production NIM deployment path)  
 - Documentation consolidates extraction concepts, ingest workflow, embeddings, audio/video guides, prerequisites and support matrix, and UDF/custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)  
 
-### Full change list
-
-- See the [26.03…26.05 compare view](https://github.com/NVIDIA/NeMo-Retriever/compare/26.03...26.05) on GitHub for every commit merged since 26.03  
-
 ## Release Notes for Previous Versions
 
 | [26.03](https://docs.nvidia.com/nemo/retriever/26.3.0/extraction/releasenotes/)
