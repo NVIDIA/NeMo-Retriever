@@ -266,9 +266,7 @@ def test_managed_helm_nrl_2605_example_config_is_parseable_and_secret_free(
         if key.startswith("HARNESS_"):
             monkeypatch.delenv(key, raising=False)
 
-    example_path = (
-        harness_config.NEMO_RETRIEVER_ROOT / "harness" / "examples" / "managed-helm-nrl-26.05.yaml"
-    )
+    example_path = harness_config.NEMO_RETRIEVER_ROOT / "harness" / "examples" / "managed-helm-nrl-26.05.yaml"
     source = example_path.read_text(encoding="utf-8")
 
     assert "password:" not in source

@@ -1000,11 +1000,16 @@ def test_run_service_mode_evaluates_beir_recall_against_service(monkeypatch, tmp
 
     def _fake_evaluate_service_beir(beir_cfg):
         captured_beir["cfg"] = beir_cfg
-        return FakeBeirDataset(), [[{"metadata": {"pdf_basename": "doc.pdf"}}]], {"q1": {"doc.pdf": 1.0}}, {
-            "recall@1": 0.0,
-            "recall@5": 1.0,
-            "ndcg@10": 0.5,
-        }
+        return (
+            FakeBeirDataset(),
+            [[{"metadata": {"pdf_basename": "doc.pdf"}}]],
+            {"q1": {"doc.pdf": 1.0}},
+            {
+                "recall@1": 0.0,
+                "recall@5": 1.0,
+                "ndcg@10": 0.5,
+            },
+        )
 
     import nemo_retriever.recall.beir as beir
     import nemo_retriever.service_ingestor as service_ingestor

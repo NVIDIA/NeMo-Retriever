@@ -1215,7 +1215,9 @@ def _run_service_mode(
         try:
             evaluation_secs, evaluation_metrics, evaluation_count = _run_service_beir_evaluation(cfg)
             recall_metrics = {name: value for name, value in evaluation_metrics.items() if name.startswith("recall@")}
-            metrics_payload.update({_normalize_recall_metric_key(name): value for name, value in evaluation_metrics.items()})
+            metrics_payload.update(
+                {_normalize_recall_metric_key(name): value for name, value in evaluation_metrics.items()}
+            )
             runtime_summary = {
                 "evaluation_label": "BEIR",
                 "evaluation_time_secs": round(evaluation_secs, 2),
