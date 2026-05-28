@@ -23,11 +23,11 @@ Use your organization's Artifactory or PyPI index URL when installing published 
 ### Breaking changes and migration
 
 - **Legacy `nv-ingest` paths removed** — the graph pipeline and `nemo_retriever` package are the supported ingestion surface; old `nv-ingest` tree and batch-only examples were deleted.
-- **Chunking API** — text splitting moved from standalone `.split()` into `.extract(split_config=...)`. Update scripts that called `.split()` directly.
+- **Chunking API** — for graph and library ingest, text splitting moved from standalone `.split()` into `.extract(split_config=...)`. Update scripts that called `.split()` on the graph ingest path; the service ingestor API may still expose `.split()` separately.
 - **`Retriever(...)` constructor** — grouped configuration dictionaries replace flat kwargs. Replace `lancedb_uri=`, `lancedb_table=`, `embedder=`, `embedding_endpoint=`, `local_query_embed_backend=`, and `reranker=` with `vdb_kwargs={...}`, `embed_kwargs={...}`, and `rerank=...`. For example, `local_query_embed_backend="hf"` maps to `embed_kwargs={"local_ingest_embed_backend": "hf"}`. Helper APIs that document their own flat kwargs keep their own compatibility layer.
 - **Vector database documentation** — extraction docs now describe LanceDB as the first-party vector path. Milvus/MinIO deployment guidance was removed from the primary extraction doc set (the legacy Python client still accepts `vdb_op="milvus"` for compatibility in some code paths).
 - **Container FFmpeg** — images no longer bundle `ffmpeg`/`ffprobe` by default. Audio and video extraction require these binaries on `PATH`; for Helm set `service.installFfmpeg=true`, or install system FFmpeg manually.
-- **Experimental CLI** — `retriever` subcommands other than `ingest`, `query`, and `pipeline` are marked experimental (NVBugs 6199005, 6198526).
+- **CLI support policy** — for product use, only `retriever ingest`, `retriever query`, and `retriever pipeline` (for example `retriever pipeline run`) are supported. Other top-level subcommands—including `pdf`, `html`, `eval`, `benchmark`, `harness`, `online`, `compare`, `image`, and `skill-eval`—are **development and experimental** (NVBugs 6199005, 6198526).
 - **Python version** — `nemo_retriever` requires Python 3.12.
 
 ### Pipeline and ingestion architecture
@@ -50,7 +50,7 @@ Use your organization's Artifactory or PyPI index URL when installing published 
 
 - **Root CLI** — `retriever ingest` and `retriever query` with NIM URL flags (`--*-invoke-url`), batch tuning, and LanceDB overwrite/append controls.
 - **`retriever pipeline`** — pipeline subcommand for graph execution and configuration.
-- **`retriever skill-eval`** — benchmark CLI for the `/nemo-retriever` skill.
+- **`retriever skill-eval`** — benchmark CLI for the `/nemo-retriever` skill (**experimental**; see CLI support policy above).
 - **OCR language selectors** — CLI flags for Nemotron OCR v2 language selection.
 - **Quieter ingest** — reduced default verbosity for `retriever ingest`.
 - **UV lockfiles** — pre-commit hook regenerates and verifies `uv.lock` files; lockfiles committed to the repo.
