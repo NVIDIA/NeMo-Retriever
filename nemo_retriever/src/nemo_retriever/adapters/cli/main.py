@@ -27,6 +27,7 @@ from nemo_retriever.adapters.cli.sdk_workflow import (
     ingest_documents,
     query_documents,
 )
+from nemo_retriever.vdb.records import RetrievalHit
 from nemo_retriever.version import get_version_info
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,14 @@ for _name, _module, _attr in _LAZY_SUBAPPS:
         logger.debug("Skipping '%s' sub-command (import failed)", _name)
 
 _ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError, ValidationError)
+
+
+def _query_cli_hit(hit: RetrievalHit) -> dict[str, object]:
+    return {
+        "source": hit.get("source", ""),
+        "page_number": hit.get("page_number"),
+        "text": hit.get("text", ""),
+    }
 
 
 def _silence_noisy_libraries() -> None:
@@ -555,7 +564,7 @@ def query_command(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
-    typer.echo(json.dumps(list(hits), indent=2, sort_keys=True, default=str))
+    typer.echo(json.dumps([_query_cli_hit(hit) for hit in hits], indent=2, sort_keys=True, default=str))
 
 
 @app.callback()
