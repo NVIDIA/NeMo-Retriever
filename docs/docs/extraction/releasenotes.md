@@ -40,36 +40,6 @@ Highlights for the 26.05 release include:
 - Documentation consolidates extraction concepts, ingest workflow, embeddings, audio/video guides, prerequisites and support matrix, and UDF/custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)  
 - See the [26.03…26.05 compare view](https://github.com/NVIDIA/NeMo-Retriever/compare/26.03...26.05) on GitHub for the full commit list since 26.03  
 
-## 26.03 Release Notes (26.3.0)
-
-NVIDIA® NeMo Retriever Library version 26.03 adds broader hardware and software support along with many pipeline, evaluation, and deployment enhancements.
-
-To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.3.0/nemo_retriever/helm/README.md).
-
-Highlights for the 26.03 release include:
-
-- Legacy ingestion repository consolidated under NeMo-Retriever  
-- NeMo Retriever Extraction pipeline renamed to NeMo Retriever Library  
-- NeMo Retriever Library now supports two deployment options:  
-  - A new no-container, pip-installable in-process library for development (available on PyPI)  
-  - Existing production-ready Helm chart with NIMs  
-- Added documentation notes on Air-gapped deployment support  
-- Added documentation notes on OpenShift support  
-- Added support for RTX4500 Pro Blackwell SKU  
-- Added support for llama-nemotron-embed-vl-v2 in text and text+image modes  
-- New extract methods `pdfium_hybrid` and `ocr` target scanned PDFs to improve text and layout extraction from image-based pages  
-- VLM-based image caption enhancements:  
-  - Infographics can be captioned  
-  - Reasoning mode is configurable  
-- **LanceDB is now the default vector database backend** for extraction and indexing; Milvus remained supported in 26.03. For upload, hybrid search, and infrastructure options, see [Vector databases](vdbs.md).  
-- Enabled hybrid search with LanceDB (BM25 full-text search combined with dense vectors and reciprocal rank fusion)  
-- Added `retrieval_bench` with a generalizable agentic retrieval pipeline  
-- The project now uses UV as the primary environment and package manager instead of Conda, resulting in faster installs and simpler dependency handling  
-- Default TTL for long-running pipeline job state increased from 1–2 hours to 48 hours so long-running jobs (for example, VLM captioning) do not expire before completion  
-- NeMo Retriever Library currently does not support image captioning via VLM; this feature was added in 26.05  
-- Documentation: multimodal extraction is covered on one page with an in-page table of contents and redirects from the former per-topic URLs  
-- Container images built from this repository no longer install `ffmpeg` and `ffprobe` by default. Audio and video extraction require these binaries on `PATH`; for Helm deployments set `service.installFfmpeg=true`, or install system FFmpeg manually in non-container environments.
-
 ## Release Notes for Previous Versions
 
 | [26.03](https://docs.nvidia.com/nemo/retriever/26.3.0/extraction/releasenotes/)
