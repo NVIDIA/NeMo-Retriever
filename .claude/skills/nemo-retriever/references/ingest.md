@@ -42,14 +42,15 @@ Large text-only PDF fallback:
 retriever ingest data/pdfs/ --profile fast-text --quiet
 ```
 
-Optional VLM captioning:
+Optional local VLM captioning:
 
 ```bash
 retriever ingest data/pdfs/ --caption \
-  --caption-invoke-url http://vlm:8000/v1/chat/completions \
   --caption-infographics \
   --quiet
 ```
+
+Add `--caption-invoke-url` only when a remote OpenAI-compatible VLM endpoint is already deployed.
 
 Ingest a directory of supported files:
 

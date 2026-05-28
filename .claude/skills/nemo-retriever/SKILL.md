@@ -25,11 +25,13 @@ Always pass `--quiet` on whichever branch fires. It suppresses progress bars, Hu
 
 The `else` branch uses the `fast-text` profile, which skips page-element detection, OCR-heavy extraction, image extraction, table extraction, chart extraction, infographic extraction, and page images — only pdfium text extraction + embedding. Embedding runs locally via the bundled HuggingFace model by default (no remote NIM needed). It's strictly better to have a text-only index than no index at all: the per-query pdfium text-extract fallback re-extracts a full PDF *per query*, which is both slow and expensive. Page-element detection may emit warning logs when its remote endpoint isn't reachable; the warnings are non-fatal as long as the embedding step itself succeeds (and are silenced by `--quiet` on a successful run).
 
-VLM captioning is optional and must be requested explicitly:
+Local VLM captioning is optional and must be requested explicitly:
 
 ```bash
-retriever ingest ./pdfs --caption --caption-invoke-url http://vlm:8000/v1/chat/completions --quiet
+retriever ingest ./pdfs --caption --quiet
 ```
+
+Only pass `--caption-invoke-url` when a remote OpenAI-compatible VLM endpoint is already deployed.
 
 Don't pre-OCR, don't pre-chunk, don't write Python wrappers — the CLI handles extraction + (optionally) page-element detection + OCR + embedding + LanceDB insert in one shot.
 
