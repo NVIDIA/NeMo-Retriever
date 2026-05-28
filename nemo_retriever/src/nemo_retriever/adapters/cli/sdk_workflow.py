@@ -851,19 +851,58 @@ def ingest_documents(
     if dry_run:
         return plan.dry_run_data()
 
+    initial_n_rows = None if overwrite else _count_lancedb_rows(plan.lancedb_uri, plan.table_name)
     ingestor = create_ingestor(**plan.create_kwargs).files(plan.documents)
     ingestor = ingestor.extract(plan.extract_params, **plan.extract_call_kwargs())
     if plan.caption_params is not None:
         ingestor = ingestor.caption(plan.caption_params)
     ingestor = ingestor.embed(plan.embed_params) if plan.embed_params is not None else ingestor.embed()
     result = ingestor.vdb_upload(plan.vdb_params).ingest()
+    n_rows = _count_lancedb_rows(plan.lancedb_uri, plan.table_name)
+    _raise_for_empty_ingest(
+        documents=plan.documents,
+        lancedb_uri=plan.lancedb_uri,
+        table_name=plan.table_name,
+        n_rows=n_rows,
+        initial_n_rows=initial_n_rows,
+    )
     return {
         "documents": plan.documents,
         "lancedb_uri": plan.lancedb_uri,
         "result": result,
         "table_name": plan.table_name,
-        "n_rows": _count_lancedb_rows(plan.lancedb_uri, plan.table_name),
+        "n_rows": n_rows,
     }
+
+
+def _raise_for_empty_ingest(
+    *,
+    documents: Sequence[str],
+    lancedb_uri: str,
+    table_name: str,
+    n_rows: int | None,
+    initial_n_rows: int | None,
+) -> None:
+    if n_rows is None:
+        return
+    if n_rows > 0 and (initial_n_rows is None or n_rows > initial_n_rows):
+        return
+
+    target = f"{lancedb_uri}/{table_name}"
+    if initial_n_rows is not None:
+        raise RuntimeError(
+            f"retriever ingest did not add rows to LanceDB {target}; row count stayed at {n_rows} "
+            f"for {len(documents)} input file(s). This usually means extraction or embedding failed before "
+            "any rows were written; check the captured stage logs above, and verify NVIDIA_API_KEY/NGC_API_KEY "
+            "or the configured local/remote endpoints."
+        )
+
+    noun = "row" if n_rows == 1 else "rows"
+    raise RuntimeError(
+        f"retriever ingest produced {n_rows} {noun} in LanceDB {target} for {len(documents)} input file(s). "
+        "This usually means extraction or embedding failed before any rows were written; check the captured "
+        "stage logs above, and verify NVIDIA_API_KEY/NGC_API_KEY or the configured local/remote endpoints."
+    )
 
 
 def _count_lancedb_rows(lancedb_uri: str, table_name: str) -> int | None:

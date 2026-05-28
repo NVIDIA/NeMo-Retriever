@@ -142,6 +142,38 @@ def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> N
     }
 
 
+def test_root_ingest_fails_when_no_rows_landed(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "silent-stage-failure.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 0)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
+
+    assert result.exit_code == 1
+    assert "retriever ingest produced 0 rows" in result.output
+    assert "NVIDIA_API_KEY/NGC_API_KEY" in result.output
+    assert "Ingested 1 file(s)" not in result.output
+
+
+def test_root_ingest_append_fails_when_row_count_does_not_increase(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "silent-append-failure.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+    counts = iter([3, 3])
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: next(counts))
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--append"])
+
+    assert result.exit_code == 1
+    assert "did not add rows" in result.output
+    assert "row count stayed at 3" in result.output
+
+
 def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "nim-routed.pdf"
