@@ -98,67 +98,36 @@ _PANEL_OBS = "Observability"
 _PANEL_SERVICE = "Service Mode"
 
 
-# CLI flags that configure the local ingest graph and are silently dropped
-# by ServiceIngestor. When --run-mode=service is used we reject any of
-# these that the user explicitly supplied so the user knows the values
-# would not take effect (the server owns pipeline configuration).
-#
-# Intentionally NOT in this list (still consumed in service mode):
-#   --embed-model-name, --embed-modality, --embed-invoke-url, --api-key
-#       (client-side query embedding during evaluation)
-#   --save-intermediate, --detection-summary-file
-#       (post-ingest local outputs)
-#   --audio-match-tolerance-secs
-#       (audio recall evaluation)
-#   everything in I/O, Service, Evaluation, Observability panels
+# CLI flags that have no effect in --run-mode=service: either silently
+# overridden by retriever-service.yaml (server-owned endpoints / models),
+# bound to local execution (Ray actors, GPU placement), or never wired
+# through the service ingestor (VDB upload is handled server-side; audio
+# and video extract paths still run locally). Flags wired into the
+# service ``PipelineSpec`` by ``_build_ingestor`` — extract knobs, embed
+# granularity / modality, dedup threshold, caption behaviour, text chunk
+# config, ``--store-images-uri`` — are intentionally NOT in this list and
+# pass through to ``ServiceIngestor``; the server's
+# ``_DEFAULT_ALLOWED_*_KEYS`` allowlists are the final authority on which
+# keys survive.
 _SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
-    # Extract
-    ("--method", "method"),
-    ("--dpi", "dpi"),
-    ("--extract-text/--no-extract-text", "extract_text"),
-    ("--extract-tables/--no-extract-tables", "extract_tables"),
-    ("--extract-charts/--no-extract-charts", "extract_charts"),
-    ("--extract-infographics/--no-extract-infographics", "extract_infographics"),
-    ("--extract-page-as-image/--no-extract-page-as-image", "extract_page_as_image"),
-    ("--use-page-elements/--no-use-page-elements", "use_page_elements"),
-    ("--use-graphic-elements", "use_graphic_elements"),
-    ("--use-table-structure", "use_table_structure"),
-    ("--table-output-format", "table_output_format"),
-    # Remote NIM endpoints that only drive the local extract graph
+    # Remote NIM endpoints + model names — server-owned via retriever-service.yaml
     ("--page-elements-invoke-url", "page_elements_invoke_url"),
     ("--ocr-invoke-url", "ocr_invoke_url"),
-    ("--ocr-version", "ocr_version"),
     ("--ocr-lang", "ocr_lang"),
     ("--graphic-elements-invoke-url", "graphic_elements_invoke_url"),
     ("--table-structure-invoke-url", "table_structure_invoke_url"),
-    # Embed (ingest-only knobs)
-    ("--embed-granularity", "embed_granularity"),
-    ("--local-ingest-embed-backend", "local_ingest_embed_backend"),
-    ("--text-elements-modality", "text_elements_modality"),
-    ("--structured-elements-modality", "structured_elements_modality"),
-    # Dedup / Caption
-    ("--dedup/--no-dedup", "dedup"),
-    ("--dedup-iou-threshold", "dedup_iou_threshold"),
-    ("--caption/--no-caption", "caption"),
     ("--caption-invoke-url", "caption_invoke_url"),
     ("--caption-model-name", "caption_model_name"),
+    # Local-execution knobs (no in-cluster equivalent)
+    ("--local-ingest-embed-backend", "local_ingest_embed_backend"),
     ("--caption-device", "caption_device"),
-    ("--caption-context-text-max-chars", "caption_context_text_max_chars"),
     ("--caption-gpu-memory-utilization", "caption_gpu_memory_utilization"),
     ("--caption-gpus-per-actor", "caption_gpus_per_actor"),
-    ("--caption-temperature", "caption_temperature"),
-    ("--caption-top-p", "caption_top_p"),
-    ("--caption-max-tokens", "caption_max_tokens"),
-    # Storage / chunking
-    ("--store-images-uri", "store_images_uri"),
-    ("--text-chunk", "text_chunk"),
-    ("--text-chunk-max-tokens", "text_chunk_max_tokens"),
-    ("--text-chunk-overlap-tokens", "text_chunk_overlap_tokens"),
-    # Audio
+    # Audio (service path is pdf-only today)
     ("--segment-audio/--no-segment-audio", "segment_audio"),
     ("--audio-split-type", "audio_split_type"),
     ("--audio-split-interval", "audio_split_interval"),
-    # Video
+    # Video (service path is pdf-only today)
     ("--video-extract-audio/--no-video-extract-audio", "video_extract_audio"),
     ("--video-extract-frames/--no-video-extract-frames", "video_extract_frames"),
     ("--video-frame-fps", "video_frame_fps"),
@@ -166,7 +135,7 @@ _SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
     ("--video-frame-text-dedup/--no-video-frame-text-dedup", "video_frame_text_dedup"),
     ("--video-frame-text-dedup-max-dropped-frames", "video_frame_text_dedup_max_dropped_frames"),
     ("--video-av-fuse/--no-video-av-fuse", "video_av_fuse"),
-    # Ray / batch tuning
+    # Ray / batch tuning — no analog when the worker is a service pod
     ("--ray-address", "ray_address"),
     ("--ray-log-to-driver/--no-ray-log-to-driver", "ray_log_to_driver"),
     ("--ocr-actors", "ocr_actors"),
@@ -189,7 +158,9 @@ _SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
     ("--nemotron-parse-actors", "nemotron_parse_actors"),
     ("--nemotron-parse-gpus-per-actor", "nemotron_parse_gpus_per_actor"),
     ("--nemotron-parse-batch-size", "nemotron_parse_batch_size"),
-    # In-graph VDB / sidecar metadata (not wired through ServiceIngestor by the CLI)
+    # In-graph VDB / sidecar metadata — service mode does VDB writes
+    # server-side via LanceDBWriteOperator and never wires these through
+    # the service ingestor (see ``enable_in_graph_vdb_upload`` gate).
     ("--no-vdb", "no_vdb"),
     ("--vdb-op", "vdb_op"),
     ("--vdb-kwargs-json", "vdb_kwargs_json"),
