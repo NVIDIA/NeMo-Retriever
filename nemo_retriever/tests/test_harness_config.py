@@ -169,6 +169,95 @@ def test_load_harness_config_rejects_invalid_run_mode(tmp_path: Path) -> None:
         load_harness_config(config_file=str(cfg_path))
 
 
+def test_service_mode_requires_service_url_when_unmanaged(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+
+    cfg = HarnessConfig(dataset_dir=str(dataset_dir), dataset_label="tiny", preset="base", run_mode="service")
+
+    errors = cfg.validate()
+
+    assert "service_url is required when run_mode='service' and manage_service=false" in errors
+
+
+def test_service_mode_allows_missing_service_url_when_managed(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        run_mode="service",
+        manage_service=True,
+    )
+
+    assert cfg.validate() == []
+
+
+def test_load_harness_config_supports_managed_helm_fields(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    values_file = tmp_path / "managed-values.yaml"
+    values_file.write_text("nims:\n  enabled: false\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "  run_mode: service",
+                "  manage_service: true",
+                "  keep_up: true",
+                "  helm_chart: nim-nvstaging/nemo-retriever",
+                "  helm_chart_version: 26.05-RC6",
+                "  helm_release: nrl-smoke",
+                "  helm_namespace: nrl-smoke-ns",
+                "  helm_values_file: managed-values.yaml",
+                "  helm_set:",
+                "    service.image.repository: nvcr.io/nvstaging/nim/nrl-service",
+                "    service.image.tag: 26.05-RC6",
+                "  helm_timeout: 900",
+                "  readiness_timeout: 1200",
+                "  helm_service_local_port: 17670",
+                "  kubectl_bin: microk8s kubectl",
+                "  helm_bin: microk8s helm",
+                "  kubectl_sudo: true",
+                "  helm_sudo: true",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                "    recall_required: false",
+                "    evaluation_mode: none",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HARNESS_HELM_RELEASE", "env-release")
+
+    cfg = load_harness_config(config_file=str(cfg_path))
+
+    assert cfg.manage_service is True
+    assert cfg.keep_up is True
+    assert cfg.helm_chart == "nim-nvstaging/nemo-retriever"
+    assert cfg.helm_chart_version == "26.05-RC6"
+    assert cfg.helm_release == "env-release"
+    assert cfg.helm_namespace == "nrl-smoke-ns"
+    assert cfg.helm_values_file == str(values_file.resolve())
+    assert cfg.helm_set["service.image.repository"] == "nvcr.io/nvstaging/nim/nrl-service"
+    assert cfg.helm_set["service.image.tag"] == "26.05-RC6"
+    assert cfg.helm_timeout == 900
+    assert cfg.readiness_timeout == 1200
+    assert cfg.helm_service_local_port == 17670
+    assert cfg.kubectl_bin == "microk8s kubectl"
+    assert cfg.helm_bin == "microk8s helm"
+    assert cfg.kubectl_sudo is True
+    assert cfg.helm_sudo is True
+
+
 def test_load_harness_config_fails_when_recall_required_without_query(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
