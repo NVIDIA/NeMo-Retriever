@@ -204,7 +204,7 @@ def test_mark_processing_is_idempotent() -> None:
 
 def test_mark_completed_updates_counts_and_doc_record() -> None:
     tracker, _bus = _make_tracker_with_bus()
-    tracker.register_job("j", expected_documents=2)
+    tracker.register_job("j", expected_documents=2, retain_results=True)
     tracker.register_document("a", job_id="j")
     tracker.register_document("b", job_id="j")
     tracker.mark_processing("a")
@@ -214,6 +214,7 @@ def test_mark_completed_updates_counts_and_doc_record() -> None:
     assert rec is not None
     assert rec.status == DocumentStatus.COMPLETED
     assert rec.result_rows == 42
+    assert rec.result_data == [{"k": "v"}]
     assert rec.completed_at is not None
 
     agg = tracker.get_job("j")
@@ -528,9 +529,21 @@ def test_summary_groups_by_job_aggregate_status() -> None:
     assert summary[JobAggregateStatus.FAILED.value] == 1
 
 
+def test_mark_completed_drops_result_data_when_retain_false() -> None:
+    tracker = JobTracker()
+    tracker.register_job("j", expected_documents=1, retain_results=False)
+    tracker.register_document("d", job_id="j")
+    tracker.mark_completed("d", result_rows=3, result_data=[{"x": 1}])
+    rec = tracker.get_document("d")
+    assert rec is not None
+    assert rec.result_rows == 3
+    assert rec.result_data is None
+    assert tracker.consume_result_data("d") is None
+
+
 def test_consume_result_data_clears_after_read() -> None:
     tracker = JobTracker()
-    tracker.register_job("j", expected_documents=1)
+    tracker.register_job("j", expected_documents=1, retain_results=True)
     tracker.register_document("d", job_id="j")
     tracker.mark_completed("d", result_data=[{"x": 1}])
     assert tracker.consume_result_data("d") == [{"x": 1}]
