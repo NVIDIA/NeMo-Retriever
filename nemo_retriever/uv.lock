@@ -1868,7 +1868,7 @@ wheels = [
 
 [[package]]
 name = "langchain-core"
-version = "1.3.3"
+version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jsonpatch" },
@@ -1881,9 +1881,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "uuid-utils" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d3/ae/8b74458fc3850ec3d150eb9f45e857db129dafa801fb5cf173dfc9f8bbf3/langchain_core-1.3.3.tar.gz", hash = "sha256:fa510a5db8efdc0c6ff41c0939fb5c00a0183c11f6b84233e892e3227ff69182", size = 915041, upload-time = "2026-05-05T19:02:36.612Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/59/de/679a53472c25860837e32c0442c962fa86e95317a36460e2c9d5c91b17c2/langchain_core-1.4.0.tar.gz", hash = "sha256:1dc341eed802ed9c117c0df3923c991e5e9e226571e5725c194eeb5bd93d1a7f", size = 920260, upload-time = "2026-05-11T18:42:35.919Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/01/4771b7ab2af1d1aba5b710bd8f13d9225c609425214b357590a17b01be77/langchain_core-1.3.3-py3-none-any.whl", hash = "sha256:18aae8506f37da7f74398492279a7d6efcee4f8e23c4c41c7af080eeb7ef7bd1", size = 543857, upload-time = "2026-05-05T19:02:34.52Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/1a/86c38c27b81913a1c6c12448cab55defb5a1097c7dc9a4cea83f55477a2d/langchain_core-1.4.0-py3-none-any.whl", hash = "sha256:23cbbdb46e38ddd1dd5247e6167e96013eae74bea4c5949c550809970a9e565c", size = 548120, upload-time = "2026-05-11T18:42:33.992Z" },
 ]
 
 [[package]]
@@ -1915,7 +1915,7 @@ wheels = [
 
 [[package]]
 name = "langgraph"
-version = "1.1.10"
+version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain-core" },
@@ -1925,35 +1925,35 @@ dependencies = [
     { name = "pydantic" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9a/b3/7dec224369c7938eb3227ff69542a0d0f517862a0d27945b8c395f2a781f/langgraph-1.1.10.tar.gz", hash = "sha256:3115beb58203283c98d8752a90c034f3432177d2979a1fe205f76e5f1b744500", size = 560685, upload-time = "2026-04-27T17:19:10.426Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e6/5a/ffc12434ee8aecab830d58b4d204ddea45073eae7639c963310f671a5bf5/langgraph-1.2.2.tar.gz", hash = "sha256:f54a98458976b3ff0774683867df125fb52d8dbedeb2441d0b0656a51331cee5", size = 695730, upload-time = "2026-05-26T18:07:28.49Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/80/07/057dc1aa7991115fca53f1fa6573a7cc0dd296c05360c672cc67fdb6245b/langgraph-1.1.10-py3-none-any.whl", hash = "sha256:8a4f163f72f4401648d0c11b48ee906947d938ba8cf1f474540fe591534f0d17", size = 173750, upload-time = "2026-04-27T17:19:09.073Z" },
+    { url = "https://files.pythonhosted.org/packages/42/9b/b08d578bba73e25351152dfd3d6d21e81210a5fff1b6f26e56f33197c8f5/langgraph-1.2.2-py3-none-any.whl", hash = "sha256:0a851bf4ba5939c5474a2fd57e6b439b5315283e254e42943bd392c2d71a5e03", size = 236376, upload-time = "2026-05-26T18:07:26.577Z" },
 ]
 
 [[package]]
 name = "langgraph-checkpoint"
-version = "4.0.3"
+version = "4.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain-core" },
     { name = "ormsgpack" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7c/e1/885e49cdafceb4c74dae4573bc5dd6054c6c640382ee73104532f33dca46/langgraph_checkpoint-4.0.3.tar.gz", hash = "sha256:a7b5e2ca18fb79b55edf19396d4ee446f8a53dcb7a4ec62ce6f1c7e00bb5af7f", size = 174009, upload-time = "2026-04-27T14:34:02.777Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/83/47/886af6f886f0bff2273164a45f008694e48a96ff3cd25ff0228f2aa9480e/langgraph_checkpoint-4.1.1.tar.gz", hash = "sha256:6c2bdb530c91f91d7d9c1bd100925d0fc4f498d418c17f3587d1526279482a25", size = 184020, upload-time = "2026-05-22T16:57:38.503Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/19/ee/ecd3fa2e893746dde3b768daca2a4935208bc77d09445437ccfffb4a8c9b/langgraph_checkpoint-4.0.3-py3-none-any.whl", hash = "sha256:b91b765712a2311a5b198760f714b7ab9b376d01c047ed78d9b9a3e80df802a3", size = 51682, upload-time = "2026-04-27T14:34:01.51Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/b4/71425e3e38be92611300b9cc5e46a5bf98ab23f5ea8a75b73d02a2f1413c/langgraph_checkpoint-4.1.1-py3-none-any.whl", hash = "sha256:25d29144b082827218e7bc3f1e9b0566a4bb007895cd6cc26f66a8428739f56e", size = 56212, upload-time = "2026-05-22T16:57:37.203Z" },
 ]
 
 [[package]]
 name = "langgraph-prebuilt"
-version = "1.0.13"
+version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langgraph-checkpoint" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/a4/f8ac75fa7c503103f0cf7680944e28bbaaef74c19a8d163d7346869cc369/langgraph_prebuilt-1.0.13.tar.gz", hash = "sha256:ad219782a80e1718e7e7794de49e0ae307111d45cbcffab9a52725a66a609456", size = 172913, upload-time = "2026-04-30T01:48:15.742Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/66/ed9b93f56bc17ef22d551892f0ac2b225a97fe0fcf23a511b857f70d590b/langgraph_prebuilt-1.1.0.tar.gz", hash = "sha256:3c579cf6eed2d17f9c157c2d0fcaddcd8688524e7022d3b22b37a3bf4589d528", size = 178833, upload-time = "2026-05-12T03:37:49.332Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/69/ef/5ada0bef4013ef5ae53a0ca1de5736517f1076a54d313f156ca545ec65d5/langgraph_prebuilt-1.0.13-py3-none-any.whl", hash = "sha256:7055e9fad41fbd3593800aed0aea0a6e974b17f33ed51b80d3d3a031212dd7c0", size = 37214, upload-time = "2026-04-30T01:48:14.507Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/43/3fe1a700b8490ed02679cdbbc8c915eb23a092faf496c9c1118abcd10be3/langgraph_prebuilt-1.1.0-py3-none-any.whl", hash = "sha256:51e311747d755b751d5c6b39b0c1446124d3a7643d2515017e6714b323508fc9", size = 41043, upload-time = "2026-05-12T03:37:48.007Z" },
 ]
 
 [[package]]
@@ -2599,16 +2599,16 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "lancedb" },
     { name = "langchain-nvidia-ai-endpoints", specifier = ">=1.4.0" },
-    { name = "langgraph", marker = "extra == 'tabular'", specifier = ">=1.1.0a2" },
+    { name = "langgraph", marker = "extra == 'tabular'", specifier = ">=1.2.0" },
     { name = "librosa", marker = "extra == 'multimedia'", specifier = ">=0.10.2" },
     { name = "librosa", marker = "extra == 'service'", specifier = ">=0.10.2" },
-    { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.86.0rc1" },
+    { name = "litellm", marker = "extra == 'llm'", specifier = ">=1.86.0,<2" },
     { name = "markitdown" },
     { name = "nemo-retriever", extras = ["benchmarks", "llm", "local", "multimedia", "nemotron-parse", "service", "tabular"], marker = "extra == 'all'" },
-    { name = "nemotron-graphic-elements-v1", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
-    { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'local') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'local')", specifier = ">=2.0.0.dev0", index = "https://test.pypi.org/simple/" },
-    { name = "nemotron-page-elements-v3", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
-    { name = "nemotron-table-structure-v1", marker = "extra == 'local'", specifier = ">=0.dev0", index = "https://test.pypi.org/simple/" },
+    { name = "nemotron-graphic-elements-v1", marker = "extra == 'local'", specifier = "==1.0.0" },
+    { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'local') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'local')", specifier = ">=2.0.0,<3" },
+    { name = "nemotron-page-elements-v3", marker = "extra == 'local'", specifier = "==3.0.1" },
+    { name = "nemotron-table-structure-v1", marker = "extra == 'local'", specifier = "==1.0.0" },
     { name = "neo4j", marker = "extra == 'tabular'", specifier = ">=5.0" },
     { name = "nltk", specifier = "==3.9.4" },
     { name = "numpy", specifier = ">=1.26.0" },
@@ -2657,8 +2657,8 @@ provides-extras = ["service", "local", "multimedia", "nemotron-parse", "tabular"
 
 [[package]]
 name = "nemotron-graphic-elements-v1"
-version = "1.0.0.dev20260508042302"
-source = { registry = "https://test.pypi.org/simple/" }
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "matplotlib" },
@@ -2668,15 +2668,14 @@ dependencies = [
     { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/f1/42/f4629e2cbaa9c8d7551258db494a06ede8b5e68bf9bd042b1bbc58721c38/nemotron_graphic_elements_v1-1.0.0.dev20260508042302.tar.gz", hash = "sha256:d7ca0dc49e75e332666666b90a756398deb1ab58f2e47f43418943f328095a5d", size = 40139, upload-time = "2026-05-08T04:23:39.699Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/bd/01/b036c64f7839e33fdc6e5f2573059ce9c2cc8634eb600487be636edeaf4f/nemotron_graphic_elements_v1-1.0.0.dev20260508042302-py3-none-any.whl", hash = "sha256:dcb59bad918124b702eb9a952518a3a7c2f7791bfc6acff2ebda8fa77d58f577", size = 34239, upload-time = "2026-05-08T04:23:38.699Z" },
+    { url = "https://files.pythonhosted.org/packages/79/13/6d9b9c06aa58fe9c558dabb6d50532dbcfe98eba32e2e8975da2f83d01b7/nemotron_graphic_elements_v1-1.0.0-py3-none-any.whl", hash = "sha256:806b37f4fd740786105cf160769dd5506ca5dce8b4c65847b656e0ffd9cff5d6", size = 28738, upload-time = "2025-12-19T16:26:48.803Z" },
 ]
 
 [[package]]
 name = "nemotron-ocr"
-version = "2.0.0.dev20260512170901"
-source = { registry = "https://test.pypi.org/simple/" }
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "numpy", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -2685,16 +2684,16 @@ dependencies = [
     { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "torchvision", version = "0.26.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/42/21/6bda80c5b7d384a28f91582ba8faa91fe49ca591fa70eef69a1e85d1128e/nemotron_ocr-2.0.0.dev20260512170901.tar.gz", hash = "sha256:c88dc81a965cecdadf9f43248ccefed2db5807f5fdd9491b1f498111d483efe2", size = 155960, upload-time = "2026-05-12T17:19:39.383Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/ef/9dbba22f5de348a5f9c3af0488bf61258872926c40b7d513d71ef465b418/nemotron_ocr-2.0.0.tar.gz", hash = "sha256:84eb64f8af2ae12fbd83e38e482348ecce6a932b30946c873f8b8a95afae7355", size = 155817, upload-time = "2026-05-21T00:06:36.975Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/2e/75/c84b534b015386cec5046a36978689deb1b520a8d10a02154ad96180e8ae/nemotron_ocr-2.0.0.dev20260512170901-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:947778762a4d6f624c8f0d0262b9de079ba6cba0b2e9977ae25e3960768219ae", size = 36095211, upload-time = "2026-05-12T17:19:37.186Z" },
-    { url = "https://test-files.pythonhosted.org/packages/27/c2/de710d55ac881e30ed719e08d32b25730cba546679aa2987bf3093d510e2/nemotron_ocr-2.0.0.dev20260512170901-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:11602defaee6eb01fa4f41403fb93ad10dfd966ea12c32f839a44160ddb4cdc5", size = 36806573, upload-time = "2026-05-12T17:20:45.594Z" },
+    { url = "https://files.pythonhosted.org/packages/69/03/1d487d3bef63df377bd5f81311963ce24c4182984d47387bd8bf70f8ed20/nemotron_ocr-2.0.0-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:8bd3afc1dbfaae67cf20ec06b95d48056db8372e66fb46212cc302775734cb54", size = 36094927, upload-time = "2026-05-21T00:07:05.772Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/89/547df1d8c4a7fd97b49fc662078707d1f8b5740ce29fbb94db4cc6a3abd1/nemotron_ocr-2.0.0-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:fd5cf31259e236dd213edd36a4cdace2d4afc1972a5fad26e457804b1752d7de", size = 36806333, upload-time = "2026-05-21T00:06:34.545Z" },
 ]
 
 [[package]]
 name = "nemotron-page-elements-v3"
-version = "3.0.1.dev20260508042302"
-source = { registry = "https://test.pypi.org/simple/" }
+version = "3.0.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "loguru" },
@@ -2713,15 +2712,14 @@ dependencies = [
     { name = "torchvision", version = "0.26.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/e2/0f/028f9900eb9f334860b0501fbaf5d8a450e61810af25e891ed243e0ca2ee/nemotron_page_elements_v3-3.0.1.dev20260508042302.tar.gz", hash = "sha256:09ede95108868aeda1cee4a5843505a4316c286440ac0492c5108f1fbfb24a07", size = 44759, upload-time = "2026-05-08T04:23:38.327Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/1f/25/e8748e66c3aa3fda317534e94419a862511d6c3a576c8fa67c2cd65147b0/nemotron_page_elements_v3-3.0.1.dev20260508042302-py3-none-any.whl", hash = "sha256:5ec2357880cdc13d63ec5a8bea409cc6e6f3b6a5c1d36a677ce069623786c2cf", size = 40035, upload-time = "2026-05-08T04:23:37.319Z" },
+    { url = "https://files.pythonhosted.org/packages/62/e1/25e7c782b97113fc4a6bcedc8ec98899d9ee8e72f4320f524c93fd29747c/nemotron_page_elements_v3-3.0.1-py3-none-any.whl", hash = "sha256:d29c47e19594ae2c546634bfa5ceaeb17262752c3a0510137d6dec501cf29d99", size = 32761, upload-time = "2025-12-19T17:03:59.787Z" },
 ]
 
 [[package]]
 name = "nemotron-table-structure-v1"
-version = "1.0.0.dev20260508042302"
-source = { registry = "https://test.pypi.org/simple/" }
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "matplotlib" },
@@ -2731,9 +2729,8 @@ dependencies = [
     { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
-sdist = { url = "https://test-files.pythonhosted.org/packages/93/8b/f1712dd0de02e28cd5197cd9a38e382d9b3d32cf4c9928bf6e913d1268a3/nemotron_table_structure_v1-1.0.0.dev20260508042302.tar.gz", hash = "sha256:7d5c0dfb21d877fe0731f340388d9e028662fba451b396f3fc2183bb59b57eca", size = 48641, upload-time = "2026-05-08T04:23:49.309Z" }
 wheels = [
-    { url = "https://test-files.pythonhosted.org/packages/38/48/4522b45617e90676da194acc62806072ac94e96eb6ec689a5b07de877326/nemotron_table_structure_v1-1.0.0.dev20260508042302-py3-none-any.whl", hash = "sha256:e8884a49d169fc576f288b7ac7255e7594d8a198e944c038e073e2b7ce4df4ea", size = 39013, upload-time = "2026-05-08T04:23:48.039Z" },
+    { url = "https://files.pythonhosted.org/packages/58/be/17551a3321df07138f8637e1481360e5f85407e3061af89a988da9f02f25/nemotron_table_structure_v1-1.0.0-py3-none-any.whl", hash = "sha256:e65b9fc66da9e7df30ef823ace23df36b377f27131c266a8adec005a775af3e3", size = 31832, upload-time = "2025-12-19T16:36:23.667Z" },
 ]
 
 [[package]]
