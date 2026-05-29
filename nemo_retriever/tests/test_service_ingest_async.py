@@ -78,7 +78,8 @@ def stub_ingestor() -> Iterator[ServiceIngestor]:
     ing = ServiceIngestor(base_url="http://example:7670")
     events = _stub_event_sequence()
 
-    def _fake_stream(self: ServiceIngestor) -> Iterator[dict[str, Any]]:
+    def _fake_stream(self: ServiceIngestor, *, retain_results: bool = False) -> Iterator[dict[str, Any]]:
+        _ = retain_results
         return iter(events)
 
     with (
@@ -94,7 +95,7 @@ def stub_ingestor() -> Iterator[ServiceIngestor]:
 
 
 def test_ingest_default_returns_service_ingest_result(stub_ingestor: ServiceIngestor) -> None:
-    """Backward-compat: no flags ⇒ same ServiceIngestResult as before."""
+    """Default flags ⇒ ServiceIngestResult with fetched row payloads."""
     result = stub_ingestor.ingest()
     assert isinstance(result, ServiceIngestResult)
     assert not isinstance(result, tuple)
