@@ -9,7 +9,7 @@ This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the s
 - Skill: `nemo-retriever`
 - Evaluation date: 2026-05-29
 - NVSkills-Eval profile: `external`
-- Overall verdict: FAIL
+- Overall verdict: PASS
 - Tier 3 live agent evaluation: not available in this report
 
 ## Agents Used
@@ -40,7 +40,7 @@ Tier 3 dimension rollup was not available in this report.
 
 ## Tier 1: Static Validation Summary
 
-Tier 1 validation passed with observations. NVSkills-Eval ran 9 checks and found 20 total findings.
+Tier 1 validation passed with observations. NVSkills-Eval ran 9 checks and found 21 total findings.
 
 Top findings:
 
@@ -52,14 +52,13 @@ Top findings:
 
 ## Tier 2: Deduplication Summary
 
-Tier 2 validation reported findings. NVSkills-Eval ran 2 checks and found 1 total findings.
+Tier 2 validation passed. NVSkills-Eval ran 2 checks and found 0 total findings.
 
-Top findings:
+Notable observations:
 
-- HIGH DUPLICATE/duplicate: Duplicate content found across references/cli/query.md and references/pitfalls.md:
-  "## Common failure modes" in references/cli/query.md (lines 78-90)
-  vs "## Failure modes (expected, not errors)" in references/pitfalls.md (lines 18-26) (`references/cli/query.md:78`)
+- Context Deduplication: Collected 9 file(s)
+- Inter-Skill Deduplication: Parsed skill 'nemo-retriever': 276 char description
 
 ## Publication Recommendation
 
-The skill should be reviewed before NVSkills-Eval publication. Skill owners should address the findings above and rerun NVSkills-Eval to refresh this benchmark.
+The skill is suitable to proceed toward NVSkills-Eval publication based on this benchmark. Skill owners should keep this file with the skill and refresh it when the evaluation dataset, skill behavior, or target agents materially change.

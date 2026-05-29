@@ -2,7 +2,7 @@
 
 ## Filename fast path — try BEFORE `retriever query`
 
-If the user's question literally contains a PDF basename from `./pdfs/` (stem ≥6 chars, with or without `.pdf`, case-insensitive), skip semantic search. Direct pdfium extraction on the named file is faster and avoids semantic-search misses — the right doc is given, and pages rank by query-token overlap.
+If the user's question literally contains a PDF basename from `./pdfs/` **including the `.pdf` extension** (stem ≥6 chars, case-insensitive), skip semantic search. Direct pdfium extraction on the named file is faster and avoids semantic-search misses — the right doc is given, and pages rank by query-token overlap.
 
 ```bash
 <RETRIEVER_VENV>/bin/python <skill_dir>/scripts/filename_fast_path.py "<the user's question>"

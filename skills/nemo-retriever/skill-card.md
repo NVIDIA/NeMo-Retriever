@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers who need to search, index, or answer questions across PDF and document collections using RAG and vector search via the retriever CLI. <br>
+Developers and engineers who need to search, index, or answer questions over collections of PDFs and documents using a local RAG/vector-search pipeline powered by the retriever CLI. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -20,22 +20,22 @@ Mitigation: Review and scan skill before deployment. <br>
 
 ## Reference(s): <br>
 - [NeMo Retriever Library Documentation](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) <br>
-- [Install Guide](references/install.md) <br>
-- [Setup Guide](references/setup.md) <br>
-- [Query Workflow](references/query.md) <br>
-- [Pitfalls and Recovery](references/pitfalls.md) <br>
-- [CLI: ingest](references/cli/ingest.md) <br>
-- [CLI: query](references/cli/query.md) <br>
+- [CLI reference: retriever ingest](references/cli/ingest.md) <br>
+- [CLI reference: retriever query](references/cli/query.md) <br>
+- [Installation guide](references/install.md) <br>
+- [Query workflow](references/query.md) <br>
+- [Setup guide](references/setup.md) <br>
+- [Pitfalls and recovery](references/pitfalls.md) <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Shell commands, JSON] <br>
-**Output Format:** [JSON] <br>
+**Output Type(s):** [Shell commands, JSON, Synthesized answers] <br>
+**Output Format:** [Markdown with inline bash code blocks and JSON query results] <br>
 **Output Parameters:** [1D] <br>
-**Other Properties Related to Output:** [None] <br>
+**Other Properties Related to Output:** [Query results are JSON arrays sorted by vector distance; final answers are synthesized from retrieved context] <br>
 
 ## Evaluation Tasks: <br>
-NVSkills-Eval 3-Tier evaluation (external profile); Tier 1 static validation (9 checks, 20 findings), Tier 2 deduplication (2 checks, 1 finding). Tier 3 live agent evaluation not available in this report. <br>
+Evaluated through NVSkills-Eval 3-Tier framework (profile: external). Tier 1: 9 static validation checks (21 findings, passed with observations). Tier 2: 2 deduplication checks (0 findings, passed). Overall verdict: PASS. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -48,7 +48,7 @@ Reported benchmark dimensions: <br>
 
 
 ## Skill Version(s): <br>
-3fa00d94 (source: git SHA, committed 2026-05-28) <br>
+25.3.0-1014-gb7fdbb45 (source: git describe) <br>
 
 ## Ethical Considerations: <br>
 NVIDIA believes Trustworthy AI is a shared responsibility and we have established policies and practices to enable development for a wide array of AI applications. When downloaded or used in accordance with our terms of service, developers should work with their internal team to ensure this skill meets requirements for the relevant industry and use case and addresses unforeseen product misuse. <br>

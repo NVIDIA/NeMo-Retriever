@@ -17,12 +17,11 @@ For an unlisted subcommand: `<RETRIEVER_VENV>/bin/retriever <subcommand> --help`
 
 ## Failure modes (expected, not errors)
 
-- **First `ingest` takes ~60s+** — vLLM warmup. Expected.
-- **First `query` takes ~10–15s** — embedder cold-start. Expected.
-- **Empty result** — ingest didn't run. Use the fallback above.
+- **Empty result** — ingest didn't run. **Use the fallback above** (don't re-ingest).
 - **`Clamping num_partitions ...`** — informational on tiny corpora, not an error.
-- **Low-relevance top hit on tiny corpus** — look at `_distance` *gaps* between hits, not absolute values.
-- **Page-element-detection warnings during ingest** — non-fatal as long as the embedding step itself succeeds (and they're silenced by `--quiet` on a successful run).
+- **Page-element-detection warnings during ingest** — non-fatal; silenced by `--quiet`.
+
+For cold-start latencies, `Table not found` errors, and low-relevance diagnostics see `references/cli/query.md` and `references/cli/ingest.md`.
 
 ## You ran more than 2 Bash calls on a query turn
 
