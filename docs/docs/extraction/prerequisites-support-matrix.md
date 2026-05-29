@@ -11,8 +11,11 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 - For audio and video, `ffmpeg` and `ffprobe` must be on `PATH` (for example
   `sudo apt-get install -y --no-install-recommends ffmpeg` on Debian/Ubuntu).
   `ffmpeg-python` and `nemo-retriever[multimedia]` do not install these binaries.
-  On Helm with package-repo access, set `service.installFfmpeg=true`. For
-  air-gapped clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+  On Helm with package-repo access, set `service.installFfmpeg=true`. On
+  OpenShift restricted-v2, use a prebuilt service image instead — see
+  [OpenShift deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#audio-and-video-ffmpeg-on-restricted-openshift)
+  in the Helm chart README. For air-gapped clusters, see
+  [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
 - For PDF extraction with `extract_method="nemotron_parse"`, install the Nemotron Parse
   client dependencies with `pip install "nemo-retriever[nemotron-parse]"` (pulls
   `open-clip-torch`, which provides the `open_clip` module required by the Nemotron Parse
@@ -117,6 +120,8 @@ For 26.05, use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the 
     - Optional infographic regions when you set `caption_infographics=True` on `CaptionParams` (the VLM caption is stored in `caption`, separate from OCR `text`)
 
     To validate caption traffic during ingest, inspect metadata such as `page_elements_v3_counts_by_label`. If the figure is labeled `chart`, expect no Omni chat-completions requests for that region even when captioning is enabled.
+
+    For direct `/v1/chat/completions` smoke tests against the Omni NIM (outside the retriever service), set `chat_template_kwargs.enable_thinking=false` so the caption appears in `message.content`. The service caption profile already applies this during ingest. See [OpenShift deployment — Omni caption manual smoke testing](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#omni-caption-manual-smoke-testing) for a request example.
 
 Optional features listed in the table above require additional GPU support, disk space, and feature-specific system dependencies beyond the four default NIMs.
 

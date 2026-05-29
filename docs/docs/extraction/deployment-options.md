@@ -30,8 +30,11 @@ so the service container installs `ffmpeg` and `ffprobe` at startup. This
 runtime install requires package-repository network egress, a writable root
 filesystem, and security policy that allows the image's scoped sudo use. If
 your cluster blocks startup package installation (for example air-gapped
-environments), use a custom service image that already contains `ffmpeg` and
-`ffprobe`, then set `service.image.repository` and `service.image.tag`.
+environments or **OpenShift restricted-v2**), use a custom service image that
+already contains `ffmpeg` and `ffprobe`, then set `service.image.repository`
+and `service.image.tag`. For OpenShift overrides, see
+[OpenShift deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#openshift-deployment)
+in the Helm chart README.
 
 ### I want examples and notebooks
 
