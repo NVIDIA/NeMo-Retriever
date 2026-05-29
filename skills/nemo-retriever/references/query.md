@@ -1,5 +1,8 @@
 # Query turn — the WHOLE workflow
 
+**General-use vs eval-harness.** If the user prompt doesn't mention a judge, benchmark, output schema, or `./output.json` — skip every `Write ./output.json` / `final_answer` / `ranked_retrieved` step below. Just run the `retriever query` call and answer in chat. The 2-Bash-call budget, the no-narration rule, and the chart/image hedging discipline all still apply.
+
+
 ```bash
 <RETRIEVER_VENV>/bin/retriever query "<the user's question>" --top-k 10 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --rerank \
   | tee /tmp/hits.json \
@@ -37,3 +40,21 @@ If a question asks for an exact percentage or a directional claim **and the evid
 When both a chart hit and a text hit cover the same fact, always prefer the text hit's number.
 
 After writing `./output.json`, STOP. No print, no summary, no further tool calls.
+
+## Non-semantic operations (use these, don't fall back to native tools)
+
+**Page filter** — "what's on page N of doc.pdf" → filter LanceDB directly, no `Read`:
+
+```bash
+<RETRIEVER_VENV>/bin/python -c "import lancedb; t=lancedb.connect('./lancedb').open_table('nv-ingest'); df=t.to_pandas(); print('\n'.join(df[(df.pdf_basename=='APPLE_2022_10K.pdf')&(df.page_number==14)].text))"
+```
+
+**Verbatim quote with `[page]` citation** — quote retrieved chunks with `[page N]` markers in `final_answer`; don't paraphrase.
+
+**Corpus-level aggregate** — "list distinct sources", "count chunks per source" → no `ls`/`grep`/`find`:
+
+```bash
+<RETRIEVER_VENV>/bin/python -c "import lancedb; df=lancedb.connect('./lancedb').open_table('nv-ingest').to_pandas(); print(sorted(df.pdf_basename.unique())); print(df.pdf_basename.value_counts().to_dict())"
+```
+
+**Image / chart captioning** — when the user asks to *describe / caption* an image (prose summary, not OCR text): `retriever ingest` already produces chart/image-type hits whose `text` field is the model-generated caption (see "Charts and images" above). Workflow: ingest the image folder (`setup.md` image recipe), then `retriever query` with a topic-related question — the hits with `metadata.type=chart|image` carry the caption in `text`. Use that as `final_answer`. No separate captioning CLI command.
