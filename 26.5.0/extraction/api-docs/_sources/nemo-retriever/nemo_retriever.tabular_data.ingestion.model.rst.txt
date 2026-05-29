@@ -1,0 +1,45 @@
+nemo\_retriever.tabular\_data.ingestion.model package
+=====================================================
+
+Submodules
+----------
+
+nemo\_retriever.tabular\_data.ingestion.model.neo4j\_node module
+----------------------------------------------------------------
+
+.. automodule:: nemo_retriever.tabular_data.ingestion.model.neo4j_node
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.tabular\_data.ingestion.model.query module
+----------------------------------------------------------
+
+.. automodule:: nemo_retriever.tabular_data.ingestion.model.query
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.tabular\_data.ingestion.model.reserved\_words module
+--------------------------------------------------------------------
+
+.. automodule:: nemo_retriever.tabular_data.ingestion.model.reserved_words
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.tabular\_data.ingestion.model.schema module
+-----------------------------------------------------------
+
+.. automodule:: nemo_retriever.tabular_data.ingestion.model.schema
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.tabular_data.ingestion.model
+   :members:
+   :show-inheritance:
+   :undoc-members:
