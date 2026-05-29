@@ -1,5 +1,7 @@
 # Query turn — the WHOLE workflow
 
+**General-use callout:** if the prompt doesn't mention a judge, benchmark, output schema, or `output.json`, skip the `Write` `./output.json` step and answer in chat. All other discipline (2-Bash-call budget, no-narration, chart/image hedging) still applies.
+
 ## Filename fast path — try BEFORE `retriever query`
 
 If the user's question literally contains a PDF basename from `./pdfs/` (stem ≥6 chars, with or without `.pdf`, case-insensitive), skip semantic search. Direct pdfium extraction on the named file is faster and avoids semantic-search misses — the right doc is given, and pages rank by query-token overlap.
