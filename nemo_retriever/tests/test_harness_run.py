@@ -171,7 +171,7 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
     )
     cmd, runtime_dir, detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
     assert "--run-mode" in cmd
-    assert cmd[cmd.index("--run-mode") + 1] == "batch"
+    assert cmd[cmd.index("--run-mode") + 1] == "inprocess"
     assert "--detection-summary-file" in cmd
     assert "--evaluation-mode" in cmd
     assert cmd[cmd.index("--evaluation-mode") + 1] == "beir"
@@ -1237,7 +1237,7 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "dataset_label": "jp20",
             "dataset_dir": str(dataset_dir),
             "preset": "single_gpu",
-            "run_mode": "batch",
+            "run_mode": "inprocess",
             "query_csv": str(query_csv),
             "effective_query_csv": str(query_csv),
             "input_type": cfg.input_type,

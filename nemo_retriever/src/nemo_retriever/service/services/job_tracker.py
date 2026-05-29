@@ -174,6 +174,8 @@ class JobAggregate(RichModel):
     label: str | None = None
     """Optional client-supplied tag, e.g. ``"Q4-2026-corpus"``."""
     metadata: dict[str, Any] = {}
+    retain_results: bool = False
+    """When false, :meth:`JobTracker.mark_completed` drops bulky ``result_data``."""
 
 
 # ── eviction tunables (apply to terminal aggregates) ──────────────────
@@ -273,6 +275,7 @@ class JobTracker:
         expected_documents: int,
         label: str | None = None,
         metadata: dict[str, Any] | None = None,
+        retain_results: bool = False,
     ) -> JobAggregate:
         """Create a new :class:`JobAggregate` in ``pending`` state."""
         if expected_documents <= 0:
@@ -295,6 +298,7 @@ class JobTracker:
                 created_at=_utcnow_iso(),
                 label=label,
                 metadata=dict(metadata or {}),
+                retain_results=retain_results,
             )
             agg.counts[DocumentStatus.PENDING.value] = 0
             self._jobs[job_id] = agg
@@ -316,6 +320,14 @@ class JobTracker:
         """Return a snapshot of every aggregate (defensive deep copies)."""
         with self._lock:
             return [a.model_copy(deep=True) for a in self._jobs.values()]
+
+    def should_retain_results(self, job_id: str | None) -> bool:
+        """Return whether completed row payloads should be kept for *job_id*."""
+        if not job_id:
+            return False
+        with self._lock:
+            agg = self._jobs.get(job_id)
+            return bool(agg.retain_results) if agg is not None else False
 
     def job_documents(self, job_id: str) -> list[DocumentRecord]:
         """Return every document record belonging to *job_id* in arrival order."""
@@ -492,7 +504,9 @@ class JobTracker:
             rec.status = new_status
             rec.completed_at = _utcnow_iso()
             rec.result_rows = result_rows
-            rec.result_data = result_data
+            agg_for_retain = self._jobs.get(rec.job_id)
+            retain_results = bool(agg_for_retain.retain_results) if agg_for_retain is not None else False
+            rec.result_data = result_data if retain_results else None
             rec.error = error
             if elapsed_s is not None:
                 rec.elapsed_s = elapsed_s

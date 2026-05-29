@@ -167,9 +167,9 @@ def ingest_command(
     lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
     table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),
     run_mode: IngestRunModeValue = typer.Option(
-        "batch",
+        "inprocess",
         "--run-mode",
-        help="Execution mode for the SDK ingestor. Defaults to batch; use inprocess to skip Ray for local debug/CI.",
+        help="Execution mode for the SDK ingestor. Defaults to inprocess; use batch for Ray Data scale-out.",
     ),
     dry_run: bool = typer.Option(
         False,
@@ -557,8 +557,8 @@ def ingest_command(
     # Report input-file count alongside the actual landed-row count from the
     # LanceDB table — they diverge whenever one document explodes into multiple
     # chunks (PDFs → page elements, video → audio_visual segments) or
-    # shrinks to zero rows when every NIM call failed. The previous message
-    # only reported inputs and hid both cases. ``n_rows`` is None when the
+    # shrinks to zero rows when every NIM call failed. The SDK rejects empty
+    # or unverifiable ingests before we get here; ``n_rows`` is None when the
     # table read itself failed (caller can still see file count + URI).
     n_files = len(summary["documents"])
     table_path = f"{summary['lancedb_uri']}/{summary['table_name']}"

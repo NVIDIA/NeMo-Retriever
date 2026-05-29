@@ -71,7 +71,7 @@ def test_root_ingest_runs_default_sdk_chain(monkeypatch, tmp_path) -> None:
     result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
 
     assert result.exit_code == 0
-    assert create_calls == [{"run_mode": "batch"}]
+    assert create_calls == [{"run_mode": "inprocess"}]
     assert [method_call[0] for method_call in fake_ingestor.method_calls] == [
         "files",
         "extract",
@@ -425,8 +425,8 @@ def test_root_ingest_help_does_not_expose_input_type() -> None:
     assert "[auto|fast-text]" in result.output
     assert "--extract-images" in result.output
     assert "--caption" in result.output
-    assert "Defaults to" in result.output
-    assert "[default: batch]" in result.output
+    assert "--run-mode" in result.output
+    assert "[inprocess|batch" in result.output
     assert re.search(r"--no-caption(?!-)", result.output) is None
 
 
@@ -445,7 +445,7 @@ def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, 
     payload = json.loads(result.output)
     assert payload["dry_run"] is True
     assert payload["profile"] == "fast-text"
-    assert payload["create_ingestor"] == {"run_mode": "batch"}
+    assert payload["create_ingestor"] == {"run_mode": "inprocess"}
     assert payload["extract"]["method"] == "pdfium"
     assert payload["extract"]["extract_images"] is False
     assert payload["extract"]["use_page_elements"] is False
