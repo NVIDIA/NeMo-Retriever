@@ -59,7 +59,6 @@ Highlights for the 26.05 release include:
 
 - BEIR-centric evaluation overhaul and `retriever skill-eval` benchmark CLI for the NeMo Retriever skill (experimental)  
 
-### Text-to-SQL and tabular
 
 - Text-to-SQL agent graph and tabular tooling for structured data retrieval, including tabular data ingestion  
 
