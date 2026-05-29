@@ -63,7 +63,7 @@ For natural-language infographic descriptions, optionally enable [image captioni
 
 Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
-The default OCR engine is **Nemotron OCR v2**. For OCR configuration (language mode, local inference, and NIM deployment), see the [CLI reference](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli) and the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
+The default OCR engine is **Nemotron OCR v2**. When you run extraction **locally with HuggingFace models**, v2 operates in **multilingual** mode by default. For CLI flags and API parameters, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). For Kubernetes installs, see [Nemotron OCR v2 — language mode](prerequisites-support-matrix.md#nemotron-ocr-v2-language-mode) in the support matrix.
 
 **Related**
 
@@ -74,8 +74,6 @@ The default OCR engine is **Nemotron OCR v2**. For OCR configuration (language m
 ## Image captioning { #image-captioning }
 
 Image captioning generates natural-language descriptions for unstructured image content. Retrieval can then use text embeddings over captions and visual embeddings where you configure them.
-
-For caption scope (including PDF chart exclusions and validation), see [Image captioning](prerequisites-support-matrix.md#image-captioning-2605).
 
 **Captioning is optional** — enable it in your ingest configuration (for example, the `caption` API or pipeline flag) when you need natural-language descriptions of image content. Reasoning traces are disabled by default for captioning.
 

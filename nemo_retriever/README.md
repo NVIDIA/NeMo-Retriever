@@ -174,7 +174,11 @@ python -m nemo_retriever.examples.graph_pipeline \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-> **OCR engine default:** The default OCR engine is **Nemotron OCR v2**. Local Hugging Face inference uses OCR v2 only; pass `--ocr-lang english` for English-only v2 (`multi` is the default). Use `--ocr-version v1` only with remote OCR NIM or backend endpoints that serve the legacy v1 model (for example `nemotron-ocr-v1`). Remote OCR NIM endpoints decide their own model and language behavior, and the local OCR selectors are not added to remote request payloads.
+> **OCR engine default:** The default OCR engine is **Nemotron OCR v2**. Use
+> `--ocr-version v1` to opt into the legacy OCR engine. Local OCR v2 defaults
+> to multilingual mode (`multi`); pass `--ocr-lang english` for the English-only
+> v2 selector. Remote OCR NIM endpoints decide their own model and language
+> behavior, and the local OCR selectors are not added to remote request payloads.
 
 When you use the remote embedder, pair the `Retriever` with matching
 `embed_kwargs` overrides shown in [Run a recall query](#run-a-recall-query).

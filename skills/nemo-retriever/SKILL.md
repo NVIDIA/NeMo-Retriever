@@ -9,9 +9,11 @@ allowed-tools: Bash Write Read
 
 The `retriever` CLI indexes a folder of PDFs into LanceDB (`retriever ingest`) and serves vector search over it (`retriever query`). For any task about searching/answering questions across a folder of PDFs, use this CLI — do not write a custom RAG.
 
+**Beyond PDFs and beyond semantic search.** `retriever ingest` also handles images, Office, HTML, TXT, audio, and video — see `references/setup.md` for the per-format recipe and `references/install.md` for the install extras (`[multimedia]`, libreoffice, ffmpeg). For non-semantic operations — page filter, verbatim quote with citation, corpus-level aggregate, chart/image caption hits — see `references/query.md`. Don't fall back to native Read/Grep/Python on non-PDF inputs.
+
 ## Install (if `retriever` is missing)
 
-If `command -v retriever` returns nothing, follow `references/install.md` to install the NeMo Retriever Library before proceeding. It prints `RETRIEVER_VENV=<path>`; substitute that path for `<RETRIEVER_VENV>` in every example in this skill (setup, query, pitfalls, and the CLI references).
+If `command -v retriever` returns nothing, follow `references/install.md` to install the NeMo Retriever Library before proceeding. It prints `RETRIEVER_VENV=<path>`; substitute that path for `<RETRIEVER_VENV>` in every example in this skill (setup, query, troubleshooting, and the CLI references).
 
 ## Workflow — read the reference for the current phase, then execute
 
@@ -22,6 +24,8 @@ If `command -v retriever` returns nothing, follow `references/install.md` to ins
 | Anything errored or returned empty | `references/pitfalls.md` | Apply the named recovery; do not improvise |
 
 For the full `retriever ingest` / `retriever query` CLI specs, see `references/cli/ingest.md` and `references/cli/query.md`. You do not need these for routine turns — `<RETRIEVER_VENV>/bin/retriever <subcommand> --help` is faster.
+
+Before ingesting a mixed folder, inventory extensions (`find <dir> -name '*.*' | sed 's/.*\.//' | sort -u`) — `--input-type=auto` silently drops anything outside the supported set. See `references/troubleshooting.md` "Unsupported file types".
 
 ## Hard limits (apply to every turn)
 

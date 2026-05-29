@@ -213,7 +213,12 @@ class RayDataExecutor(AbstractExecutor):
         return ordered
 
     def ingest(self, data: Any, **kwargs: Any) -> Any:
-        """Build and execute a Ray Data pipeline from the graph.
+        """Build, execute, and materialize a Ray Data pipeline from the graph."""
+
+        return self.build_dataset(data, **kwargs).to_pandas()
+
+    def build_dataset(self, data: Any, **kwargs: Any) -> Any:
+        """Build a lazy Ray Data pipeline from the graph.
 
         Parameters
         ----------
@@ -381,4 +386,4 @@ class RayDataExecutor(AbstractExecutor):
                 **overrides,
             )
 
-        return ds.to_pandas()
+        return ds

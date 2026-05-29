@@ -1,4 +1,4 @@
-# Pitfalls and recovery
+# Troubleshooting and recovery
 
 Read this only after you hit one of the named errors below. Don't read it pre-emptively.
 
@@ -22,7 +22,17 @@ For an unlisted subcommand: `<RETRIEVER_VENV>/bin/retriever <subcommand> --help`
 - **Empty result** — ingest didn't run. Use the fallback above.
 - **`Clamping num_partitions ...`** — informational on tiny corpora, not an error.
 - **Low-relevance top hit on tiny corpus** — look at `_distance` *gaps* between hits, not absolute values.
-- **Page-element-detection warnings during ingest** — non-fatal as long as the embedding step itself succeeds (and they're silenced by `--quiet` on a successful run).
+- **Page-element-detection warnings during ingest** — non-fatal as long as the embedding step itself succeeds (and they're silenced on a successful run, since `ingest` is quiet by default).
+
+## Unsupported file types (silent filter — the v2 regression mode)
+
+`retriever ingest --input-type=auto` silently drops `.flac`, `.rtf`, `.eml`, `.py`, `.jsonl`, `.zip`, etc. The "Ingested N documents" line uses the count of supported files — N may be lower than the folder count with no error. Before ingest, inventory:
+
+```bash
+find <dir> -type f -name '*.*' | sed 's/.*\.//' | sort -u
+```
+
+If unsupported extensions appear, name them in your reply and ask the user whether to skip or convert. Don't let the count silently drop.
 
 ## You ran more than 2 Bash calls on a query turn
 

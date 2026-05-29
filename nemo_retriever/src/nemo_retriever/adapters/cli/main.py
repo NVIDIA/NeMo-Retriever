@@ -17,7 +17,10 @@ from pydantic import ValidationError
 import typer
 
 from nemo_retriever.adapters.cli.sdk_workflow import (
-    IngestInputTypeValue,
+    AudioSplitTypeValue,
+    DEFAULT_LANCEDB_URI,
+    DEFAULT_TABLE_NAME,
+    IngestProfileValue,
     IngestRunModeValue,
     LocalIngestEmbedBackendValue,
     OcrLangValue,
@@ -26,6 +29,7 @@ from nemo_retriever.adapters.cli.sdk_workflow import (
     ingest_documents,
     query_documents,
 )
+from nemo_retriever.vdb.records import RetrievalHit
 from nemo_retriever.version import get_version_info
 
 logger = logging.getLogger(__name__)
@@ -65,6 +69,14 @@ for _name, _module, _attr in _LAZY_SUBAPPS:
         logger.debug("Skipping '%s' sub-command (import failed)", _name)
 
 _ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError, ValidationError)
+
+
+def _query_cli_hit(hit: RetrievalHit) -> dict[str, object]:
+    return {
+        "source": hit.get("source", ""),
+        "page_number": hit.get("page_number"),
+        "text": hit.get("text", ""),
+    }
 
 
 def _silence_noisy_libraries() -> None:
@@ -145,19 +157,143 @@ def main() -> None:
 def ingest_command(
     documents: list[str] = typer.Argument(
         ...,
-        help="One or more file paths, directories, or globs to ingest.",
+        help="One or more files, directories, or globs. Supported file types are detected automatically.",
     ),
-    input_type: IngestInputTypeValue = typer.Option(
+    profile: IngestProfileValue = typer.Option(
         "auto",
-        "--input-type",
-        help="Input type: auto, pdf, doc, txt, html, image, audio, or video.",
+        "--profile",
+        help="Ingest profile: auto or fast-text.",
     ),
-    lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
-    table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
+    lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
+    table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),
     run_mode: IngestRunModeValue = typer.Option(
-        "inprocess",
+        "batch",
         "--run-mode",
-        help="Execution mode for the SDK ingestor.",
+        help="Execution mode for the SDK ingestor. Defaults to batch; use inprocess to skip Ray for local debug/CI.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Print the resolved ingest plan as JSON without creating an ingestor.",
+    ),
+    method: str | None = typer.Option(None, "--method", help="PDF text extraction method."),
+    dpi: int | None = typer.Option(None, "--dpi", min=72, help="Render DPI for PDF page images."),
+    extract_text: bool | None = typer.Option(
+        None,
+        "--extract-text/--no-extract-text",
+        help="Enable or disable PDF text extraction.",
+    ),
+    extract_images: bool | None = typer.Option(
+        None,
+        "--extract-images/--no-extract-images",
+        help="Enable or disable PDF image extraction.",
+    ),
+    extract_tables: bool | None = typer.Option(
+        None,
+        "--extract-tables/--no-extract-tables",
+        help="Enable or disable PDF table extraction.",
+    ),
+    extract_charts: bool | None = typer.Option(
+        None,
+        "--extract-charts/--no-extract-charts",
+        help="Enable or disable PDF chart extraction.",
+    ),
+    extract_infographics: bool | None = typer.Option(
+        None,
+        "--extract-infographics/--no-extract-infographics",
+        help="Enable or disable PDF infographic extraction.",
+    ),
+    extract_page_as_image: bool | None = typer.Option(
+        None,
+        "--extract-page-as-image/--no-extract-page-as-image",
+        help="Enable or disable full-page image extraction.",
+    ),
+    use_page_elements: bool | None = typer.Option(
+        None,
+        "--use-page-elements/--no-use-page-elements",
+        help="Enable or disable page-element detection for OCR/table/chart extraction.",
+    ),
+    segment_audio: bool | None = typer.Option(
+        None,
+        "--segment-audio/--no-segment-audio",
+        help="Enable or disable ASR-side audio segmentation.",
+    ),
+    audio_split_type: AudioSplitTypeValue = typer.Option(
+        "size",
+        "--audio-split-type",
+        help="Audio/video audio split type: size, time, or frame.",
+    ),
+    audio_split_interval: int | None = typer.Option(
+        None,
+        "--audio-split-interval",
+        min=1,
+        help="Audio/video audio split interval.",
+    ),
+    video_extract_audio: bool | None = typer.Option(
+        None,
+        "--video-extract-audio/--no-video-extract-audio",
+        help="Enable or disable audio extraction from video.",
+    ),
+    video_extract_frames: bool | None = typer.Option(
+        None,
+        "--video-extract-frames/--no-video-extract-frames",
+        help="Enable or disable video frame extraction.",
+    ),
+    video_frame_fps: float | None = typer.Option(
+        None,
+        "--video-frame-fps",
+        min=0.001,
+        help="Video frame extraction frames per second.",
+    ),
+    video_frame_dedup: bool | None = typer.Option(
+        None,
+        "--video-frame-dedup/--no-video-frame-dedup",
+        help="Enable or disable perceptual video frame deduplication.",
+    ),
+    video_frame_text_dedup: bool | None = typer.Option(
+        None,
+        "--video-frame-text-dedup/--no-video-frame-text-dedup",
+        help="Enable or disable OCR-text deduplication across adjacent video frames.",
+    ),
+    video_frame_text_dedup_max_dropped_frames: int | None = typer.Option(
+        None,
+        "--video-frame-text-dedup-max-dropped-frames",
+        min=0,
+        help="Maximum dropped frames bridged by video frame text deduplication.",
+    ),
+    video_av_fuse: bool | None = typer.Option(
+        None,
+        "--video-av-fuse/--no-video-av-fuse",
+        help="Enable or disable audio/visual fusion rows for video.",
+    ),
+    caption: bool = typer.Option(
+        False,
+        "--caption",
+        help="Add an optional VLM captioning stage after extraction.",
+    ),
+    caption_invoke_url: str | None = typer.Option(
+        None,
+        "--caption-invoke-url",
+        help=(
+            "VLM caption endpoint URL. If omitted with --caption, GPU hosts use local captioning; "
+            "CPU-only runs use the hosted default endpoint with NVIDIA_API_KEY/NGC_API_KEY."
+        ),
+    ),
+    caption_model_name: str | None = typer.Option(
+        None,
+        "--caption-model-name",
+        help="Optional VLM caption model name override.",
+    ),
+    caption_context_text_max_chars: int | None = typer.Option(
+        None,
+        "--caption-context-text-max-chars",
+        min=0,
+        help="Maximum nearby extracted text characters to include in caption prompts.",
+    ),
+    caption_infographics: bool | None = typer.Option(
+        None,
+        "--caption-infographics/--no-caption-infographics",
+        help="Caption infographic crops in addition to extracted images.",
     ),
     overwrite: bool = typer.Option(
         True,
@@ -348,8 +484,33 @@ def ingest_command(
         with capture:
             summary = ingest_documents(
                 documents,
-                input_type=input_type,
+                profile=profile,
                 run_mode=run_mode,
+                dry_run=dry_run,
+                method=method,
+                dpi=dpi,
+                extract_text=extract_text,
+                extract_images=extract_images,
+                extract_tables=extract_tables,
+                extract_charts=extract_charts,
+                extract_infographics=extract_infographics,
+                extract_page_as_image=extract_page_as_image,
+                use_page_elements=use_page_elements,
+                segment_audio=segment_audio,
+                audio_split_type=audio_split_type,
+                audio_split_interval=audio_split_interval,
+                video_extract_audio=video_extract_audio,
+                video_extract_frames=video_extract_frames,
+                video_frame_fps=video_frame_fps,
+                video_frame_dedup=video_frame_dedup,
+                video_frame_text_dedup=video_frame_text_dedup,
+                video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
+                video_av_fuse=video_av_fuse,
+                caption=caption,
+                caption_invoke_url=caption_invoke_url,
+                caption_model_name=caption_model_name,
+                caption_context_text_max_chars=caption_context_text_max_chars,
+                caption_infographics=caption_infographics,
                 ray_address=ray_address,
                 ray_log_to_driver=ray_log_to_driver,
                 lancedb_uri=lancedb_uri,
@@ -389,6 +550,10 @@ def ingest_command(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
+    if summary.get("dry_run") is True:
+        typer.echo(json.dumps(summary, indent=2, sort_keys=True, default=str))
+        return
+
     # Report input-file count alongside the actual landed-row count from the
     # LanceDB table — they diverge whenever one document explodes into multiple
     # chunks (PDFs → page elements, video → audio_visual segments) or
@@ -408,8 +573,8 @@ def ingest_command(
 def query_command(
     query: str = typer.Argument(..., help="Query text."),
     top_k: int = typer.Option(10, "--top-k", min=1, help="Number of hits to retrieve."),
-    lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
-    table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
+    lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
+    table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),
     embed_invoke_url: str | None = typer.Option(None, "--embed-invoke-url", help="Embedding NIM endpoint URL."),
     embed_model_name: str | None = typer.Option(
         None,
@@ -464,7 +629,7 @@ def query_command(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
-    typer.echo(json.dumps(list(hits), indent=2, sort_keys=True, default=str))
+    typer.echo(json.dumps([_query_cli_hit(hit) for hit in hits], indent=2, sort_keys=True, default=str))
 
 
 @app.callback()

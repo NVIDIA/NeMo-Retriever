@@ -4,19 +4,6 @@
 
 ## Filename fast path — try BEFORE `retriever query`
 
-If the user's question literally contains a PDF basename from `./pdfs/` (stem ≥6 chars, with or without `.pdf`, case-insensitive), skip semantic search. Direct pdfium extraction on the named file is faster and avoids semantic-search misses — the right doc is given, and pages rank by query-token overlap.
-
-```bash
-<RETRIEVER_VENV>/bin/python <skill_dir>/scripts/filename_fast_path.py "<the user's question>"
-```
-
-`<skill_dir>` is the "Base directory for this skill" announced at load time. Stdout is one of:
-
-- `NO_MATCH` — no literal basename in the query. Fall through to the standard `retriever query` workflow below.
-- `NO_TEXT` — matched file is image-only / pdfium got no text. Also fall through.
-- A JSON object with `"ranking"` followed by `---TOP_PAGE_TEXT---` and the top page's raw text — that's the fast-path hit. Write `./output.json` directly: copy the `"ranking"` entries verbatim into `ranked_retrieved`, synthesize `final_answer` from the printed `TOP_PAGE_TEXT` (exact number/name/date; one paragraph; honest "not in the retrieved pages" if the fact genuinely isn't there; no chart hedging needed — pdfium extracts text only). Then STOP. Fast-path total: 2 tool calls (this Bash + Write). Do NOT also call `retriever query` — it's mutually exclusive.
-
-## Standard path: `retriever query`
 
 ```bash
 <RETRIEVER_VENV>/bin/retriever query "<the user's question>" --top-k 10 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --rerank \
@@ -67,3 +54,21 @@ If a question asks for an exact percentage or a directional claim **and the evid
 When both a chart hit and a text hit cover the same fact, always prefer the text hit's number.
 
 After writing `./output.json`, STOP. No print, no summary, no further tool calls.
+
+## Non-semantic operations (use these, don't fall back to native tools)
+
+**Page filter** — "what's on page N of doc.pdf" → filter LanceDB directly, no `Read`:
+
+```bash
+<RETRIEVER_VENV>/bin/python -c "import lancedb; t=lancedb.connect('./lancedb').open_table('nv-ingest'); df=t.to_pandas(); print('\n'.join(df[(df.pdf_basename=='APPLE_2022_10K.pdf')&(df.page_number==14)].text))"
+```
+
+**Verbatim quote with `[page]` citation** — quote retrieved chunks with `[page N]` markers in `final_answer`; don't paraphrase.
+
+**Corpus-level aggregate** — "list distinct sources", "count chunks per source" → no `ls`/`grep`/`find`:
+
+```bash
+<RETRIEVER_VENV>/bin/python -c "import lancedb; df=lancedb.connect('./lancedb').open_table('nv-ingest').to_pandas(); print(sorted(df.pdf_basename.unique())); print(df.pdf_basename.value_counts().to_dict())"
+```
+
+**Image / chart captioning** — when the user asks to *describe / caption* an image (prose summary, not OCR text): `retriever ingest` already produces chart/image-type hits whose `text` field is the model-generated caption (see "Charts and images" above). Workflow: ingest the image folder (`setup.md` image recipe), then `retriever query` with a topic-related question — the hits with `metadata.type=chart|image` carry the caption in `text`. Use that as `final_answer`. No separate captioning CLI command.

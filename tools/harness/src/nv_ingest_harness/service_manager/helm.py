@@ -1024,6 +1024,8 @@ done
         "nemoretriever-table-structure-v1",
         "nemotron-ocr-v1",
         "nemoretriever-ocr-v1",
+        "nemotron-ocr-v2",
+        "nemoretriever-ocr-v2",
     )
     _NON_INGESTION_DEPLOYMENTS = (
         "llama-nemotron-rerank-vl-1b-v2",

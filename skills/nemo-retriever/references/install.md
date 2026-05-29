@@ -81,3 +81,12 @@ echo "RETRIEVER_VENV=$VENV"   # record this absolute path — substitute it for 
 In the examples in `SKILL.md` and other reference docs, substitute
 `<RETRIEVER_VENV>` with the absolute path printed by the final `echo`
 (e.g. `/workspace/retriever`).
+
+## Optional extras (install only when the user's input demands it)
+
+| Input | Extra / dep | Install (run inside `$NRL_PKG`) |
+|---|---|---|
+| `.docx` `.pptx` | libreoffice (host pkg) | `sudo apt-get install -y libreoffice` |
+| `.mp3` `.wav` `.m4a` / `.mp4` `.mov` `.mkv` | `[multimedia]` + ffmpeg (host pkg) | `sudo apt-get install -y ffmpeg && env SOURCE_DATE_EPOCH=$(date +%s) uv pip install -q --python "$VENV/bin/python" ".[multimedia]"` |
+
+Stack extras with the base flavor, e.g. `".[local,multimedia]"`. Base install already covers PDF, image, HTML, TXT.
