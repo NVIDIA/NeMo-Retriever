@@ -505,7 +505,7 @@ def resolve_ingest_plan(
     *,
     profile: IngestProfileValue = "auto",
     input_type: IngestInputTypeValue = "auto",
-    run_mode: IngestRunModeValue = "batch",
+    run_mode: IngestRunModeValue = "inprocess",
     method: str | None = None,
     dpi: int | None = None,
     extract_text: bool | None = None,
@@ -567,9 +567,8 @@ def resolve_ingest_plan(
 ) -> ResolvedIngestPlan:
     """Resolve root ingest options into ordinary params for one extract call.
 
-    Root ``retriever ingest`` intentionally defaults to ``run_mode="batch"``.
-    Programmatic callers that need Ray-free local execution should pass
-    ``run_mode="inprocess"`` explicitly. ``input_type`` remains a private
+    Root ``retriever ingest`` defaults to ``run_mode="inprocess"`` (no Ray).
+    Pass ``run_mode="batch"`` for Ray Data scale-out. ``input_type`` remains a private
     expansion/validation constraint; extraction still routes from the manifest.
     """
 
@@ -706,7 +705,7 @@ def ingest_documents(
     *,
     profile: IngestProfileValue = "auto",
     input_type: IngestInputTypeValue = "auto",
-    run_mode: IngestRunModeValue = "batch",
+    run_mode: IngestRunModeValue = "inprocess",
     dry_run: bool = False,
     method: str | None = None,
     dpi: int | None = None,
@@ -778,9 +777,8 @@ def ingest_documents(
     Batch tuning arguments are opt-in and are translated into
     ``BatchTuningParams`` for extraction or embedding; they are meaningful for
     ``run_mode="batch"`` and ignored by callers that leave them unset.
-    Root ``retriever ingest`` intentionally defaults to ``run_mode="batch"``;
-    pass ``run_mode="inprocess"`` explicitly for local debug or CI callers
-    that need to skip Ray startup.
+    Root ``retriever ingest`` defaults to ``run_mode="inprocess"``; pass
+    ``run_mode="batch"`` for Ray Data scale-out.
     The legacy ``input_type`` argument constrains directory expansion and file
     validation only; extraction routing remains manifest-planned.
     """
