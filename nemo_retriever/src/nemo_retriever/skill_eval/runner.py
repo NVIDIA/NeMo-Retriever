@@ -72,6 +72,13 @@ class TrialResult:
     judge_score: int | None = None
     judge_reasoning: str = ""
     judge_error: str = ""
+    judge_mode: str = ""
+    judge_subscores: dict[str, int | None] = field(default_factory=dict)
+    judge_flags: dict[str, bool | None] = field(default_factory=dict)
+    judge_lists: dict[str, list[str]] = field(default_factory=dict)
+    legacy_judge_score: int | None = None
+    legacy_judge_reasoning: str = ""
+    legacy_judge_error: str = ""
     tool_use_summary: str = ""
     cost_available: bool = True
     execution_mode: str = "linear_session"
@@ -88,6 +95,26 @@ class ConditionRun:
     results: list[TrialResult]
     result_workdirs: dict[str, Path]
     execution_mode: str = "linear_session"
+
+
+ANSWERABLE_SCORING_MODES: frozenset[str] = frozenset({"answerable_retrieval", "ingest_plus_answer"})
+ANSWER_REQUIRED_SCORING_MODES: frozenset[str] = frozenset(
+    {"answerable_retrieval", "ingest_plus_answer", "refusal", "capability_gap", "dispatcher_prompt"}
+)
+
+
+@dataclass
+class JudgeContext:
+    """Bag of state passed from CLI into ``_apply_judge``.
+
+    Holds the LiteLLM transport plus the two on-disk prompt paths. ``None``
+    is a valid path when no entries in the run need that mode.
+    """
+
+    client: Any
+    simple_prompt_path: str | None
+    scenario_prompt_path: str | None
+    legacy_judge: Any = None
 
 
 def _remap_pdf_paths(text: str, prefixes: tuple[str, ...]) -> str:
@@ -1153,38 +1180,89 @@ def _run_one_turn(
     return result
 
 
-UNSCORABLE_JUDGE_ERRORS: frozenset[str] = frozenset({"no_ground_truth", "empty_candidate"})
+UNSCORABLE_JUDGE_ERRORS: frozenset[str] = frozenset({"no_ground_truth", "empty_candidate", "scoring_mode_skip"})
 
 
-def _apply_judge(judge: Any, entry: DatasetEntry, result: TrialResult) -> None:
-    """Score ``result.final_answer`` against ``entry.ground_truth_answer``.
+def _apply_judge(ctx: Any, entry: DatasetEntry, result: TrialResult) -> None:
+    """Score ``result.final_answer`` against ``entry`` via the dispatched judge.
 
-    Missing ground truth and empty candidates are recorded as terminal
-    ``judge_error`` values so ``rescore`` can skip intrinsically unscorable
-    trials instead of retrying them forever.
+    Behaviour summary:
+      - ``ctx is None``               -> no-op (judge disabled).
+      - ``scoring_mode == "skip"``    -> terminal ``judge_error="scoring_mode_skip"``.
+      - Simple-mode entry with no
+        ground truth                  -> terminal ``judge_error="no_ground_truth"``.
+      - Empty ``final_answer`` for a
+        mode that requires an answer  -> terminal ``judge_error="empty_candidate"``.
+      - Otherwise: call
+        ``judging.evaluate_entry`` and stamp sub-scores onto ``result``.
     """
-    if judge is None:
+    if ctx is None:
         return
-    if not entry.ground_truth_answer:
+    if entry.scoring_mode == "skip":
+        result.judge_error = "scoring_mode_skip"
+        return
+
+    needs_answer_mode = entry.scoring_mode in ANSWER_REQUIRED_SCORING_MODES or entry.scoring_mode == ""
+    answerable_mode = entry.scoring_mode in ANSWERABLE_SCORING_MODES or entry.scoring_mode == ""
+    if answerable_mode and not entry.ground_truth_answer:
         result.judge_error = "no_ground_truth"
         return
-    if not result.final_answer:
+    if needs_answer_mode and not result.final_answer:
         result.judge_error = "empty_candidate"
         return
+
+    from nemo_retriever.skill_eval.judging import evaluate_entry
+
     try:
-        verdict = judge.judge(
-            query=entry.original_query,
-            reference=entry.ground_truth_answer,
-            candidate=result.final_answer,
+        verdict = evaluate_entry(
+            client=ctx.client,
+            entry=entry,
+            result=result,
+            simple_prompt_path=ctx.simple_prompt_path,
+            scenario_prompt_path=ctx.scenario_prompt_path,
         )
     except Exception as exc:
         result.judge_error = f"judge_invocation_error: {exc}"
-        logger.warning("LLMJudge raised for entry_id=%s: %s", result.entry_id, exc, exc_info=True)
-        return
-    result.judge_score = verdict.score
-    result.judge_reasoning = verdict.reasoning or ""
-    if verdict.error:
-        result.judge_error = verdict.error
+        logger.warning("evaluate_entry raised for entry_id=%s: %s", result.entry_id, exc, exc_info=True)
+        verdict = None
+
+    if verdict is not None:
+        result.judge_mode = verdict.mode
+        result.judge_subscores = dict(verdict.sub_scores)
+        result.judge_flags = dict(verdict.flags)
+        result.judge_lists = dict(verdict.lists)
+        result.judge_reasoning = verdict.rationale or ""
+        if verdict.mode == "simple":
+            result.judge_score = verdict.sub_scores.get("answer_correctness")
+        if verdict.error:
+            result.judge_error = verdict.error
+
+    # Also run the legacy LLMJudge for cross-run comparability when possible.
+    # This is independent of the new judge: a failure in one does not block the
+    # other, since they use different prompts and may be sensitive to different
+    # inputs (e.g. context-window limits).
+    if ctx.legacy_judge is not None and entry.ground_truth_answer and result.final_answer:
+        from nemo_retriever.skill_eval.judging import truncate_for_judge
+
+        try:
+            legacy_verdict = ctx.legacy_judge.judge(
+                query=entry.original_query,
+                reference=entry.ground_truth_answer,
+                candidate=truncate_for_judge(result.final_answer),
+            )
+        except Exception as exc:
+            result.legacy_judge_error = f"legacy_judge_invocation_error: {exc}"
+            logger.warning(
+                "legacy LLMJudge raised for entry_id=%s: %s",
+                result.entry_id,
+                exc,
+                exc_info=True,
+            )
+        else:
+            result.legacy_judge_score = legacy_verdict.score
+            result.legacy_judge_reasoning = legacy_verdict.reasoning or ""
+            if legacy_verdict.error:
+                result.legacy_judge_error = legacy_verdict.error
 
 
 def run_condition(

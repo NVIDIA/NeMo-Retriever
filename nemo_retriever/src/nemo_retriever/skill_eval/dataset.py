@@ -40,6 +40,13 @@ class DatasetEntry(BaseModel):
     ground_truth_answer: str = ""
     domain: str = ""
     domain_label: str = ""
+    scoring_mode: str = ""
+    category: str = ""
+    phase: str = ""
+    expected_action: str = ""
+    expected_output_shape: str = ""
+    validation_signal: str = ""
+    raw_answers: list[str] = []
 
 
 def _select_prompt(candidates: list[dict[str, Any]], selected_variant: int | None) -> str:
@@ -121,6 +128,9 @@ def load_eval_manifest(path: Path) -> list[DatasetEntry]:
                 continue
             pages.append(GroundTruthPage(doc_id=str(doc_id), page_number=int(page), score=int(p.get("score") or 1)))
 
+        raw_answers = item.get("raw_answers") or []
+        if not isinstance(raw_answers, list):
+            raw_answers = []
         entries.append(
             DatasetEntry(
                 entry_id=idx,
@@ -132,6 +142,13 @@ def load_eval_manifest(path: Path) -> list[DatasetEntry]:
                 ground_truth_answer=str(item.get("answer") or ""),
                 domain=domain,
                 domain_label=domain_label,
+                scoring_mode=str(item.get("scoring_mode") or ""),
+                category=str(item.get("category") or ""),
+                phase=str(item.get("phase") or ""),
+                expected_action=str(item.get("expected_action") or ""),
+                expected_output_shape=str(item.get("expected_output_shape") or ""),
+                validation_signal=str(item.get("validation_signal") or ""),
+                raw_answers=[str(x) for x in raw_answers],
             )
         )
     return entries

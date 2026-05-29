@@ -107,6 +107,20 @@ judge:
   api_key_env: NVIDIA_API_KEY
   temperature: 0.1
   max_tokens: 4096
+  # On-disk path to the simple QA judge prompt (batch_1's llm_scorer_prompt.md).
+  # When null, the runner looks for ``llm_scorer_prompt.md`` next to the manifest.
+  # Required only if the manifest contains entries WITHOUT a `scoring_mode` field.
+  simple_prompt_path: null
+  # On-disk path to the scenario-aware judge prompt (batch_2's llm_scenario_scorer_prompt.md).
+  # When null, the runner looks for ``llm_scenario_scorer_prompt.md`` next to the manifest.
+  # Required only if the manifest contains entries WITH a `scoring_mode` field.
+  scenario_prompt_path: null
+  # When true (default), ALSO run the legacy hardcoded LLMJudge on every
+  # scoreable trial (one with a non-empty ground_truth_answer + non-empty
+  # final_answer). Produces an additional 1-5 score directly comparable to
+  # runs that pre-date the scenario-aware judge. Set to false to skip the
+  # second judge call and halve judge LLM cost.
+  legacy_enabled: true
 
 # ---------------------------------------------------------------------------
 # Tool-use summarizer

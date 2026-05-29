@@ -110,6 +110,29 @@ def _aggregate(
         metrics["judge_score_mean"] = sum(judge_scores) / len(judge_scores)
         metrics["judge_score_n"] = len(judge_scores)
 
+    legacy_scores = [r.legacy_judge_score for r in query_results if r.legacy_judge_score is not None]
+    if legacy_scores:
+        metrics["legacy_judge_score_mean"] = sum(legacy_scores) / len(legacy_scores)
+        metrics["legacy_judge_score_n"] = len(legacy_scores)
+
+    sub_means: dict[str, tuple[float, int]] = {}
+    sub_score_keys: set[str] = set()
+    for r in query_results:
+        sub_score_keys.update(r.judge_subscores.keys())
+    for key in sorted(sub_score_keys):
+        values = [v for r in query_results if (v := r.judge_subscores.get(key)) is not None]
+        if values:
+            sub_means[key] = (sum(values) / len(values), len(values))
+    if sub_means:
+        metrics["judge_sub_means"] = sub_means
+
+    mode_counts: dict[str, int] = defaultdict(int)
+    for r in query_results:
+        if r.judge_mode:
+            mode_counts[r.judge_mode] += 1
+    if mode_counts:
+        metrics["judge_mode_counts"] = dict(mode_counts)
+
     tool_use_summary = next((r.tool_use_summary for r in setup_results if r.tool_use_summary), "")
 
     return {
@@ -152,8 +175,13 @@ def _md_cell(value: Any) -> str:
 def _md_row(row: dict[str, Any]) -> str:
     m = row.get("metrics", {})
     judge_cell = f"{m['judge_score_mean']:.2f} (n={m.get('judge_score_n', 0)})" if "judge_score_mean" in m else "-"
+    legacy_cell = (
+        f"{m['legacy_judge_score_mean']:.2f} (n={m.get('legacy_judge_score_n', 0)})"
+        if "legacy_judge_score_mean" in m
+        else "-"
+    )
     return (
-        "| {run} | {sr:.2f} | {retr:.2f} | {r1:.3f} | {r5:.3f} | {r10:.3f} | {judge} "
+        "| {run} | {sr:.2f} | {retr:.2f} | {r1:.3f} | {r5:.3f} | {r10:.3f} | {judge} | {legacy} "
         "| {ipt:.0f} | {opt:.0f} | {cr:.0f} | {cc:.0f} | {cost} |"
     ).format(
         run=row.get("run_name", "?"),
@@ -163,6 +191,7 @@ def _md_row(row: dict[str, Any]) -> str:
         r5=m.get("recall_5", 0.0),
         r10=m.get("recall_10", 0.0),
         judge=judge_cell,
+        legacy=legacy_cell,
         ipt=m.get("input_tokens", 0.0),
         opt=m.get("output_tokens", 0.0),
         cr=m.get("cache_read_input_tokens", 0.0),
@@ -172,10 +201,56 @@ def _md_row(row: dict[str, Any]) -> str:
 
 
 _MAIN_TABLE_HEADER = (
-    "| run | success_rate | retr_used | recall@1 | recall@5 | recall@10 | judge | q_input | q_output "
+    "| run | success_rate | retr_used | recall@1 | recall@5 | recall@10 | judge | legacy | q_input | q_output "
     "| q_cache_read | q_cache_create | q_cost |"
 )
-_MAIN_TABLE_DIVIDER = "|---|---|---|---|---|---|---|---|---|---|---|---|"
+_MAIN_TABLE_DIVIDER = "|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+
+
+def _md_subscore_section(overall_rows: list[dict[str, Any]]) -> list[str]:
+    """Emit per-sub-score mean tables; one column per sub-score key seen."""
+    keys: list[str] = []
+    seen: set[str] = set()
+    for row in overall_rows:
+        sub_means = row.get("metrics", {}).get("judge_sub_means") or {}
+        for k in sub_means:
+            if k not in seen:
+                seen.add(k)
+                keys.append(k)
+    if not keys:
+        return []
+    header = "| run | " + " | ".join(keys) + " |"
+    divider = "|---|" + "|".join(["---"] * len(keys)) + "|"
+    lines = ["", "## Judge sub-scores (mean over trials that produced each sub-score, with N)", "", header, divider]
+    for row in overall_rows:
+        sub_means = row.get("metrics", {}).get("judge_sub_means") or {}
+        cells = []
+        for k in keys:
+            entry = sub_means.get(k)
+            cells.append("-" if entry is None else f"{entry[0]:.2f} (n={entry[1]})")
+        lines.append(f"| {row.get('run_name', '?')} | " + " | ".join(cells) + " |")
+    return lines
+
+
+def _md_mode_breakdown(overall_rows: list[dict[str, Any]]) -> list[str]:
+    """Emit a one-row-per-run table showing trial counts per judge mode."""
+    modes: list[str] = []
+    seen: set[str] = set()
+    for row in overall_rows:
+        for k in row.get("metrics", {}).get("judge_mode_counts") or {}:
+            if k not in seen:
+                seen.add(k)
+                modes.append(k)
+    if not modes:
+        return []
+    header = "| run | " + " | ".join(modes) + " |"
+    divider = "|---|" + "|".join(["---"] * len(modes)) + "|"
+    lines = ["", "## Judge mode breakdown (trials per mode)", "", header, divider]
+    for row in overall_rows:
+        counts = row.get("metrics", {}).get("judge_mode_counts") or {}
+        cells = [str(counts.get(m, 0)) for m in modes]
+        lines.append(f"| {row.get('run_name', '?')} | " + " | ".join(cells) + " |")
+    return lines
 
 
 def write_summary_md(
@@ -272,6 +347,9 @@ def write_summary_md(
                 cost=_fmt_cost(m.get("session_total_cost_usd")),
             )
         )
+
+    lines.extend(_md_subscore_section(overall_rows))
+    lines.extend(_md_mode_breakdown(overall_rows))
 
     diag_lines = []
     for row in overall_rows:
