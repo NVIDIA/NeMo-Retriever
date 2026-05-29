@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import importlib
+import itertools
 import json
 import logging
 import os
@@ -34,6 +35,13 @@ from nemo_retriever.params import (
 
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.adapters.cli.main")
+
+
+@pytest.fixture(autouse=True)
+def _successful_row_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Most tests fake GraphIngestor; default row counts should look like a successful write.
+    counts = itertools.count(1)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: next(counts))
 
 
 def _make_fake_ingestor() -> Any:
@@ -140,6 +148,38 @@ def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> N
         "table_name": "nemo-retriever",
         "overwrite": False,
     }
+
+
+def test_root_ingest_fails_when_no_rows_landed(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "silent-stage-failure.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 0)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
+
+    assert result.exit_code == 1
+    assert "retriever ingest produced 0 rows" in result.output
+    assert "NVIDIA_API_KEY/NGC_API_KEY" in result.output
+    assert "Ingested 1 file(s)" not in result.output
+
+
+def test_root_ingest_append_fails_when_row_count_does_not_increase(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "silent-append-failure.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+    counts = iter([3, 3])
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: next(counts))
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--append"])
+
+    assert result.exit_code == 1
+    assert "did not add rows" in result.output
+    assert "row count stayed at 3" in result.output
 
 
 def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
@@ -652,8 +692,24 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
     retriever_calls: list[dict[str, Any]] = []
     query_calls: list[str] = []
     hits = [
-        {"text": "passage", "page_number": 1, "_distance": 0.2},
-        {"text": "other", "page_number": 2, "_distance": 0.4},
+        {
+            "text": "passage",
+            "source": "doc.pdf",
+            "page_number": 1,
+            "metadata": {"type": "text"},
+            "_distance": 0.2,
+        },
+        {
+            "text": "other",
+            "source": "other.pdf",
+            "page_number": 2,
+            "metadata": {"type": "table"},
+            "_distance": 0.4,
+        },
+    ]
+    expected_output = [
+        {"source": "doc.pdf", "page_number": 1, "text": "passage"},
+        {"source": "other.pdf", "page_number": 2, "text": "other"},
     ]
 
     class FakeRetriever:
@@ -684,8 +740,8 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
     # No rerank flag passed → rerank is off (opt-in only).
     assert retriever_calls == [{"top_k": 3, "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "docs"}}]
     assert query_calls == ["Which animal is responsible for typos?"]
-    assert json.loads(result.output) == hits
-    assert result.output == json.dumps(hits, indent=2, sort_keys=True, default=str) + "\n"
+    assert json.loads(result.output) == expected_output
+    assert result.output == json.dumps(expected_output, indent=2, sort_keys=True, default=str) + "\n"
 
 
 def test_root_query_passes_embed_options(monkeypatch) -> None:

@@ -119,6 +119,24 @@ Do not also set `INSTALL_FFMPEG` in `service.env`; the chart fails rendering
 when both are configured so the rendered Pod does not contain duplicate
 environment variables.
 
+When `service.installFfmpeg=false` (the default), the service still starts
+normally and processes PDF, image, text and HTML uploads. Audio / video
+uploads are rejected up-front with **HTTP 501**:
+
+```text
+Audio and video ingestion require FFmpeg in the retriever service
+container, but the following dependencies are missing: ffmpeg, ffprobe.
+Re-deploy the Helm chart with `--set service.installFfmpeg=true` …
+```
+
+The retriever-service container also logs a `WARNING` at startup when
+FFmpeg is missing so cluster operators can fix the deployment before
+the first media upload arrives, instead of debugging a Ray worker
+traceback (`RuntimeError: MediaChunkActor requires media dependencies;
+missing: ffmpeg, ffprobe`) after the fact. The same WARNING is emitted
+on every pod (gateway, realtime, batch) because all roles classify
+uploads — flipping `service.installFfmpeg=true` updates them all.
+
 Runtime installation uses passwordless `sudo` scoped to installing the
 `ffmpeg` package in the service image. The pod must have network egress to the
 Ubuntu package repositories, a writable root filesystem, and a security policy

@@ -614,6 +614,11 @@ class ServiceIngestor(ingestor):
         ``extraction_mode`` selects the worker's extraction path
         (``'auto'`` default — dispatches by file extension; ``'pdf'``
         forces the PDF path for all inputs, etc.).
+
+        When no ``ExtractParams`` overrides are supplied, ``extract_params``
+        is omitted from the wire payload so the worker applies the
+        service's server-owned defaults (and the allow-list is not tripped
+        by client-side model defaults).
         """
         if params is not None or kwargs:
             from nemo_retriever.service.policy import _DEFAULT_ALLOWED_EXTRACT_KEYS
