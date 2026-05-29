@@ -48,7 +48,7 @@ Highlights for the 26.05 release include:
 
 ### Retrieval and RAG
 
-- Live RAG SDK with `Retriever.retrieve()`, `Retriever.answer()`, and optional batch operator graphs via LiteLLM (`[llm]` extra)  
+- Live RAG SDK with `Retriever.retrieve()`,  reference answer generation `Retriever.answer()`, and optional batch operator graphs via LiteLLM (`[llm]` extra)  
 
 ### Vector database
 
