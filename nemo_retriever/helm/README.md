@@ -80,7 +80,7 @@ nemo_retriever/helm/
 
 ## Quick start
 
-### 1. Service image
+### 1. Service image { #1-service-image }
 
 The chart defaults to the staging image published to NGC:
 
@@ -310,7 +310,7 @@ To run self-hosted Parakeet for [audio and video extraction](https://github.com/
 1. Set `nimOperator.audio.enabled=true` (it is on by default; disable other optional NIMs you do not need per [Recommended minimal install (26.05)](#recommended-minimal-install-2605)).
 2. Pin the ASR `NIMService` to a **dedicated GPU** with `nimOperator.audio.resources`, `nodeSelector`, or `tolerations` (see [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html)).
 3. Confirm the GPU SKU in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) (footnote ⁴ lists Blackwell limitations).
-4. Set `service.installFfmpeg=true` when the retriever service will process audio or video (see `service.installFfmpeg` above).
+4. Set `service.installFfmpeg=true` when the retriever service will process audio or video on clusters that allow runtime package install (see `service.installFfmpeg` above). On **OpenShift restricted-v2**, use a [prebuilt service image](#audio-and-video-ffmpeg-on-restricted-openshift) instead.
 
 The retriever service picks up the in-cluster ASR endpoint when `nimOperator.audio` is enabled; see [NIM Operator sub-stack](#nim-operator-sub-stack).
 
@@ -1141,7 +1141,7 @@ caption text lands in `message.content` instead of reasoning-only fields:
 ```
 
 See [Image captioning](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/docs/docs/extraction/prerequisites-support-matrix.md#image-captioning-2605)
-for pipeline scope (chart regions are not captioned).
+for when to enable the caption stage and which Helm key to use.
 
 ### Example install on OpenShift 4.20 (service-only smoke test)
 
