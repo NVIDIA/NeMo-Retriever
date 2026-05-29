@@ -18,7 +18,7 @@ from typing import Any, Optional
 import typer
 import yaml
 
-from nemo_retriever.harness.artifacts import create_session_dir
+from nemo_retriever.harness.artifacts import create_session_dir, last_commit
 from nemo_retriever.harness.config import REPO_ROOT
 from nemo_retriever.skill_eval.dataset import DatasetEntry, load_config, load_eval_manifest
 from nemo_retriever.skill_eval.report import overall_recall, write_summary
@@ -416,6 +416,9 @@ def run_command(
     resolved_cfg["agent_model"] = model
     resolved_cfg["conditions"] = selected
     resolved_cfg["query_parallelism"] = query_parallelism
+    # Capture the commit the evaluation runs with so it survives into the
+    # session summary even if the summary is regenerated later from another HEAD.
+    resolved_cfg["run_commit"] = last_commit()
     (session_dir / "config.yaml").write_text(yaml.safe_dump(resolved_cfg, default_flow_style=False), encoding="utf-8")
 
     # Results are keyed (agent, condition, domain) so reports can compare agent runs.
