@@ -16,7 +16,7 @@ Usage::
     from nemo_retriever.params import ExtractParams, EmbedParams
 
     result_ds = (
-        GraphIngestor(run_mode="batch")
+        GraphIngestor(run_mode="inprocess")
         .files(["/data/*.pdf"])
         .extract(ExtractParams(method="pdfium"))
         .embed(EmbedParams(model_name="nvidia/llama-nemotron-embed-1b-v2"))
@@ -387,8 +387,8 @@ class GraphIngestor(ingestor):
     Parameters
     ----------
     run_mode
-        ``"batch"`` (Ray Data, default) or ``"inprocess"`` (single-process
-        pandas).
+        ``"inprocess"`` (single-process pandas, default) or ``"batch"`` (Ray
+        Data).
     ray_address
         Ray cluster address. ``None`` starts a local cluster.
     batch_size
@@ -415,7 +415,7 @@ class GraphIngestor(ingestor):
     def __init__(
         self,
         *,
-        run_mode: str = "batch",
+        run_mode: str = "inprocess",
         documents: Optional[List[str]] = None,
         ray_address: Optional[str] = None,
         ray_log_to_driver: bool = True,
