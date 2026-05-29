@@ -30,7 +30,7 @@ Before ingesting a mixed folder, inventory extensions (`find <dir> -name '*.*' |
 ## Hard limits (apply to every turn)
 
 - **Setup turn**: build the index in one shell command (see `references/setup.md`). STOP after the index lands.
-- **Query turn**: at most **2 Bash calls** — 1 `retriever query`, +1 optional targeted text-extract per `references/query.md`.
+- **Query turn**: at most **2 Bash calls** — 1 `retriever query`, +1 optional targeted text-extract per `references/query.md`. Reply and then STOP.
 - **No narration between tool calls.** Tokens you emit between calls become input + cached input for every later turn — quadratic cost. Go straight from reading the summary to writing the JSON file.
 - **Banned**: `TodoWrite`, Glob, Grep, `Read` of whole PDFs, re-running setup, spawning subagents, speculative "confirmation" calls.
 

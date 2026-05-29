@@ -36,7 +36,7 @@ If unsupported extensions appear, name them in your reply and ask the user wheth
 
 ## You ran more than 2 Bash calls on a query turn
 
-Budget violation. Stop, write `final_answer` from what you have, write `./output.json`, end the turn. Long turns cost ~5× a disciplined turn and usually still produce the wrong answer.
+Budget violation. Stop, write `final_answer` from what you have, end the turn. Long turns cost ~5× a disciplined turn and usually still produce the wrong answer.
 
 ## Query-turn cost discipline (recap)
 
