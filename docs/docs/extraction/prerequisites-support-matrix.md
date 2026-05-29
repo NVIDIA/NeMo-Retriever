@@ -5,7 +5,7 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 ## Software Requirements
 
 - Linux operating systems (Ubuntu 22.04 or later recommended)
-- [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `535`, CUDA >= `12.2`)
+- [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `580`, CUDA >= `13.0`)
 - [Python](https://www.python.org/downloads/) `3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
 - [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
 - For audio and video, `ffmpeg` and `ffprobe` must be on `PATH` (for example
@@ -72,16 +72,20 @@ The production Helm chart enables these NIM microservices **by default** (for ex
 |-----------|-----|------|
 | `page_elements` | [nemotron-page-elements-v3](https://huggingface.co/nvidia/nemotron-page-elements-v3) | Page layout and element detection |
 | `table_structure` | [nemotron-table-structure-v1](https://huggingface.co/nvidia/nemotron-table-structure-v1) | Table structure extraction |
-| `ocr` | [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) | Image OCR |
+| `ocr` | [nemotron-ocr-v1](https://huggingface.co/nvidia/nemotron-ocr-v1) | Image OCR |
 | `vlm_embed` | [llama-nemotron-embed-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2) | Multimodal (VL) embedding |
 
-### Nemotron OCR v2 language mode { #nemotron-ocr-v2-language-mode }
+### OCR artifacts (Helm vs local Hugging Face) { #nemotron-ocr-v2-language-mode }
 
 !!! note
 
+    **Helm / NIM (26.05 release):** The production chart deploys **Nemotron OCR v1** under `nimOperator.ocr` (`nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0`). For image defaults and upgrade notes, see [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#ocr-nim-configuration) in the Helm chart README.
+
     **Local Hugging Face inference:** When you deploy locally with HuggingFace model weights (for example `pip install "nemo-retriever[local]"` and GPU inference without remote OCR NIM URLs), the default OCR engine is **Nemotron OCR v2**, which runs in **multilingual** mode by default. For CLI flags and API parameters, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). Remote OCR NIM endpoints use their own model and language behavior; local OCR language selectors are not sent on remote requests.
 
-    **Helm / NIM:** The chart deploys the core OCR NIM under `nimOperator.ocr`. For image defaults, multilingual behavior, and upgrade notes, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#nemotron-ocr-v2-language-mode) in the Helm chart README.
+Default OCR NIM container for release Helm deployments:
+
+- **Image:** `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0`
 
 Default VL embedder container and model for release deployments:
 
