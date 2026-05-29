@@ -434,6 +434,7 @@ def test_local_captioner_uses_profile_metadata(
     assert llm_kwargs["trust_remote_code"] is True
     assert llm_kwargs["tensor_parallel_size"] == 2
     assert llm_kwargs["gpu_memory_utilization"] == 0.25
+    assert llm_kwargs["max_num_seqs"] == 256
     for key, value in expected_engine.items():
         assert llm_kwargs[key] == value
     if model_name in {NANO_FP8, OMNI_FP8}:
@@ -451,6 +452,7 @@ def test_local_captioner_passes_omni_no_think_chat_kwargs(isolated_local_caption
     assert captioner.caption_batch(["abc123"]) == ["generated caption"]
     chat_kwargs = FakeLLM.instances[-1].chat_calls[-1]["kwargs"]
     assert chat_kwargs["chat_template_kwargs"] == {"enable_thinking": False}
+    assert chat_kwargs["use_tqdm"] is False
 
 
 def test_local_captioner_user_extra_body_overrides_profile_extras(isolated_local_captioner_imports):
@@ -466,6 +468,7 @@ def test_local_captioner_user_extra_body_overrides_profile_extras(isolated_local
 
     chat_kwargs = FakeLLM.instances[-1].chat_calls[-1]["kwargs"]
     assert chat_kwargs["chat_template_kwargs"] == {"enable_thinking": True, "reasoning_budget": 32}
+    assert chat_kwargs["use_tqdm"] is False
 
 
 def test_local_captioner_rejects_unknown_model_before_vllm_import(isolated_local_captioner_imports, monkeypatch):

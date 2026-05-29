@@ -296,6 +296,30 @@ stages:
         value: 1
 
   # Transforms and Synthesis
+  #
+  # NOTE: ``image_caption`` is a remote-only stage (it calls the VLM NIM
+  # over HTTP and does no local GPU work), so the bottleneck per replica
+  # is the VLM round-trip — typically 1–3 s per image. With a single
+  # replica the stage's input channel (``image_caption_channel_in``)
+  # becomes a strict FIFO behind whatever multi-image document is
+  # currently being processed.
+  #
+  # Concretely: while client B's caption-heavy document drains its
+  # images one at a time through the lone replica, client A's
+  # text-only document — which has *zero* caption work to do — still
+  # has to wait its turn in the queue because every item flows
+  # through every stage (the stage no-ops items whose task list does
+  # not include ``caption``, but it must still dequeue them serially).
+  # The resulting head-of-line block stretches A's wall-clock from
+  # the expected sub-second to ~queue_depth × per-image VLM latency.
+  #
+  # Mitigation: scale the stage horizontally so concurrent items are
+  # dequeued in parallel.  Mirrors ``text_embedder`` (also a remote
+  # HTTP-only stage); VLM NIMs do continuous batching internally so a
+  # handful of in-flight requests is the regime they expect.  A true
+  # bypass for no-caption items requires upstream changes in
+  # nv-ingest (priority dispatch / per-task fast lanes) and is
+  # tracked separately.
   - name: "image_caption"
     type: "stage"
     phase: 4  # TRANSFORM
@@ -308,12 +332,18 @@ stages:
       system_prompt: $VLM_CAPTION_SYSTEM_PROMPT|"/no_think"
     replicas:
       min_replicas: 0
+      # Bumped from 1 → 8 to allow horizontal scale-out during caption
+      # bursts.  Keeps the operator-managed VLM NIM as the throughput
+      # ceiling rather than a single-actor serialization point.
       max_replicas:
         strategy: "static"
-        value: 1
+        value: 8
+      # Bumped from 1 → 4: at least four concurrent in-flight items
+      # so an unrelated no-caption client never blocks behind more
+      # than ~queue_size / 4 of the busy client's queued images.
       static_replicas:
         strategy: "static"
-        value: 1
+        value: 4
 
   - name: "text_embedder"
     type: "stage"

@@ -98,6 +98,29 @@ _JOB_TERMINAL: frozenset[JobAggregateStatus] = frozenset(
 )
 
 
+class MarkOutcome(str, Enum):
+    """Result of a :meth:`JobTracker.mark_completed` / :meth:`mark_failed` call.
+
+    Routers use this to log accurately when a worker-pod callback fires:
+
+    * ``transitioned`` — the document moved into the requested terminal
+      state and a per-document SSE event was published. This is the
+      common path.
+    * ``idempotent`` — the document was already in a terminal state, so
+      the call was a no-op. Surfaces duplicate callbacks (worker retry,
+      bulk poll racing SSE, …).
+    * ``unknown_document`` — the tracker has no record of the supplied
+      document id. The most common cause is a gateway-pod restart
+      between accepting an upload and the worker firing its callback,
+      which silently strands the doc on the client. Treated as a
+      warning so it stands out in gateway logs during hang triage.
+    """
+
+    TRANSITIONED = "transitioned"
+    IDEMPOTENT = "idempotent"
+    UNKNOWN_DOCUMENT = "unknown_document"
+
+
 # ── data models ───────────────────────────────────────────────────────
 
 
@@ -399,9 +422,15 @@ class JobTracker:
         result_rows: int = 0,
         result_data: list[dict[str, Any]] | None = None,
         elapsed_s: float | None = None,
-    ) -> None:
-        """Transition a document to ``completed``; maybe finalize the job."""
-        self._mark_terminal(
+    ) -> MarkOutcome:
+        """Transition a document to ``completed``; maybe finalize the job.
+
+        Returns a :class:`MarkOutcome` so the gateway callback handler
+        can surface duplicate / orphaned callbacks in logs (the common
+        symptom of a hung client whose docs were stranded by a gateway
+        pod restart).
+        """
+        return self._mark_terminal(
             document_id,
             new_status=DocumentStatus.COMPLETED,
             result_rows=result_rows,
@@ -415,9 +444,12 @@ class JobTracker:
         error: str,
         *,
         elapsed_s: float | None = None,
-    ) -> None:
-        """Transition a document to ``failed``; maybe finalize the job."""
-        self._mark_terminal(
+    ) -> MarkOutcome:
+        """Transition a document to ``failed``; maybe finalize the job.
+
+        See :meth:`mark_completed` for the meaning of the return value.
+        """
+        return self._mark_terminal(
             document_id,
             new_status=DocumentStatus.FAILED,
             error=error,
@@ -433,14 +465,29 @@ class JobTracker:
         result_data: list[dict[str, Any]] | None = None,
         error: str | None = None,
         elapsed_s: float | None = None,
-    ) -> None:
+    ) -> MarkOutcome:
         # Phase 1: under lock, mutate state and gather snapshots.
         with self._lock:
             rec = self._documents.get(document_id)
             if rec is None:
-                return
+                # A worker callback for a doc the tracker has never seen
+                # is the classic symptom of a gateway-pod restart
+                # between upload acceptance and worker completion: the
+                # doc lives on the client (and on the worker that
+                # eventually finishes it) but no longer on this
+                # gateway, so no SSE event will be published. Surface
+                # this loudly so hung clients are diagnosable from
+                # gateway logs alone.
+                logger.warning(
+                    "JobTracker.%s: no record of document %r — callback dropped (likely "
+                    "gateway-pod restart between upload acceptance and worker callback); "
+                    "client may hang waiting for an SSE event that will never arrive",
+                    "mark_failed" if new_status == DocumentStatus.FAILED else "mark_completed",
+                    document_id,
+                )
+                return MarkOutcome.UNKNOWN_DOCUMENT
             if rec.status in _DOC_TERMINAL:
-                return  # idempotent
+                return MarkOutcome.IDEMPOTENT  # duplicate callback / poll race
             old_status = rec.status
             rec.status = new_status
             rec.completed_at = _utcnow_iso()
@@ -492,6 +539,8 @@ class JobTracker:
             else:
                 event_name = "job_finalized"
             self._publish_job_event(event_name, finalized_snapshot)
+
+        return MarkOutcome.TRANSITIONED
 
     # ── internal helpers ─────────────────────────────────────────────
 

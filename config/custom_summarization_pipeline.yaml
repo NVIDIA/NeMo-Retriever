@@ -311,6 +311,12 @@ stages:
         value: 1
 
   # Transforms and Synthesis
+  #
+  # Horizontal scale-out mirrors ``config/default_pipeline.yaml`` —
+  # see the comment block above ``image_caption`` there for the
+  # full rationale on why a single-replica caption stage HOL-blocks
+  # unrelated no-caption clients behind the busy client's queued
+  # images.
   - name: "image_caption"
     type: "stage"
     phase: 4  # TRANSFORM
@@ -323,10 +329,10 @@ stages:
       min_replicas: 0
       max_replicas:
         strategy: "static"
-        value: 1
+        value: 8
       static_replicas:
         strategy: "static"
-        value: 1
+        value: 4
 
   - name: "text_embedder"
     type: "stage"

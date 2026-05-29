@@ -207,6 +207,34 @@ retriever pipeline run ./data/test.pdf \
 There is no split-only mode without extraction; narrow flags to text extraction if you
 only need chunk boundaries.
 
+### Nemotron OCR v2 language mode { #nemotron-ocr-v2-language-mode }
+
+The default OCR engine for **local** extraction (Hugging Face weights, no remote
+`--ocr-invoke-url`) is **Nemotron OCR v2**, which runs in **multilingual** mode
+by default (`multi`).
+
+| Flag | Values | Notes |
+|------|--------|-------|
+| `--ocr-lang` | `multi` (default), `english` | v2 only — English-only selector |
+| `--ocr-version` | `v2` (default), `v1` | `v1` is the legacy English-only engine |
+
+```bash
+retriever pipeline run ./data/scanned.pdf \
+  --input-type pdf \
+  --method pdfium_hybrid \
+  --ocr-lang english
+
+retriever ingest ./data/scanned.pdf --ocr-version v1
+```
+
+Set the equivalent `ocr_lang` and `ocr_version` fields on `ExtractParams` (or the
+ingest API) in Python.
+
+Remote OCR NIM endpoints choose their own model and language behavior. Local
+`--ocr-lang` and `--ocr-version` are not sent on remote requests. For hosted
+examples until OCR v2 is published on build.nvidia.com, keep
+`--ocr-invoke-url` pointed at `nemotron-ocr-v1` (see [Quick start](#quick-start)).
+
 ### PDF and Office documents
 
 Run once per input type (`--input-type doc` matches `*.docx` and `*.pptx`):

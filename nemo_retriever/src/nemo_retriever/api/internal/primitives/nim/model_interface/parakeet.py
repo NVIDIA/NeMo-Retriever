@@ -9,6 +9,7 @@ import base64
 import logging
 from typing import Any
 from typing import List
+from typing import Literal
 from typing import Optional
 from typing import Tuple
 
@@ -48,6 +49,29 @@ PARAKEET_SAMPLE_RATE_HZ = 16000
 # large enough that we don't drown the gRPC channel in tiny frames.
 _STREAMING_CHUNK_BYTES = 32 * 1024
 
+AudioInferMode = Literal["auto", "online", "offline"]
+ResolvedAudioInferMode = Literal["online", "offline"]
+
+
+def resolve_audio_infer_mode(mode: str, endpoint: str) -> ResolvedAudioInferMode:
+    """Pick offline vs streaming Riva RPC for a Parakeet endpoint.
+
+    NVCF (``grpc.nvcf.nvidia.com``) registers streaming (online) models. The Helm
+    chart Parakeet NIM defaults to ``mode=ofl`` (offline). Use
+    ``audio_infer_mode='online'`` only when the NIM was deployed with a streaming
+    profile (``mode=str``).
+    """
+    normalized = (mode or "auto").lower()
+    if normalized == "online":
+        return "online"
+    if normalized == "offline":
+        return "offline"
+    if normalized != "auto":
+        raise ValueError(f"audio_infer_mode must be 'auto', 'online', or 'offline', got {mode!r}")
+    if "nvcf.nvidia.com" in (endpoint or "").lower():
+        return "online"
+    return "offline"
+
 
 class _StreamingResponseShim:
     """Tiny adapter that lets streaming results flow through code that was
@@ -80,6 +104,7 @@ class ParakeetClient:
         function_id: Optional[str] = None,
         use_ssl: Optional[bool] = None,
         ssl_cert: Optional[str] = None,
+        infer_mode: AudioInferMode = "auto",
     ):
         """
         Initialize the ParakeetClient.
@@ -107,6 +132,7 @@ class ParakeetClient:
         else:
             self.use_ssl = use_ssl
         self.ssl_cert = ssl_cert
+        self._infer_mode = resolve_audio_infer_mode(infer_mode, endpoint)
 
         self.auth_metadata = []
         if self.auth_token:
@@ -258,16 +284,13 @@ class ParakeetClient:
         audio_bytes = base64.b64decode(audio_content)
         mono_audio_bytes = convert_to_mono_wav(audio_bytes)
 
-        # The NVCF Parakeet deployments at build.nvidia.com are streaming-only
-        # (``type=online``, ``offline=False`` per
-        # ``GetRivaSpeechRecognitionConfig``). ``offline_recognize`` always
-        # returns "Unavailable model" because no offline variant is registered.
-        # Use ``StreamingRecognize`` and collect the ``is_final`` results.
-        streaming_config = riva_client.StreamingRecognitionConfig(
-            config=recognition_config,
-            interim_results=False,
-        )
         try:
+            if self._infer_mode == "offline":
+                return self._asr_service.offline_recognize(mono_audio_bytes, recognition_config)
+            streaming_config = riva_client.StreamingRecognitionConfig(
+                config=recognition_config,
+                interim_results=False,
+            )
             return self._streaming_transcribe(mono_audio_bytes, streaming_config)
         except grpc.RpcError as e:
             logger.exception(f"Error transcribing audio file: {e.details()}")
@@ -416,6 +439,7 @@ def create_audio_inference_client(
     function_id: Optional[str] = None,
     use_ssl: bool = False,
     ssl_cert: Optional[str] = None,
+    infer_mode: AudioInferMode = "auto",
 ):
     """
     Create a ParakeetClient for interfacing with an audio model inference server.
@@ -460,5 +484,10 @@ def create_audio_inference_client(
         raise ValueError("`http` endpoints are not supported for audio. Use `grpc`.")
 
     return ParakeetClient(
-        grpc_endpoint, auth_token=auth_token, function_id=function_id, use_ssl=use_ssl, ssl_cert=ssl_cert
+        grpc_endpoint,
+        auth_token=auth_token,
+        function_id=function_id,
+        use_ssl=use_ssl,
+        ssl_cert=ssl_cert,
+        infer_mode=infer_mode,
     )

@@ -79,7 +79,9 @@ The production Helm chart enables these NIM microservices **by default** (for ex
 
 !!! note
 
-    The default OCR engine is **Nemotron OCR v2**. For language mode, local Hugging Face inference, and Kubernetes NIM deployment, see the [CLI reference](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli) and the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
+    **Local Hugging Face inference:** When you deploy locally with HuggingFace model weights (for example `pip install "nemo-retriever[local]"` and GPU inference without remote OCR NIM URLs), the default OCR engine is **Nemotron OCR v2**, which runs in **multilingual** mode by default. For CLI flags and API parameters, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). Remote OCR NIM endpoints use their own model and language behavior; local OCR language selectors are not sent on remote requests.
+
+    **Helm / NIM:** The chart deploys the core OCR NIM under `nimOperator.ocr`. For image defaults, multilingual behavior, and upgrade notes, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#nemotron-ocr-v2-language-mode) in the Helm chart README.
 
 Default VL embedder container and model for release deployments:
 
@@ -133,18 +135,18 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 | Core Features | ~4.8 GiB combined: embed VL 1b ~3.1 GiB; page-elements ~0.41 GiB; table-structure ~0.81 GiB; OCR ~0.51 GiB | Total GPUs | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 |
 | Core Features | — | Total Disk Space | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB | ~150GB |
 | Audio/video extraction (parakeet-1-1b-ctc-en-us) | ~4.0 GiB (`model.safetensors`; the repo also ships `parakeet-ctc-1.1b.nemo` of similar size—use one format to avoid roughly doubling disk use) | Additional Dedicated GPUs | Not supported⁴ | Not supported⁴ | 1¹ | 1¹ | 1¹ | 1¹ | 1¹ | 1¹ | Not supported⁴ |
-| Audio/video extraction (parakeet-1-1b-ctc-en-us) | — | Additional Disk Space | Not supported⁴ | Not supported⁴ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | Not supported⁴ |
-| nemotron-parse | ~3.5 GiB | Additional Dedicated GPUs | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 1 | Not supported² |
-| nemotron-parse | — | Additional Disk Space | ~16GB | ~16GB | ~16GB | ~16GB | ~16GB | ~16GB | ~16GB | ~16GB | Not supported² |
-| Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | ~62 GiB (BF16) | Additional Dedicated GPUs | 1 | 1 | 1 | 1 | 1 | Not supported | Not supported | 2 | Not supported³ |
-| Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | — | Additional Disk Space (HF) | ~62GB | ~62GB | ~62GB | ~62GB | ~62GB | Not supported | Not supported | ~62GB | Not supported³ |
+| | — | Additional Disk Space | Not supported⁴ | Not supported⁴ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | ~37GB¹ | Not supported⁴ |
+| nemotron-parse | ~3.5 GiB | Additional Dedicated GPUs | Not supported | 1 | Not supported | 1 | 1 | 1 | 1 | 1 | Not supported² |
+| nemotron-parse | — | Additional Disk Space | Not supported | ~16GB | Not supported | ~16GB | ~16GB | ~16GB | ~16GB | ~16GB | Not supported² |
+| Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | ~62 GiB (BF16); ~33 GiB (FP8); ~21 GiB (NVFP4) | Additional Dedicated GPUs | 1 | 1 | 1 | 1 | 1 | Not supported | Not supported | 2 | Not supported³ |
+| Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | — | Additional Disk Space (HF) | ~21–62GB | ~21–62GB | ~21–62GB | ~21–62GB | ~21–62GB | Not supported | Not supported | ~21–62GB | Not supported³ |
 | Omni caption (nemotron-3-nano-omni-30b-a3b-reasoning) | — | Additional Disk Space (NIM) | ~80GB | ~80GB | ~80GB | ~80GB | ~80GB | Not supported | Not supported | ~80GB | Not supported³ |
 | Reranker | ~3.1 GiB (llama-nemotron-rerank-vl-1b-v2) | With Core Pipeline | Yes | Yes | Yes | Yes | Yes | No* | No* | No* | No* |
 | Reranker | — | Standalone (recall only) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 ¹ On other supported GPUs, Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`) may require a runtime TensorRT engine build (no prebuilt profile in the chart image).
 
-⁴ **B200** and other **Blackwell** GPUs (compute capability 12.0), including RTX PRO 6000 Blackwell and RTX PRO 4500 Blackwell, do **not** support the [audio/video extraction](audio-video.md) path when Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`) runs self-hosted via Helm + NIM Operator. Video workflows that depend on Parakeet for speech transcription are affected the same way. `NIMService` for `nimOperator.audio` may stay not Ready or enter `CrashLoopBackOff` while building the Riva/TensorRT engine (for example ONNX Runtime IR version, cuDNN visibility, or FP8 tactic errors). Use a non-Blackwell dedicated GPU, [hosted Parakeet on build.nvidia.com](audio-video.md#parakeet-hosted-inference-build-nvidia), or set `nimOperator.audio.enabled=false`.
+⁴ On **B200** and other **Blackwell** GPUs (compute capability 12.0), including RTX PRO 6000 Blackwell and RTX PRO 4500 Blackwell, self-hosted [audio/video extraction](audio-video.md) via Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`, `nimOperator.audio`) is **not supported**. Core PDF and multimodal extraction on Blackwell is unchanged. Video workflows that depend on Parakeet for speech transcription are affected the same way. `NIMService` for `nimOperator.audio` may stay not Ready or enter `CrashLoopBackOff` while building the Riva/TensorRT engine (for example ONNX Runtime IR version, cuDNN visibility, or FP8 tactic errors). Use a non-Blackwell dedicated GPU, [hosted Parakeet on build.nvidia.com](audio-video.md#parakeet-hosted-inference-build-nvidia), or set `nimOperator.audio.enabled=false`.
 
 ² Nemotron Parse fails to start on 32GB.
 
