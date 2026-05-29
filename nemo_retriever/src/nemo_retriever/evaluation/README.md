@@ -54,7 +54,7 @@ End-to-end bo767 + LanceDB + full-page markdown touches these **artifacts** and 
  Ingest + Embed                 Index       Export           QA Eval
 +-----------------------------+ +--------+  +----------+  +------------------+
 | graph_pipeline              | | Parquet|  | LanceDB  |  | RetrievalLoader  |
-|  --lancedb-uri lancedb      | | -> page|->| queries  |->| >> Generation    |
+|  --vdb-kwargs-json ...      | | -> page|->| queries  |->| >> Generation    |
 |  [--save-intermediate <dir>]| | md idx |  | + pages  |  | >> Judging       |
 | (always: LanceDB output)   | +--------+  | -> JSON  |  | >> Scoring       |
 | (optional: Parquet output)  |             +----------+  +------------------+
@@ -108,7 +108,7 @@ cd /path/to/nemo-retriever
 
 # 1. Ingest + embed + save Parquet in one pass (~45-90 min)
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --lancedb-uri lancedb \
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
   --save-intermediate data/bo767_extracted
 
 # 2. Build page markdown index (~5-10 min)
@@ -142,7 +142,7 @@ cd /path/to/nemo-retriever
 
 # 1. Ingest + embed into LanceDB
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --lancedb-uri lancedb
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}'
 
 # 2. Export retrieval (sub-page chunks, no page index)
 retriever eval export \
@@ -169,7 +169,7 @@ cd /path/to/nemo-retriever
 
 # Single command: ingest -> page index -> LanceDB query -> QA eval
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --lancedb-uri lancedb \
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
   --evaluation-mode qa \
   --eval-config nemo_retriever/examples/eval_sweep.yaml \
   --query-csv data/bo767_annotations.csv \
@@ -269,7 +269,7 @@ to reconstruct full pages and generally yields better results on structured cont
 
 ```bash
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --lancedb-uri lancedb \
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
   --save-intermediate data/bo767_extracted
 ```
 
@@ -283,7 +283,7 @@ markdown.
 
 ```bash
 python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
-  --lancedb-uri lancedb
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}'
 ```
 
 Output:
@@ -379,8 +379,10 @@ retriever eval run --from-env
 | `GEN_API_BASE` | _(unset)_ | Override endpoint URL for the generator |
 | `GEN_MODELS` | _(unset)_ | Multi-model sweep: `name:model,...` (overrides `GEN_MODEL`) |
 | `GEN_TEMPERATURE` | `0.0` | Sampling temperature for generator |
-| `JUDGE_MODEL` | `nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1` | Judge model |
+| `JUDGE_MODEL` | `nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5` | Judge model |
 | `JUDGE_API_BASE` | _(unset)_ | Override endpoint URL for the judge |
+| `JUDGE_TEMPERATURE` | `0.1` | Sampling temperature for judge |
+| `JUDGE_MAX_TOKENS` | `4096` | Max tokens for judge JSON output |
 | `LITELLM_DEBUG` | `0` | Set `1` for full request/response logging |
 | `MIN_COVERAGE` | `0.0` | Abort if retrieval covers fewer queries (0.0-1.0, e.g. `0.8`) |
 
@@ -571,7 +573,7 @@ from nemo_retriever.evaluation.scoring_operator import ScoringOperator
 graph = (
     RetrievalLoaderOperator(retrieval_json="retrieval.json", ground_truth_csv="gt.csv")
     >> QAGenerationOperator(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
-    >> JudgingOperator(model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1")
+    >> JudgingOperator(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
     >> ScoringOperator()
 )
 result_df = graph.execute(None)
@@ -702,17 +704,19 @@ models:
     api_base: "https://your-openai-compatible-endpoint/v1"
     api_key: "${GEN_API_KEY}"
 
-  mixtral-judge:
-    model: "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
+  nemotron-super-judge:
+    model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
     api_key: "${NVIDIA_API_KEY}"
+    temperature: 0.1
+    max_tokens: 4096
 
 evaluations:
   - generator: "generator-b"
-    judge: "mixtral-judge"
+    judge: "nemotron-super-judge"
     runs: 2
 
   - generator: "generator-a"
-    judge: "mixtral-judge"
+    judge: "nemotron-super-judge"
     runs: 5
 
 execution:
@@ -753,8 +757,10 @@ generators:
     max_tokens: 4096
 
 judge:
-  model: "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
+  model: "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
   api_key: "${NVIDIA_API_KEY}"
+  temperature: 0.1
+  max_tokens: 4096
 
 execution:
   top_k: 5
@@ -835,7 +841,7 @@ separate `build-page-index` step is needed.
 
 ```bash
 python -m nemo_retriever.examples.graph_pipeline /data/pdfs \
-    --lancedb-uri lancedb \
+    --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
     --evaluation-mode qa \
     --eval-config nemo_retriever/examples/eval_sweep.yaml \
     --query-csv data/bo767_annotations.csv \
@@ -868,10 +874,12 @@ from nemo_retriever.retriever import Retriever
 from nemo_retriever.llm import LiteLLMClient, LLMJudge
 
 retriever = Retriever(
-    lancedb_uri="lancedb",
-    lancedb_table="nemo-retriever",
-    embedder="nvidia/llama-nemotron-embed-1b-v2",
-    embedding_endpoint="https://integrate.api.nvidia.com/v1/embeddings",
+    vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
+    embed_kwargs={
+        "model_name": "nvidia/llama-nemotron-embed-1b-v2",
+        "embed_model_name": "nvidia/llama-nemotron-embed-1b-v2",
+        "embedding_endpoint": "https://integrate.api.nvidia.com/v1/embeddings",
+    },
     top_k=5,
 )
 
@@ -883,7 +891,9 @@ llm = LiteLLMClient.from_kwargs(
 )
 
 judge = LLMJudge.from_kwargs(
-    model="nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
+    model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    temperature=0.1,
+    max_tokens=4096,
 )
 ```
 

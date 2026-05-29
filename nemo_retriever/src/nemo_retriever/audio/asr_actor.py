@@ -3,10 +3,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-ASRActor: Ray Data map_batches callable for speech-to-text.
+ASRActor: Ray Data map_batches archetype for speech-to-text.
 
-Supports remote (Parakeet/Riva gRPC) or local (HuggingFace nvidia/parakeet-ctc-1.1b).
-When audio_endpoints are both null/empty, uses local model; otherwise uses remote client.
+The archetype resolves to one of two hardware-shaped variants:
+
+  - :class:`nemo_retriever.audio.cpu_actor.ASRCPUActor` — remote-only.
+    Calls Parakeet/Riva via gRPC. Defaults to the public NVCF endpoint
+    (``grpc.nvcf.nvidia.com:443``) when ``audio_endpoints`` is left empty.
+    Imports no torch.
+  - :class:`nemo_retriever.audio.gpu_actor.ASRGPUActor` — local-only.
+    Loads ``nvidia/parakeet-ctc-1.1b`` via HuggingFace transformers.
 
 Consumes chunk rows (path, bytes, source_path, duration, chunk_index, metadata)
 and produces rows with text (transcript) for downstream embed/VDB. With
@@ -17,19 +23,14 @@ times so ``recall_match_mode: audio_segment`` can match against time-aligned hit
 
 from __future__ import annotations
 
-import base64
 import copy
 import logging
-import tempfile
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.params import ASRParams
 
@@ -58,7 +59,12 @@ def _to_chunk_relative_seconds(value: Any, chunk_duration_secs: float) -> Option
 
 
 def _use_remote(params: ASRParams) -> bool:
-    """True if at least one of audio_endpoints is set (use remote gRPC client)."""
+    """True if at least one of audio_endpoints is set (use remote gRPC client).
+
+    Retained for the archetype's ``prefers_cpu_variant`` check; the CPU variant
+    constructor doesn't gate on this anymore (it auto-defaults to NVCF when
+    both endpoints are empty).
+    """
     grpc = (params.audio_endpoints[0] or "").strip()
     http = (params.audio_endpoints[1] or "").strip()
     return bool(grpc or http)
@@ -99,14 +105,16 @@ logger = logging.getLogger(__name__)
 # Public NVCF Parakeet endpoint and the libmode function ID. Exposed as named
 # constants so Python callers can opt into NVCF without hardcoding strings:
 #   asr_params_from_env(default_grpc_endpoint=DEFAULT_NGC_ASR_GRPC_ENDPOINT)
+# These same constants are the default-fill source for ``ASRCPUActor`` so the
+# CPU variant works out of the box without any ``audio_endpoints`` plumbing.
 DEFAULT_NGC_ASR_GRPC_ENDPOINT = "grpc.nvcf.nvidia.com:443"
-DEFAULT_NGC_ASR_FUNCTION_ID = "1598d209-5e27-4d3c-8079-4751568b1081"
+DEFAULT_NGC_ASR_FUNCTION_ID = "bb0837de-8c7b-481f-9ec8-ef5663e9c1fa"
 
 
 def asr_params_from_env(
     *,
     grpc_endpoint_var: str = "AUDIO_GRPC_ENDPOINT",
-    auth_token_var: str = "NGC_API_KEY",
+    auth_token_var: str = "NVIDIA_API_KEY",
     function_id_var: str = "AUDIO_FUNCTION_ID",
     default_grpc_endpoint: Optional[str] = None,
     default_function_id: Optional[str] = DEFAULT_NGC_ASR_FUNCTION_ID,
@@ -114,12 +122,12 @@ def asr_params_from_env(
     """
     Build ASRParams from environment variables, with optional Python-level defaults.
 
-    Local Parakeet (nvidia/parakeet-ctc-1.1b via Transformers) is the default;
-    remote ASR is opted into explicitly. ``NGC_API_KEY`` alone never flips ASR
-    to remote — it's set in many environments for unrelated reasons (HF auth,
-    other NIMs) and shouldn't silently route a local run to cloud.
+    The CPU variant auto-defaults to NVCF when ``audio_endpoints`` is empty, so
+    this helper is now mainly useful for callers who want to populate
+    :class:`ASRParams` from env *without* instantiating an actor — e.g. when
+    constructing a :class:`~nemo_retriever.graph_ingestor.GraphIngestor`.
 
-    Two opt-in paths to remote, both honoured:
+    Two opt-in paths to a custom (non-NVCF) endpoint, both honoured:
 
     - **Environment variable**: ``AUDIO_GRPC_ENDPOINT=grpc.nvcf.nvidia.com:443``
       (NVCF) or ``AUDIO_GRPC_ENDPOINT=localhost:50051`` (local NIM).
@@ -127,10 +135,9 @@ def asr_params_from_env(
       env var wins when both are present. Use the exported
       :data:`DEFAULT_NGC_ASR_GRPC_ENDPOINT` constant for NVCF.
 
-    - ``NGC_API_KEY`` — Bearer token; only consulted when an endpoint is set.
+    - ``NVIDIA_API_KEY`` — Bearer token; only consulted when an endpoint is set.
     - ``AUDIO_FUNCTION_ID`` — NVCF function ID; defaults to ``default_function_id``
-      (the `nemo_retriever.api` / libmode Parakeet NIM) when an endpoint is set but the env
-      var is unset.
+      (the libmode Parakeet NIM) when an endpoint is set but the env var is unset.
     """
     import os
 
@@ -142,8 +149,9 @@ def asr_params_from_env(
     function_id = (os.environ.get(function_id_var) or "").strip() or None
 
     if not grpc_endpoint:
-        # Local path: drop any cloud credentials that happen to be in the env so
-        # _use_remote() returns False and the local Parakeet model is loaded.
+        # Caller did not opt into a custom endpoint — leave audio_endpoints empty
+        # and let the actor's default-fill (or the GPU variant) decide. Drop any
+        # cloud credentials so they don't leak into a non-NVCF destination.
         auth_token = None
         function_id = None
     elif function_id is None and default_function_id:
@@ -171,8 +179,8 @@ except ImportError:
 def _get_client(params: ASRParams):  # noqa: ANN201
     if not _PARAKEET_AVAILABLE or create_audio_inference_client is None:
         raise RuntimeError(
-            "ASRActor requires the Parakeet NIM client (vendored in nemo_retriever.api). "
-            "Ensure optional multimedia + nv-ingest-client dependencies are installed."
+            "ASRCPUActor requires the Parakeet NIM client (vendored in nemo_retriever.api) "
+            "and the nvidia-riva-client gRPC stubs."
         )
     grpc_endpoint = (params.audio_endpoints[0] or "").strip() or None
     http_endpoint = (params.audio_endpoints[1] or "").strip() or None
@@ -187,182 +195,33 @@ def _get_client(params: ASRParams):  # noqa: ANN201
         function_id=params.function_id,
         use_ssl=bool("nvcf.nvidia.com" in grpc_endpoint and params.function_id),
         ssl_cert=None,
+        infer_mode=params.audio_infer_mode,
     )
 
 
-@designer_component(
-    name="ASR (Speech-to-Text)",
-    category="Audio",
-    compute="gpu",
-    description="Performs automatic speech recognition on audio chunks",
-    category_color="#ff6b6b",
-)
-class ASRCPUActor(AbstractOperator, CPUOperator):
-    """
-    Ray Data map_batches callable: chunk rows (path/bytes) -> rows with text (transcript).
+class _ASRActorBase:
+    """Shared state + presentation helpers for the ASR CPU / GPU variants.
 
-    When audio_endpoints are set, uses Parakeet (Riva ASR) via gRPC. When both are
-    null/empty, uses local HuggingFace/NeMo Parakeet (nvidia/parakeet-ctc-1.1b).
-    Output rows have path, text, page_number, metadata for downstream embed. When
-    ``params.segment_audio`` is enabled for remote Parakeet, punctuation-delimited
-    segments are emitted as multiple rows per chunk.
+    Carries ``self._params`` and the row-building logic that's identical on
+    both sides (the only thing that differs between remote and local is the
+    transcription call itself). Subclasses inherit from this **plus** the
+    appropriate :class:`AbstractOperator` + :class:`CPUOperator` /
+    :class:`GPUOperator` mixins (see ``cpu_actor.py`` / ``gpu_actor.py``).
     """
 
-    def __init__(self, params: ASRParams | None = None) -> None:
-        super().__init__(params=params)
-        self._params = params or ASRParams()
-        if _use_remote(self._params):
-            self._client = _get_client(self._params)
-            self._model = None
-        else:
-            self._client = None
-            from nemo_retriever.model.local import ParakeetCTC1B1ASR
-
-            self._model = ParakeetCTC1B1ASR()
+    _params: ASRParams
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:
         return data
 
-    def process(self, batch_df: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
-        if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
-            return pd.DataFrame(
-                columns=["path", "source_path", "duration", "chunk_index", "metadata", "page_number", "text"]
-            )
-
-        # When ``_content_type`` is set on the batch (mixed audio + video_frame
-        # rows from a video pipeline), only ASR the audio rows and pass the
-        # rest through unchanged. Audio-only pipelines have no ``_content_type``
-        # column, so this branch is a no-op for them.
-        audio_df, passthrough_df = _split_audio_rows(batch_df)
-        if audio_df.empty:
-            return passthrough_df
-
-        if self._client is not None:
-            asr_out = self._call_remote_batch(audio_df)
-        else:
-            asr_out = self._call_local_batch(audio_df)
-        return _concat_with_passthrough(asr_out, passthrough_df)
-
     def postprocess(self, data: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
         return data
 
-    def _call_remote_batch(self, batch_df: pd.DataFrame) -> pd.DataFrame:
-        """Remote ASR: one infer call per row (no batching on server side)."""
-        out_rows: List[Dict[str, Any]] = []
-        for _, row in batch_df.iterrows():
-            try:
-                out_rows.extend(self._transcribe_one(row))
-            except Exception as e:
-                logger.exception("ASR failed for row path=%s: %s", row.get("path"), e)
-                continue
-
-        if not out_rows:
-            return pd.DataFrame(
-                columns=["path", "source_path", "duration", "chunk_index", "metadata", "page_number", "text"]
-            )
-        return pd.DataFrame(out_rows)
-
-    def _call_local_batch(self, batch_df: pd.DataFrame) -> pd.DataFrame:
-        """Local ASR: one batched transcribe call for the whole batch."""
-        if self._model is None:
-            return pd.DataFrame(
-                columns=["path", "source_path", "duration", "chunk_index", "metadata", "page_number", "text"]
-            )
-        temp_paths: List[Optional[str]] = []
-        paths_for_model: List[str] = []
-        rows_list: List[pd.Series] = []
-        for _, row in batch_df.iterrows():
-            rows_list.append(row)
-            raw = row.get("bytes")
-            path = row.get("path")
-            path_to_use: Optional[str] = None
-            temp_created: Optional[str] = None
-            if path and Path(path).exists():
-                path_to_use = str(path)
-            elif raw is not None:
-                try:
-                    f = tempfile.NamedTemporaryFile(suffix=".audio", delete=False)
-                    f.write(raw)
-                    f.close()
-                    path_to_use = f.name
-                    temp_created = f.name
-                except Exception as e:
-                    logger.warning("Failed to write temp file for ASR: %s", e)
-                    path_to_use = ""
-            else:
-                if path:
-                    try:
-                        with open(path, "rb") as fp:
-                            raw = fp.read()
-                    except Exception as e:
-                        logger.warning("Could not read %s: %s", path, e)
-                        path_to_use = ""
-                    else:
-                        try:
-                            f = tempfile.NamedTemporaryFile(suffix=".audio", delete=False)
-                            f.write(raw)
-                            f.close()
-                            path_to_use = f.name
-                            temp_created = f.name
-                        except Exception as e:
-                            logger.warning("Failed to write temp file for ASR: %s", e)
-                            path_to_use = ""
-                else:
-                    path_to_use = ""
-            paths_for_model.append(path_to_use or "")
-            temp_paths.append(temp_created)
-
-        try:
-            decoded = self._model.transcribe_with_segments(paths_for_model) if paths_for_model else []
-        finally:
-            for p in temp_paths:
-                if p:
-                    Path(p).unlink(missing_ok=True)
-
-        out_rows: List[Dict[str, Any]] = []
-        for row, (transcript, segments) in zip(rows_list, decoded):
-            out_rows.extend(self._build_output_rows(row, transcript or "", segments=segments))
-
-        if not out_rows:
-            return pd.DataFrame(
-                columns=["path", "source_path", "duration", "chunk_index", "metadata", "page_number", "text"]
-            )
-        return pd.DataFrame(out_rows)
-
-    def _transcribe_remote(self, raw: bytes, path: Optional[str]) -> Optional[tuple[List[Dict[str, Any]], str]]:
-        """Use remote Parakeet client to transcribe audio bytes and return segments + transcript."""
-        audio_b64 = base64.b64encode(raw).decode("ascii")
-        try:
-            segments, transcript = self._client.infer(
-                audio_b64,
-                model_name="parakeet",
-            )
-            safe_segments = segments if isinstance(segments, list) else []
-            safe_transcript = transcript if isinstance(transcript, str) else ""
-            return safe_segments, safe_transcript
-        except Exception as e:
-            logger.warning("Parakeet infer failed for path=%s: %s", path, e)
-            return None
-
-    def _transcribe_local(self, raw: bytes, path: Optional[str]) -> Optional[tuple[str, List[Dict[str, Any]]]]:
-        """Use local Parakeet model to transcribe; path or temp file with raw bytes."""
-        if self._model is None:
-            return None
-        path_to_use = path
-        if not path_to_use or not Path(path_to_use).exists():
-            with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as f:
-                f.write(raw)
-                path_to_use = f.name
-            try:
-                results = self._model.transcribe_with_segments([path_to_use])
-            finally:
-                Path(path_to_use).unlink(missing_ok=True)
-        else:
-            results = self._model.transcribe_with_segments([path_to_use])
-        if not results:
-            return ("", [])
-        text, segments = results[0]
-        return (text, list(segments))
+    @staticmethod
+    def _empty_output_frame() -> pd.DataFrame:
+        return pd.DataFrame(
+            columns=["path", "source_path", "duration", "chunk_index", "metadata", "page_number", "text"]
+        )
 
     def _build_output_rows(
         self,
@@ -452,59 +311,62 @@ class ASRCPUActor(AbstractOperator, CPUOperator):
             }
         ]
 
-    def _transcribe_one(self, row: pd.Series) -> List[Dict[str, Any]]:
-        raw = row.get("bytes")
-        path = row.get("path")
-        if raw is None and path:
-            try:
-                with open(path, "rb") as f:
-                    raw = f.read()
-            except Exception as e:
-                logger.warning("Could not read %s: %s", path, e)
-                return []
-        if raw is None:
-            return []
 
-        if self._client is not None:
-            remote_result = self._transcribe_remote(raw, path)
-            if remote_result is None:
-                return []
-            segments, transcript = remote_result
-            return self._build_output_rows(row, transcript, segments=segments)
-        else:
-            local_result = self._transcribe_local(raw, path)
-            if local_result is None:
-                return []
-            transcript, segments = local_result
-            return self._build_output_rows(row, transcript, segments=segments)
-
-
-class ASRGPUActor(ASRCPUActor, GPUOperator):
-    """Local Parakeet on GPU.
-
-    Reuses :class:`ASRCPUActor`'s implementation; the only difference is the
-    :class:`GPUOperator` mixin so the executor allocates a GPU when scheduling
-    and the pipeline registry renders the node as ``[GPU]``. The :class:`ASRActor`
-    archetype routes here when no remote ``audio_endpoints`` is configured.
-    """
-
-    pass
-
-
+@designer_component(
+    name="ASR (Speech-to-Text)",
+    category="Audio",
+    compute="gpu",
+    description="Performs automatic speech recognition on audio chunks",
+    category_color="#ff6b6b",
+)
 class ASRActor(ArchetypeOperator):
-    """Graph-facing ASR archetype: GPU (local Parakeet) or CPU (remote gRPC)."""
+    """Graph-facing ASR archetype.
 
-    _cpu_variant_class = ASRCPUActor
-    _gpu_variant_class = ASRGPUActor
+    Resolves to:
+      - :class:`~nemo_retriever.audio.cpu_actor.ASRCPUActor` when the caller
+        passed ``audio_endpoints`` (explicit remote NIM), or when the host has
+        no GPU available (auto-defaults to the NVCF Parakeet endpoint).
+      - :class:`~nemo_retriever.audio.gpu_actor.ASRGPUActor` otherwise — local
+        ``nvidia/parakeet-ctc-1.1b`` via HuggingFace transformers.
+    """
 
     @classmethod
     def prefers_cpu_variant(cls, operator_kwargs: dict[str, Any] | None = None) -> bool:
-        """CPU variant when a remote endpoint is set — no local GPU needed."""
+        """CPU variant when a remote endpoint is explicitly set."""
         params = (operator_kwargs or {}).get("params")
         return isinstance(params, ASRParams) and _use_remote(params)
 
+    @classmethod
+    def cpu_variant_class(cls) -> type[AbstractOperator]:
+        from nemo_retriever.audio.cpu_actor import ASRCPUActor
+
+        return ASRCPUActor
+
+    @classmethod
+    def gpu_variant_class(cls) -> type[AbstractOperator]:
+        from nemo_retriever.audio.gpu_actor import ASRGPUActor
+
+        return ASRGPUActor
+
     def __init__(self, params: ASRParams | None = None) -> None:
         resolved_params = params or ASRParams()
+        # ``AUDIO_GRPC_ENDPOINT`` lets operators force the remote (CPU) variant
+        # from the environment when the caller didn't explicitly set endpoints
+        # — mirrors the ``asr_params_from_env`` convention so a single env var
+        # works whether you go through the helper or straight through the
+        # archetype. Once populated, ``prefers_cpu_variant`` returns True and
+        # the archetype resolves to ``ASRCPUActor`` regardless of GPU count.
+        if not _use_remote(resolved_params):
+            import os
+
+            env_grpc = (os.environ.get("AUDIO_GRPC_ENDPOINT") or "").strip()
+            if env_grpc:
+                resolved_params = resolved_params.model_copy(
+                    update={
+                        "audio_endpoints": (env_grpc, resolved_params.audio_endpoints[1]),
+                        "audio_infer_protocol": "grpc",
+                    }
+                )
         super().__init__(params=resolved_params)
         self._params = resolved_params
 
@@ -514,12 +376,30 @@ def apply_asr_to_df(
     asr_params: Optional[dict] = None,
     **kwargs: Any,
 ) -> pd.DataFrame:
-    """
-    Inprocess helper: apply ASR to a DataFrame of chunk rows; returns DataFrame with text column set.
+    """Inprocess helper: apply ASR to a DataFrame of chunk rows; returns DataFrame with text column set.
 
-    Used by InProcessIngestor when _pipeline_type == "audio". asr_params can be a dict
-    to construct ASRParams (e.g. from model_dump()).
+    Used by InProcessIngestor when ``_pipeline_type == "audio"``. ``asr_params``
+    can be a dict to construct :class:`ASRParams` (e.g. from ``model_dump()``).
     """
     params = ASRParams(**(asr_params or {}))
     actor = ASRActor(params=params)
     return actor(batch_df)
+
+
+def __getattr__(name: str):
+    """Lazy re-export so callers can still do
+    ``from nemo_retriever.audio.asr_actor import ASRCPUActor`` after the split.
+
+    Defined as PEP 562 module-level ``__getattr__`` to avoid the circular
+    import that direct top-level imports would trigger (cpu_actor.py and
+    gpu_actor.py both import symbols from this module).
+    """
+    if name == "ASRCPUActor":
+        from nemo_retriever.audio.cpu_actor import ASRCPUActor
+
+        return ASRCPUActor
+    if name == "ASRGPUActor":
+        from nemo_retriever.audio.gpu_actor import ASRGPUActor
+
+        return ASRGPUActor
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

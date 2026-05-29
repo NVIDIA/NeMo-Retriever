@@ -5,12 +5,12 @@ on:
   workflow_dispatch:
     inputs:
       source-branch:
-        description: '*** SOURCE BRANCH *** — Branch to build artifacts from (leave empty to use the branch selected above)'
+        description: 'Git ref to build from (e.g. `26.05`). When empty, RC versions like `26.05-RC8` build from `26.05`; otherwise uses the branch selected in "Run workflow".'
         required: false
         type: string
         default: ''
       version:
-        description: 'Override release version (leave empty to derive from source branch name)'
+        description: 'Release version for artifacts and git tag (e.g. `26.05-RC8`). Does not need to exist before the run.'
         required: false
         type: string
         default: ''
@@ -52,15 +52,22 @@ jobs:
       - name: Resolve source branch and version
         id: resolve
         run: |
+          VERSION_INPUT="${{ inputs.version }}"
+
           if [ -n "${{ inputs.source-branch }}" ]; then
             SOURCE_REF="${{ inputs.source-branch }}"
+          elif [ -n "$VERSION_INPUT" ] && [[ "$VERSION_INPUT" =~ ^(.+)-RC[0-9]+$ ]]; then
+            SOURCE_REF="${BASH_REMATCH[1]}"
+            echo "RC version $VERSION_INPUT: building from integration branch $SOURCE_REF"
+          elif [ -n "$VERSION_INPUT" ]; then
+            SOURCE_REF="$VERSION_INPUT"
           else
             SOURCE_REF="${{ github.ref_name }}"
           fi
           echo "source_ref=$SOURCE_REF" >> $GITHUB_OUTPUT
 
-          if [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
+          if [ -n "$VERSION_INPUT" ]; then
+            VERSION="$VERSION_INPUT"
             echo "Using explicit version: $VERSION"
           else
             VERSION="$SOURCE_REF"
@@ -71,9 +78,14 @@ jobs:
           echo "### Release Configuration" >> $GITHUB_STEP_SUMMARY
           echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Version | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Source Branch | \`$SOURCE_REF\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Workflow Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version (artifacts + tag) | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Source ref (checkout) | \`$SOURCE_REF\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Workflow branch (workflow file) | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          if [ "$SOURCE_REF" != "${{ github.ref_name }}" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "> Artifacts are built from **\`$SOURCE_REF\`**. The git tag **\`$VERSION\`** is created on that commit at the end of the workflow." >> $GITHUB_STEP_SUMMARY
+            echo "> CI script overlay (when refs differ) uses \`${{ github.ref_name }}\` for \`ci/scripts/\` only." >> $GITHUB_STEP_SUMMARY
+          fi
           echo "| Dry Run | \`${{ inputs.dry-run }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Release Type | \`${{ inputs.release-type }}\` |" >> $GITHUB_STEP_SUMMARY
 
@@ -163,6 +175,9 @@ jobs:
     if: ${{ !inputs.skip-helm-chart }}
     needs: determine-version
     runs-on: ubuntu-latest
+    env:
+      HELM_CHART_DIR: nemo_retriever/helm
+      HELM_CHART_NAME: nemo-retriever
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -170,6 +185,7 @@ jobs:
           ref: ${{ needs.determine-version.outputs.source-ref }}
 
       - name: Overlay CI scripts from workflow branch
+        if: ${{ github.ref_name != needs.determine-version.outputs.source-ref }}
         run: |
           git fetch --depth=1 origin "${{ github.ref_name }}"
           git checkout FETCH_HEAD -- ci/scripts/
@@ -177,27 +193,8 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      - name: Install helm-docs
-        run: |
-          HELM_DOCS_VERSION="1.14.2"
-          curl -sSL "https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz" \
-            | tar xz -C /usr/local/bin helm-docs
-
-      - name: Update Helm README
-        run: helm/update_helm_readme.sh
-
-      - name: Add Helm dependency repos
-        run: |
-          helm repo add milvus https://zilliztech.github.io/milvus-helm
-          helm repo add zipkin https://zipkin.io/zipkin-helm
-          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-          helm repo update
-
-      - name: Build Helm dependencies
-        run: |
-          helm dependency update helm/
-          helm dependency build helm/
+      - name: Lint Helm chart
+        run: helm lint "${HELM_CHART_DIR}"
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -210,17 +207,18 @@ jobs:
       - name: Package chart (validate)
         run: |
           python ci/scripts/release_helm_chart.py \
-            --org nvidian \
-            --team nemo-llm \
-            --name nv-ingest \
+            --org "${{ secrets.NGC_ORG }}" \
+            --team "${{ secrets.NGC_TEAM }}" \
+            --name "${HELM_CHART_NAME}" \
+            --chart-dir "${HELM_CHART_DIR}" \
             --version "${{ needs.determine-version.outputs.version }}" \
             --dry-run
 
       - name: Upload Helm chart artifact
         uses: actions/upload-artifact@v5
         with:
-          name: helm-chart
-          path: nv-ingest-*.tgz
+          name: nemo-retriever-helm-chart
+          path: nemo-retriever-*.tgz
           if-no-files-found: error
 
   # ══════════════════════════════════════════════════════════════════════
@@ -285,6 +283,8 @@ jobs:
       NGC_CLI_ORG: ${{ secrets.NGC_ORG }}
       NGC_CLI_TEAM: ${{ secrets.NGC_TEAM }}
       NGC_CLI_FORMAT_TYPE: json
+      HELM_CHART_DIR: nemo_retriever/helm
+      HELM_CHART_NAME: nemo-retriever
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -292,6 +292,7 @@ jobs:
           ref: ${{ needs.determine-version.outputs.source-ref }}
 
       - name: Overlay CI scripts from workflow branch
+        if: ${{ github.ref_name != needs.determine-version.outputs.source-ref }}
         run: |
           git fetch --depth=1 origin "${{ github.ref_name }}"
           git checkout FETCH_HEAD -- ci/scripts/
@@ -299,11 +300,8 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      - name: Install helm-docs
-        run: |
-          HELM_DOCS_VERSION="1.14.2"
-          curl -sSL "https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz" \
-            | tar xz -C /usr/local/bin helm-docs
+      - name: Lint Helm chart
+        run: helm lint "${HELM_CHART_DIR}"
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -313,30 +311,15 @@ jobs:
       - name: Install Python dependencies
         run: pip install ngcsdk pyyaml
 
-      - name: Update Helm README
-        run: helm/update_helm_readme.sh
-
-      - name: Add Helm dependency repos
-        run: |
-          helm repo add milvus https://zilliztech.github.io/milvus-helm
-          helm repo add zipkin https://zipkin.io/zipkin-helm
-          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-          helm repo update
-
-      - name: Build Helm dependencies
-        run: |
-          helm dependency update helm/
-          helm dependency build helm/
-
       - name: Publish chart to NGC
         env:
           NGC_CLI_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
           python ci/scripts/release_helm_chart.py \
-            --org ${{ secrets.NGC_ORG }} \
-            --team ${{ secrets.NGC_TEAM }} \
-            --name nv-ingest \
+            --org "${{ secrets.NGC_ORG }}" \
+            --team "${{ secrets.NGC_TEAM }}" \
+            --name "${HELM_CHART_NAME}" \
+            --chart-dir "${HELM_CHART_DIR}" \
             --version "${{ needs.determine-version.outputs.version }}"
 
   pypi-publish:
@@ -411,6 +394,8 @@ jobs:
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ARTIFACTORY_URL: ${{ secrets.ARTIFACTORY_URL }}
+          NGC_ORG: ${{ secrets.NGC_ORG }}
+          NGC_TEAM: ${{ secrets.NGC_TEAM }}
         run: |
           status_emoji() {
             case "$1" in
@@ -479,7 +464,7 @@ jobs:
           fi
 
           # — Helm Chart —
-          HELM_REF="nvidian/nemo-llm/nv-ingest:${VERSION}"
+          HELM_REF="${NGC_ORG}/${NGC_TEAM}/nemo-retriever:${VERSION}"
           if [ "$SKIP_HELM" = "true" ]; then
             MSG+="\n:fast_forward: *Helm Chart* — Disabled (skip-helm-chart)"
           elif [ "$DRY_RUN" = "true" ]; then

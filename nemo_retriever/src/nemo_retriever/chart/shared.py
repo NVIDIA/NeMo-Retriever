@@ -145,9 +145,11 @@ def _labels_from_model(model: Any) -> List[str]:
 
 
 def _prediction_to_detections(pred: Any, *, label_names: List[str]) -> List[Dict[str, Any]]:
-    if torch is None:  # pragma: no cover
-        raise ImportError("torch required for prediction parsing.")
-
+    # Extract candidate boxes/labels/scores BEFORE checking torch so a
+    # NIM-shaped response (no ``boxes``/``labels`` keys) short-circuits
+    # to ``[]`` instead of raising ``ImportError`` in torch-free images
+    # like retriever-service. See the matching note in
+    # ``nemo_retriever.table.shared._prediction_to_detections``.
     boxes = labels = scores = None
     if isinstance(pred, dict):
         # IMPORTANT: do not use `or` chains here. torch.Tensor truthiness is ambiguous and raises.
@@ -167,6 +169,9 @@ def _prediction_to_detections(pred: Any, *, label_names: List[str]) -> List[Dict
 
     if boxes is None or labels is None:
         return []
+
+    if torch is None:  # pragma: no cover
+        raise ImportError("torch required for prediction parsing.")
 
     def _to_tensor(x: Any) -> Optional["torch.Tensor"]:
         if x is None:

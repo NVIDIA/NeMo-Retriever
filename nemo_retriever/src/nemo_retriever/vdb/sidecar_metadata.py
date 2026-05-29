@@ -5,8 +5,8 @@
 """Sidecar document metadata merged into each chunk's ``content_metadata``.
 
 Parity with ``nv_ingest_client`` ingestion: ``meta_dataframe``, ``meta_source_field``,
-and ``meta_fields`` attach user columns to ``content_metadata`` so LanceDB (and
-Milvus-style filters) can query fields like ``meta_a``, ``meta_b``, etc.
+and ``meta_fields`` attach user columns to ``content_metadata`` so LanceDB
+can query fields like ``meta_a``, ``meta_b``, etc.
 """
 
 from __future__ import annotations
@@ -149,7 +149,7 @@ def apply_sidecar_metadata_to_client_batches(
     meta_source_field: str | None = None,
     lookup: dict[str, dict[str, Any]] | None = None,
 ) -> list[list[dict[str, Any]]]:
-    """For each NV-Ingest record, merge sidecar columns into ``metadata['content_metadata']``."""
+    """For each Nemo Retriever Library (NRL) record, merge sidecar columns into ``metadata['content_metadata']``."""
     if lookup is None:
         if meta_df is None or meta_source_field is None:
             raise TypeError("Provide lookup=... or both meta_df and meta_source_field.")

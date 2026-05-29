@@ -19,7 +19,9 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from nemo_retriever.audio.media_interface import MediaInterface
+from nemo_retriever.audio.media_interface import ensure_media_on_disk
 from nemo_retriever.audio.media_interface import is_media_available
+from nemo_retriever.audio.media_interface import media_dependency_error_message
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.params import AudioChunkParams
@@ -48,9 +50,7 @@ class MediaChunkActor(AbstractOperator):
     def __init__(self, params: AudioChunkParams | None = None) -> None:
         super().__init__(params=params)
         if not is_media_available():
-            raise RuntimeError(
-                "MediaChunkActor requires ffmpeg. Install with: pip install ffmpeg-python and system ffmpeg."
-            )
+            raise RuntimeError(media_dependency_error_message("MediaChunkActor"))
         self._params = params or AudioChunkParams()
         self._interface = MediaInterface()
 
@@ -70,8 +70,10 @@ class MediaChunkActor(AbstractOperator):
             if not path_str.strip():
                 continue
             try:
-                chunk_rows = _chunk_one(path_str, self._params, self._interface)
-                out_rows.extend(chunk_rows)
+                raw_bytes = row.get("bytes") if not Path(path_str).is_file() else None
+                with ensure_media_on_disk(path_str, raw_bytes) as real_path:
+                    chunk_rows = _chunk_one(real_path, self._params, self._interface, source_path_override=path_str)
+                    out_rows.extend(chunk_rows)
             except Exception as e:
                 logger.exception("Error chunking %s: %s", path_str, e)
                 continue
@@ -84,8 +86,20 @@ class MediaChunkActor(AbstractOperator):
         return data
 
 
-def _chunk_one(source_path: str, params: AudioChunkParams, interface: MediaInterface) -> List[Dict[str, Any]]:
-    """Run split for one file and return list of row dicts."""
+def _chunk_one(
+    source_path: str,
+    params: AudioChunkParams,
+    interface: MediaInterface,
+    source_path_override: str | None = None,
+) -> List[Dict[str, Any]]:
+    """Run split for one file and return list of row dicts.
+
+    *source_path* is the actual on-disk path ffmpeg will read (may be a
+    temp file).  *source_path_override*, when set, is the original
+    user-facing filename stamped into ``source_path`` / ``metadata``
+    columns so downstream consumers see the real name, not a temp path.
+    """
+    display_path = source_path_override or source_path
     with tempfile.TemporaryDirectory(prefix="retriever_audio_chunk_") as tmpdir:
         files = interface.split(
             source_path,
@@ -93,7 +107,6 @@ def _chunk_one(source_path: str, params: AudioChunkParams, interface: MediaInter
             split_interval=params.split_interval,
             split_type=params.split_type,
             video_audio_separate=params.video_audio_separate,
-            audio_only=params.audio_only,
         )
         if not files:
             return []
@@ -108,12 +121,9 @@ def _chunk_one(source_path: str, params: AudioChunkParams, interface: MediaInter
             )
             duration = duration if duration is not None else 0.0
             meta = {
-                "source_path": source_path,
+                "source_path": display_path,
                 "chunk_index": idx,
                 "duration": duration,
-                # Wall-clock span of this chunk in the original media. Downstream
-                # ASR uses these to anchor per-utterance times; recall matches
-                # against them when no per-utterance segments are available.
                 "chunk_start_seconds": float(chunk_start_seconds),
                 "chunk_end_seconds": float(chunk_start_seconds + duration),
             }
@@ -127,7 +137,7 @@ def _chunk_one(source_path: str, params: AudioChunkParams, interface: MediaInter
             rows.append(
                 {
                     "path": chunk_path,
-                    "source_path": source_path,
+                    "source_path": display_path,
                     "duration": duration,
                     "chunk_index": idx,
                     "metadata": meta,
@@ -147,7 +157,7 @@ def audio_path_to_chunks_df(path: str, params: AudioChunkParams | None = None) -
     Used by inprocess ingest() when _pipeline_type == "audio".
     """
     if not is_media_available():
-        raise RuntimeError("audio_path_to_chunks_df requires ffmpeg.")
+        raise RuntimeError(media_dependency_error_message("audio_path_to_chunks_df"))
     params = params or AudioChunkParams()
     interface = MediaInterface()
     rows = _chunk_one(path, params, interface)

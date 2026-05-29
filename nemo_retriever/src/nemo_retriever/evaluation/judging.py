@@ -29,13 +29,15 @@ class JudgingOperator(EvalOperator):
 
     def __init__(
         self,
-        model: str = "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1",
+        model: str = "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
         *,
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
         extra_params: Optional[dict[str, Any]] = None,
         num_retries: int = 3,
         timeout: float = 120.0,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
         max_workers: int = 8,
     ) -> None:
         super().__init__(
@@ -45,6 +47,8 @@ class JudgingOperator(EvalOperator):
             extra_params=extra_params,
             num_retries=num_retries,
             timeout=timeout,
+            temperature=temperature,
+            max_tokens=max_tokens,
             max_workers=max_workers,
         )
         self._judge = LLMJudge.from_kwargs(
@@ -54,6 +58,8 @@ class JudgingOperator(EvalOperator):
             extra_params=extra_params,
             num_retries=num_retries,
             timeout=timeout,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
         self._max_workers = max_workers
 

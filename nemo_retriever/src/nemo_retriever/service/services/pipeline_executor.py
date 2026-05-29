@@ -29,8 +29,6 @@ from concurrent.futures.process import BrokenProcessPool
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
-import numpy as np
-
 if TYPE_CHECKING:
     from nemo_retriever.service.config import NimEndpointsConfig, ServiceConfig
     from nemo_retriever.service.services.pipeline_pool import WorkItem
@@ -80,51 +78,16 @@ def get_pipeline_configs() -> dict[str, dict[str, Any]]:
     return _pipeline_configs
 
 
-_LARGE_COLUMNS = frozenset(
-    {
-        "bytes",
-        "page_image",
-        "image_b64",
-        "images",
-        "charts",
-        "infographics",
-        "tables",
-    }
-)
-
-_MAX_STR_LEN = 500
-
-
-def _sanitize_value(val: Any) -> Any:
-    """Convert a single cell value to a JSON-safe, memory-friendly form."""
-    if val is None:
-        return None
-    if isinstance(val, (np.integer,)):
-        return int(val)
-    if isinstance(val, (np.floating,)):
-        return float(val)
-    if isinstance(val, np.ndarray):
-        return f"<ndarray shape={val.shape} dtype={val.dtype}>"
-    if isinstance(val, (list, tuple)) and len(val) > 20:
-        return f"<{type(val).__name__} len={len(val)}>"
-    if isinstance(val, bytes):
-        return f"<bytes len={len(val)}>"
-    if isinstance(val, str) and len(val) > _MAX_STR_LEN:
-        return val[:_MAX_STR_LEN] + f"…[{len(val)} chars total]"
-    return val
-
-
 def _sanitize_result_data(df: Any) -> list[dict[str, Any]]:
-    """Convert a pipeline DataFrame to lightweight JSON-safe dicts.
+    """Convert a pipeline DataFrame to JSON-safe dicts for the status API.
 
-    Drops large binary/image columns entirely and truncates remaining
-    values so the result can be stored in memory and returned via the
-    status endpoint without risk of OOM.
+    Column layout matches the in-process ``GraphIngestor.ingest()``
+    frame; cell values are sanitized for transport (see
+    :mod:`nemo_retriever.ingest_results`).
     """
-    cols_to_keep = [c for c in df.columns if c not in _LARGE_COLUMNS]
-    light_df = df[cols_to_keep]
-    records = light_df.to_dict(orient="records")
-    return [{k: _sanitize_value(v) for k, v in row.items()} for row in records]
+    from nemo_retriever.ingest_results import dataframe_to_transport_records
+
+    return dataframe_to_transport_records(df)
 
 
 # ── Process pool registry ────────────────────────────────────────────
@@ -192,39 +155,399 @@ def _post_rows_to_vectordb(rows: list[dict[str, Any]], vectordb_url: str, filena
         )
 
 
+_TRUST_OWNED_EXTRACT_KEYS: tuple[str, ...] = (
+    "invoke_url",
+    "api_key",
+    "page_elements_invoke_url",
+    "page_elements_api_key",
+    "ocr_invoke_url",
+    "ocr_api_key",
+    "graphic_elements_invoke_url",
+    "table_structure_invoke_url",
+    "nemotron_parse_invoke_url",
+)
+_TRUST_OWNED_EMBED_KEYS: tuple[str, ...] = (
+    "embed_invoke_url",
+    "embedding_endpoint",
+    "api_key",
+    "embed_model_name",
+    "model_name",
+)
+# Trust-owned caption keys. ``endpoint_url`` / ``api_key`` /
+# ``model_name`` are all set by the operator via NimEndpointsConfig and
+# can never be redirected per-request.
+_TRUST_OWNED_CAPTION_KEYS: tuple[str, ...] = (
+    "endpoint_url",
+    "api_key",
+    "model_name",
+)
+
+
+def _merge_server_owned(
+    base: dict[str, Any], override: dict[str, Any] | None, owned: tuple[str, ...]
+) -> dict[str, Any]:
+    """Merge *override* on top of *base* while preserving server-owned keys.
+
+    The denylist enforced by :mod:`nemo_retriever.service.policy` already
+    rejects requests with these keys, but we apply a belt-and-suspenders
+    overwrite here so a misconfigured policy can never cause a request
+    to redirect endpoint URLs or replace API keys.
+    """
+    merged = dict(base)
+    if override:
+        merged.update(override)
+    for k in owned:
+        if k in base:
+            merged[k] = base[k]
+    return merged
+
+
+def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Resolve ``vdb_upload_params.meta_dataframe_id`` to in-band bytes.
+
+    The pipeline runs in a child process that cannot reach the
+    ``SidecarStore`` directly, so the parent process consumes the
+    sidecar (or fails the request) before submitting the work item.
+    The returned spec stays pickleable: ``meta_dataframe_id`` becomes
+    ``_meta_dataframe_bytes`` + ``_meta_dataframe_content_type``,
+    which :func:`_build_graph_ingestor_from_spec` resolves to a
+    pandas DataFrame inside the worker.
+    """
+    if spec is None:
+        return None
+    vdb = spec.get("vdb_upload_params")
+    if not vdb:
+        return spec
+    sidecar_id = vdb.get("meta_dataframe_id")
+    if not sidecar_id:
+        return spec
+
+    from nemo_retriever.service.services.sidecar_store import get_sidecar_store
+
+    store = get_sidecar_store()
+    if store is None:
+        raise RuntimeError(
+            "vdb_upload_params.meta_dataframe_id was set but the SidecarStore " "is not initialised on this pod."
+        )
+    entry = store.consume(sidecar_id)
+    if entry is None:
+        raise RuntimeError(
+            f"Sidecar id {sidecar_id!r} not found. The sidecar may have "
+            "expired (default TTL is 1h) or already been consumed. "
+            "Re-upload via POST /v1/ingest/sidecar."
+        )
+
+    resolved = dict(spec)
+    vdb_copy = dict(vdb)
+    vdb_copy.pop("meta_dataframe_id", None)
+    vdb_copy["_meta_dataframe_bytes"] = entry.payload
+    vdb_copy["_meta_dataframe_content_type"] = entry.content_type
+    vdb_copy["_meta_dataframe_filename"] = entry.filename
+    resolved["vdb_upload_params"] = vdb_copy
+    return resolved
+
+
+def _resolve_service_extraction_mode(
+    extraction_mode: str,
+    filename: str,
+) -> str:
+    """Pick the worker extraction mode for a single uploaded file.
+
+    When the client leaves ``extraction_mode`` at ``"auto"`` (the service
+    default), infer ``"text"`` / ``"html"`` / … from the filename so HTML
+    and TXT uploads use the typed splitters instead of falling through a
+    mis-routed graph.
+    """
+    mode = (extraction_mode or "auto").strip().lower()
+    if mode != "auto":
+        return mode
+    from nemo_retriever.service.utils.file_type import infer_extraction_mode_from_filename
+
+    inferred = infer_extraction_mode_from_filename(filename)
+    return inferred or "auto"
+
+
+def _request_needs_asr_params(extraction_mode: str | None, filename: str) -> bool:
+    """True iff the request is audio/video and should carry ``_asr_params``.
+
+    The worker holds a single ``ASRParams`` derived from
+    ``serviceConfig.nimEndpoints.audioGrpcEndpoint``. Attaching that to
+    every per-request ingestor is what caused the
+    ``RuntimeError: MediaChunkActor requires media dependencies; missing:
+    ffmpeg, ffprobe`` for PDF uploads — the audio-only graph branch then
+    won the routing decision regardless of file type. We restrict the
+    attachment to:
+
+    * ``extraction_mode == "audio"`` or ``"video"`` — explicit caller
+      intent; the user already opted into media routing.
+    * ``extraction_mode == "auto"`` plus an audio/video file extension —
+      ``MultiTypeExtractOperator`` dispatches at row level and only
+      needs ASR when the row is actually media.
+
+    Anything else (``"pdf"``, ``"image"``, ``"text"``, ``"html"``, or a
+    non-media extension under ``"auto"``) must not pin ASR params.
+    """
+    mode = (extraction_mode or "").strip().lower()
+    if mode in {"audio", "video"}:
+        return True
+    if mode != "auto":
+        return False
+
+    from nemo_retriever.service.utils.file_type import (
+        FileClassifier,
+        category_requires_media_deps,
+    )
+
+    dot = filename.rfind(".")
+    suffix = filename[dot:].lower() if dot != -1 else ""
+    entry = FileClassifier.SUFFIX_MAP.get(suffix)
+    if entry is None:
+        return False
+    category, _ = entry
+    return category_requires_media_deps(category)
+
+
+def _materialize_sidecar_bytes(vdb_kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Convert resolved sidecar bytes into a pandas DataFrame in place.
+
+    Runs *inside* the child process. ``_meta_dataframe_bytes`` is the
+    payload uploaded via ``POST /v1/ingest/sidecar``; the content-type
+    (or filename suffix as fallback) picks the right pandas reader.
+    """
+    payload = vdb_kwargs.pop("_meta_dataframe_bytes", None)
+    if payload is None:
+        return vdb_kwargs
+    content_type = vdb_kwargs.pop("_meta_dataframe_content_type", "") or ""
+    filename = vdb_kwargs.pop("_meta_dataframe_filename", "") or ""
+
+    from io import BytesIO
+
+    import pandas as pd
+
+    ct_lower = content_type.lower()
+    fname_lower = filename.lower()
+    if "parquet" in ct_lower or fname_lower.endswith(".parquet") or fname_lower.endswith(".pq"):
+        df = pd.read_parquet(BytesIO(payload))
+    elif "json" in ct_lower or fname_lower.endswith(".json") or fname_lower.endswith(".jsonl"):
+        df = pd.read_json(BytesIO(payload), lines=fname_lower.endswith(".jsonl"))
+    else:
+        df = pd.read_csv(BytesIO(payload))
+    vdb_kwargs["meta_dataframe"] = df
+    return vdb_kwargs
+
+
+def _build_graph_ingestor_from_spec(
+    filename: str,
+    payload: bytes,
+    base_extract: dict[str, Any],
+    base_embed: dict[str, Any] | None,
+    spec: dict[str, Any] | None,
+    base_caption: dict[str, Any] | None = None,
+    base_asr: dict[str, Any] | None = None,
+) -> "tuple[Any, str, bool]":
+    """Construct a :class:`GraphIngestor` reflecting the per-request *spec*.
+
+    Returns ``(ingestor, extraction_mode, has_per_request_vdb)``. The
+    last value tells the caller to skip the legacy out-of-graph
+    vectordb fan-out — the in-graph ``IngestVdbOperator`` already
+    handles persistence when ``vdb_upload_params`` is present.
+    """
+    from nemo_retriever.graph_ingestor import GraphIngestor
+    from nemo_retriever.params import (
+        ASRParams,
+        CaptionParams,
+        DedupParams,
+        EmbedParams,
+        ExtractParams,
+        StoreParams,
+        VdbUploadParams,
+        WebhookParams,
+    )
+
+    spec = spec or {}
+    extraction_mode = _resolve_service_extraction_mode(spec.get("extraction_mode", "auto"), filename)
+    split_config = spec.get("split_config")
+
+    extract_kwargs = _merge_server_owned(base_extract, spec.get("extract_params"), _TRUST_OWNED_EXTRACT_KEYS)
+    extract_params = ExtractParams(**extract_kwargs)
+
+    embed_override = spec.get("embed_params")
+    if base_embed is None and embed_override is None:
+        embed_params = None
+    else:
+        embed_base = base_embed or {}
+        embed_kwargs = _merge_server_owned(embed_base, embed_override, _TRUST_OWNED_EMBED_KEYS)
+        embed_params = EmbedParams(**embed_kwargs) if embed_kwargs.get("embed_invoke_url") else None
+
+    # Caption baseline + per-request overrides. The base dict carries
+    # the server-owned endpoint/API key/model name; the override carries
+    # behavioural knobs (prompt, system_prompt, batch_size, …).
+    caption_override = spec.get("caption_params")
+    if base_caption is None and caption_override is None:
+        caption_params = None
+    elif base_caption is None and caption_override is not None:
+        raise RuntimeError(
+            "caption_params provided but no caption endpoint is configured on "
+            "this worker. The policy layer should have rejected this earlier."
+        )
+    else:
+        caption_kwargs = _merge_server_owned(base_caption or {}, caption_override, _TRUST_OWNED_CAPTION_KEYS)
+        caption_params = CaptionParams(**caption_kwargs) if caption_kwargs.get("endpoint_url") else None
+
+    asr_params = ASRParams(**base_asr) if base_asr else None
+
+    ingestor = GraphIngestor(run_mode="inprocess", show_progress=False)
+    ingestor = ingestor.buffers([(filename, BytesIO(payload))])
+
+    if extraction_mode == "image":
+        ingestor = ingestor.extract_image_files(extract_params, split_config=split_config)
+    elif extraction_mode == "text" and split_config is None:
+        ingestor = ingestor.extract_txt()
+    elif extraction_mode == "html" and split_config is None:
+        ingestor = ingestor.extract_html()
+    else:
+        ingestor = ingestor.extract(
+            extract_params,
+            split_config=split_config,
+            extraction_mode=extraction_mode,
+        )
+        # Only attach the worker-wide ASR params to the per-request ingestor
+        # when the request is genuinely audio/video. ``asr_params`` is
+        # auto-derived from the cluster's ``audio_grpc_endpoint`` and would
+        # otherwise taint every PDF / image / text / HTML upload with audio
+        # state — which then mis-routes the request through the audio-only
+        # graph in :func:`nemo_retriever.graph.ingestor_runtime.build_graph`
+        # and crashes inside ``MediaChunkActor`` when ffmpeg/ffprobe are
+        # absent. The graph builder also gates on extraction_mode now, so
+        # this is defence in depth.
+        if asr_params is not None and _request_needs_asr_params(extraction_mode, filename):
+            ingestor._asr_params = asr_params
+
+    stage_order = spec.get("stage_order") or []
+    seen_post_extract: set[str] = set()
+
+    def _apply_store_if_requested() -> None:
+        nonlocal ingestor
+        store_kwargs = spec.get("store_params")
+        if store_kwargs is not None:
+            ingestor = ingestor.store(StoreParams(**store_kwargs))
+
+    def _apply_webhook_if_requested() -> None:
+        nonlocal ingestor
+        webhook_kwargs = spec.get("webhook_params")
+        if webhook_kwargs is not None:
+            ingestor = ingestor.webhook(WebhookParams(**webhook_kwargs))
+
+    def _apply_caption_if_requested() -> None:
+        nonlocal ingestor
+        if caption_params is not None:
+            ingestor = ingestor.caption(caption_params)
+
+    for stage_name in stage_order:
+        if stage_name in ("extract",) or stage_name in seen_post_extract:
+            continue
+        seen_post_extract.add(stage_name)
+        if stage_name == "dedup":
+            dedup_kwargs = spec.get("dedup_params") or {}
+            ingestor = ingestor.dedup(DedupParams(**dedup_kwargs))
+        elif stage_name == "embed":
+            if embed_params is not None:
+                ingestor = ingestor.embed(embed_params)
+        elif stage_name == "filter":
+            ingestor = ingestor.filter()
+        elif stage_name == "store":
+            _apply_store_if_requested()
+        elif stage_name == "webhook":
+            _apply_webhook_if_requested()
+        elif stage_name == "caption":
+            _apply_caption_if_requested()
+
+    if embed_params is not None and "embed" not in seen_post_extract:
+        ingestor = ingestor.embed(embed_params)
+
+    # ``store`` / ``webhook`` / ``caption`` may be present in params
+    # without an explicit stage_order entry (matches the GraphIngestor
+    # pattern where the params model triggers the stage). Auto-append.
+    if "caption" not in seen_post_extract:
+        _apply_caption_if_requested()
+    if "store" not in seen_post_extract:
+        _apply_store_if_requested()
+    if "webhook" not in seen_post_extract:
+        _apply_webhook_if_requested()
+
+    # vdb_upload is not a stage_order entry in GraphIngestor either — the
+    # operator is always appended after embed/store from the params model.
+    has_per_request_vdb = False
+    vdb_kwargs = spec.get("vdb_upload_params")
+    if vdb_kwargs is not None:
+        # Sidecar metadata (Phase 6): the parent process placed the
+        # uploaded bytes on the spec; turn them into a DataFrame here.
+        vdb_kwargs = _materialize_sidecar_bytes(dict(vdb_kwargs))
+        ingestor = ingestor.vdb_upload(VdbUploadParams(**vdb_kwargs))
+        has_per_request_vdb = True
+
+    return ingestor, extraction_mode, has_per_request_vdb
+
+
 def _run_pipeline_in_process(
     filename: str,
     payload: bytes,
     extract_params_dict: dict[str, Any],
     embed_params_dict: dict[str, Any] | None,
     vectordb_url: str | None = None,
+    pipeline_spec: dict[str, Any] | None = None,
+    caption_params_dict: dict[str, Any] | None = None,
+    asr_params_dict: dict[str, Any] | None = None,
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
 
     This is a **top-level module function** so it can be pickled by
     :class:`ProcessPoolExecutor`.  All heavy imports happen here so
     that the parent process stays lightweight.
-    """
-    from nemo_retriever.graph_ingestor import GraphIngestor
-    from nemo_retriever.params import EmbedParams, ExtractParams
 
+    The pipeline shape comes from two layers:
+
+    * ``extract_params_dict`` / ``embed_params_dict`` — server-owned
+      defaults derived from :class:`ServiceConfig.nim_endpoints` at
+      startup. Carry the endpoint URLs and API keys.
+    * ``pipeline_spec`` — optional per-request override validated by
+      :func:`nemo_retriever.service.policy.validate_pipeline_spec`.
+      Carries "shape" knobs (chunk sizes, output flags, stage order, …).
+
+    When ``pipeline_spec`` is ``None`` (or empty) the behaviour exactly
+    matches the original closure-baked pipeline.
+    """
     t0 = time.monotonic()
 
-    extract_params = ExtractParams(**extract_params_dict)
-    embed_params = EmbedParams(**embed_params_dict) if embed_params_dict else None
-
-    ingestor = GraphIngestor(run_mode="inprocess", show_progress=False)
-    ingestor = ingestor.buffers([(filename, BytesIO(payload))])
-    ingestor = ingestor.extract(extract_params)
-    if embed_params is not None:
-        ingestor = ingestor.embed(embed_params)
+    ingestor, _extraction_mode, has_per_request_vdb = _build_graph_ingestor_from_spec(
+        filename,
+        payload,
+        extract_params_dict,
+        embed_params_dict,
+        pipeline_spec,
+        caption_params_dict,
+        asr_params_dict,
+    )
 
     result_df = ingestor.ingest()
     elapsed = time.monotonic() - t0
 
     row_count = len(result_df)
 
-    if vectordb_url and row_count > 0:
+    from nemo_retriever.service.utils.file_type import is_text_like_filename
+
+    if row_count == 0 and is_text_like_filename(filename):
+        raise ValueError(
+            f"Extraction produced no rows for {filename!r}. "
+            "Supported HTML and TXT inputs must yield at least one text chunk. "
+            "If you need custom chunking, pass split_config for the matching "
+            "source type (see README: split_config for text/html)."
+        )
+
+    if vectordb_url and row_count > 0 and not has_per_request_vdb:
+        # Skip the out-of-graph fan-out when the client already wired
+        # IngestVdbOperator into the spec — that operator handles
+        # persistence itself.
         from nemo_retriever.vdb.lancedb_schema import build_lancedb_rows
 
         lancedb_rows = build_lancedb_rows(result_df)
@@ -258,6 +581,44 @@ def build_extract_params(nim: NimEndpointsConfig) -> Any:
     return ExtractParams(**kwargs)
 
 
+def build_caption_params(nim: NimEndpointsConfig) -> Any | None:
+    """Derive :class:`CaptionParams` from service NIM endpoint config.
+
+    Returns ``None`` when no caption endpoint is configured — clients
+    that request the ``caption`` stage will hit the policy's
+    ``caption_enabled`` guard before reaching this point.
+    """
+    from nemo_retriever.params import CaptionParams
+
+    if not nim.caption_invoke_url:
+        return None
+
+    kwargs: dict[str, Any] = {"endpoint_url": nim.caption_invoke_url}
+    if nim.caption_model_name:
+        kwargs["model_name"] = nim.caption_model_name
+    if nim.api_key:
+        kwargs["api_key"] = nim.api_key
+    return CaptionParams(**kwargs)
+
+
+def build_asr_params(nim: NimEndpointsConfig) -> Any | None:
+    """Derive :class:`ASRParams` from service NIM endpoint config.
+
+    Returns ``None`` when no audio gRPC endpoint is configured, signalling
+    that the audio pipeline should attempt local Parakeet (requires torch).
+    """
+    if not nim.audio_grpc_endpoint:
+        return None
+
+    from nemo_retriever.params import ASRParams
+
+    return ASRParams(
+        audio_endpoints=(nim.audio_grpc_endpoint, None),
+        audio_infer_protocol="grpc",
+        auth_token=nim.api_key,
+    )
+
+
 def build_embed_params(nim: NimEndpointsConfig) -> Any | None:
     """Derive :class:`EmbedParams` from service NIM endpoint config.
 
@@ -270,6 +631,9 @@ def build_embed_params(nim: NimEndpointsConfig) -> Any | None:
     from nemo_retriever.params import EmbedParams
 
     kwargs: dict[str, Any] = {"embed_invoke_url": nim.embed_invoke_url}
+    if nim.embed_model_name:
+        kwargs["model_name"] = nim.embed_model_name
+        kwargs["embed_model_name"] = nim.embed_model_name
     if nim.api_key:
         kwargs["api_key"] = nim.api_key
 
@@ -290,6 +654,8 @@ def _make_work_fn(
     """
     extract_params = build_extract_params(config.nim_endpoints)
     embed_params = build_embed_params(config.nim_endpoints)
+    caption_params = build_caption_params(config.nim_endpoints)
+    asr_params = build_asr_params(config.nim_endpoints)
 
     vectordb_url: str | None = None
     if config.vectordb.enabled:
@@ -307,6 +673,8 @@ def _make_work_fn(
 
     extract_params_dict = extract_params.model_dump(mode="json")
     embed_params_dict = embed_params.model_dump(mode="json") if embed_params else None
+    caption_params_dict = caption_params.model_dump(mode="json") if caption_params else None
+    asr_params_dict = asr_params.model_dump(mode="json") if asr_params else None
 
     _pipeline_configs[label.lower()] = {
         "label": label,
@@ -316,6 +684,10 @@ def _make_work_fn(
         "extract_params": _params_to_dict(extract_params),
         "embed_params": _params_to_dict(embed_params) if embed_params else None,
         "embed_enabled": embed_params is not None,
+        "caption_params": _redact_dict(_params_to_dict(caption_params)) if caption_params else None,
+        "caption_enabled": caption_params is not None,
+        "asr_params": _redact_dict(_params_to_dict(asr_params)) if asr_params else None,
+        "asr_enabled": asr_params is not None,
         "pool": {
             "workers": num_workers,
             "queue_size": (
@@ -343,6 +715,8 @@ def _make_work_fn(
         filename = item.filename or item.id
         loop = asyncio.get_running_loop()
 
+        resolved_spec = _resolve_sidecar_in_spec(item.pipeline_spec)
+
         try:
             row_count, result_data, elapsed = await loop.run_in_executor(
                 executor_ref[0],
@@ -352,6 +726,9 @@ def _make_work_fn(
                 extract_params_dict,
                 embed_params_dict,
                 vectordb_url,
+                resolved_spec,
+                caption_params_dict,
+                asr_params_dict,
             )
         except BrokenProcessPool:
             logger.error(

@@ -68,13 +68,14 @@ class LLMJudge:
       owns the endpoint, api_key, retries, and timeout for the judge model.
     * ``sampling``: :class:`~nemo_retriever.params.LLMInferenceParams`
       owns ``temperature`` / ``top_p`` / ``max_tokens``. Defaults to
-      ``temperature=0.0, max_tokens=256`` for deterministic scoring.
+      ``temperature=0.1, max_tokens=4096`` for judge consistency on the
+      NVIDIA-hosted Nemotron judge.
 
     Use :meth:`from_kwargs` for a flat, backwards-compatible constructor.
     """
 
-    _DEFAULT_MODEL: str = "nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1"
-    _DEFAULT_SAMPLING: LLMInferenceParams = LLMInferenceParams(temperature=0.0, max_tokens=256)
+    _DEFAULT_MODEL: str = "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    _DEFAULT_SAMPLING: LLMInferenceParams = LLMInferenceParams(temperature=0.1, max_tokens=4096)
 
     def __init__(
         self,
@@ -101,11 +102,14 @@ class LLMJudge:
         extra_params: Optional[dict[str, Any]] = None,
         num_retries: int = 3,
         timeout: float = 120.0,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> "LLMJudge":
         """Flat-kwarg constructor for zero-churn migration from the old signature.
 
-        Sampling is left at the class default (deterministic 0.0 temperature,
-        256 max tokens). Use the two-arg constructor to override sampling.
+        Sampling is left at the class default unless ``temperature`` or
+        ``max_tokens`` is supplied. Use the two-arg constructor to override
+        the full sampling object.
         """
         transport = LLMRemoteClientParams(
             model=model,
@@ -115,7 +119,14 @@ class LLMJudge:
             timeout=timeout,
             extra_params=extra_params or {},
         )
-        return cls(transport=transport)
+        sampling = None
+        if temperature is not None or max_tokens is not None:
+            sampling = LLMInferenceParams(
+                temperature=cls._DEFAULT_SAMPLING.temperature if temperature is None else temperature,
+                top_p=cls._DEFAULT_SAMPLING.top_p,
+                max_tokens=cls._DEFAULT_SAMPLING.max_tokens if max_tokens is None else max_tokens,
+            )
+        return cls(transport=transport, sampling=sampling)
 
     def judge(self, query: str, reference: str, candidate: str) -> JudgeResult:
         """Score a candidate answer against the reference answer."""
@@ -133,7 +144,7 @@ class LLMJudge:
         ]
 
         try:
-            raw, _ = self._client.complete(messages, max_tokens=256)
+            raw, _ = self._client.complete(messages)
             return _parse_judge_response(raw)
         except Exception as exc:
             return JudgeResult(score=None, reasoning="", error=f"judge_api_error: {exc}")
@@ -142,6 +153,8 @@ class LLMJudge:
 def _parse_judge_response(raw: str) -> JudgeResult:
     """Parse the judge's JSON response into a JudgeResult."""
     text = raw.strip()
+    # Reasoning models can emit a <think>...</think> block before the final JSON.
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
     text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
     text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE)

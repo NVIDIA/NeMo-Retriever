@@ -286,21 +286,45 @@ def test_public_request_extra_fields_are_immutable():
     assert profile.request_extras_for("remote") == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
-def test_public_fp8_engine_kwargs_are_immutable():
+@pytest.mark.parametrize(
+    ("model_name", "expected_engine"),
+    [
+        (NANO_FP8, {"dtype": "auto"}),
+        (OMNI_FP8, {"dtype": "auto"}),
+    ],
+)
+def test_modelopt_fp8_profiles_preserve_checkpoint_quantization(model_name, expected_engine):
+    from nemo_retriever.caption.model_profiles import get_caption_model_profile
+
+    profile = get_caption_model_profile(model_name, target="local")
+
+    engine_kwargs = profile.engine_kwargs_for_local()
+
+    assert engine_kwargs == expected_engine
+    assert "quantization" not in engine_kwargs
+    assert "hf_overrides" not in engine_kwargs
+
+
+def test_public_nano_fp8_engine_kwargs_are_immutable():
+    from nemo_retriever.caption.model_profiles import get_caption_model_profile
+
+    profile = get_caption_model_profile(NANO_FP8, target="local")
+
+    with pytest.raises(TypeError):
+        profile.local_engine_kwargs["dtype"] = "bfloat16"
+
+    assert profile.engine_kwargs_for_local() == {"dtype": "auto"}
+
+
+def test_public_omni_fp8_engine_kwargs_are_immutable():
     from nemo_retriever.caption.model_profiles import get_caption_model_profile
 
     profile = get_caption_model_profile(OMNI_FP8, target="local")
 
     with pytest.raises(TypeError):
-        profile.local_engine_kwargs["hf_overrides"]["quantization_config"]["activation_scheme"] = "dynamic"
-    with pytest.raises(TypeError):
-        profile.local_engine_kwargs["quantization"] = "modelopt"
+        profile.local_engine_kwargs["dtype"] = "bfloat16"
 
-    assert profile.engine_kwargs_for_local() == {
-        "dtype": "auto",
-        "quantization": "fp8",
-        "hf_overrides": {"quantization_config": {"quant_method": "fp8", "activation_scheme": "static"}},
-    }
+    assert profile.engine_kwargs_for_local() == {"dtype": "auto"}
 
 
 def _install_fake_torch():
@@ -369,6 +393,11 @@ def _install_fake_vllm():
     ("model_name", "expected_revision", "expected_engine"),
     [
         (
+            NANO_FP8,
+            "7394488badb786e1decc0e00e308de1cab9560e6",
+            {"dtype": "auto"},
+        ),
+        (
             OMNI_BF16,
             "24e67ea000b7c2837fc8f9488aa2008524fac8ba",
             {"dtype": "bfloat16"},
@@ -376,11 +405,7 @@ def _install_fake_vllm():
         (
             OMNI_FP8,
             "6647b845a4b786c6e2c7adb1b6a909e1aa71fac2",
-            {
-                "dtype": "auto",
-                "quantization": "fp8",
-                "hf_overrides": {"quantization_config": {"quant_method": "fp8", "activation_scheme": "static"}},
-            },
+            {"dtype": "auto"},
         ),
         (
             OMNI_NVFP4,
@@ -389,7 +414,7 @@ def _install_fake_vllm():
         ),
     ],
 )
-def test_local_omni_captioner_uses_profile_metadata(
+def test_local_captioner_uses_profile_metadata(
     isolated_local_captioner_imports, model_name, expected_revision, expected_engine
 ):
     FakeLLM, _FakeSamplingParams = _install_fake_vllm()
@@ -409,8 +434,12 @@ def test_local_omni_captioner_uses_profile_metadata(
     assert llm_kwargs["trust_remote_code"] is True
     assert llm_kwargs["tensor_parallel_size"] == 2
     assert llm_kwargs["gpu_memory_utilization"] == 0.25
+    assert llm_kwargs["max_num_seqs"] == 256
     for key, value in expected_engine.items():
         assert llm_kwargs[key] == value
+    if model_name in {NANO_FP8, OMNI_FP8}:
+        assert "quantization" not in llm_kwargs
+        assert "hf_overrides" not in llm_kwargs
 
 
 def test_local_captioner_passes_omni_no_think_chat_kwargs(isolated_local_captioner_imports):
@@ -423,6 +452,7 @@ def test_local_captioner_passes_omni_no_think_chat_kwargs(isolated_local_caption
     assert captioner.caption_batch(["abc123"]) == ["generated caption"]
     chat_kwargs = FakeLLM.instances[-1].chat_calls[-1]["kwargs"]
     assert chat_kwargs["chat_template_kwargs"] == {"enable_thinking": False}
+    assert chat_kwargs["use_tqdm"] is False
 
 
 def test_local_captioner_user_extra_body_overrides_profile_extras(isolated_local_captioner_imports):
@@ -438,6 +468,7 @@ def test_local_captioner_user_extra_body_overrides_profile_extras(isolated_local
 
     chat_kwargs = FakeLLM.instances[-1].chat_calls[-1]["kwargs"]
     assert chat_kwargs["chat_template_kwargs"] == {"enable_thinking": True, "reasoning_budget": 32}
+    assert chat_kwargs["use_tqdm"] is False
 
 
 def test_local_captioner_rejects_unknown_model_before_vllm_import(isolated_local_captioner_imports, monkeypatch):

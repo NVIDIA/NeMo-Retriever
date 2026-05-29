@@ -20,16 +20,17 @@ For more information, refer to [Vector databases](vdbs.md).
 
 For images that `nemoretriever-page-elements-v3` does not classify as tables, charts, or infographics,
 you can use our VLM caption task to create a dense caption of the detected image. 
-That caption is then be embedded along with the rest of your content. 
-For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
+That caption is then embedded along with the rest of your content. 
+For chart-labeled PDF regions and other caption scope limits, see [Are PDF chart or figure regions captioned when Omni is enabled?](#are-pdf-chart-or-figure-regions-captioned-when-omni-is-enabled). For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
+## Are PDF chart or figure regions captioned when Omni is enabled?
 
+No. Chart-labeled PDF regions are not routed through Omni captioning. See [Image captioning](prerequisites-support-matrix.md#image-captioning-2605) for scope, validation, and what the caption stage covers.
 
 ## When should I consider advanced visual parsing?
 
 For scanned documents, or documents with complex layouts, 
-we recommend that you use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse). 
-Nemotron parse provides higher-accuracy text extraction. 
+you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate PDF extraction method by setting `extract_method="nemotron_parse"`. 
 For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
 ## Why are the environment variables different between library mode and self-hosted mode?
@@ -55,32 +56,17 @@ When you explicitly configure remote NIM endpoints in Python library mode, graph
 
 Refer to [Evaluate on your data](evaluate-on-your-data.md) for extraction tuning and optimization guidance.
 
-You can configure the `extract`, `caption`, and other tasks by using the [Ingestor API](nemo-retriever-api-reference.md).
-
-To choose what types of content to extract, use code similar to the following. 
-For more information, refer to [Extract Specific Elements from PDFs](nemo-retriever-api-reference.md).
-
-```python
-Ingestor(client=client)
-    .files("data/multimodal_test.pdf")
-    .extract(              
-        extract_text=True,
-        extract_tables=True,
-        extract_charts=True,
-        extract_images=True,
-        extract_infographics=True,
-        text_depth="page"
-    )
-```
+You can configure the `extract`, `caption`, and other tasks—including which content types to extract—using the [Python API guide](nemo-retriever-api-reference.md) (`create_ingestor` and `GraphIngestor`). For PDF element selection, refer to [Extract Specific Elements from PDFs](nemo-retriever-api-reference.md).
 
 To generate captions for images, use code similar to the following.
 For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
 ```python
-Ingestor(client=client)
-    .files("data/multimodal_test.pdf")
-    .extract()
-    .caption()
-    .embed()
+from pathlib import Path
 
+from nemo_retriever import create_ingestor
+
+documents = [str(Path("data/multimodal_test.pdf"))]
+ingestor = create_ingestor(run_mode="batch")
+ingestor = ingestor.files(documents).extract().caption().embed()
 ```

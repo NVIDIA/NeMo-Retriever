@@ -51,6 +51,7 @@ Ray Data actor usage::
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 import json
 import logging
 import traceback
@@ -63,15 +64,24 @@ from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.model import is_vl_rerank_model
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
 
 logger = logging.getLogger(__name__)
 
 _render_warned = False
 _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
+_DEFAULT_RERANK_INVOKE_URL = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
+_DEFAULT_VL_RERANK_INVOKE_URL = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
 _DEFAULT_MAX_LENGTH = 512
 _DEFAULT_BATCH_SIZE = 32
 _SCORE_COLUMN = "rerank_score"
+
+
+def _default_rerank_invoke_url(model_name: str | None) -> str:
+    if is_vl_rerank_model(model_name):
+        return _DEFAULT_VL_RERANK_INVOKE_URL
+    return _DEFAULT_RERANK_INVOKE_URL
 
 
 # ---------------------------------------------------------------------------
@@ -417,12 +427,17 @@ class NemotronRerankCPUActor(AbstractOperator, CPUOperator):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
-        rerank_invoke_url = str(self._kwargs.get("rerank_invoke_url") or "").strip()
-        if not rerank_invoke_url:
+        configured_url = str(self._kwargs.get("rerank_invoke_url") or "").strip()
+        rerank_invoke_url = configured_url or _default_rerank_invoke_url(
+            str(self._kwargs.get("model_name") or _DEFAULT_MODEL)
+        )
+        api_key = resolve_remote_api_key(str(self._kwargs.get("api_key") or ""))
+        if api_key:
+            self._kwargs["api_key"] = api_key
+        elif not configured_url:
             raise ValueError(
-                "NemotronRerankCPUActor requires an explicit `rerank_invoke_url` (no default endpoint). "
-                "For local GPU reranking, omit the URL and the ArchetypeOperator will dispatch to "
-                "NemotronRerankGPUActor."
+                "NemotronRerankCPUActor defaulted to the hosted rerank endpoint but no API key is configured. "
+                "Set NVIDIA_API_KEY/NGC_API_KEY or pass rerank_invoke_url for a local endpoint."
             )
         self._kwargs["rerank_invoke_url"] = rerank_invoke_url
         self._model = None
@@ -502,19 +517,50 @@ def _rerank_batch(
         images_b64 = batch_df[image_column].tolist()
 
     if rerank_invoke_url:
-        # Remote endpoint: score pair-by-pair (each row may have a different query).
-        scores: List[float] = []
+        # Remote endpoint: batch all passages that share a query into one request.
+        # The long-form DataFrame can contain different queries in the same Ray
+        # batch, so keep per-row score alignment when expanding grouped responses.
+        groups: dict[Any, dict[str, Any]] = {}
         for i, (q, d) in enumerate(pairs):
-            img = [images_b64[i]] if images_b64 else None
+            if not isinstance(q, Hashable):
+                logger.warning(
+                    "Query at row %d is not hashable (%s); it will be sent in its own request "
+                    "and cannot be batched with identical queries.",
+                    i,
+                    type(q).__name__,
+                )
+            key = q if isinstance(q, Hashable) else ("__unhashable_query__", i)
+            group = groups.setdefault(
+                key,
+                {
+                    "query": q,
+                    "indices": [],
+                    "documents": [],
+                    "images_b64": [] if images_b64 is not None else None,
+                },
+            )
+            group["indices"].append(i)
+            group["documents"].append(d)
+            if images_b64 is not None:
+                group["images_b64"].append(images_b64[i])
+
+        scores = [float("-inf")] * len(pairs)
+        for group in groups.values():
             row_scores = _rerank_via_endpoint(
-                q,
-                [d],
+                group["query"],
+                group["documents"],
                 endpoint=rerank_invoke_url,
                 model_name=model_name,
                 api_key=api_key,
-                images_b64=img,
+                images_b64=group["images_b64"],
             )
-            scores.append(row_scores[0])
+            if len(row_scores) != len(group["indices"]):
+                raise RuntimeError(
+                    f"Endpoint returned {len(row_scores)} scores for a batch of "
+                    f"{len(group['indices'])} documents; score alignment is broken."
+                )
+            for row_index, score in zip(group["indices"], row_scores):
+                scores[row_index] = score
     elif model is not None:
         if images_b64 is not None:
             scores = model.score_pairs(pairs, images_b64=images_b64, max_length=max_length, batch_size=batch_size)

@@ -22,9 +22,9 @@ from nemo_retriever.utils.input_files import (
     raise_input_path_not_found,
 )
 from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
+from nemo_retriever.utils import ray_resource_hueristics as _rrh
 from nemo_retriever.utils.ray_resource_hueristics import (
     gather_cluster_resources,
-    gather_local_resources,
     NEMOTRON_PARSE_BATCH_SIZE,
     VLLM_GPUS_PER_ACTOR,
     OCR_GPUS_PER_ACTOR,
@@ -117,7 +117,7 @@ class InprocessExecutor(AbstractExecutor):
                 f"data must be a pandas.DataFrame, file path, or list of paths, " f"got {type(data).__name__}"
             )
 
-        resolved_graph = resolve_graph(self.graph, gather_local_resources())
+        resolved_graph = resolve_graph(self.graph, _rrh.gather_local_resources())
         nodes = self._linearize(resolved_graph)
         operators = []
         for node in nodes:
@@ -213,7 +213,12 @@ class RayDataExecutor(AbstractExecutor):
         return ordered
 
     def ingest(self, data: Any, **kwargs: Any) -> Any:
-        """Build and execute a Ray Data pipeline from the graph.
+        """Build, execute, and materialize a Ray Data pipeline from the graph."""
+
+        return self.build_dataset(data, **kwargs).to_pandas()
+
+    def build_dataset(self, data: Any, **kwargs: Any) -> Any:
+        """Build a lazy Ray Data pipeline from the graph.
 
         Parameters
         ----------
@@ -223,8 +228,9 @@ class RayDataExecutor(AbstractExecutor):
 
         Returns
         -------
-        ray.data.Dataset
-            The materialized result dataset.
+        pandas.DataFrame
+            The materialized result after executing the Ray Data pipeline
+            (``ds.to_pandas()``).
         """
         import ray
         import ray.data as rd
@@ -380,4 +386,4 @@ class RayDataExecutor(AbstractExecutor):
                 **overrides,
             )
 
-        return ds.to_pandas()
+        return ds

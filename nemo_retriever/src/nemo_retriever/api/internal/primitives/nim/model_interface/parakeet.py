@@ -9,6 +9,7 @@ import base64
 import logging
 from typing import Any
 from typing import List
+from typing import Literal
 from typing import Optional
 from typing import Tuple
 
@@ -38,6 +39,58 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Parakeet ASR training sample rate. ``convert_to_mono_wav`` resamples to this
+# rate and ``transcribe`` advertises it on ``RecognitionConfig.sample_rate_hertz``;
+# the two must stay in sync or Riva returns "Unavailable model requested".
+PARAKEET_SAMPLE_RATE_HZ = 16000
+
+# Streaming send-chunk size. 32 KB at 16 kHz/16-bit/mono is ~1 second of audio
+# per chunk — small enough that the server can begin processing eagerly,
+# large enough that we don't drown the gRPC channel in tiny frames.
+_STREAMING_CHUNK_BYTES = 32 * 1024
+
+AudioInferMode = Literal["auto", "online", "offline"]
+ResolvedAudioInferMode = Literal["online", "offline"]
+
+
+def resolve_audio_infer_mode(mode: str, endpoint: str) -> ResolvedAudioInferMode:
+    """Pick offline vs streaming Riva RPC for a Parakeet endpoint.
+
+    NVCF (``grpc.nvcf.nvidia.com``) registers streaming (online) models. The Helm
+    chart Parakeet NIM defaults to ``mode=ofl`` (offline). Use
+    ``audio_infer_mode='online'`` only when the NIM was deployed with a streaming
+    profile (``mode=str``).
+    """
+    normalized = (mode or "auto").lower()
+    if normalized == "online":
+        return "online"
+    if normalized == "offline":
+        return "offline"
+    if normalized != "auto":
+        raise ValueError(f"audio_infer_mode must be 'auto', 'online', or 'offline', got {mode!r}")
+    if "nvcf.nvidia.com" in (endpoint or "").lower():
+        return "online"
+    return "offline"
+
+
+class _StreamingResponseShim:
+    """Tiny adapter that lets streaming results flow through code that was
+    written against the offline ``RecognizeResponse`` shape.
+
+    The offline response has ``.results`` -> list of ``SpeechRecognitionResult``;
+    each carries ``.alternatives[*].words`` with ``start_time`` / ``end_time``
+    in milliseconds. The streaming response has ``.results`` ->
+    ``StreamingRecognitionResult`` with an ``is_final`` flag and the same
+    nested ``.alternatives`` / ``.words`` underneath. After filtering on
+    ``is_final``, the two shapes are interchangeable as far as
+    :func:`process_transcription_response` is concerned.
+    """
+
+    __slots__ = ("results",)
+
+    def __init__(self, results: list) -> None:
+        self.results = results
+
 
 class ParakeetClient:
     """
@@ -51,6 +104,7 @@ class ParakeetClient:
         function_id: Optional[str] = None,
         use_ssl: Optional[bool] = None,
         ssl_cert: Optional[str] = None,
+        infer_mode: AudioInferMode = "auto",
     ):
         """
         Initialize the ParakeetClient.
@@ -78,6 +132,7 @@ class ParakeetClient:
         else:
             self.use_ssl = use_ssl
         self.ssl_cert = ssl_cert
+        self._infer_mode = resolve_audio_infer_mode(infer_mode, endpoint)
 
         self.auth_metadata = []
         if self.auth_token:
@@ -85,7 +140,12 @@ class ParakeetClient:
         if self.function_id:
             self.auth_metadata.append(("function-id", self.function_id))
 
-        # Create authentication and ASR service objects.
+        if riva_client is None:
+            raise ImportError(
+                "Remote Parakeet ASR requires the Riva client library. "
+                'Install with: pip install "nvidia-riva-client>=2.17.0"'
+            )
+
         self._auth = riva_client.Auth(self.ssl_cert, self.use_ssl, self.endpoint, self.auth_metadata)
         self._asr_service = riva_client.ASRService(self._auth)
 
@@ -184,7 +244,15 @@ class ParakeetClient:
             Returns None if the transcription fails.
         """
         # Build the recognition configuration.
+        # ``encoding`` and ``sample_rate_hertz`` are required by Riva — left
+        # unset, the server gets ``sample_rate=0`` and rejects with
+        # "Unavailable model requested" because no model is registered for an
+        # unspecified rate. ``convert_to_mono_wav`` produces 16 kHz 16-bit PCM
+        # mono WAV (matching Parakeet's training sample rate); keep these
+        # values in sync if you change the resampler target below.
         recognition_config = riva_client.RecognitionConfig(
+            encoding=riva_client.AudioEncoding.LINEAR_PCM,
+            sample_rate_hertz=PARAKEET_SAMPLE_RATE_HZ,
             language_code=language_code,
             max_alternatives=max_alternatives,
             profanity_filter=profanity_filter,
@@ -216,13 +284,49 @@ class ParakeetClient:
         audio_bytes = base64.b64decode(audio_content)
         mono_audio_bytes = convert_to_mono_wav(audio_bytes)
 
-        # Perform offline recognition and print the transcript.
         try:
-            response = self._asr_service.offline_recognize(mono_audio_bytes, recognition_config)
-            return response
+            if self._infer_mode == "offline":
+                return self._asr_service.offline_recognize(mono_audio_bytes, recognition_config)
+            streaming_config = riva_client.StreamingRecognitionConfig(
+                config=recognition_config,
+                interim_results=False,
+            )
+            return self._streaming_transcribe(mono_audio_bytes, streaming_config)
         except grpc.RpcError as e:
             logger.exception(f"Error transcribing audio file: {e.details()}")
             raise
+
+    def _streaming_transcribe(self, mono_wav_bytes: bytes, streaming_config):  # noqa: ANN201
+        """Run a streaming transcription session and return an offline-shaped response.
+
+        ``mono_wav_bytes`` is a 16 kHz mono 16-bit PCM WAV produced by
+        :func:`convert_to_mono_wav`. The Riva server's streaming RPC expects
+        raw PCM matching the ``LINEAR_PCM`` encoding declared on the config —
+        the WAV header bytes would be parsed as samples and corrupt the
+        signal — so we strip the header via the stdlib ``wave`` module and
+        feed only the data payload, chunked into ``_STREAMING_CHUNK_BYTES``
+        slices to give the server reasonable progress to act on.
+
+        Returns a tiny shim object whose ``.results`` field matches the shape
+        :func:`process_transcription_response` expects from the offline RPC,
+        so the rest of the pipeline can stay unchanged.
+        """
+        import wave
+
+        with wave.open(io.BytesIO(mono_wav_bytes), "rb") as wav:
+            pcm_bytes = wav.readframes(wav.getnframes())
+
+        def _audio_chunks():
+            for i in range(0, len(pcm_bytes), _STREAMING_CHUNK_BYTES):
+                yield pcm_bytes[i : i + _STREAMING_CHUNK_BYTES]
+
+        final_results = []
+        for resp in self._asr_service.streaming_response_generator(_audio_chunks(), streaming_config):
+            for result in resp.results:
+                if result.is_final:
+                    final_results.append(result)
+
+        return _StreamingResponseShim(final_results)
 
 
 def convert_to_mono_wav(audio_bytes):
@@ -246,9 +350,11 @@ def convert_to_mono_wav(audio_bytes):
     # Create a BytesIO object from the audio bytes
     byte_io = io.BytesIO(audio_bytes)
 
-    # Load the audio file with librosa
-    # librosa.load automatically converts to mono by default
-    audio_data, sample_rate = librosa.load(byte_io, sr=44100, mono=True)
+    # Load the audio file with librosa.
+    # ``sr=PARAKEET_SAMPLE_RATE_HZ`` (16 kHz) matches Parakeet's training rate;
+    # ``RecognitionConfig.sample_rate_hertz`` above must stay in sync with it.
+    # ``mono=True`` collapses any multichannel input to mono.
+    audio_data, sample_rate = librosa.load(byte_io, sr=PARAKEET_SAMPLE_RATE_HZ, mono=True)
 
     # Ensure audio is properly scaled for 16-bit PCM
     # Librosa normalizes the data between -1 and 1
@@ -333,6 +439,7 @@ def create_audio_inference_client(
     function_id: Optional[str] = None,
     use_ssl: bool = False,
     ssl_cert: Optional[str] = None,
+    infer_mode: AudioInferMode = "auto",
 ):
     """
     Create a ParakeetClient for interfacing with an audio model inference server.
@@ -377,5 +484,10 @@ def create_audio_inference_client(
         raise ValueError("`http` endpoints are not supported for audio. Use `grpc`.")
 
     return ParakeetClient(
-        grpc_endpoint, auth_token=auth_token, function_id=function_id, use_ssl=use_ssl, ssl_cert=ssl_cert
+        grpc_endpoint,
+        auth_token=auth_token,
+        function_id=function_id,
+        use_ssl=use_ssl,
+        ssl_cert=ssl_cert,
+        infer_mode=infer_mode,
     )

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import os
 import logging
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -15,11 +17,11 @@ import pandas as pd
 
 from nemo_retriever.audio import ASRActor
 from nemo_retriever.audio import MediaChunkActor
+from nemo_retriever.audio import asr_params_from_env
 from nemo_retriever.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.html.ray_data import HtmlSplitActor
 from nemo_retriever.image.ray_data import ImageLoadActor
-from nemo_retriever.image.load import SUPPORTED_IMAGE_EXTENSIONS
 from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
@@ -48,18 +50,22 @@ from nemo_retriever.video import VideoFrameActor
 from nemo_retriever.video import VideoFrameOCRActor
 from nemo_retriever.video import VideoFrameTextDedup
 from nemo_retriever.video import dedup_video_frames
+from nemo_retriever.video import video_asr_audio_chunk_params
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.utils.ray_resource_hueristics import gather_local_resources
+from nemo_retriever.utils.input_files import INPUT_TYPE_EXTENSIONS
+from nemo_retriever.utils import ray_resource_hueristics as _rrh
 
 logger = logging.getLogger(__name__)
 
 # Define file type mappings
-PDF_EXTENSIONS = {".pdf", ".docx", ".pptx"}
-TEXT_EXTENSIONS = {".txt"}
-HTML_EXTENSIONS = {".html"}
-AUDIO_EXTENSIONS = {".mp3", ".wav"}
-IMAGE_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv"}
+PDF_EXTENSIONS = INPUT_TYPE_EXTENSIONS["pdf"] | INPUT_TYPE_EXTENSIONS["doc"]
+TEXT_EXTENSIONS = INPUT_TYPE_EXTENSIONS["txt"]
+HTML_EXTENSIONS = INPUT_TYPE_EXTENSIONS["html"]
+AUDIO_EXTENSIONS = INPUT_TYPE_EXTENSIONS["audio"]
+IMAGE_EXTENSIONS = INPUT_TYPE_EXTENSIONS["image"]
+VIDEO_EXTENSIONS = INPUT_TYPE_EXTENSIONS["video"]
+DEFAULT_AUDIO_SPLIT_INTERVAL = 500000
+DEFAULT_VIDEO_FRAME_FPS = 0.5
 
 
 def _unsupported_extension_message(ext: str) -> str:
@@ -72,6 +78,18 @@ def _unsupported_extension_message(ext: str) -> str:
 
 def _has_endpoint(*values: Any) -> bool:
     return any(bool(str(value or "").strip()) for value in values)
+
+
+def _default_asr_params() -> ASRParams:
+    return asr_params_from_env().model_copy(update={"segment_audio": False})
+
+
+def _default_audio_chunk_params() -> AudioChunkParams:
+    return AudioChunkParams(split_type="size", split_interval=DEFAULT_AUDIO_SPLIT_INTERVAL)
+
+
+def _default_video_frame_params() -> VideoFrameParams:
+    return VideoFrameParams(enabled=True, fps=DEFAULT_VIDEO_FRAME_FPS, dedup=True)
 
 
 def _parse_mode_enabled(extract_params: ExtractParams) -> bool:
@@ -151,11 +169,14 @@ class _MultiTypeExtractBase(AbstractOperator):
         self.extract_params = extract_params or ExtractParams()
         self.text_params = text_params or TextChunkParams()
         self.html_params = html_params or HtmlChunkParams()
-        self.audio_chunk_params = audio_chunk_params or AudioChunkParams()
-        self.asr_params = asr_params or ASRParams()
+        self.audio_chunk_params = audio_chunk_params or _default_audio_chunk_params()
+        self.asr_params = asr_params or _default_asr_params()
         self.caption_params = caption_params
-        self.video_frame_params = video_frame_params or VideoFrameParams()
-        self.video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams()
+        self.video_frame_params = video_frame_params or _default_video_frame_params()
+        self.video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams(
+            enabled=True,
+            max_dropped_frames=2,
+        )
         self.av_fuse_params = av_fuse_params or AudioVisualFuseParams()
         self._split_config: dict[str, Any] = split_config if split_config is not None else resolve_split_params(None)
         self._resolved_resources = None
@@ -188,9 +209,14 @@ class _MultiTypeExtractBase(AbstractOperator):
             html_params = self._effective_chunk_params("html")
             outputs.append(HtmlSplitActor(params=html_params).run(grouped["html"]))
         if not grouped["audio"].empty:
-            audio_df = MediaChunkActor(params=self.audio_chunk_params).run(grouped["audio"])
-            audio_df = ASRActor(params=self.asr_params).run(audio_df)
-            outputs.append(self._maybe_chunk(audio_df, "audio"))
+            audio_work, audio_spill = self._materialize_media_bytes(grouped["audio"])
+            try:
+                audio_df = MediaChunkActor(params=self.audio_chunk_params).run(audio_work)
+                audio_df = ASRActor(params=self.asr_params).run(audio_df)
+                outputs.append(self._maybe_chunk(audio_df, "audio"))
+            finally:
+                if audio_spill is not None:
+                    shutil.rmtree(audio_spill, ignore_errors=True)
         if not grouped["video"].empty:
             outputs.append(self._run_video_pipeline(grouped["video"]))
 
@@ -206,7 +232,15 @@ class _MultiTypeExtractBase(AbstractOperator):
         for idx, row in batch_df.iterrows():
             path = str(row.get("path") or "")
             ext = Path(path).suffix.lower()
-            target = explicit_mode if explicit_mode != "auto" else self._mode_for_extension(ext)
+            ext_mode = self._mode_for_extension(ext)
+            if explicit_mode == "auto":
+                target = ext_mode
+            elif explicit_mode in {"text", "html"}:
+                # Honor the file suffix so a mis-set extraction_mode does not
+                # force HTML bytes through the TXT splitter (or vice versa).
+                target = ext_mode or explicit_mode
+            else:
+                target = explicit_mode
             if explicit_mode == "auto" and target == "":
                 logger.warning(
                     _unsupported_extension_message(ext),
@@ -333,12 +367,42 @@ class _MultiTypeExtractBase(AbstractOperator):
             "request_timeout_s": float(ep.ocr_request_timeout_s or ep.request_timeout_s),
         }
 
+    @staticmethod
+    def _materialize_media_bytes(batch_df: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
+        """Spill in-memory ``bytes`` to temp files when ``path`` is not on disk.
+
+        Returns ``(updated_df, tmpdir)`` where *tmpdir* is ``None`` when no
+        spilling was needed (all paths already exist on disk).  The caller
+        **must** delete *tmpdir* when finished.
+        """
+        if "bytes" not in batch_df.columns:
+            return batch_df, None
+
+        needs_spill = []
+        for idx, row in batch_df.iterrows():
+            p = str(row.get("path") or "")
+            if p and not Path(p).is_file() and row.get("bytes") is not None:
+                needs_spill.append(idx)
+
+        if not needs_spill:
+            return batch_df, None
+
+        tmpdir = tempfile.mkdtemp(prefix="retriever_media_spill_")
+        df = batch_df.copy()
+        for idx in needs_spill:
+            row = df.loc[idx]
+            original_name = Path(str(row["path"])).name or f"media_{idx}"
+            dest = Path(tmpdir) / original_name
+            dest.write_bytes(row["bytes"])
+            df.at[idx, "path"] = str(dest)
+        return df, tmpdir
+
     def _run_video_pipeline(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         """Run audio-from-video ASR + frame OCR + (optional) scene fusion.
 
-        Branch A: ``MediaChunkActor`` chunks the video and ``ASRActor``
-        runs ASR on the chunks (audio is implicit — Parakeet reads from
-        the video stream). Emits per-utterance audio rows.
+        Branch A: ``MediaChunkActor`` demuxes the video's audio track
+        before chunking and ``ASRActor`` runs ASR on those audio bytes
+        instead of the video container. Emits per-utterance audio rows.
 
         Branch B: ``VideoFrameActor`` extracts frames at
         ``video_frame_params.fps``; optional content-hash dedup;
@@ -354,12 +418,20 @@ class _MultiTypeExtractBase(AbstractOperator):
         ``av_fuse_params.enabled`` is False or when neither branch
         produced rows.
         """
+        work_df, spill_dir = self._materialize_media_bytes(batch_df)
+        try:
+            return self._run_video_pipeline_inner(work_df)
+        finally:
+            if spill_dir is not None:
+                shutil.rmtree(spill_dir, ignore_errors=True)
+
+    def _run_video_pipeline_inner(self, batch_df: pd.DataFrame) -> pd.DataFrame:
         # Branch A: audio-from-video → ASR. Skipped when the caller disables
         # audio (visual-only recall benchmarks); mirrors ``build_graph``'s
         # ``audio_enabled`` gate.
         audio_enabled = self.audio_chunk_params.enabled
         if audio_enabled:
-            audio_chunks = MediaChunkActor(params=self.audio_chunk_params).run(batch_df)
+            audio_chunks = MediaChunkActor(params=video_asr_audio_chunk_params(self.audio_chunk_params)).run(batch_df)
             audio_out = ASRActor(params=self.asr_params).run(audio_chunks)
         else:
             audio_out = pd.DataFrame()
@@ -493,7 +565,7 @@ class _MultiTypeExtractBase(AbstractOperator):
 
     def _local_resources(self):
         if self._resolved_resources is None:
-            self._resolved_resources = gather_local_resources()
+            self._resolved_resources = _rrh.gather_local_resources()
         return self._resolved_resources
 
     def _instantiate_resolved(self, operator_class: type[AbstractOperator], **operator_kwargs: Any) -> AbstractOperator:

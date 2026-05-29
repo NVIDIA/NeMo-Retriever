@@ -54,18 +54,29 @@ pdf_dirs: {}
 testdata_prefixes: []
 
 # ---------------------------------------------------------------------------
-# Agent model and per-trial limits
+# Agent selection, model, and per-trial limits
 # ---------------------------------------------------------------------------
-agent_model: claude-opus-4-7
+# `agent` must be `claude` or `codex`. Override per run with --agent.
+agent: claude
+agent_models:
+  claude: claude-opus-4-7
+  codex: gpt-5.5
+# Back-compat fallback: if set, this overrides agent_models.<agent> unless
+# --model is passed. Leave unset for per-agent defaults.
+# agent_model: claude-opus-4-7
 per_trial_budget_usd: 5.0
 per_trial_timeout_s: 600
+# 1 preserves the historical single-session linear query loop. Values >1 run
+# query turns in isolated sessions copied from the completed setup workdir.
+query_parallelism: 1
 per_trial_workdir_root: /tmp/skill_eval
 
 # ---------------------------------------------------------------------------
 # Conditions to run, in execution order
 # ---------------------------------------------------------------------------
-# Each (condition, domain) workdir is deleted after it finishes, so only one
-# LanceDB is on disk at a time. Override on the CLI with ``--conditions``.
+# Each (condition, domain) setup workdir is deleted after it finishes. With
+# query_parallelism >1, per-query copies may temporarily create multiple LanceDBs.
+# Override on the CLI with ``--conditions``.
 conditions:
   - c1_base               # retriever blocked → forces Read-only baseline
   - c2_retriever          # retriever available, NL prompt, skill auto-discovery
@@ -85,8 +96,26 @@ conditions:
 # on a 0-5 scale. Requires the ``litellm`` extra installed AND ``api_key_env``
 # populated in the environment; otherwise skipped silently with a console
 # note. Set ``enabled: false`` to opt out explicitly.
+#
+# For a local NIM judge: `docker compose up judge`, then point ``api_base``
+# at the localhost line below instead of the NVIDIA-hosted default.
 judge:
   enabled: true
-  model: nvidia_nim/mistralai/mixtral-8x22b-instruct-v0.1
+  model: nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
   api_base: https://integrate.api.nvidia.com/v1
+  # api_base: http://localhost:8000/v1    # `docker compose up judge` first
   api_key_env: NVIDIA_API_KEY
+  temperature: 0.1
+  max_tokens: 4096
+
+# ---------------------------------------------------------------------------
+# Tool-use summarizer
+# ---------------------------------------------------------------------------
+# After each agent/domain/condition session, the harness reads the agent session
+# JSONL and asks Claude to narrate what tools were called and what strategy was
+# used. The result is stamped onto the setup-turn TrialResult and rendered in
+# session_summary.md. Shells out to `claude --print`, so it reuses Claude Code
+# auth and does not require a separate API key. Set enabled: false to skip it.
+summarizer:
+  enabled: true
+  model: claude-opus-4-7
