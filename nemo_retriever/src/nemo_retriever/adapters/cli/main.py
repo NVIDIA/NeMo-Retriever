@@ -472,7 +472,8 @@ def ingest_command(
             "Suppress verbose progress output (progress bars, HuggingFace "
             "downloads, vLLM init logs). On success, prints only the final "
             "summary line. On error, flushes all captured output to stderr "
-            "for debugging. Enabled by default; pass --no-quiet for verbose output."
+            "for debugging. Enabled by default; pass --no-quiet for the full "
+            "verbose output."
         ),
     ),
 ) -> None:

@@ -4,6 +4,14 @@ description: Use when the user wants to search, query, extract, transcribe, desc
 allowed-tools: Bash Write Read
 ---
 
+| name          | nemo-retriever |
+| :------------ | :-- |
+| description   | Use when the user wants to search, index, or answer questions over a folder of PDFs (or other documents) — including building a RAG / search index over PDFs, looking up information across many PDFs, or running the `retriever` CLI (ingest, query, pipeline, recall, eval, etc.). |
+| license       | Apache-2.0 |
+| compatibility | Designed for Claude Code, OpenCode, Codex, and Agent Skills-compatible tools. Requires Git, network access to GitHub |
+| metadata      |     |
+| allowed-tools | Bash Write Read |
+
 # nemo-retriever
 
 The `retriever` CLI indexes a folder of PDFs into LanceDB (`retriever ingest`) and serves vector search over it (`retriever query`). For any task about searching/answering questions across a folder of PDFs, use this CLI — do not write a custom RAG.
