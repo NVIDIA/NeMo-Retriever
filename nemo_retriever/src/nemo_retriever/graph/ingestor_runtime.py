@@ -131,6 +131,20 @@ def batch_tuning_to_node_overrides(
     embed_tuning = _batch_tuning(embed_params)
     embed_concurrency: int = 0
     embed_cpus: float = 1.0
+    local_caption_concurrency: int | None = None
+    local_caption_gpus_per_actor: float | None = None
+    if caption_params is not None and cluster_resources is not None:
+        caption_invoke_url = _positive(getattr(caption_params, "endpoint_url", None))
+        if not effective_allow_no_gpu and not caption_invoke_url:
+            available_gpus = max(1, int(cluster_resources.available_gpu_count()))
+            local_caption_gpus_per_actor = (
+                _resolve(caption_gpus_per_actor, plan.caption_gpus_per_actor if plan else None) or 1.0
+            )
+            # Local captioning is the visual-workload bottleneck. On DGX-class
+            # hosts, use the GPU pool for caption actors and leave one GPU's
+            # budget for downstream embedding.
+            local_caption_concurrency = 1 if available_gpus <= 1 else max(1, available_gpus - 1)
+
     if embed_params is not None:
         embed_invoke_url = _positive(getattr(embed_params, "embed_invoke_url", None))
         explicit_bs = getattr(embed_tuning, "embed_batch_size", None) if embed_tuning is not None else None
@@ -138,10 +152,25 @@ def batch_tuning_to_node_overrides(
         _set(_BatchEmbedActor.__name__, "batch_size", embed_bs)
         if embed_bs:
             overrides.setdefault(_BatchEmbedActor.__name__, {})["target_num_rows_per_block"] = embed_bs
+        explicit_embed_workers = getattr(embed_tuning, "embed_workers", None) if embed_tuning is not None else None
+        embed_workers_fallback = plan.embed_initial_actors if plan else None
+        if (
+            local_caption_concurrency is not None
+            and local_caption_gpus_per_actor is not None
+            and _positive(explicit_embed_workers) is None
+            and cluster_resources is not None
+            and plan is not None
+        ):
+            caption_gpu_budget = local_caption_concurrency * local_caption_gpus_per_actor
+            remaining_gpu_budget = max(0.0, float(cluster_resources.available_gpu_count()) - caption_gpu_budget)
+            if remaining_gpu_budget > 0 and plan.embed_gpus_per_actor > 0:
+                embed_workers_fallback = max(1, int(remaining_gpu_budget // plan.embed_gpus_per_actor))
+            else:
+                embed_workers_fallback = 1
         embed_concurrency = (
             _resolve(
-                getattr(embed_tuning, "embed_workers", None) if embed_tuning is not None else None,
-                plan.embed_initial_actors if plan else None,
+                explicit_embed_workers,
+                embed_workers_fallback,
             )
             or 0
         )
@@ -167,6 +196,8 @@ def batch_tuning_to_node_overrides(
         if effective_allow_no_gpu:
             _force_cpu_only(CaptionActor.__name__)
         elif not caption_invoke_url:
+            if local_caption_concurrency is not None:
+                overrides.setdefault(CaptionActor.__name__, {})["concurrency"] = local_caption_concurrency
             _set_gpu(
                 CaptionActor.__name__,
                 caption_gpus_per_actor,
@@ -249,7 +280,6 @@ def batch_tuning_to_node_overrides(
         _set(TableStructureActor.__name__, "batch_size", ts_bs)
         if ts_bs:
             overrides.setdefault(TableStructureActor.__name__, {})["target_num_rows_per_block"] = ts_bs
-        ts_concurrency: int = 0
         ts_concurrency = _resolve(
             getattr(extract_tuning, "table_structure_workers", None) if extract_tuning is not None else None,
             plan.table_structure_initial_actors if plan else None,
@@ -340,7 +370,7 @@ def batch_tuning_to_node_overrides(
                 + page_elements_concurrency * page_elements_cpus
                 + ocr_concurrency * ocr_cpus
                 + embed_concurrency * embed_cpus
-                + ts_concurrency * ts_cpus
+                + ts_concurrency * 1
                 + ge_concurrency * 1
             )
             pdf_extract_tasks = min(
@@ -495,7 +525,6 @@ def _maybe_append_chunk_actor(graph: Graph, split_config: dict[str, Any], key: s
 def _append_ordered_transform_stages(
     graph: Graph,
     *,
-    extraction_mode: str,
     dedup_params: Any | None,
     caption_params: Any | None,
     store_params: Any | None,
@@ -504,7 +533,7 @@ def _append_ordered_transform_stages(
     webhook_params: Any | None = None,
     stage_order: tuple[str, ...],
     supports_dedup: bool,
-    reshape_for_modal_content: bool,
+    reshape_content_before_embed: bool,
 ) -> Graph:
     """Append post-extraction transform stages in the exact recorded plan order."""
 
@@ -532,8 +561,7 @@ def _append_ordered_transform_stages(
         elif stage_name == "caption" and caption_params is not None:
             graph = graph >> CaptionActor(caption_params)
         elif stage_name == "embed" and embed_params is not None:
-            needs_content_reshape = reshape_for_modal_content and extraction_mode in {"pdf", "image", "auto"}
-            if needs_content_reshape:
+            if reshape_content_before_embed:
                 content_columns = (_CONTENT_COLUMNS + ("images",)) if caption_params is not None else _CONTENT_COLUMNS
                 if embed_params.embed_granularity == "page":
                     graph = graph >> UDFOperator(
@@ -568,6 +596,33 @@ def _append_ordered_transform_stages(
         graph = graph >> WebhookNotifyOperator(params=webhook_params)
 
     return graph
+
+
+def build_post_extract_graph(
+    *,
+    dedup_params: Any | None = None,
+    embed_params: Any | None = None,
+    caption_params: Any | None = None,
+    store_params: Any | None = None,
+    vdb_upload_params: VdbUploadParams | None = None,
+    webhook_params: Any | None = None,
+    stage_order: tuple[str, ...] = (),
+    reshape_content_before_embed: bool = True,
+) -> Graph:
+    """Build only the common stages that run after extraction branch union."""
+
+    return _append_ordered_transform_stages(
+        Graph(),
+        dedup_params=dedup_params,
+        caption_params=caption_params,
+        store_params=store_params,
+        embed_params=embed_params,
+        vdb_upload_params=vdb_upload_params,
+        webhook_params=webhook_params,
+        stage_order=stage_order,
+        supports_dedup=True,
+        reshape_content_before_embed=reshape_content_before_embed,
+    )
 
 
 def build_graph(
@@ -840,7 +895,6 @@ def build_graph(
 
     return _append_ordered_transform_stages(
         graph,
-        extraction_mode=extraction_mode,
         dedup_params=dedup_params,
         caption_params=caption_params,
         store_params=store_params,
@@ -849,7 +903,7 @@ def build_graph(
         webhook_params=webhook_params,
         stage_order=stage_order,
         supports_dedup=True,
-        reshape_for_modal_content=True,
+        reshape_content_before_embed=extraction_mode in {"pdf", "image", "auto"},
     )
 
 

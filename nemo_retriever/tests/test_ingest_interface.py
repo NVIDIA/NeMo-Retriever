@@ -185,16 +185,20 @@ def test_extract_default_direct_images_materialize_page_image(monkeypatch, tmp_p
     def passthrough_detection(self, batch_df):
         return batch_df
 
+    def fail_pdf_split(self, batch_df):
+        raise AssertionError("direct image extraction routed through PDFSplitActor")
+
     monkeypatch.setattr(
         "nemo_retriever.graph.multi_type_extract_operator._MultiTypeExtractBase._run_detection_pipeline",
         passthrough_detection,
     )
+    monkeypatch.setattr("nemo_retriever.pdf.split.PDFSplitActor.run", fail_pdf_split)
 
     result = (
-        GraphIngestor(run_mode="inprocess", show_progress=False)
+        create_ingestor(run_mode="inprocess")
         .files([str(image_path)])
         .extract(
-            ExtractParams(
+            params=ExtractParams(
                 extract_text=True,
                 extract_images=True,
                 extract_tables=False,
@@ -212,15 +216,19 @@ def test_extract_default_direct_images_materialize_page_image(monkeypatch, tmp_p
     assert result.iloc[0]["metadata"]["source_path"] == str(image_path.resolve())
 
 
-def test_extract_default_mixed_pdf_and_image_uses_multitype_graph(tmp_path) -> None:
+def test_extract_default_mixed_pdf_and_image_plans_ordered_branches(tmp_path) -> None:
     pdf = tmp_path / "manual.pdf"
     image = tmp_path / "scan.bmp"
     pdf.write_bytes(b"%PDF-1.4\n")
     image.write_bytes(b"bmp")
 
-    ingestor = GraphIngestor(run_mode="inprocess").files([str(pdf), str(image)]).extract()
+    ingestor = GraphIngestor(run_mode="inprocess").files([str(image), str(pdf)]).extract()
 
-    assert _effective_graph_node_names(ingestor) == ["MultiTypeExtractOperator"]
+    branches = ingestor._plan_default_extraction_branches()
+    assert [(branch.family, branch.extraction_mode, branch.input_paths) for branch in branches] == [
+        ("pdf", "pdf", (str(pdf),)),
+        ("image", "image", (str(image),)),
+    ]
 
 
 def test_extract_explicit_pdf_rejects_image_input(tmp_path) -> None:

@@ -26,6 +26,9 @@ from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.params import RemoteRetryParams
 from nemo_retriever.nim.nim import NIMClient, invoke_image_inference_batches
+from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+
+_DEFAULT_INFOGRAPHIC_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1"
 
 try:
     import numpy as np
@@ -824,12 +827,15 @@ class InfographicDetectionCPUActor(AbstractOperator, CPUOperator):
         super().__init__(**detect_kwargs)
         self.detect_kwargs = dict(detect_kwargs)
         invoke_url = str(
-            self.detect_kwargs.get("infographic_invoke_url") or self.detect_kwargs.get("invoke_url") or ""
+            self.detect_kwargs.get("infographic_invoke_url")
+            or self.detect_kwargs.get("invoke_url")
+            or _DEFAULT_INFOGRAPHIC_INVOKE_URL
         ).strip()
-        if not invoke_url:
-            raise ValueError("InfographicDetectionCPUActor requires infographic_invoke_url or invoke_url.")
         if "invoke_url" not in self.detect_kwargs:
             self.detect_kwargs["invoke_url"] = invoke_url
+        api_key = resolve_remote_api_key(str(self.detect_kwargs.get("api_key") or ""))
+        if api_key:
+            self.detect_kwargs["api_key"] = api_key
         self._model = None
         self._nim_client = NIMClient(
             max_pool_workers=int(self.detect_kwargs.get("remote_max_pool_workers", 24)),

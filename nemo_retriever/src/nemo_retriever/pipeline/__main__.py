@@ -98,6 +98,107 @@ _PANEL_OBS = "Observability"
 _PANEL_SERVICE = "Service Mode"
 
 
+# CLI flags that have no effect in --run-mode=service: either silently
+# overridden by retriever-service.yaml (server-owned endpoints / models),
+# bound to local execution (Ray actors, GPU placement), or never wired
+# through the service ingestor (VDB upload is handled server-side; audio
+# and video extract paths still run locally). Flags wired into the
+# service ``PipelineSpec`` by ``_build_ingestor`` — extract knobs, embed
+# granularity / modality, dedup threshold, caption behaviour, text chunk
+# config, ``--store-images-uri`` — are intentionally NOT in this list and
+# pass through to ``ServiceIngestor``; the server's
+# ``_DEFAULT_ALLOWED_*_KEYS`` allowlists are the final authority on which
+# keys survive.
+_SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
+    # Remote NIM endpoints + model names — server-owned via retriever-service.yaml
+    ("--page-elements-invoke-url", "page_elements_invoke_url"),
+    ("--ocr-invoke-url", "ocr_invoke_url"),
+    ("--ocr-lang", "ocr_lang"),
+    ("--graphic-elements-invoke-url", "graphic_elements_invoke_url"),
+    ("--table-structure-invoke-url", "table_structure_invoke_url"),
+    ("--caption-invoke-url", "caption_invoke_url"),
+    ("--caption-model-name", "caption_model_name"),
+    # Local-execution knobs (no in-cluster equivalent)
+    ("--local-ingest-embed-backend", "local_ingest_embed_backend"),
+    ("--caption-device", "caption_device"),
+    ("--caption-gpu-memory-utilization", "caption_gpu_memory_utilization"),
+    ("--caption-gpus-per-actor", "caption_gpus_per_actor"),
+    # Audio (service path is pdf-only today)
+    ("--segment-audio/--no-segment-audio", "segment_audio"),
+    ("--audio-split-type", "audio_split_type"),
+    ("--audio-split-interval", "audio_split_interval"),
+    # Video (service path is pdf-only today)
+    ("--video-extract-audio/--no-video-extract-audio", "video_extract_audio"),
+    ("--video-extract-frames/--no-video-extract-frames", "video_extract_frames"),
+    ("--video-frame-fps", "video_frame_fps"),
+    ("--video-frame-dedup/--no-video-frame-dedup", "video_frame_dedup"),
+    ("--video-frame-text-dedup/--no-video-frame-text-dedup", "video_frame_text_dedup"),
+    ("--video-frame-text-dedup-max-dropped-frames", "video_frame_text_dedup_max_dropped_frames"),
+    ("--video-av-fuse/--no-video-av-fuse", "video_av_fuse"),
+    # Ray / batch tuning — no analog when the worker is a service pod
+    ("--ray-address", "ray_address"),
+    ("--ray-log-to-driver/--no-ray-log-to-driver", "ray_log_to_driver"),
+    ("--ocr-actors", "ocr_actors"),
+    ("--ocr-batch-size", "ocr_batch_size"),
+    ("--ocr-cpus-per-actor", "ocr_cpus_per_actor"),
+    ("--ocr-gpus-per-actor", "ocr_gpus_per_actor"),
+    ("--page-elements-actors", "page_elements_actors"),
+    ("--page-elements-batch-size", "page_elements_batch_size"),
+    ("--page-elements-cpus-per-actor", "page_elements_cpus_per_actor"),
+    ("--page-elements-gpus-per-actor", "page_elements_gpus_per_actor"),
+    ("--embed-actors", "embed_actors"),
+    ("--embed-batch-size", "embed_batch_size"),
+    ("--embed-cpus-per-actor", "embed_cpus_per_actor"),
+    ("--embed-gpus-per-actor", "embed_gpus_per_actor"),
+    ("--store-actors", "store_actors"),
+    ("--pdf-split-batch-size", "pdf_split_batch_size"),
+    ("--pdf-extract-batch-size", "pdf_extract_batch_size"),
+    ("--pdf-extract-tasks", "pdf_extract_tasks"),
+    ("--pdf-extract-cpus-per-task", "pdf_extract_cpus_per_task"),
+    ("--nemotron-parse-actors", "nemotron_parse_actors"),
+    ("--nemotron-parse-gpus-per-actor", "nemotron_parse_gpus_per_actor"),
+    ("--nemotron-parse-batch-size", "nemotron_parse_batch_size"),
+    # In-graph VDB / sidecar metadata — service mode does VDB writes
+    # server-side via LanceDBWriteOperator and never wires these through
+    # the service ingestor (see ``enable_in_graph_vdb_upload`` gate).
+    ("--no-vdb", "no_vdb"),
+    ("--vdb-op", "vdb_op"),
+    ("--vdb-kwargs-json", "vdb_kwargs_json"),
+    ("--vdb-overwrite/--vdb-append", "vdb_overwrite"),
+    ("--meta-dataframe", "meta_dataframe"),
+    ("--meta-source-field", "meta_source_field"),
+    ("--meta-fields", "meta_fields"),
+    ("--meta-join-key", "meta_join_key"),
+)
+
+
+def _reject_service_incompatible_flags(ctx: typer.Context) -> None:
+    """Raise ``typer.BadParameter`` if any ingest-only flag was user-supplied.
+
+    Only flags whose click parameter source is ``COMMANDLINE`` or
+    ``ENVIRONMENT`` are treated as user-supplied — flags carrying their
+    declared default do not trigger the error.
+    """
+    # Compare by enum *name*, not identity: depending on the environment,
+    # typer may return a source from its vendored ``typer._click.core`` enum
+    # rather than ``click.core.ParameterSource``, and the two enums are
+    # distinct objects whose members never compare equal via ``in``.
+    user_set: list[str] = []
+    for cli_flag, param_name in _SERVICE_INCOMPATIBLE_FLAGS:
+        source = ctx.get_parameter_source(param_name)
+        if getattr(source, "name", None) in {"COMMANDLINE", "ENVIRONMENT"}:
+            user_set.append(cli_flag)
+    if not user_set:
+        return
+    raise typer.BadParameter(
+        "--run-mode=service delegates pipeline configuration to the "
+        "retriever service; the following flag(s) cannot be set on the "
+        "client and would be silently dropped: " + ", ".join(user_set) + ". "
+        "Remove them, or use --run-mode batch/inprocess to apply them locally. "
+        "Server-side pipeline configuration lives in retriever-service.yaml."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Logging helpers
 # ---------------------------------------------------------------------------
@@ -1343,7 +1444,6 @@ def run(
 ) -> None:
     """Run the end-to-end graph ingestion pipeline against ``INPUT_PATH``."""
 
-    _ = ctx
     if quiet:
         # Imported lazily to avoid a cycle (main.py lazy-imports this module).
         from nemo_retriever.adapters.cli.main import _silence_noisy_libraries
@@ -1357,6 +1457,8 @@ def run(
     try:
         if run_mode not in {"batch", "inprocess", "service"}:
             raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
+        if run_mode == "service":
+            _reject_service_incompatible_flags(ctx)
         if audio_split_type not in {"size", "time", "frame"}:
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
         if evaluation_mode not in {"none", "audio_recall", "beir", "qa"}:

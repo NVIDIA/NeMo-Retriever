@@ -182,8 +182,8 @@ class ASRParams(_ParamsModel):
 
     audio_endpoints: Tuple[Optional[str], Optional[str]] = (None, None)
     audio_infer_protocol: str = "grpc"
-    # ``auto``: streaming (online) for NVCF and Helm Parakeet NIM (``mode=str``).
-    # Set ``offline`` when the NIM uses an offline profile (``mode=ofl``).
+    # ``auto``: streaming (online) for NVCF; offline recognize for other gRPC
+    # endpoints (e.g. Helm Parakeet NIM with ``mode=ofl``).
     audio_infer_mode: Literal["auto", "online", "offline"] = "auto"
     function_id: Optional[str] = None
     auth_token: Optional[str] = None

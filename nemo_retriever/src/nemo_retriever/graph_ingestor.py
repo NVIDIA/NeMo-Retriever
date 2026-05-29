@@ -26,6 +26,7 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from dataclasses import dataclass
@@ -33,7 +34,16 @@ from io import BytesIO
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
+from nemo_retriever.branch_extraction import ExtractionBranchExecutor, merge_node_overrides
 from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph
+from nemo_retriever.ingest_manifest import (
+    ExtractionBranchPlan,
+    ResolvedExtractionInputs,
+    build_input_manifest,
+    format_branch_summary,
+    plan_extraction_branches,
+    resolve_branch_extraction_inputs,
+)
 from nemo_retriever.ingestor import ingestor
 from nemo_retriever.params import (
     ASRParams,
@@ -69,6 +79,7 @@ _REMOTE_EMBED_ENDPOINT_FIELDS = ("embedding_endpoint", "embed_invoke_url")
 _DEFAULT_PAGE_ELEMENTS_COLUMN = "page_elements_v3"
 _DEFAULT_EMBED_COLUMN = "text_embeddings_1b_v2"
 _ERROR_MESSAGE_LIMIT = 256
+logger = logging.getLogger(__name__)
 _HTTP_STATUS_FIELDS: tuple[str, ...] = ("status_code", "http_status", "status", "code")
 _EXPLICIT_MODE_INPUT_TYPES: dict[str, frozenset[str]] = {
     "pdf": PDF_DOCUMENT_INPUT_TYPES,
@@ -78,19 +89,6 @@ _EXPLICIT_MODE_INPUT_TYPES: dict[str, frozenset[str]] = {
     "audio": frozenset({"audio"}),
     "video": frozenset({"video"}),
 }
-
-
-@dataclass(frozen=True)
-class _EffectiveExtractionInputs:
-    extraction_mode: str
-    extract_params: Any | None
-    text_params: Any | None
-    html_params: Any | None
-    audio_chunk_params: Any | None
-    asr_params: Any | None
-    video_frame_params: Any | None
-    video_text_dedup_params: Any | None
-    av_fuse_params: Any | None
 
 
 @dataclass(frozen=True)
@@ -447,6 +445,7 @@ class GraphIngestor(ingestor):
         self._show_progress = show_progress
         self._error_policy = error_policy
         self._rd_dataset: Any = None
+        self._buffers: list[tuple[str, BytesIO]] = []
 
         # Pipeline configuration accumulated by fluent methods
         self._extraction_mode: str | None = "pdf"
@@ -710,18 +709,21 @@ class GraphIngestor(ingestor):
         ``run_mode='inprocess'``
             A ``pandas.DataFrame``.
         """
-        effective_extraction = self._resolve_effective_extraction_inputs()
+        default_branches = self._plan_default_extraction_branches()
+        if default_branches is None:
+            single_effective = self._resolve_effective_extraction_inputs()
+        elif len(default_branches) == 1:
+            single_effective = self._resolve_branch_extraction_inputs(default_branches[0])
+        else:
+            single_effective = None
+
         # Auto-enable dedup before captioning so that images overlapping
         # with table/chart/infographic detections are removed first.
         # Skip for image-only extraction — the image IS the content.
-        if (
-            self._caption_params is not None
-            and self._dedup_params is None
-            and effective_extraction.extraction_mode != "image"
-        ):
+        image_only = single_effective is not None and single_effective.extraction_mode == "image"
+        if self._caption_params is not None and self._dedup_params is None and not image_only:
             self._dedup_params = DedupParams()
             if "dedup" not in self._stage_order:
-                # Insert dedup right before caption in the stage order.
                 try:
                     idx = self._stage_order.index("caption")
                 except ValueError:
@@ -730,110 +732,170 @@ class GraphIngestor(ingestor):
 
         post_extract_order = tuple(s for s in self._stage_order if s != "extract")
 
-        if self._run_mode == "batch":
-            import ray
-
-            if self._ray_address or not ray.is_initialized():
-                venv = os.path.dirname(os.path.dirname(sys.executable))
-                venv_bin = os.path.join(venv, "bin")
-                pypath = os.pathsep.join(p for p in sys.path if p)
-                ray_env_vars: dict[str, str] = {
-                    "VIRTUAL_ENV": venv,
-                    "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
-                    "PYTHONPATH": pypath,
-                }
-                ray_env_vars.update(collect_hf_runtime_env())
-                ray_env_vars.update(collect_remote_auth_runtime_env())
-                os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
-                runtime_env = {"env_vars": ray_env_vars}
-                ray.init(
-                    address=self._ray_address,
-                    ignore_reinit_error=True,
-                    runtime_env=runtime_env,
-                    log_to_driver=self._ray_log_to_driver,
-                )
-            cluster_resources = gather_cluster_resources(ray)
-
-            graph = build_graph(
-                extraction_mode=effective_extraction.extraction_mode,
-                extract_params=effective_extraction.extract_params,
-                text_params=effective_extraction.text_params,
-                html_params=effective_extraction.html_params,
-                audio_chunk_params=effective_extraction.audio_chunk_params,
-                asr_params=effective_extraction.asr_params,
-                video_frame_params=effective_extraction.video_frame_params,
-                video_text_dedup_params=effective_extraction.video_text_dedup_params,
-                av_fuse_params=effective_extraction.av_fuse_params,
-                embed_params=self._embed_params,
-                split_config=self._split_config,
-                caption_params=self._caption_params,
-                dedup_params=self._dedup_params,
-                store_params=self._store_params,
-                vdb_upload_params=self._vdb_upload_params,
-                webhook_params=self._webhook_params,
-                stage_order=post_extract_order,
-            )
-            # Derive per-node Ray scheduling config from BatchTuningParams plus
-            # cluster-scaled heuristic defaults, then let any explicit
-            # node_overrides passed to __init__ take precedence.
-            effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.available_gpu_count() == 0
-            derived_overrides = batch_tuning_to_node_overrides(
-                effective_extraction.extract_params,
-                self._embed_params,
-                store_params=self._store_params,
-                cluster_resources=cluster_resources,
-                allow_no_gpu=effective_allow_no_gpu,
-                caption_params=self._caption_params,
-                video_frame_params=effective_extraction.video_frame_params,
-            )
-            merged_overrides: Dict[str, Dict[str, Any]] = {}
-            for node_name in set(derived_overrides) | set(self._node_overrides):
-                merged_overrides[node_name] = {
-                    **derived_overrides.get(node_name, {}),
-                    **self._node_overrides.get(node_name, {}),
-                }
-            executor = RayDataExecutor(
-                graph,
-                ray_address=self._ray_address,
-                batch_size=self._batch_size,
-                num_cpus=self._num_cpus,
-                num_gpus=self._num_gpus,
-                node_overrides=merged_overrides,
-            )
-            result = executor.ingest(self._documents)
-            self._rd_dataset = result
+        if default_branches is not None and len(default_branches) > 1:
+            result = self._execute_extraction_branches(default_branches, post_extract_order=post_extract_order)
         else:
-            graph = build_graph(
-                extraction_mode=effective_extraction.extraction_mode,
-                extract_params=effective_extraction.extract_params,
-                text_params=effective_extraction.text_params,
-                html_params=effective_extraction.html_params,
-                audio_chunk_params=effective_extraction.audio_chunk_params,
-                asr_params=effective_extraction.asr_params,
-                video_frame_params=effective_extraction.video_frame_params,
-                video_text_dedup_params=effective_extraction.video_text_dedup_params,
-                av_fuse_params=effective_extraction.av_fuse_params,
-                embed_params=self._embed_params,
-                split_config=self._split_config,
-                caption_params=self._caption_params,
-                dedup_params=self._dedup_params,
-                store_params=self._store_params,
-                vdb_upload_params=self._vdb_upload_params,
-                webhook_params=self._webhook_params,
-                stage_order=post_extract_order,
-            )
-            executor = InprocessExecutor(graph, show_progress=self._show_progress)
-            self._rd_dataset = None
-            if self._buffers:
-                import pandas as pd
-
-                df = pd.DataFrame([{"bytes": buf.read(), "path": name} for name, buf in self._buffers])
-                result = executor.ingest(df)
-            else:
-                result = executor.ingest(self._documents)
+            if single_effective is None:
+                raise RuntimeError("Internal error: extraction inputs were not resolved.")
+            result = self._execute_single_graph(single_effective, post_extract_order=post_extract_order)
 
         self._raise_for_stage_errors(result)
         return result
+
+    def _execute_single_graph(
+        self,
+        effective_extraction: ResolvedExtractionInputs,
+        *,
+        post_extract_order: tuple[str, ...],
+    ) -> Any:
+        if self._run_mode == "batch":
+            return self._execute_single_graph_batch(effective_extraction, post_extract_order=post_extract_order)
+        return self._execute_single_graph_inprocess(effective_extraction, post_extract_order=post_extract_order)
+
+    def _execute_single_graph_batch(
+        self,
+        effective_extraction: ResolvedExtractionInputs,
+        *,
+        post_extract_order: tuple[str, ...],
+    ) -> Any:
+        _ray, cluster_resources = self._ensure_batch_runtime()
+        graph = build_graph(
+            extraction_mode=effective_extraction.extraction_mode,
+            extract_params=effective_extraction.extract_params,
+            text_params=effective_extraction.text_params,
+            html_params=effective_extraction.html_params,
+            audio_chunk_params=effective_extraction.audio_chunk_params,
+            asr_params=effective_extraction.asr_params,
+            video_frame_params=effective_extraction.video_frame_params,
+            video_text_dedup_params=effective_extraction.video_text_dedup_params,
+            av_fuse_params=effective_extraction.av_fuse_params,
+            embed_params=self._embed_params,
+            split_config=self._split_config,
+            caption_params=self._caption_params,
+            dedup_params=self._dedup_params,
+            store_params=self._store_params,
+            vdb_upload_params=self._vdb_upload_params,
+            webhook_params=self._webhook_params,
+            stage_order=post_extract_order,
+        )
+        effective_allow_no_gpu = self._allow_no_gpu or cluster_resources.available_gpu_count() == 0
+        derived_overrides = batch_tuning_to_node_overrides(
+            effective_extraction.extract_params,
+            self._embed_params,
+            store_params=self._store_params,
+            cluster_resources=cluster_resources,
+            allow_no_gpu=effective_allow_no_gpu,
+            caption_params=self._caption_params,
+            video_frame_params=effective_extraction.video_frame_params,
+        )
+        executor = RayDataExecutor(
+            graph,
+            ray_address=self._ray_address,
+            batch_size=self._batch_size,
+            num_cpus=self._num_cpus,
+            num_gpus=self._num_gpus,
+            node_overrides=merge_node_overrides(derived_overrides, self._node_overrides),
+        )
+        result = executor.ingest(self._documents)
+        self._rd_dataset = result
+        return result
+
+    def _execute_single_graph_inprocess(
+        self,
+        effective_extraction: ResolvedExtractionInputs,
+        *,
+        post_extract_order: tuple[str, ...],
+    ) -> Any:
+        graph = build_graph(
+            extraction_mode=effective_extraction.extraction_mode,
+            extract_params=effective_extraction.extract_params,
+            text_params=effective_extraction.text_params,
+            html_params=effective_extraction.html_params,
+            audio_chunk_params=effective_extraction.audio_chunk_params,
+            asr_params=effective_extraction.asr_params,
+            video_frame_params=effective_extraction.video_frame_params,
+            video_text_dedup_params=effective_extraction.video_text_dedup_params,
+            av_fuse_params=effective_extraction.av_fuse_params,
+            embed_params=self._embed_params,
+            split_config=self._split_config,
+            caption_params=self._caption_params,
+            dedup_params=self._dedup_params,
+            store_params=self._store_params,
+            vdb_upload_params=self._vdb_upload_params,
+            webhook_params=self._webhook_params,
+            stage_order=post_extract_order,
+        )
+        executor = InprocessExecutor(graph, show_progress=self._show_progress)
+        self._rd_dataset = None
+        if self._buffers:
+            import pandas as pd
+
+            df = pd.DataFrame([{"bytes": buf.getvalue(), "path": name} for name, buf in self._buffers])
+            return executor.ingest(df)
+        return executor.ingest(self._documents)
+
+    def _execute_extraction_branches(
+        self,
+        branches: tuple[ExtractionBranchPlan, ...],
+        *,
+        post_extract_order: tuple[str, ...],
+    ) -> Any:
+        result = ExtractionBranchExecutor(
+            run_mode=self._run_mode,
+            branches=branches,
+            documents=self._documents,
+            buffers=self._buffers,
+            split_config=self._split_config,
+            extract_params=self._extract_params,
+            text_params=self._text_params,
+            html_params=self._html_params,
+            audio_chunk_params=self._audio_chunk_params,
+            asr_params=self._asr_params,
+            video_frame_params=self._video_frame_params,
+            video_text_dedup_params=self._video_text_dedup_params,
+            av_fuse_params=self._av_fuse_params,
+            embed_params=self._embed_params,
+            caption_params=self._caption_params,
+            dedup_params=self._dedup_params,
+            store_params=self._store_params,
+            vdb_upload_params=self._vdb_upload_params,
+            webhook_params=self._webhook_params,
+            post_extract_order=post_extract_order,
+            ray_address=self._ray_address,
+            batch_size=self._batch_size,
+            num_cpus=self._num_cpus,
+            num_gpus=self._num_gpus,
+            node_overrides=self._node_overrides,
+            show_progress=self._show_progress,
+            allow_no_gpu=self._allow_no_gpu,
+            ensure_batch_runtime=self._ensure_batch_runtime,
+        ).execute()
+        self._rd_dataset = result if self._run_mode == "batch" else None
+        return result
+
+    def _ensure_batch_runtime(self) -> tuple[Any, Any]:
+        import ray
+
+        if self._ray_address or not ray.is_initialized():
+            venv = os.path.dirname(os.path.dirname(sys.executable))
+            venv_bin = os.path.join(venv, "bin")
+            pypath = os.pathsep.join(p for p in sys.path if p)
+            ray_env_vars: dict[str, str] = {
+                "VIRTUAL_ENV": venv,
+                "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+                "PYTHONPATH": pypath,
+            }
+            ray_env_vars.update(collect_hf_runtime_env())
+            ray_env_vars.update(collect_remote_auth_runtime_env())
+            os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
+            runtime_env = {"env_vars": ray_env_vars}
+            ray.init(
+                address=self._ray_address,
+                ignore_reinit_error=True,
+                runtime_env=runtime_env,
+                log_to_driver=self._ray_log_to_driver,
+            )
+        return ray, gather_cluster_resources(ray)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -875,81 +937,76 @@ class GraphIngestor(ingestor):
             examples = self._input_type_examples(mismatched)
             raise ValueError(f"Input file type(s) do not match extraction_mode={extraction_mode!r}: {examples}")
 
-    def _resolve_effective_extraction_inputs(self) -> _EffectiveExtractionInputs:
-        extraction_mode = self._extraction_mode
-        extract_params = self._extract_params
-        text_params = self._text_params
-        html_params = self._html_params
-        audio_chunk_params = self._audio_chunk_params
-        asr_params = self._asr_params
-        video_frame_params = self._video_frame_params
-        video_text_dedup_params = self._video_text_dedup_params
-        av_fuse_params = self._av_fuse_params
+    def _plan_default_extraction_branches(self) -> tuple[ExtractionBranchPlan, ...] | None:
+        if self._extraction_mode is not None:
+            return None
+        manifest = build_input_manifest(self._configured_input_paths())
+        branches = plan_extraction_branches(manifest)
+        if self._debug:
+            logger.info(
+                "Retriever ingest manifest planned %d extraction branches: %s",
+                len(branches),
+                format_branch_summary(branches),
+            )
+        return branches
 
+    def _resolve_branch_extraction_inputs(self, branch: ExtractionBranchPlan) -> ResolvedExtractionInputs:
+        return resolve_branch_extraction_inputs(
+            branch,
+            extract_params=self._extract_params,
+            text_params=self._text_params,
+            html_params=self._html_params,
+            audio_chunk_params=self._audio_chunk_params,
+            asr_params=self._asr_params,
+            video_frame_params=self._video_frame_params,
+            video_text_dedup_params=self._video_text_dedup_params,
+            av_fuse_params=self._av_fuse_params,
+        )
+
+    def _resolve_effective_extraction_inputs(self) -> ResolvedExtractionInputs:
+        extraction_mode = self._extraction_mode
         classified = self._classified_input_paths()
         if extraction_mode is not None:
             self._validate_explicit_extraction_mode_inputs(extraction_mode, classified)
+            text_params = self._text_params
+            html_params = self._html_params
             if extraction_mode == "auto":
                 observed_input_types = {input_type for _, input_type in classified if input_type is not None}
                 if "txt" in observed_input_types:
                     text_params = text_params or TextChunkParams()
                 if "html" in observed_input_types:
                     html_params = html_params or HtmlChunkParams()
-            return _EffectiveExtractionInputs(
+            return ResolvedExtractionInputs(
                 extraction_mode=extraction_mode,
-                extract_params=extract_params,
+                extract_params=self._extract_params,
                 text_params=text_params,
                 html_params=html_params,
-                audio_chunk_params=audio_chunk_params,
-                asr_params=asr_params,
-                video_frame_params=video_frame_params,
-                video_text_dedup_params=video_text_dedup_params,
-                av_fuse_params=av_fuse_params,
+                audio_chunk_params=self._audio_chunk_params,
+                asr_params=self._asr_params,
+                video_frame_params=self._video_frame_params,
+                video_text_dedup_params=self._video_text_dedup_params,
+                av_fuse_params=self._av_fuse_params,
             )
 
-        unsupported = [
-            path for path, input_type in classified if input_type is None and not _is_explicit_glob_path(path)
-        ]
-        if unsupported:
-            examples = self._input_type_examples(unsupported)
-            raise ValueError(f"Unsupported input file type(s) for default GraphIngestor.extract(): {examples}")
+        branches = self._plan_default_extraction_branches()
+        if branches is None:
+            raise RuntimeError("Internal error: default extraction planning did not return branches.")
+        if len(branches) == 1:
+            return self._resolve_branch_extraction_inputs(branches[0])
 
-        observed_input_types = {input_type for _, input_type in classified if input_type is not None}
-        if not observed_input_types or observed_input_types <= PDF_DOCUMENT_INPUT_TYPES:
-            extraction_mode = "pdf"
-        elif observed_input_types == {"image"}:
-            extraction_mode = "image"
-        elif observed_input_types == {"txt"}:
-            extraction_mode = "text"
-            text_params = text_params or TextChunkParams()
-        elif observed_input_types == {"html"}:
-            extraction_mode = "html"
-            html_params = html_params or HtmlChunkParams()
-        elif observed_input_types == {"audio"}:
-            extraction_mode = "audio"
-            audio_chunk_params = audio_chunk_params or AudioChunkParams()
-            asr_params = asr_params or ASRParams()
-        elif observed_input_types == {"video"}:
-            extraction_mode = "auto"
-            audio_chunk_params = audio_chunk_params or AudioChunkParams()
-            asr_params = asr_params or ASRParams()
-            video_frame_params = video_frame_params or VideoFrameParams()
-            video_text_dedup_params = video_text_dedup_params or VideoFrameTextDedupParams()
-            av_fuse_params = av_fuse_params or AudioVisualFuseParams()
-            extract_params = extract_params or ExtractParams()
-        else:
-            extraction_mode = "auto"
-
-        return _EffectiveExtractionInputs(
-            extraction_mode=extraction_mode,
-            extract_params=extract_params,
-            text_params=text_params,
-            html_params=html_params,
-            audio_chunk_params=audio_chunk_params,
-            asr_params=asr_params,
-            video_frame_params=video_frame_params,
-            video_text_dedup_params=video_text_dedup_params,
-            av_fuse_params=av_fuse_params,
+        # Compatibility fallback for private callers that still ask for a
+        # scalar effective mode directly. The public ingest path executes the
+        # branches instead of using this MultiType fallback.
+        return ResolvedExtractionInputs(
+            extraction_mode="auto",
+            extract_params=self._extract_params or ExtractParams(),
+            text_params=self._text_params or TextChunkParams(),
+            html_params=self._html_params or HtmlChunkParams(),
+            audio_chunk_params=self._audio_chunk_params,
+            asr_params=self._asr_params,
+            video_frame_params=self._video_frame_params,
+            video_text_dedup_params=self._video_text_dedup_params,
+            av_fuse_params=self._av_fuse_params,
         )
 
     @staticmethod

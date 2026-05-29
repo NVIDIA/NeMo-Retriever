@@ -56,9 +56,10 @@ ResolvedAudioInferMode = Literal["online", "offline"]
 def resolve_audio_infer_mode(mode: str, endpoint: str) -> ResolvedAudioInferMode:
     """Pick offline vs streaming Riva RPC for a Parakeet endpoint.
 
-    NVCF (``grpc.nvcf.nvidia.com``) and the Helm chart Parakeet NIM (``mode=str``)
-    register streaming (online) models. Use ``audio_infer_mode='offline'`` only when
-    the NIM was deployed with an offline profile (``mode=ofl``).
+    NVCF (``grpc.nvcf.nvidia.com``) registers streaming (online) models. The Helm
+    chart Parakeet NIM defaults to ``mode=ofl`` (offline). Use
+    ``audio_infer_mode='online'`` only when the NIM was deployed with a streaming
+    profile (``mode=str``).
     """
     normalized = (mode or "auto").lower()
     if normalized == "online":
@@ -67,7 +68,9 @@ def resolve_audio_infer_mode(mode: str, endpoint: str) -> ResolvedAudioInferMode
         return "offline"
     if normalized != "auto":
         raise ValueError(f"audio_infer_mode must be 'auto', 'online', or 'offline', got {mode!r}")
-    return "online"
+    if "nvcf.nvidia.com" in (endpoint or "").lower():
+        return "online"
+    return "offline"
 
 
 class _StreamingResponseShim:
