@@ -119,11 +119,10 @@ local = [
   "scikit-learn>=1.6.0",
   "timm==1.0.22",
   "albumentations==2.0.8",
-  "nemotron-page-elements-v3>=0.dev0",
-  "nemotron-graphic-elements-v1>=0.dev0",
-  "nemotron-table-structure-v1>=0.dev0",
-  # Accept the 2.0.0 stable release and newer OCR dev/final trains.
-  "nemotron-ocr>=2.0.0.dev0; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
+  "nemotron-page-elements-v3==3.0.1",
+  "nemotron-graphic-elements-v1==1.0.0",
+  "nemotron-table-structure-v1==1.0.0",
+  "nemotron-ocr>=2.0.0,<3; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
   "nvidia-ml-py",
   "apscheduler>=3.10",
   "psutil>=5.9.0",
@@ -161,7 +160,7 @@ tabular = [
   "duckdb>=1.2.0",
   "duckdb-engine>=0.13.0",
   "neo4j>=5.0",
-  "langgraph>=1.1.0a2",
+  "langgraph>=1.2.0",
 ]
 
 # BEIR benchmarking and evaluation tools (not needed for production use).
@@ -177,7 +176,7 @@ benchmarks = [
 # or construct an ``LLMJudge`` / ``LiteLLMClient`` directly.  Powers both the
 # live-RAG SDK and the batch evaluation framework.
 llm = [
-  "litellm>=1.86.0rc1",
+  "litellm>=1.86.0,<2",
 ]
 
 dev = [
@@ -198,10 +197,6 @@ retriever-harness = "nemo_retriever.harness:main"
 version = {attr = "nemo_retriever.version.get_build_version"}
 
 [tool.uv.sources]
-nemotron-page-elements-v3 = { index = "test-pypi" }
-nemotron-graphic-elements-v1 = { index = "test-pypi" }
-nemotron-table-structure-v1 = { index = "test-pypi" }
-nemotron-ocr = { index = "test-pypi" }
 # On Linux, resolve torch/torchvision from the CUDA wheel index.
 # On Mac, fall through to PyPI to get CPU wheels.
 torch = [
