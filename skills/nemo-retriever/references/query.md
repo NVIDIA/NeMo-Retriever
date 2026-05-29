@@ -1,6 +1,6 @@
 # Query turn — the WHOLE workflow
 
-**General-use callout:** if the prompt doesn't mention a judge, benchmark, output schema, or `output.json`, skip the `Write` `./output.json` step and answer in chat. All other discipline (2-Bash-call budget, no-narration, chart/image hedging) still applies.
+**General-use vs eval harness callout:** if the user prompt doesn't mention a judge, benchmark, output schema, or `output.json`, then just run the `retriever query` call and answer in chat.
 
 ## Filename fast path — try BEFORE `retriever query`
 
