@@ -69,9 +69,9 @@ def test_managed_helm_profiles_render(profile: str) -> None:
     assert "nv-ingest-ms-runtime" not in manifest
     if profile == "core":
         assert "name: nemotron-page-elements-v3" in manifest
-        assert "name: llama-nemotron-rerank-1b-v2" not in manifest
+        assert "name: llama-nemotron-rerank-vl-1b-v2" not in manifest
     elif profile == "all-optional":
-        assert "name: llama-nemotron-rerank-1b-v2" in manifest
+        assert "name: llama-nemotron-rerank-vl-1b-v2" in manifest
         assert "name: nemotron-parse" in manifest
         assert "name: audio" in manifest
         assert "app.kubernetes.io/component: otel" in manifest
