@@ -20,7 +20,7 @@ If `command -v retriever` returns nothing, follow `references/install.md` to ins
 | Turn type | Read this once | Then execute |
 | :--- | :--- | :--- |
 | **Setup turn** (first turn — `./lancedb/nv-ingest.lance` doesn't exist) | `references/setup.md` | Build the index |
-| **Query turn** (every subsequent turn — user asks a question) | `references/query.md` | One `retriever query` call, then `Write` `./output.json` **only if** the prompt mentions a judge, benchmark, output schema, or `output.json`; otherwise answer in chat |
+| **Query turn** (every subsequent turn — user asks a question) | `references/query.md` | One `retriever query` call |
 | Anything errored or returned empty | `references/pitfalls.md` | Apply the named recovery; do not improvise |
 
 For the full `retriever ingest` / `retriever query` CLI specs, see `references/cli/ingest.md` and `references/cli/query.md`. You do not need these for routine turns — `<RETRIEVER_VENV>/bin/retriever <subcommand> --help` is faster.
@@ -30,7 +30,7 @@ Before ingesting a mixed folder, inventory extensions (`find <dir> -name '*.*' |
 ## Hard limits (apply to every turn)
 
 - **Setup turn**: build the index in one shell command (see `references/setup.md`). STOP after the index lands.
-- **Query turn**: at most **2 Bash calls** — 1 `retriever query`, +1 optional targeted text-extract per `references/query.md`. Then `Write` `./output.json` (eval-harness only) or answer in chat (general use) and STOP.
+- **Query turn**: at most **2 Bash calls** — 1 `retriever query`, +1 optional targeted text-extract per `references/query.md`.
 - **No narration between tool calls.** Tokens you emit between calls become input + cached input for every later turn — quadratic cost. Go straight from reading the summary to writing the JSON file.
 - **Banned**: `TodoWrite`, Glob, Grep, `Read` of whole PDFs, re-running setup, spawning subagents, speculative "confirmation" calls.
 

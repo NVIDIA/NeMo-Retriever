@@ -1,9 +1,5 @@
 # Query turn — the WHOLE workflow
 
-**General-use vs eval harness callout:** if the user prompt doesn't mention a judge, benchmark, output schema, or `output.json`, then just run the `retriever query` call and answer in chat.
-
-## Filename fast path — try BEFORE `retriever query`
-
 
 ```bash
 <RETRIEVER_VENV>/bin/retriever query "<the user's question>" --top-k 10 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --rerank \
@@ -15,7 +11,7 @@ Run that **exactly** as a single pipeline — do not split it into `HITS=$(...)`
 
 That's your FIRST tool call on every query turn. Do not Read, Glob, Grep, or list PDFs before this — those duplicate what `retriever query` already did.
 
-**No narration between tool calls.** Do not write "Let me search…", "I'll now analyze…", "The retriever returned…", or any other commentary. Every assistant token you emit between the `retriever query` Bash call and the `Write` of `./output.json` becomes input tokens (and cached input tokens) for every subsequent turn in this session — quadratic cost. Go straight from reading the summary to writing the JSON file. The only assistant text in a query turn should be the tool calls themselves.
+**No narration between tool calls.** Do not write "Let me search…", "I'll now analyze…", "The retriever returned…", or any other commentary. Every assistant token you emit with the `retriever query` Bash call becomes input tokens (and cached input tokens) for every subsequent turn in this session — quadratic cost. Go straight from reading the summary to writing the JSON file. The only assistant text in a query turn should be the tool calls themselves.
 
 Each hit has: `text`, `pdf_basename`, `page_number` (int, **1-indexed**: the first page of a PDF is page `1`), `pdf_page` (string composite key `"<basename>_<page_number>"` — not a number, don't use it as one), `_distance`, and `metadata` (JSON with `type` ∈ `text|table|chart|image`).
 
@@ -52,8 +48,6 @@ If a question asks for an exact percentage or a directional claim **and the evid
 3. If prose doesn't mention it, **quote the chart transcription verbatim with an explicit hedge in `final_answer`**: "The chart on page N indicates [verbatim phrase] (chart-derived, not verified against prose)." Do NOT restate the chart's number as a confident fact.
 
 When both a chart hit and a text hit cover the same fact, always prefer the text hit's number.
-
-After writing `./output.json`, STOP. No print, no summary, no further tool calls.
 
 ## Non-semantic operations (use these, don't fall back to native tools)
 
