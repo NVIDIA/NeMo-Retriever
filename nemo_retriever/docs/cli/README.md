@@ -117,7 +117,7 @@ running self-hosted NIM containers.
 
 - Extracted text, tables, and charts as rows in LanceDB at `./lancedb` (default
   table name `nv-ingest`).
-- Per-document Parquet under `./processed_docs/` (`--save-intermediate`).
+- Extraction Parquet at `./processed_docs/extraction.parquet` (`--save-intermediate`).
 - Image assets under `./processed_docs/images/` (`--store-images-uri`).
 - Progress and stage logs on stderr.
 
@@ -133,7 +133,7 @@ ls ./lancedb
 import pyarrow.parquet as pq
 import lancedb
 
-df = pq.read_table("./processed_docs").to_pandas()
+df = pq.read_table("./processed_docs/extraction.parquet").to_pandas()
 print(df.head())
 
 db = lancedb.connect("./lancedb")
@@ -146,7 +146,7 @@ Or query via the Retriever Python client (`nemo_retriever/README.md`):
 ```python
 from nemo_retriever.retriever import Retriever
 
-retriever = Retriever(lancedb_uri="lancedb", lancedb_table="nv-ingest", top_k=5)
+retriever = Retriever(vdb_kwargs={"uri": "lancedb", "table_name": "nv-ingest"}, top_k=5)
 hits = retriever.query(
     "Given their activities, which animal is responsible for the typos?"
 )
@@ -186,7 +186,7 @@ retriever pipeline run ./data/test.pdf \
 ```
 
 Results go to LanceDB (`./lancedb`, table `nv-ingest` by default) and, with
-`--save-intermediate`, to Parquet under `./processed_docs`. Inspect rows with
+`--save-intermediate`, to `./processed_docs/extraction.parquet`. Inspect rows with
 `pyarrow.parquet` or LanceDB queries (not per-content-type `*.metadata.json` files).
 
 ### Text chunking and PDF page batches
@@ -206,6 +206,34 @@ retriever pipeline run ./data/test.pdf \
 
 There is no split-only mode without extraction; narrow flags to text extraction if you
 only need chunk boundaries.
+
+### Nemotron OCR v2 language mode { #nemotron-ocr-v2-language-mode }
+
+The default OCR engine for **local** extraction (Hugging Face weights, no remote
+`--ocr-invoke-url`) is **Nemotron OCR v2**, which runs in **multilingual** mode
+by default (`multi`).
+
+| Flag | Values | Notes |
+|------|--------|-------|
+| `--ocr-lang` | `multi` (default), `english` | v2 only — English-only selector |
+| `--ocr-version` | `v2` (default), `v1` | `v1` is the legacy English-only engine |
+
+```bash
+retriever pipeline run ./data/scanned.pdf \
+  --input-type pdf \
+  --method pdfium_hybrid \
+  --ocr-lang english
+
+retriever ingest ./data/scanned.pdf --ocr-version v1
+```
+
+Set the equivalent `ocr_lang` and `ocr_version` fields on `ExtractParams` (or the
+ingest API) in Python.
+
+Remote OCR NIM endpoints choose their own model and language behavior. Local
+`--ocr-lang` and `--ocr-version` are not sent on remote requests. For hosted
+examples until OCR v2 is published on build.nvidia.com, keep
+`--ocr-invoke-url` pointed at `nemotron-ocr-v1` (see [Quick start](#quick-start)).
 
 ### PDF and Office documents
 
@@ -282,7 +310,7 @@ write concurrency.
 
 - **LanceDB** — `--lancedb-uri lancedb` (default), table `nv-ingest`. Query via
   `retriever recall vdb-recall …` or `nemo_retriever.retriever.Retriever`.
-- **Parquet** — `--save-intermediate <dir>` for the extraction DataFrame.
+- **Parquet** — `--save-intermediate <dir>` writes `<dir>/extraction.parquet`.
 - **Images** — `--store-images-uri <uri>` (local path or fsspec URI). Storage follows
   `--embed-granularity` (page vs element images).
 
@@ -347,7 +375,7 @@ retriever pipeline run "${PDF_DIR}" \
 import pyarrow.parquet as pq
 import lancedb
 
-df = pq.read_table(OUTPUT_DIRECTORY_BATCH).to_pandas()
+df = pq.read_table(f"{OUTPUT_DIRECTORY_BATCH}/extraction.parquet").to_pandas()
 print(df[["source_id", "text", "content_type"]].head())
 
 db = lancedb.connect("./lancedb")
@@ -376,8 +404,9 @@ for these cases:
 
 - Input paths assume you invoke `retriever` from the `nemo_retriever/`
   directory (or point at absolute paths).
-- `--save-intermediate <dir>` writes the extraction DataFrame as Parquet for
-  inspection. LanceDB output goes to `--lancedb-uri` (defaults to `./lancedb`).
+- `--save-intermediate <dir>` writes the extraction DataFrame as
+  `<dir>/extraction.parquet` for inspection. LanceDB output goes to `--lancedb-uri`
+  (defaults to `./lancedb`).
 - `--store-images-uri <uri>` stores extracted image assets to a local path or
   an fsspec URI (e.g. `s3://bucket/prefix`). Page granularity stores page
   images; element granularity stores element images.

@@ -23,6 +23,10 @@ from nemo_retriever.pipeline.__main__ import (
     _parse_vdb_kwargs_json,
     _resolve_file_patterns,
 )
+from nemo_retriever.service.config import PipelineOverridesConfig
+from nemo_retriever.service.models.pipeline_spec import PipelineSpec
+from nemo_retriever.service.policy import validate_pipeline_spec
+from nemo_retriever.service_ingestor import ServiceIngestor
 
 
 def test_pipeline_package_exports_cli_app_and_run() -> None:
@@ -169,6 +173,64 @@ class TestBuildIngestor:
         assert calls == ["files", "extract", "embed", "store"]
         assert captured["init"]["node_overrides"] is None
         assert captured["store_params"].batch_tuning.store_workers is None
+
+    def test_service_mode_wires_extract_embed_and_chunking(self, tmp_path: Path) -> None:
+        pdf = tmp_path / "doc.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+
+        ingestor = _build_ingestor(
+            run_mode="service",
+            ray_address=None,
+            file_patterns=[str(pdf)],
+            input_type="pdf",
+            extract_params=ExtractParams(method="ocr", extract_text=False, dpi=300),
+            embed_params=EmbedParams(embed_granularity="page"),
+            text_chunk_params=TextChunkParams(max_tokens=64, overlap_tokens=8),
+            enable_text_chunk=True,
+            enable_dedup=False,
+            enable_caption=False,
+            dedup_iou_threshold=0.8,
+            caption_invoke_url=None,
+            caption_remote_api_key=None,
+            caption_model_name="nvidia/llama-nemotron-rerank-vl-1b-v2",
+            caption_device=None,
+            caption_context_text_max_chars=0,
+            caption_gpu_memory_utilization=0.5,
+            caption_gpus_per_actor=None,
+            caption_temperature=1.0,
+            caption_top_p=None,
+            caption_max_tokens=1024,
+            store_images_uri=None,
+            store_actors=0,
+            segment_audio=False,
+            audio_split_type="time",
+            audio_split_interval=30,
+            video_extract_audio=True,
+            video_extract_frames=True,
+            video_frame_fps=0.5,
+            video_frame_dedup=True,
+            video_frame_text_dedup=True,
+            video_frame_text_dedup_max_dropped_frames=2,
+            video_av_fuse=True,
+        )
+
+        assert isinstance(ingestor, ServiceIngestor)
+        payload = ingestor._pipeline_payload()
+        assert payload is not None
+        assert payload["extraction_mode"] == "pdf"
+        assert payload["extract_params"]["method"] == "ocr"
+        assert payload["extract_params"]["extract_text"] is False
+        assert payload["extract_params"]["dpi"] == 300
+        assert "batch_tuning" not in payload["extract_params"]
+        assert payload["split_config"]["pdf"]["max_tokens"] == 64
+        assert payload["split_config"]["pdf"]["overlap_tokens"] == 8
+        assert payload["embed_params"]["embed_granularity"] == "page"
+        assert "model_name" not in payload["embed_params"]
+
+        validate_pipeline_spec(
+            PipelineSpec.model_validate(ingestor._pipeline_spec),
+            PipelineOverridesConfig().to_policy(),
+        )
 
     def test_store_actor_flag_without_uri_warns_and_skips_store(self, monkeypatch, tmp_path: Path, caplog) -> None:
         with caplog.at_level("WARNING", logger=pipeline_main.__name__):

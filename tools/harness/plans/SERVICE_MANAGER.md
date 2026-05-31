@@ -306,8 +306,8 @@ active:
   # Helm-specific settings
   helm_bin: helm  # Helm binary (e.g., "helm", "microk8s helm", "k3s helm")
   helm_sudo: false  # Use sudo for Helm commands (set to true if needed)
-  helm_chart: <registry>/<ingestion-chart>  # Remote chart (set to null for local ./helm)
-  helm_chart_version: 26.1.0-RC7  # Chart version (required for remote charts)
+  helm_chart: nim-nvstaging/nemo-retriever  # Remote chart (set to null for local ./helm)
+  helm_chart_version: 26.05-RC6  # Chart version (required for remote charts)
   helm_release: example-release  # Helm release name
   helm_namespace: example-namespace  # Kubernetes namespace
   helm_values_file: .helm-env  # Optional: path to values file
@@ -384,8 +384,8 @@ uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --
    active:
      deployment_type: helm  # Set Helm as default
      helm_bin: helm  # Use "microk8s helm" for MicroK8s, "k3s helm" for K3s
-     helm_chart: <registry>/<ingestion-chart>
-     helm_chart_version: 26.1.0-RC7
+     helm_chart: nim-nvstaging/nemo-retriever
+     helm_chart_version: 26.05-RC6
      helm_release: example-release
      helm_namespace: example-namespace
      helm_values_file: .helm-env
@@ -768,7 +768,8 @@ kubectl port-forward -n example-namespace service/example-release 7670:7670 8080
 
 Both managers support health checking:
 
-- **Main service**: `http://localhost:7670/v1/health/ready`
+- **Helm main service**: `http://localhost:7670/v1/health`
+- **Docker Compose main service**: `http://localhost:7670/v1/health/ready`
 - **Milvus** (optional): `http://localhost:9091/healthz`
 
 Configure timeout and Milvus checking:

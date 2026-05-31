@@ -6,15 +6,27 @@
 
 Uploads whole documents via ``POST /v1/ingest/job/{job_id}/document``
 (after opening a job aggregate with ``POST /v1/ingest/job``), tracks
-completion via the ``GET /v1/ingest/events`` SSE stream (with
-``POST /v1/ingest/status/batch``
-bulk-poll fallback), and surfaces results through both materialized and
-streaming interfaces.
+completion via the per-job ``GET /v1/ingest/job/{job_id}/events`` SSE
+stream (with ``POST /v1/ingest/status/batch`` bulk-poll fallback), and
+surfaces results through both materialized and streaming interfaces.
 
 The SSE connection is opened **before** uploads begin so that completion
 events for fast-finishing documents are never missed.  A ``seen_terminal``
 buffer reconciles events that arrive before the client registers the
 corresponding ``document_id`` from the upload response.
+
+API compatibility
+-----------------
+The Retriever Service v2 refactor (multi-pod) removed the legacy
+single-shot ``POST /v1/ingest`` and the firehose
+``GET /v1/ingest/events`` routes in favor of the job-scoped API used
+here.  Older SDK builds may still call the legacy routes; the server
+now returns ``410 Gone`` with a migration body for those.  This client
+detects the matching failure mode on its own side — a ``404`` or
+``410`` from the very first call to ``POST /v1/ingest/job`` — and
+raises :class:`RetrieverServiceCompatibilityError` so callers see a
+single, actionable "SDK and service versions are out of sync" message
+instead of an empty/no-completion result.
 """
 
 from __future__ import annotations
@@ -51,6 +63,62 @@ _TRANSIENT_ERRORS: tuple[type[Exception], ...] = (
     httpx.ConnectTimeout,
     httpx.ReadTimeout,
 )
+
+
+# ------------------------------------------------------------------
+# Errors
+# ------------------------------------------------------------------
+
+
+class RetrieverServiceCompatibilityError(RuntimeError):
+    """Raised when the SDK and the retriever service disagree on the API.
+
+    The Retriever Service v2 refactor removed the legacy
+    ``POST /v1/ingest`` / ``GET /v1/ingest/events`` routes in favor of
+    job-scoped routes (``POST /v1/ingest/job`` +
+    ``POST /v1/ingest/job/{job_id}/document`` +
+    ``GET /v1/ingest/job/{job_id}/events``).  Whenever the very first
+    call from this client — opening a job aggregate via
+    ``POST /v1/ingest/job`` — returns ``404`` (route missing) or
+    ``410`` (route removed, with migration body), the deployed
+    nrl-service is older than this SDK build.  Raising a dedicated
+    error type lets callers surface a single, actionable message
+    instead of the previous silent "no document_complete event"
+    failure mode that 26.05-RC2 customers reported.
+    """
+
+
+def _is_api_mismatch_status(status: int) -> bool:
+    """Return ``True`` for HTTP status codes that signal a route mismatch.
+
+    The new client points at ``POST /v1/ingest/job`` (and friends).
+    Servers that predate the multi-pod refactor return ``404`` for that
+    path; servers carrying the explicit legacy stubs added alongside
+    this client return ``410 Gone`` with a migration body.  Either is a
+    deterministic "wrong service version" signal.
+    """
+    return status in (404, 410)
+
+
+def _compat_error_message(
+    *,
+    url: str,
+    status: int,
+    body: str,
+) -> str:
+    """Build the customer-facing message attached to compatibility errors."""
+    body_clip = (body or "(empty)").strip()[:500]
+    return (
+        f"Retriever service rejected {url} with HTTP {status}. "
+        "This signals an SDK/service version mismatch: this Python "
+        "SDK targets the job-scoped ingest API "
+        "(POST /v1/ingest/job + POST /v1/ingest/job/{job_id}/document "
+        "+ GET /v1/ingest/job/{job_id}/events) introduced in 26.05, "
+        "but the deployed nrl-service does not advertise that route. "
+        "Upgrade the chart/image to a 26.05+ build, or downgrade the "
+        "Python SDK to match the deployed service version. Server "
+        f"response body: {body_clip}"
+    )
 
 
 # ------------------------------------------------------------------
@@ -112,8 +180,15 @@ class RetrieverServiceClient:
 
     Opens a job aggregate with ``POST /v1/ingest/job`` (sized to the
     number of files), then uses ``POST /v1/ingest/job/{job_id}/document``
-    for each upload. Completion is tracked via ``GET /v1/ingest/events``
-    SSE with ``POST /v1/ingest/status/batch`` as a bulk-poll fallback.
+    for each upload. Completion is tracked via the per-job
+    ``GET /v1/ingest/job/{job_id}/events`` SSE stream with
+    ``POST /v1/ingest/status/batch`` as a bulk-poll fallback.
+
+    The first request issued by every entry point is ``POST /v1/ingest/job``;
+    if that returns ``404`` or ``410`` the client raises
+    :class:`RetrieverServiceCompatibilityError` to surface a clear
+    SDK/service version-mismatch message rather than silently producing
+    an empty result list.
     """
 
     def __init__(
@@ -153,6 +228,19 @@ class RetrieverServiceClient:
         if label is not None:
             payload["label"] = label
         resp = await client.post(url, json=payload)
+        # A 404/410 here means the deployed service does not advertise
+        # the job-scoped ingest API.  Surface a dedicated compatibility
+        # error instead of a generic HTTPStatusError so callers see one
+        # actionable message — see the 26.05-RC2 release-integration
+        # regression report.
+        if _is_api_mismatch_status(resp.status_code):
+            raise RetrieverServiceCompatibilityError(
+                _compat_error_message(
+                    url=url,
+                    status=resp.status_code,
+                    body=resp.text if resp.text else "",
+                )
+            )
         if resp.status_code >= 400:
             detail = resp.text[:500] if resp.text else "(empty)"
             raise httpx.HTTPStatusError(
@@ -216,6 +304,21 @@ class RetrieverServiceClient:
                 logger.debug("429 for %s, retry in %.1fs (attempt %d)", filename, delay, attempt)
                 await asyncio.sleep(delay)
                 continue
+
+            # Same compatibility-mismatch translation as `_create_job`.
+            # If the service did not have the job-scoped upload route at
+            # job-create time it would have already failed there; a
+            # 404/410 here usually means a rolling upgrade pointed the
+            # client at a stale pod after the job was created on a
+            # newer one.  Either way, the actionable advice is the same.
+            if _is_api_mismatch_status(resp.status_code):
+                raise RetrieverServiceCompatibilityError(
+                    _compat_error_message(
+                        url=url,
+                        status=resp.status_code,
+                        body=resp.text if resp.text else "",
+                    )
+                )
 
             if resp.status_code >= 400:
                 detail = resp.text[:500] if resp.text else "(empty)"

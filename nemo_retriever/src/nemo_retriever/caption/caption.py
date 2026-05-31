@@ -23,8 +23,10 @@ from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
 from nemo_retriever.params import CaptionParams
+from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
 _DEFAULT_MODEL_NAME = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
+_DEFAULT_REMOTE_ENDPOINT_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 _MAX_CONTEXT_TEXT_CHARS = 4096
 _MIN_IMAGE_DIMENSION = 32
 _LOCAL_MODEL_CACHE_KEYS = (
@@ -118,9 +120,18 @@ class CaptionCPUActor(AbstractOperator, CPUOperator):
         super().__init__(params=params)
         self._params = params
         self._kwargs = params.model_dump(mode="python")
-        endpoint = (self._kwargs.get("endpoint_url") or "").strip()
-        if not endpoint:
-            raise ValueError("CaptionCPUActor requires params.endpoint_url to be set.")
+        configured_endpoint = (self._kwargs.get("endpoint_url") or "").strip()
+        endpoint = configured_endpoint or _DEFAULT_REMOTE_ENDPOINT_URL
+        api_key = resolve_remote_api_key(str(self._kwargs.get("api_key") or ""))
+        if api_key:
+            self._kwargs["api_key"] = api_key
+        if not configured_endpoint and not api_key:
+            raise ValueError(
+                "CaptionCPUActor defaulted to the hosted VLM endpoint but no API key is configured. "
+                "Set NVIDIA_API_KEY/NGC_API_KEY, pass --caption-invoke-url for a local endpoint, "
+                "or run on a GPU host for local captioning."
+            )
+        self._kwargs["endpoint_url"] = endpoint
         self._model = None
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:

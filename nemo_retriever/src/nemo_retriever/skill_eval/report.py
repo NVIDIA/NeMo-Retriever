@@ -11,7 +11,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Any, Iterable
 
-from nemo_retriever.harness.artifacts import write_session_summary
+from nemo_retriever.harness.artifacts import last_commit, write_session_summary
 from nemo_retriever.skill_eval.dataset import DatasetEntry
 from nemo_retriever.skill_eval.runner import CONDITIONS, TrialResult
 from nemo_retriever.skill_eval.score import recall_at_k
@@ -101,7 +101,8 @@ def _aggregate(
     metrics["session_total_cost_usd"] = sum(session_costed) if session_costed else None
     metrics["num_query_turns"] = len(query_results)
     metrics["success_rate"] = sum(1 for r in results if r.status == "ok") / len(results)
-    metrics["retriever_used_rate"] = sum(1 for r in results if r.retriever_used_ever) / len(results)
+    metrics["retriever_attempted_rate"] = sum(1 for r in results if r.retriever_attempted) / len(results)
+    metrics["retriever_succeeded_rate"] = sum(1 for r in results if r.retriever_succeeded) / len(results)
     skill_fired = [r.skill_fired for r in results if r.skill_fired is not None]
     if skill_fired:
         metrics["skill_fired_rate"] = sum(1 for x in skill_fired if x) / len(skill_fired)
@@ -141,16 +142,25 @@ def _fmt_cost(value: Any) -> str:
     return "n/a" if value is None else f"${float(value):.3f}"
 
 
+def _md_link(label: str, path: str) -> str:
+    return "-" if not path else f"[{label}]({path})"
+
+
+def _md_cell(value: Any) -> str:
+    return str(value).replace("|", "\\|")
+
+
 def _md_row(row: dict[str, Any]) -> str:
     m = row.get("metrics", {})
     judge_cell = f"{m['judge_score_mean']:.2f} (n={m.get('judge_score_n', 0)})" if "judge_score_mean" in m else "-"
     return (
-        "| {run} | {sr:.2f} | {retr:.2f} | {r1:.3f} | {r5:.3f} | {r10:.3f} | {judge} "
+        "| {run} | {sr:.2f} | {ra:.2f} | {rs:.2f} | {r1:.3f} | {r5:.3f} | {r10:.3f} | {judge} "
         "| {ipt:.0f} | {opt:.0f} | {cr:.0f} | {cc:.0f} | {cost} |"
     ).format(
         run=row.get("run_name", "?"),
         sr=m.get("success_rate", 0.0),
-        retr=m.get("retriever_used_rate", 0.0),
+        ra=m.get("retriever_attempted_rate", 0.0),
+        rs=m.get("retriever_succeeded_rate", 0.0),
         r1=m.get("recall_1", 0.0),
         r5=m.get("recall_5", 0.0),
         r10=m.get("recall_10", 0.0),
@@ -164,10 +174,10 @@ def _md_row(row: dict[str, Any]) -> str:
 
 
 _MAIN_TABLE_HEADER = (
-    "| run | success_rate | retr_used | recall@1 | recall@5 | recall@10 | judge | q_input | q_output "
-    "| q_cache_read | q_cache_create | q_cost |"
+    "| run | success_rate | retr_attempted | retr_succeeded | recall@1 | recall@5 | recall@10 | judge "
+    "| q_input | q_output | q_cache_read | q_cache_create | q_cost |"
 )
-_MAIN_TABLE_DIVIDER = "|---|---|---|---|---|---|---|---|---|---|---|---|"
+_MAIN_TABLE_DIVIDER = "|---|---|---|---|---|---|---|---|---|---|---|---|---|"
 
 
 def write_summary_md(
@@ -177,17 +187,31 @@ def write_summary_md(
     config: dict[str, Any],
     agent: str,
     model: str,
+    trace_rows_by_domain: dict[str, list[TrialResult]] | None = None,
 ) -> Path:
+    query_parallelism = int(config.get("query_parallelism") or 1)
+    if query_parallelism > 1:
+        execution_note = (
+            f"_Execution mode: setup runs once, then query turns run in isolated sessions "
+            f"with parallelism={query_parallelism}. Session totals sum setup plus all isolated query sessions._"
+        )
+    else:
+        execution_note = (
+            "_Each (agent, condition, domain) is one agent session: turn 1 = setup, turns 2..N = query turns._"
+        )
+
+    run_commit = config.get("run_commit") or last_commit()
     lines = [
         f"# skill_eval session summary - `{session_dir.name}`",
         "",
         f"- Agent: `{agent}`",
         f"- Agent model: `{model}`",
+        f"- Run commit: `{run_commit}`",
         f"- Per-trial budget: ${config.get('per_trial_budget_usd', '?')}",
         f"- Per-trial timeout: {config.get('per_trial_timeout_s', '?')}s",
         "",
         "_Agent-session tokens only. Pipeline-side LLM calls (embeddings, VLM, etc.) are not instrumented._",
-        "_Each (agent, condition, domain) is one agent session: turn 1 = setup, turns 2..N = query turns._",
+        execution_note,
         "",
         "## Overall (averaged across all queries in this run)",
         "",
@@ -262,6 +286,36 @@ def write_summary_md(
         lines.append("")
         lines.append("## Diagnostics")
         lines.extend(diag_lines)
+
+    trace_rows_by_domain = trace_rows_by_domain or {}
+    if any(trace_rows_by_domain.values()):
+        lines += [
+            "",
+            "## Per-query traces",
+            "",
+            "| domain | run | entry_id | query_id | status | compact_trace | raw_log |",
+            "|---|---|---|---|---|---|---|",
+        ]
+        for domain in sorted(trace_rows_by_domain):
+            rows = sorted(
+                trace_rows_by_domain[domain],
+                key=lambda r: (_condition_order(r.condition), r.condition, r.entry_id, r.query_id),
+            )
+            for result in rows:
+                run_name = (
+                    f"{result.agent}/{result.condition}/{domain}" if domain else f"{result.agent}/{result.condition}"
+                )
+                lines.append(
+                    "| {domain} | {run} | {entry} | {query} | {status} | {trace} | {raw} |".format(
+                        domain=_md_cell(domain or "default"),
+                        run=_md_cell(run_name),
+                        entry=result.entry_id,
+                        query=_md_cell(result.query_id),
+                        status=_md_cell(result.status),
+                        trace=_md_link("trace", result.compact_trace_path),
+                        raw=_md_link("log", result.raw_log_path),
+                    )
+                )
 
     summary_blocks: list[tuple[str, str]] = []
     for domain in sorted(rows_by_domain):
@@ -347,6 +401,23 @@ def write_summary(
         run_results=flat_rows,
         session_type="skill_eval",
         config_path=config_path,
+        run_commit=config.get("run_commit"),
     )
-    md_path = write_summary_md(session_dir, dict(domain_rows), overall_rows, config, agent=agent, model=model)
+    trace_rows_by_domain: dict[str, list[TrialResult]] = defaultdict(list)
+    for (_agent_name, _cond, domain), results in results_by_key.items():
+        for result in results:
+            if result.is_setup:
+                continue
+            if result.compact_trace_path or result.raw_log_path:
+                trace_rows_by_domain[domain].append(result)
+
+    md_path = write_summary_md(
+        session_dir,
+        dict(domain_rows),
+        overall_rows,
+        config,
+        agent=agent,
+        model=model,
+        trace_rows_by_domain=dict(trace_rows_by_domain),
+    )
     return json_path, md_path
