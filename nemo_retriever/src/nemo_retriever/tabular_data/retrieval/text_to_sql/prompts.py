@@ -62,7 +62,12 @@ Key rules:
 Output (fill fields in this exact order):
 - thought: 1-2 sentence internal reasoning — your approach and key decisions.
 - sql_code: the complete SQL, no comments or delimiters.
-- response: 1-2 sentence user-facing summary of what the query does. No reasoning or meta-commentary.
+- response: 2-4 sentences for the end user, in plain English. Describe WHAT is
+  being calculated, WHICH tables and columns are used, any FILTERS or time
+  windows applied, and the GROUPING/ORDERING.
+  Do NOT include SQL and code fences, raw identifiers like ``schema.table``,
+  or meta-commentary about your reasoning. Refer to tables
+  and columns by their human-readable names.
 - All fields are required.
 
 Example:
@@ -81,7 +86,11 @@ GROUP BY c.country_name
 ORDER BY total_sales DESC;
 
 response:
-Calculates total sales by country for the most recently completed quarter.
+This calculates total sales revenue per country for the most recently completed
+calendar quarter. It combines the sales records with the customers list so each
+sale is attributed to a country, sums the sales amounts within that quarter,
+and then groups the results by country and orders them from highest to lowest
+total sales.
 """
 
 
@@ -94,7 +103,12 @@ Otherwise, construct an optimized SQL query to answer the question.
 Output (fill fields in this exact order):
 - thought: 1-2 sentence internal reasoning — your approach and key decisions.
 - sql_code: the complete SQL, no comments or delimiters.
-- response: 1-2 sentence user-facing summary of what the query does. No SQL, no reasoning or meta-commentary.
+- response: 2-4 sentences for the end user, in plain English. Describe WHAT is
+  being calculated, WHICH tables and columns are used, any FILTERS or time
+  windows applied, and the GROUPING/ORDERING.
+  Do NOT include SQL and code fences, raw identifiers like ``schema.table``,
+  or meta-commentary about your reasoning. Refer to tables
+  and columns by their human-readable names.
 - All fields are required.
 
 Do NOT mention corrected errors.

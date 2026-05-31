@@ -139,7 +139,8 @@ class SQLReconstructionAgent(BaseAgent):
         sql_preview = (getattr(response, "sql_code", "") or "")[:100]
         self.logger.info(f"SQL reconstructed: {sql_preview}...")
 
-        response_explanation = getattr(response, "response", getattr(response, "thought", "No explanation")) or ""
+        thought = getattr(response, "thought", "No explanation")
+        response_explanation = getattr(response, "response", "") or thought
         self.logger.info(f"Reconstruction explanation: {response_explanation[:100]}...")
 
         # Extract custom analyses
