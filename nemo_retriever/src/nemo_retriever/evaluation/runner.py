@@ -8,8 +8,7 @@ Provides :func:`run_eval_sweep`, which iterates the ``evaluations`` list
 in a parsed config, creates LLM clients and judges for each combo, runs
 :class:`QAEvalPipeline`, and writes timestamped result JSONs.
 
-This module is the library counterpart of the ``_run_config_sweep``
-function from the legacy QA eval runner; use ``retriever eval run`` instead.
+Use ``retriever eval run`` for the corresponding CLI workflow.
 """
 
 from __future__ import annotations
