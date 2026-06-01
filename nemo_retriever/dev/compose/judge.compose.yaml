@@ -14,7 +14,7 @@ services:
       - "8000"
     environment:
       - NIM_HTTP_API_PORT=8000
-      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:-ngcapikey}}
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:?NGC_API_KEY or NIM_NGC_API_KEY must be set}}
     command: ["--tool-call-parser", "llama3_json", "--enable-auto-tool-choice"]
     deploy:
       resources:

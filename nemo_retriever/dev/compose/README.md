@@ -8,6 +8,8 @@ Run commands from the repository root.
 
 The judge helper starts an OpenAI-compatible Nemotron NIM for `retriever skill-eval` runs that use a local judge endpoint.
 
+Set `NGC_API_KEY` or `NIM_NGC_API_KEY` before starting this helper.
+
 ```bash
 echo "${NGC_API_KEY}" | docker login nvcr.io --username '$oauthtoken' --password-stdin
 docker compose -f nemo_retriever/dev/compose/judge.compose.yaml up -d judge
@@ -23,4 +25,4 @@ The Neo4j helper starts a local database for tabular/graph development.
 docker compose -f nemo_retriever/dev/compose/neo4j.compose.yaml up -d neo4j
 ```
 
-Set `NEO4J_USERNAME` and `NEO4J_PASSWORD` in your environment or `.env` file to override the defaults.
+Set `NEO4J_PASSWORD` in your environment or `.env` file before starting this helper. `NEO4J_USERNAME` defaults to `neo4j`.

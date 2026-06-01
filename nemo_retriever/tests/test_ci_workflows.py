@@ -23,8 +23,20 @@ IGNORED_SCAN_DIRS = {
     ".venv",
     ".worktrees",
     "__pycache__",
+    "artifacts",
+    "lancedb",
 }
 IGNORED_SCAN_SUFFIXES = (".egg-info",)
+IGNORED_SCAN_PREFIXES = ("lancedb_",)
+
+
+def _is_ignored_scan_path(relative: Path) -> bool:
+    directory_parts = relative.parts[:-1]
+    return (
+        any(part in IGNORED_SCAN_DIRS for part in directory_parts)
+        or any(part.endswith(IGNORED_SCAN_SUFFIXES) for part in directory_parts)
+        or any(part.startswith(IGNORED_SCAN_PREFIXES) for part in directory_parts)
+    )
 
 
 def _legacy_text_offenders(tokens: tuple[str, ...], ignored_files: set[Path]) -> list[str]:
@@ -33,12 +45,7 @@ def _legacy_text_offenders(tokens: tuple[str, ...], ignored_files: set[Path]) ->
 
     for path in REPO_ROOT.rglob("*"):
         relative = path.relative_to(REPO_ROOT)
-        if (
-            path.resolve() in ignored_resolved
-            or not path.is_file()
-            or any(part in IGNORED_SCAN_DIRS for part in relative.parts)
-            or any(part.endswith(IGNORED_SCAN_SUFFIXES) for part in relative.parts)
-        ):
+        if path.resolve() in ignored_resolved or not path.is_file() or _is_ignored_scan_path(relative):
             continue
 
         try:
@@ -51,6 +58,13 @@ def _legacy_text_offenders(tokens: tuple[str, ...], ignored_files: set[Path]) ->
                 offenders.append(f"{relative}: {token}")
 
     return offenders
+
+
+def test_legacy_text_scan_skips_generated_output_dirs():
+    assert _is_ignored_scan_path(Path("nemo_retriever/artifacts/run/output.json"))
+    assert _is_ignored_scan_path(Path("lancedb/session.arrow"))
+    assert _is_ignored_scan_path(Path("lancedb_session/data.arrow"))
+    assert not _is_ignored_scan_path(Path("nemo_retriever/src/nemo_retriever/vdb/lancedb_bulk.py"))
 
 
 def _load_workflow(name):
@@ -159,6 +173,14 @@ def test_dev_compose_helpers_are_feature_scoped():
         compose_data[filename] = data
         assert set(data["services"]) == {service_name}
         assert "nv-ingest-ms-runtime" not in text
+        assert "ngcapikey" not in text
+        assert "neo4jpassword" not in text
+
+    judge_environment = compose_data["judge.compose.yaml"]["services"]["judge"]["environment"]
+    assert any("NGC_API_KEY or NIM_NGC_API_KEY must be set" in item for item in judge_environment)
+
+    neo4j_environment = compose_data["neo4j.compose.yaml"]["services"]["neo4j"]["environment"]
+    assert "NEO4J_PASSWORD must be set" in neo4j_environment["NEO4J_AUTH"]
 
     neo4j_healthcheck = compose_data["neo4j.compose.yaml"]["services"]["neo4j"]["healthcheck"]["test"]
     assert neo4j_healthcheck[0] == "CMD-SHELL"
