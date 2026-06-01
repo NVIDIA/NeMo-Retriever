@@ -193,12 +193,6 @@ dev = [
   "pytest>=8.0.2",
 ]
 
-test = [
-  # MoviePy 2.x caps Pillow below 12; core currently pins Pillow 12.2.0.
-  "moviepy<2",
-  "pytest>=8.0.2",
-]
-
 # ── Convenience: full install ─────────────────────────────────────────────────
 all = [
   "nemo_retriever[service,local,multimedia,nemotron-parse,tabular,benchmarks,llm]",
