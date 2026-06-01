@@ -571,6 +571,12 @@ async def get_run(run_id: int):
     row = history.get_run_by_id(run_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Run not found")
+    if row.get("job_id"):
+        job = history.get_job_by_id(row["job_id"])
+        if job:
+            row.setdefault("run_mode", job.get("run_mode"))
+            row.setdefault("execution_target", job.get("execution_target"))
+            row.setdefault("cluster_id", job.get("cluster_id"))
     return row
 
 
