@@ -105,7 +105,7 @@ These NIM microservices are **optional** for the default extraction pipeline. Th
 
 ### Image captioning (26.05) { #image-captioning-2605 }
 
-For 26.05, use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above. For caption scope (chart vs infographic routing) and validation metadata, see [Image captioning](multimodal-extraction.md#image-captioning).
+For 26.05, use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above.
 
 Optional features listed in the table above require additional GPU support, disk space, and feature-specific system dependencies beyond the four default NIMs.
 
