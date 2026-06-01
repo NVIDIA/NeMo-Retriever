@@ -712,11 +712,45 @@ async def get_run_command(run_id: int):
     if row is None:
         raise HTTPException(status_code=404, detail="Run not found")
     raw = row.get("raw_json") or {}
+
+    # Try explicit command_file path from artifacts
     command_file = (raw.get("artifacts") or {}).get("command_file")
     if command_file:
         p = Path(command_file)
         if p.is_file():
             return {"command": p.read_text(encoding="utf-8").strip()}
+
+    # Fallback: look for command.txt in the run's artifact_dir
+    artifact_dir = row.get("artifact_dir")
+    if artifact_dir:
+        p = Path(artifact_dir) / "command.txt"
+        if p.is_file():
+            return {"command": p.read_text(encoding="utf-8").strip()}
+
+    # Last resort for service-mode: reconstruct from test_config
+    tc = raw.get("test_config") or {}
+    if tc.get("run_mode") == "service" and tc.get("service_url"):
+        import shlex as _shlex
+
+        parts = [
+            "python -m nemo_retriever.harness.run",
+            "--run-mode service",
+            f"--service-url {_shlex.quote(tc['service_url'])}",
+        ]
+        if tc.get("dataset_dir"):
+            parts.append(f"--dataset {_shlex.quote(tc['dataset_dir'])}")
+        if tc.get("service_max_concurrency"):
+            parts.append(f"--service-max-concurrency {tc['service_max_concurrency']}")
+        if tc.get("input_type"):
+            parts.append(f"--input-type {tc['input_type']}")
+        if tc.get("preset"):
+            parts.append(f"--preset {_shlex.quote(tc['preset'])}")
+        if tc.get("evaluation_mode") and tc["evaluation_mode"] != "none":
+            parts.append(f"--evaluation-mode {tc['evaluation_mode']}")
+        if tc.get("api_key"):
+            parts.append("--api-key $NVIDIA_API_KEY")
+        return {"command": " ".join(parts)}
+
     return {"command": None}
 
 
