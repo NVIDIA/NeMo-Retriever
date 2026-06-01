@@ -11,6 +11,10 @@ Use the sections below to pick documentation and deployment options that match y
 1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 2. [Use the Python API](nemo-retriever-api-reference.md) or [Use the CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli) — install and run the [`nemo_retriever`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever) package in your environment
 
+### I want a standalone Docker service container
+
+Build and run the NeMo Retriever service image with the [Docker service image guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md). Use this for local service-container validation; use Helm for multi-service Kubernetes deployments.
+
 ### I want a Kubernetes / Helm deployment
 
 1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)

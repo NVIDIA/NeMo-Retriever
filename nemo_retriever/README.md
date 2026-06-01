@@ -12,6 +12,8 @@ You’ll set up a CUDA 13–compatible environment, install the library and its 
 
 For Kubernetes deployments, use the **[`nemo_retriever/helm` chart](helm/README.md)** to deploy the retriever **service** and optional in-cluster **NIM** workloads. Published Helm install and upgrade flows for the full extraction stack are documented in the **[NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)**; use those docs together with the chart README for your release.
 
+For standalone service-image builds and local container runs, see **[`docker.md`](docker.md)**.
+
 ## Prerequisites
 
 Before starting, make sure your system meets the following requirements:

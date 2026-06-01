@@ -97,8 +97,9 @@ conditions:
 # populated in the environment; otherwise skipped silently with a console
 # note. Set ``enabled: false`` to opt out explicitly.
 #
-# For a local NIM judge, start an OpenAI-compatible endpoint and point
-# ``api_base`` at the localhost line below instead of the NVIDIA-hosted default.
+# For the local judge helper, run from the repository root:
+#   docker compose -f nemo_retriever/dev/compose/judge.compose.yaml up -d judge
+# Then point ``api_base`` at the localhost line below instead of the NVIDIA-hosted default.
 judge:
   enabled: true
   model: nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5

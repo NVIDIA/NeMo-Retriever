@@ -113,14 +113,13 @@ def test_legacy_ghcr_push_publish_workflow_is_removed():
     assert not (WORKFLOWS / "docker-build-publish-retriever.yml").exists()
 
 
-def test_legacy_nv_ingest_compose_stack_is_removed():
+def test_legacy_nv_ingest_root_compose_stack_is_removed():
     legacy_paths = (
         "docker-compose.yaml",
         "docker-compose.a100-40gb.yaml",
         "docker-compose.a10g.yaml",
         "docker-compose.l40s.yaml",
         "docker-compose.rtx-pro-4500.yaml",
-        "nemo_retriever/docker.md",
         "ci/scripts/validate_deployment_configs.py",
         "skaffold/README.md",
         "skaffold/nv-ingest.skaffold.yaml",
@@ -131,10 +130,9 @@ def test_legacy_nv_ingest_compose_stack_is_removed():
         assert not (REPO_ROOT / relative_path).exists(), relative_path
 
     legacy_tokens = (
-        "docker-compose",
-        "docker compose",
-        "docker.md",
         "nv-ingest-ms-runtime",
+        "nvcr.io/nvidia/nemo-microservices/nv-ingest",
+        "target: runtime",
         "validate_deployment_configs",
         "skaffold/nv-ingest.skaffold.yaml",
     )
@@ -143,6 +141,48 @@ def test_legacy_nv_ingest_compose_stack_is_removed():
         REPO_ROOT / "nemo_retriever" / "tests" / "test_harness_helm_profiles.py",
     }
     assert _legacy_text_offenders(legacy_tokens, ignored_files) == []
+
+
+def test_dev_compose_helpers_are_feature_scoped():
+    compose_dir = REPO_ROOT / "nemo_retriever" / "dev" / "compose"
+    expected_services = {
+        "judge.compose.yaml": "judge",
+        "neo4j.compose.yaml": "neo4j",
+    }
+
+    for filename, service_name in expected_services.items():
+        compose_path = compose_dir / filename
+        assert compose_path.exists(), filename
+        data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+        assert set(data["services"]) == {service_name}
+        assert "nv-ingest-ms-runtime" not in compose_path.read_text(encoding="utf-8")
+
+    helper_readme = compose_dir / "README.md"
+    assert helper_readme.exists()
+    assert "docker compose -f nemo_retriever/dev/compose/judge.compose.yaml up -d judge" in helper_readme.read_text(
+        encoding="utf-8"
+    )
+    assert "docker compose -f nemo_retriever/dev/compose/neo4j.compose.yaml up -d neo4j" in helper_readme.read_text(
+        encoding="utf-8"
+    )
+
+    docker_doc = REPO_ROOT / "nemo_retriever" / "docker.md"
+    assert docker_doc.exists()
+    docker_doc_text = docker_doc.read_text(encoding="utf-8")
+    assert "--target service" in docker_doc_text
+    assert "retriever service start" in docker_doc_text
+    assert "docker compose" not in docker_doc_text.lower()
+    assert "docker-compose" not in docker_doc_text.lower()
+
+    skill_eval_config = (
+        REPO_ROOT / "nemo_retriever" / "src" / "nemo_retriever" / "skill_eval" / "configs" / "skill_eval.yaml"
+    ).read_text(encoding="utf-8")
+    assert "nemo_retriever/dev/compose/judge.compose.yaml" in skill_eval_config
+
+    neo4j_setup = (
+        REPO_ROOT / "nemo_retriever" / "src" / "nemo_retriever" / "tabular_data" / "neo4j" / "SETUP.md"
+    ).read_text(encoding="utf-8")
+    assert "nemo_retriever/dev/compose/neo4j.compose.yaml" in neo4j_setup
 
 
 def test_legacy_tools_harness_is_removed():

@@ -87,7 +87,8 @@ def _preflight_judge_endpoint(api_base: str, timeout: float = 5.0) -> None:
     except Exception as exc:
         raise typer.BadParameter(
             f"Judge endpoint {api_base} is unreachable ({exc}). "
-            "If you're using a local judge, start the OpenAI-compatible endpoint first."
+            "If you're using the bundled local judge helper, start it from the repository root:\n"
+            "  docker compose -f nemo_retriever/dev/compose/judge.compose.yaml up -d judge"
         )
 
 
