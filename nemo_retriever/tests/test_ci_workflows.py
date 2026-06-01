@@ -76,6 +76,24 @@ def test_legacy_ghcr_push_publish_workflow_is_removed():
     assert not (WORKFLOWS / "docker-build-publish-retriever.yml").exists()
 
 
+def test_legacy_nv_ingest_compose_stack_is_removed():
+    legacy_paths = (
+        "docker-compose.yaml",
+        "docker-compose.a100-40gb.yaml",
+        "docker-compose.a10g.yaml",
+        "docker-compose.l40s.yaml",
+        "docker-compose.rtx-pro-4500.yaml",
+        "nemo_retriever/docker.md",
+        "ci/scripts/validate_deployment_configs.py",
+        "skaffold/README.md",
+        "skaffold/nv-ingest.skaffold.yaml",
+        "skaffold/sensitive/.gitignore",
+    )
+
+    for relative_path in legacy_paths:
+        assert not (REPO_ROOT / relative_path).exists(), relative_path
+
+
 def test_legacy_tools_harness_is_removed():
     assert not (REPO_ROOT / "tools" / "harness").exists()
 
