@@ -36,6 +36,7 @@ def match_runner(
     min_memory_gb: float | None = None,
     preferred_runner_id: int | None = None,
     preferred_runner_ids: list[int] | None = None,
+    execution_target: str = "local",
 ) -> dict[str, Any] | None:
     """Find the best matching online runner for the given resource requirements.
 
@@ -46,10 +47,23 @@ def match_runner(
     ``preferred_runner_ids`` (list) takes precedence over the legacy scalar
     ``preferred_runner_id``.  When a list is provided the search is limited
     to those runners (round-robin among the online ones).
+
+    Runners whose hostname is co-located with a K8s cluster that has active
+    jobs are excluded to prevent GPU memory contention.
     """
+    if execution_target == "cluster":
+        return None
+
     global _round_robin_index
     runners = history.get_runners()
     online = [r for r in runners if r.get("status") == "online"]
+
+    blocked_hostnames = history.get_cluster_node_hostnames_with_active_jobs()
+    if blocked_hostnames:
+        online = [
+            r for r in online
+            if (r.get("hostname") or "").lower() not in blocked_hostnames
+        ]
 
     pref_set: set[int] | None = None
     if preferred_runner_ids:
@@ -271,6 +285,8 @@ def _dispatch_schedule(
     if matrix_name:
         return _dispatch_schedule_matrix(schedule, matrix_name, trigger_source, git_commit, git_ref)
 
+    execution_target = schedule.get("execution_target", "local")
+
     runner = match_runner(
         min_gpu_count=schedule.get("min_gpu_count"),
         gpu_type_pattern=schedule.get("gpu_type_pattern"),
@@ -278,11 +294,17 @@ def _dispatch_schedule(
         min_memory_gb=schedule.get("min_memory_gb"),
         preferred_runner_id=schedule.get("preferred_runner_id"),
         preferred_runner_ids=schedule.get("preferred_runner_ids"),
+        execution_target=execution_target,
     )
 
     dataset_path, dataset_overrides, dataset_meta = _resolve_dataset_config(schedule.get("dataset", ""))
     preset_overrides = _resolve_preset_overrides(schedule.get("preset"))
     merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
+    cluster_id = schedule.get("cluster_id")
+    schedule_run_mode = schedule.get("run_mode")
+
+    if schedule_run_mode:
+        merged_overrides["run_mode"] = schedule_run_mode
 
     job_data: dict[str, Any] = {
         "schedule_id": schedule["id"],
@@ -296,6 +318,9 @@ def _dispatch_schedule(
         "git_commit": git_commit,
         "git_ref": git_ref,
         "tags": schedule.get("tags") or [],
+        "execution_target": execution_target,
+        "cluster_id": cluster_id,
+        "run_mode": schedule_run_mode,
     }
     if dataset_meta:
         job_data["dataset_id"] = dataset_meta["dataset_id"]
@@ -304,7 +329,24 @@ def _dispatch_schedule(
     job = history.create_job(job_data)
     history.mark_schedule_triggered(schedule["id"])
 
-    if runner:
+    if execution_target == "cluster" and cluster_id:
+        try:
+            from nemo_retriever.harness.cluster_executor import dispatch_job_to_cluster
+
+            cluster = history.get_cluster_by_id(cluster_id)
+            if cluster:
+                dispatch_job_to_cluster(job, cluster)
+                logger.info(
+                    "Dispatched job %s for schedule '%s' -> cluster '%s'",
+                    job["id"],
+                    schedule.get("name"),
+                    cluster["name"],
+                )
+            else:
+                logger.warning("Schedule '%s' references unknown cluster_id=%s", schedule.get("name"), cluster_id)
+        except Exception as exc:
+            logger.error("Failed to dispatch job %s to cluster: %s", job["id"], exc)
+    elif runner:
         logger.info(
             "Dispatched job %s for schedule '%s' -> runner #%s",
             job["id"],
@@ -368,6 +410,8 @@ def _dispatch_schedule_matrix(
         dataset_path, dataset_overrides, dataset_meta = _resolve_dataset_config(ds_name)
 
         for pr_name in preset_names:
+            matrix_execution_target = matrix.get("execution_target") or schedule.get("execution_target", "local")
+
             runner = match_runner(
                 min_gpu_count=schedule.get("min_gpu_count"),
                 gpu_type_pattern=effective_gpu_type,
@@ -375,9 +419,15 @@ def _dispatch_schedule_matrix(
                 min_memory_gb=schedule.get("min_memory_gb"),
                 preferred_runner_id=effective_preferred_runner,
                 preferred_runner_ids=effective_preferred_runners or None,
+                execution_target=matrix_execution_target,
             )
             preset_overrides = _resolve_preset_overrides(pr_name)
             merged_overrides = {**(dataset_overrides or {}), **preset_overrides}
+            matrix_cluster_id = matrix.get("cluster_id") or schedule.get("cluster_id")
+            matrix_run_mode = matrix.get("run_mode") or schedule.get("run_mode")
+
+            if matrix_run_mode:
+                merged_overrides["run_mode"] = matrix_run_mode
 
             sched_job_data: dict[str, Any] = {
                 "schedule_id": schedule["id"],
@@ -393,12 +443,25 @@ def _dispatch_schedule_matrix(
                 "tags": merged_tags,
                 "matrix_run_id": matrix_run_id,
                 "matrix_name": matrix_name,
+                "execution_target": matrix_execution_target,
+                "cluster_id": matrix_cluster_id,
+                "run_mode": matrix_run_mode,
             }
             if dataset_meta:
                 sched_job_data["dataset_id"] = dataset_meta["dataset_id"]
                 sched_job_data["dataset_config_hash"] = dataset_meta["dataset_config_hash"]
 
             job = history.create_job(sched_job_data)
+
+            if matrix_execution_target == "cluster" and matrix_cluster_id:
+                try:
+                    from nemo_retriever.harness.cluster_executor import dispatch_job_to_cluster
+
+                    cluster = history.get_cluster_by_id(matrix_cluster_id)
+                    if cluster:
+                        dispatch_job_to_cluster(job, cluster)
+                except Exception as exc:
+                    logger.error("Failed to dispatch matrix job %s to cluster: %s", job["id"], exc)
             if first_job is None:
                 first_job = job
             logger.info(

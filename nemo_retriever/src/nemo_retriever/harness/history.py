@@ -232,6 +232,32 @@ CREATE TABLE IF NOT EXISTS mcp_audit_log (
 );
 """
 
+CREATE_CLUSTERS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS clusters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    api_server_url TEXT NOT NULL,
+    namespace TEXT NOT NULL DEFAULT 'default',
+    auth_method TEXT NOT NULL DEFAULT 'kubeconfig',
+    kubeconfig_context TEXT,
+    kubeconfig_data TEXT,
+    service_account_token TEXT,
+    ca_cert_data TEXT,
+    default_run_mode TEXT NOT NULL DEFAULT 'batch',
+    default_image TEXT,
+    node_selector TEXT,
+    node_hostnames TEXT,
+    gpu_type TEXT,
+    gpu_count INTEGER DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'unknown',
+    last_health_check TEXT,
+    tags TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
 CREATE_BACKUPS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS backups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -307,6 +333,19 @@ _MIGRATIONS = [
     "ALTER TABLE jobs ADD COLUMN dataset_config_hash TEXT",
     "ALTER TABLE runs ADD COLUMN dataset_id INTEGER",
     "ALTER TABLE runs ADD COLUMN dataset_config_hash TEXT",
+    "ALTER TABLE jobs ADD COLUMN execution_target TEXT DEFAULT 'local'",
+    "ALTER TABLE jobs ADD COLUMN cluster_id INTEGER",
+    "ALTER TABLE jobs ADD COLUMN run_mode TEXT",
+    "ALTER TABLE presets ADD COLUMN run_mode TEXT",
+    "ALTER TABLE presets ADD COLUMN execution_target TEXT DEFAULT 'local'",
+    "ALTER TABLE presets ADD COLUMN cluster_id INTEGER",
+    "ALTER TABLE preset_matrices ADD COLUMN run_mode TEXT",
+    "ALTER TABLE preset_matrices ADD COLUMN execution_target TEXT DEFAULT 'local'",
+    "ALTER TABLE preset_matrices ADD COLUMN cluster_id INTEGER",
+    "ALTER TABLE schedules ADD COLUMN run_mode TEXT",
+    "ALTER TABLE schedules ADD COLUMN execution_target TEXT DEFAULT 'local'",
+    "ALTER TABLE schedules ADD COLUMN cluster_id INTEGER",
+    "ALTER TABLE clusters ADD COLUMN node_hostnames TEXT",
 ]
 
 CREATE_DATA_MIGRATIONS_TABLE_SQL = """
@@ -400,6 +439,7 @@ def _connect(db_path: str | None = None) -> sqlite3.Connection:
     conn.execute(CREATE_PRESET_MATRICES_TABLE_SQL)
     conn.execute(CREATE_GRAPHS_TABLE_SQL)
     conn.execute(CREATE_MCP_AUDIT_LOG_TABLE_SQL)
+    conn.execute(CREATE_CLUSTERS_TABLE_SQL)
     conn.execute(CREATE_BACKUPS_TABLE_SQL)
     conn.execute(CREATE_INDEX_SQL)
     for stmt in _MIGRATIONS:
@@ -648,9 +688,21 @@ def create_preset(data: dict[str, Any], db_path: str | None = None) -> dict[str,
         overrides = data.get("overrides", {})
         overrides_json = json.dumps(overrides) if isinstance(overrides, dict) else overrides
         conn.execute(
-            "INSERT INTO presets (name, description, config, tags, overrides, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (data["name"], data.get("description"), config_json, tags, overrides_json, now, now),
+            "INSERT INTO presets (name, description, config, tags, overrides,"
+            " run_mode, execution_target, cluster_id, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                data["name"],
+                data.get("description"),
+                config_json,
+                tags,
+                overrides_json,
+                data.get("run_mode"),
+                data.get("execution_target", "local"),
+                data.get("cluster_id"),
+                now,
+                now,
+            ),
         )
         conn.commit()
         row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -701,6 +753,10 @@ def update_preset(preset_id: int, data: dict[str, Any], db_path: str | None = No
             sets.append("overrides = ?")
             ovr = data["overrides"]
             vals.append(json.dumps(ovr) if isinstance(ovr, dict) else ovr)
+        for field in ("run_mode", "execution_target", "cluster_id"):
+            if field in data:
+                sets.append(f"{field} = ?")
+                vals.append(data[field])
         if not sets:
             return get_preset_by_id(preset_id, db_path)
         sets.append("updated_at = ?")
@@ -808,8 +864,9 @@ def create_preset_matrix(data: dict[str, Any], db_path: str | None = None) -> di
         now = _now_iso()
         conn.execute(
             "INSERT INTO preset_matrices (name, description, dataset_names, preset_names, tags,"
-            " preferred_runner_id, gpu_type_filter, git_ref, git_commit, nsys_profile, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " preferred_runner_id, gpu_type_filter, git_ref, git_commit, nsys_profile,"
+            " run_mode, execution_target, cluster_id, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 data["name"],
                 data.get("description"),
@@ -821,6 +878,9 @@ def create_preset_matrix(data: dict[str, Any], db_path: str | None = None) -> di
                 data.get("git_ref"),
                 data.get("git_commit"),
                 data.get("nsys_profile", 0),
+                data.get("run_mode"),
+                data.get("execution_target", "local"),
+                data.get("cluster_id"),
                 now,
                 now,
             ),
@@ -897,6 +957,10 @@ def update_preset_matrix(matrix_id: int, data: dict[str, Any], db_path: str | No
         if "nsys_profile" in data:
             sets.append("nsys_profile = ?")
             vals.append(data["nsys_profile"])
+        for field in ("run_mode", "execution_target", "cluster_id"):
+            if field in data:
+                sets.append(f"{field} = ?")
+                vals.append(data[field])
         if not sets:
             return get_preset_matrix_by_id(matrix_id, db_path)
         sets.append("updated_at = ?")
@@ -1663,6 +1727,9 @@ _SCHEDULE_SCALAR_FIELDS = (
     "min_memory_gb",
     "preferred_runner_id",
     "enabled",
+    "run_mode",
+    "execution_target",
+    "cluster_id",
 )
 
 _SCHEDULE_JSON_FIELDS = ("preferred_runner_ids",)
@@ -1872,6 +1939,9 @@ def create_job(data: dict[str, Any], db_path: str | None = None) -> dict[str, An
             "nsys_profile": data.get("nsys_profile", 0),
             "dataset_id": data.get("dataset_id"),
             "dataset_config_hash": data.get("dataset_config_hash"),
+            "execution_target": data.get("execution_target", "local"),
+            "cluster_id": data.get("cluster_id"),
+            "run_mode": data.get("run_mode"),
         }
         columns = ", ".join(row.keys())
         placeholders = ", ".join("?" * len(row))
@@ -1935,15 +2005,37 @@ def get_pending_jobs_for_runner(runner_id: int, db_path: str | None = None) -> l
     Jobs whose ``rejected_runners`` list contains *runner_id* are excluded so
     that runners do not repeatedly pick up jobs they cannot execute (e.g. due
     to a missing dataset).
+
+    Cluster-targeted jobs (execution_target='cluster') are never returned here
+    since they are dispatched directly to K8s, not claimed by runners.
+
+    Additionally, if this runner's hostname matches a node in a cluster that
+    has active jobs, no local jobs are assigned to it — this prevents GPU
+    memory contention between K8s workloads and local harness jobs.
     """
     if runner_has_running_job(runner_id, db_path):
         return []
+
+    runner = get_runner_by_id(runner_id, db_path)
+    runner_hostname = (runner.get("hostname") or "").lower() if runner else ""
+
+    blocked_hostnames = get_cluster_node_hostnames_with_active_jobs(db_path)
+    if runner_hostname and runner_hostname in blocked_hostnames:
+        logger.info(
+            "Runner #%s (%s) is co-located with an active K8s cluster node — "
+            "skipping local job assignment to avoid GPU contention",
+            runner_id,
+            runner_hostname,
+        )
+        return []
+
     conn = _connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
             "SELECT * FROM jobs WHERE status = 'pending' "
             "AND (assigned_runner_id = ? OR assigned_runner_id IS NULL) "
+            "AND (execution_target IS NULL OR execution_target = 'local') "
             "ORDER BY (assigned_runner_id IS NULL) ASC, created_at ASC",
             (runner_id,),
         ).fetchall()
@@ -2979,6 +3071,215 @@ def delete_backup_record(backup_id: int, db_path: str | None = None) -> bool:
         cur = conn.execute("DELETE FROM backups WHERE id = ?", (backup_id,))
         conn.commit()
         return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Clusters
+# ---------------------------------------------------------------------------
+
+_CLUSTER_FIELDS = (
+    "name",
+    "description",
+    "api_server_url",
+    "namespace",
+    "auth_method",
+    "kubeconfig_context",
+    "kubeconfig_data",
+    "service_account_token",
+    "ca_cert_data",
+    "default_run_mode",
+    "default_image",
+    "node_selector",
+    "node_hostnames",
+    "gpu_type",
+    "gpu_count",
+    "tags",
+)
+
+
+def _deserialize_cluster_row(row: sqlite3.Row) -> dict[str, Any]:
+    d = dict(row)
+    if d.get("tags"):
+        try:
+            d["tags"] = json.loads(d["tags"])
+        except (json.JSONDecodeError, TypeError):
+            d["tags"] = []
+    else:
+        d["tags"] = []
+    if d.get("node_selector"):
+        try:
+            d["node_selector"] = json.loads(d["node_selector"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if d.get("node_hostnames"):
+        try:
+            d["node_hostnames"] = json.loads(d["node_hostnames"])
+        except (json.JSONDecodeError, TypeError):
+            d["node_hostnames"] = []
+    else:
+        d["node_hostnames"] = []
+    return d
+
+
+def create_cluster(data: dict[str, Any], db_path: str | None = None) -> dict[str, Any]:
+    conn = _connect(db_path)
+    try:
+        now = _now_iso()
+        tags = json.dumps(data.get("tags") or [])
+        node_selector = data.get("node_selector")
+        if isinstance(node_selector, dict):
+            node_selector = json.dumps(node_selector)
+        node_hostnames = data.get("node_hostnames")
+        if isinstance(node_hostnames, list):
+            node_hostnames = json.dumps(node_hostnames)
+        conn.execute(
+            "INSERT INTO clusters (name, description, api_server_url, namespace,"
+            " auth_method, kubeconfig_context, kubeconfig_data, service_account_token,"
+            " ca_cert_data, default_run_mode, default_image, node_selector,"
+            " node_hostnames, gpu_type, gpu_count, status, tags, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                data["name"],
+                data.get("description") or None,
+                data["api_server_url"],
+                data.get("namespace", "default"),
+                data.get("auth_method", "kubeconfig"),
+                data.get("kubeconfig_context") or None,
+                data.get("kubeconfig_data") or None,
+                data.get("service_account_token") or None,
+                data.get("ca_cert_data") or None,
+                data.get("default_run_mode", "batch"),
+                data.get("default_image") or None,
+                node_selector,
+                node_hostnames,
+                data.get("gpu_type") or None,
+                data.get("gpu_count", 0),
+                "unknown",
+                tags,
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        cluster_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        return get_cluster_by_id(cluster_id, db_path) or {"id": cluster_id}
+    finally:
+        conn.close()
+
+
+def get_all_clusters(db_path: str | None = None) -> list[dict[str, Any]]:
+    conn = _connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute("SELECT * FROM clusters ORDER BY name").fetchall()
+        return [_deserialize_cluster_row(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_cluster_by_id(cluster_id: int, db_path: str | None = None) -> dict[str, Any] | None:
+    conn = _connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute("SELECT * FROM clusters WHERE id = ?", (cluster_id,)).fetchone()
+        if row is None:
+            return None
+        return _deserialize_cluster_row(row)
+    finally:
+        conn.close()
+
+
+def update_cluster(cluster_id: int, data: dict[str, Any], db_path: str | None = None) -> dict[str, Any] | None:
+    conn = _connect(db_path)
+    try:
+        sets: list[str] = []
+        vals: list[Any] = []
+        for field in _CLUSTER_FIELDS:
+            if field in data:
+                val = data[field]
+                if field == "tags":
+                    val = json.dumps(val if isinstance(val, list) else [])
+                elif field == "node_selector" and isinstance(val, dict):
+                    val = json.dumps(val)
+                elif field == "node_hostnames" and isinstance(val, list):
+                    val = json.dumps(val)
+                sets.append(f"{field} = ?")
+                vals.append(val)
+        if not sets:
+            return get_cluster_by_id(cluster_id, db_path)
+        sets.append("updated_at = ?")
+        vals.append(_now_iso())
+        vals.append(cluster_id)
+        conn.execute(f"UPDATE clusters SET {', '.join(sets)} WHERE id = ?", vals)
+        conn.commit()
+        return get_cluster_by_id(cluster_id, db_path)
+    finally:
+        conn.close()
+
+
+def delete_cluster(cluster_id: int, db_path: str | None = None) -> bool:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("DELETE FROM clusters WHERE id = ?", (cluster_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_cluster_node_hostnames_with_active_jobs(db_path: str | None = None) -> set[str]:
+    """Return the set of hostnames belonging to clusters that have active (running/pending) jobs.
+
+    Used to prevent local job scheduling on runners co-located with K8s cluster
+    nodes to avoid GPU memory contention.
+    """
+    conn = _connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        active_cluster_ids = conn.execute(
+            "SELECT DISTINCT cluster_id FROM jobs "
+            "WHERE execution_target = 'cluster' AND status IN ('pending', 'running') "
+            "AND cluster_id IS NOT NULL"
+        ).fetchall()
+        if not active_cluster_ids:
+            return set()
+
+        cluster_ids = [row[0] for row in active_cluster_ids]
+        placeholders = ",".join("?" * len(cluster_ids))
+        cluster_rows = conn.execute(
+            f"SELECT node_hostnames FROM clusters WHERE id IN ({placeholders})",
+            cluster_ids,
+        ).fetchall()
+
+        hostnames: set[str] = set()
+        for row in cluster_rows:
+            raw = row[0] if row else None
+            if raw:
+                try:
+                    names = json.loads(raw)
+                    if isinstance(names, list):
+                        hostnames.update(n.lower() for n in names if n)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        return hostnames
+    finally:
+        conn.close()
+
+
+def update_cluster_status(
+    cluster_id: int, status: str, db_path: str | None = None
+) -> dict[str, Any] | None:
+    conn = _connect(db_path)
+    try:
+        now = _now_iso()
+        conn.execute(
+            "UPDATE clusters SET status = ?, last_health_check = ?, updated_at = ? WHERE id = ?",
+            (status, now, now, cluster_id),
+        )
+        conn.commit()
+        return get_cluster_by_id(cluster_id, db_path)
     finally:
         conn.close()
 
