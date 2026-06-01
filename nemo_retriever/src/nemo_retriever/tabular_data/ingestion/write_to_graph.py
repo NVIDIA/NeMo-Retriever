@@ -52,7 +52,7 @@ def populate_tabular_data(data, num_workers, dialect):
         populate_pks(pks=data["pks"], database_name=database)
 
     if "queries" in data:
-        populate_queries(all_schemas, data["queries"], num_workers, dialect)
+        populate_queries(all_schemas, data["queries"], num_workers, [dialect])
 
     return []
 

@@ -125,7 +125,7 @@ def run_retrieve() -> None:
     payload: AgentPayload = {
         "question": question,
         "retriever": retriever,
-        "connector": connector,
+        "connectors": [connector],
         "path_state": {},
         "custom_prompts": "",
         "acronyms": "",

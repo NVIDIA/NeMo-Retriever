@@ -11,12 +11,13 @@ Kept separate from ``graph.py`` to avoid circular imports (agents import state;
 
 from __future__ import annotations
 
-from typing import Any, NotRequired, TypedDict
+from typing import NotRequired, TypedDict
 
 from langchain_core.messages import HumanMessage
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
 from nemo_retriever.retriever import Retriever
+from nemo_retriever.tabular_data.sql_database import SQLDatabase
 
 
 class AgentPayload(TypedDict):
@@ -25,8 +26,7 @@ class AgentPayload(TypedDict):
     question: str
     retriever: Retriever
     path_state: NotRequired[dict]
-    dialect: NotRequired[str]
-    connector: NotRequired[Any]
+    connectors: NotRequired[list[SQLDatabase]]
     acronyms: NotRequired[list[dict[str, str]]]
     custom_prompts: NotRequired[str]
 
@@ -38,8 +38,7 @@ class AgentState(TypedDict):
     initial_question: str
     messages: list[HumanMessage]
     decision: str
-    dialect: str
-    connector: Any
+    connectors: list[SQLDatabase]
     path_state: dict
     retriever: Retriever
     domain_rules: list[dict[str, str]]

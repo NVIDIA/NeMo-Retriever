@@ -21,10 +21,11 @@ Design Decisions:
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 
 from langchain_core.messages import AIMessage, SystemMessage
 from nemo_retriever.tabular_data.retrieval.text_to_sql.agents.sql_from_semantic import format_tables_for_prompt
+from nemo_retriever.tabular_data.retrieval.text_to_sql.connector_routing import resolve_connector_from_tables
 from nemo_retriever.tabular_data.retrieval.llm_invoke import invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
 from nemo_retriever.tabular_data.retrieval.text_to_sql.models import SQLGenerationModel
@@ -46,7 +47,7 @@ class SQLFromTablesAgent(BaseAgent):
     - path_state["relevant_tables"]: Optional relevant tables (if not provided, will search)
     - path_state["error"]: Optional error from previous attempt (for reconstruction)
     - state["initial_question"]: User's question
-    - state["connector"]: Connector instance
+    - state["connectors"]: List of connectors (the first is used for dialect/database_name)
 
     Output:
     - path_state["sql_generation_result"]: SQL response with SQL code
@@ -75,25 +76,23 @@ class SQLFromTablesAgent(BaseAgent):
         """
         path_state = state.get("path_state", {})
         llm = state["llm"]
-        connector = state["connector"]
+        connectors = state.get("connectors") or []
         question = get_question_for_processing(state)
 
         system_prompt = create_sql_general_prompt
 
         # Get relevant tables (search if not already available)
         relevant_tables = path_state.get("relevant_tables", [])
-        if not relevant_tables:
-            database_name = getattr(connector, "database_name", None)
-            relevant_tables = get_relevant_tables(
-                state["retriever"],
-                question,
-                database_name=database_name,
-            )
+        if not len(relevant_tables):
+            relevant_tables = get_relevant_tables(state["retriever"], question)
         similar_questions = []
+
+        connector = resolve_connector_from_tables(relevant_tables, connectors)
+        dialect = getattr(connector, "dialect", None)
 
         # Build user prompt with formatted tables
         user_prompt = create_sql_user_prompt.format(
-            dialect=connector.dialect,
+            dialect=dialect,
             main_question=question,
             observation_block="",
             queries=[],
