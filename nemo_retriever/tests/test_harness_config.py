@@ -313,7 +313,7 @@ def test_managed_helm_nrl_2605_example_config_is_parseable_and_secret_free(
     assert cfg.helm_set["ngcImagePullSecret.name"] == "ngc-secret"
     assert cfg.helm_set["ngcApiSecret.create"] is False
     assert cfg.helm_set["ngcApiSecret.name"] == "ngc-api"
-    assert cfg.service_max_concurrency == HarnessConfig.__dataclass_fields__["service_max_concurrency"].default
+    assert cfg.service_max_concurrency == 8
     assert "serviceConfig.pipeline.realtimeWorkers" not in cfg.helm_set
     assert "serviceConfig.pipeline.batchWorkers" not in cfg.helm_set
     assert "nimOperator.page_elements.resources" not in cfg.helm_set
