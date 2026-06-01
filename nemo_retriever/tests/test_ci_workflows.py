@@ -150,12 +150,18 @@ def test_dev_compose_helpers_are_feature_scoped():
         "neo4j.compose.yaml": "neo4j",
     }
 
+    compose_data = {}
     for filename, service_name in expected_services.items():
         compose_path = compose_dir / filename
         assert compose_path.exists(), filename
-        data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+        text = compose_path.read_text(encoding="utf-8")
+        data = yaml.safe_load(text)
+        compose_data[filename] = data
         assert set(data["services"]) == {service_name}
-        assert "nv-ingest-ms-runtime" not in compose_path.read_text(encoding="utf-8")
+        assert "nv-ingest-ms-runtime" not in text
+
+    neo4j_healthcheck = compose_data["neo4j.compose.yaml"]["services"]["neo4j"]["healthcheck"]["test"]
+    assert "${NEO4J_USERNAME:-neo4j}" in neo4j_healthcheck
 
     helper_readme = compose_dir / "README.md"
     assert helper_readme.exists()
