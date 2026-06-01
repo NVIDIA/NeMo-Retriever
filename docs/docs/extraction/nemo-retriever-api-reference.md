@@ -92,12 +92,18 @@ asyncio.run(main())
 ```
 
 Use this form from async web services, task runners, or notebooks that need to
-keep other async work moving while ingestion is in flight.
+keep other async work moving while ingestion is in flight. The trailing
+`asyncio.run(main())` drives the coroutine from a standalone script. Inside an
+environment that already runs an event loop — a Jupyter notebook, a FastAPI
+handler, or another async task — `await main()` (or inline the `async for` loop)
+instead, because `asyncio.run()` cannot be nested inside a running loop.
 
 ### Event shapes
 
 The streaming APIs yield dictionaries. Check the `event` key first, then read the
-fields that apply to that event type:
+fields that apply to that event type. The examples above handle the events most
+callers act on; any event you do not explicitly handle (such as `job_started`)
+can be safely ignored.
 
 | Event | Meaning | Key fields |
 | --- | --- | --- |
