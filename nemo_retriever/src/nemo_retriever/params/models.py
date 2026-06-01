@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
-RunMode = Literal["inprocess", "batch", "fused", "service"]
+IngestorRunMode = Literal["inprocess", "batch", "service"]
 
 # Pass as an api_key value to suppress auto-resolution from environment variables.
 # Example: EmbedParams(api_key=NO_API_KEY)
@@ -118,6 +118,7 @@ class IngestExecuteParams(_ParamsModel):
     return_failures: bool = False
     save_to_disk: bool = False
     return_traces: bool = False
+    return_results: bool = True
     parallel: bool = False
     max_workers: Optional[int] = None
     gpu_devices: list[str] = Field(default_factory=list)
@@ -181,6 +182,9 @@ class ASRParams(_ParamsModel):
 
     audio_endpoints: Tuple[Optional[str], Optional[str]] = (None, None)
     audio_infer_protocol: str = "grpc"
+    # ``auto``: streaming (online) for NVCF; offline recognize for other gRPC
+    # endpoints (e.g. Helm Parakeet NIM with ``mode=ofl``).
+    audio_infer_mode: Literal["auto", "online", "offline"] = "auto"
     function_id: Optional[str] = None
     auth_token: Optional[str] = None
     segment_audio: bool = False
@@ -284,13 +288,6 @@ class BatchTuningParams(_ParamsModel):
     nemotron_parse_batch_size: Optional[int] = None
     store_workers: Optional[int] = None
     inference_batch_size: int = 8
-
-
-class FusedTuningParams(_ParamsModel):
-    fused_workers: int = 1
-    fused_batch_size: int = 64
-    fused_cpus_per_actor: float = 1
-    fused_gpus_per_actor: float = 1.0
 
 
 class GpuAllocationParams(_ParamsModel):
@@ -412,7 +409,6 @@ class EmbedParams(_ParamsModel):
 
     runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
     batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
-    fused_tuning: FusedTuningParams = Field(default_factory=FusedTuningParams)
 
     @field_validator("local_ingest_embed_backend", mode="before")
     @classmethod

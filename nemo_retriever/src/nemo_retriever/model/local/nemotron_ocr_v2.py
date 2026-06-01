@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.hf_model_registry import install_pinned_hf_hub_download
-from ..model import BaseModel, RunMode
+from ..model import BaseModel, ModelRunMode
 
 from PIL import Image
 
@@ -220,7 +220,7 @@ class NemotronOCRV2(BaseModel):
         return "ocr"
 
     @property
-    def model_runmode(self) -> RunMode:
+    def model_runmode(self) -> ModelRunMode:
         """Execution mode: local, NIM, or build-endpoint."""
         return "local"
 

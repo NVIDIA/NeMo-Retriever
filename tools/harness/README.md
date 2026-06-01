@@ -746,8 +746,8 @@ active:
   
   # Helm settings (only used when deployment_type: helm)
   helm_bin: helm  # or "microk8s helm", "k3s helm"
-  helm_chart: <your-registry>/<ingestion-chart>
-  helm_chart_version: 26.1.0-RC7
+  helm_chart: nim-nvstaging/nemo-retriever
+  helm_chart_version: 26.05-RC6
   helm_release: nemo-retriever-dev
   helm_namespace: nemo-retriever-dev
   helm_values_file: .helm-env

@@ -195,6 +195,7 @@ def _get_client(params: ASRParams):  # noqa: ANN201
         function_id=params.function_id,
         use_ssl=bool("nvcf.nvidia.com" in grpc_endpoint and params.function_id),
         ssl_cert=None,
+        infer_mode=params.audio_infer_mode,
     )
 
 

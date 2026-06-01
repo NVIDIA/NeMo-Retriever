@@ -1,4 +1,4 @@
-s# Deployment options
+# Deployment options
 
 Use this page to compare how you run NeMo Retriever — including when to use [NVIDIA-hosted NIMs](https://build.nvidia.com/) versus self-hosting on your own infrastructure.
 
@@ -32,7 +32,7 @@ environments), use a custom service image that already contains `ffmpeg` and
 
 ### I want examples and notebooks
 
-1. [Jupyter Notebooks](notebooks.md)
+1. [Jupyter Notebooks](notebooks/index.md)
 2. [Integrate with LangChain, LlamaIndex, Haystack](integrations-langchain-llamaindex-haystack.md)
 
 ### I need API details and keys

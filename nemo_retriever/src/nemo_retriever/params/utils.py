@@ -56,7 +56,7 @@ def build_embed_kwargs(resolved: Any, *, include_batch_tuning: bool = False) -> 
     Merges ``runtime`` (always) and optionally ``batch_tuning`` sub-models.
     Also normalises ``embed_invoke_url`` → ``embedding_endpoint``.
     """
-    exclude = {"runtime", "batch_tuning", "fused_tuning"}
+    exclude = {"runtime", "batch_tuning"}
     kwargs: Dict[str, Any] = {
         **resolved.model_dump(mode="python", exclude=exclude, exclude_none=True),
         **resolved.runtime.model_dump(mode="python", exclude_none=True),

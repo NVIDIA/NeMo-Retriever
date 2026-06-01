@@ -232,7 +232,15 @@ class _MultiTypeExtractBase(AbstractOperator):
         for idx, row in batch_df.iterrows():
             path = str(row.get("path") or "")
             ext = Path(path).suffix.lower()
-            target = explicit_mode if explicit_mode != "auto" else self._mode_for_extension(ext)
+            ext_mode = self._mode_for_extension(ext)
+            if explicit_mode == "auto":
+                target = ext_mode
+            elif explicit_mode in {"text", "html"}:
+                # Honor the file suffix so a mis-set extraction_mode does not
+                # force HTML bytes through the TXT splitter (or vice versa).
+                target = ext_mode or explicit_mode
+            else:
+                target = explicit_mode
             if explicit_mode == "auto" and target == "":
                 logger.warning(
                     _unsupported_extension_message(ext),

@@ -21,8 +21,9 @@ from nemo_retriever.caption.model_profiles import (
     supported_caption_models_by_variant,
 )
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
-from nemo_retriever.utils.nvtx import gpu_inference_range
-from ..model import BaseModel, RunMode
+from ..model import BaseModel, ModelRunMode
+
+_DEFAULT_MAX_NUM_SEQS = 256
 
 
 def _b64_to_pil(b64: str) -> Image.Image:
@@ -87,7 +88,7 @@ class NemotronVLMCaptioner(BaseModel):
             from vllm import LLM, SamplingParams  # noqa: F401
         except ImportError as e:
             raise ImportError(
-                'Local VLM captioning requires vLLM. Install with: pip install "nemo-retriever[vlm-caption]"'
+                'Local VLM captioning requires vLLM. Install with: pip install "nemo-retriever[local]"'
             ) from e
 
         self._profile = profile
@@ -107,6 +108,9 @@ class NemotronVLMCaptioner(BaseModel):
 
         revision = profile.revision
         engine_kwargs = profile.engine_kwargs_for_local()
+        # Caption workloads are small; vLLM's default 1024 sequences can exceed
+        # Mamba cache blocks for Nemotron VL at ordinary memory utilization.
+        engine_kwargs.setdefault("max_num_seqs", _DEFAULT_MAX_NUM_SEQS)
 
         self._llm = LLM(
             model=model_path,
@@ -187,6 +191,9 @@ class NemotronVLMCaptioner(BaseModel):
             sp_kwargs["top_p"] = top_p
         sampling_params = SamplingParams(**sp_kwargs)
         chat_kwargs = merge_request_extras(self._request_extras, extra_body or {})
+        chat_kwargs.setdefault("use_tqdm", False)
+        from nemo_retriever.utils.nvtx import gpu_inference_range
+
         with gpu_inference_range("NemotronVLMCaptioner", batch_size=len(conversations)):
             outputs = self._llm.chat(conversations, sampling_params=sampling_params, **chat_kwargs)
         return [out.outputs[0].text.strip() for out in outputs]
@@ -202,7 +209,7 @@ class NemotronVLMCaptioner(BaseModel):
         return "vlm-captioner"
 
     @property
-    def model_runmode(self) -> RunMode:
+    def model_runmode(self) -> ModelRunMode:
         return "local"
 
     @property

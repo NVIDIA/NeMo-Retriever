@@ -1,6 +1,6 @@
 # Notebooks for NeMo Retriever Library
 
-To get started using [NeMo Retriever Library](overview.md), you can try one of the ready-made notebooks that are available.
+To get started using [NeMo Retriever Library](../overview.md), you can try one of the ready-made notebooks that are available.
 
 ## Dataset Downloads for Benchmarking
 
@@ -23,11 +23,3 @@ For more advanced scenarios, try one of the following notebooks:
 - [Evaluate bo767 retrieval recall accuracy with NeMo Retriever Library](https://github.com/NVIDIA/NeMo-Retriever/blob/main/evaluation/bo767_recall.ipynb)
 - [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb)
 - [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb)
-
-
-
-## Related Topics
-
-- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-- [Deployment options](deployment-options.md)
-- [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
