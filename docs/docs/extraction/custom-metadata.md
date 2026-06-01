@@ -37,6 +37,10 @@ meta_df = pd.DataFrame(
     }
 )
 
+hostname = "localhost"
+table_name = "nemo_retriever_collection"
+lancedb_uri = "./lancedb_data"
+
 ingestor = (
     create_ingestor(run_mode="service", base_url=f"http://{hostname}:7670")
         .files(["data/woods_frost.pdf", "data/multimodal_test.pdf"])
