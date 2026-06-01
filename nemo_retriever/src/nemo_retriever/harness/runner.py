@@ -44,8 +44,19 @@ def _http_json(url: str, data: dict[str, Any] | None, method: str, timeout: int 
         return json_module.loads(resp.read().decode("utf-8"))
 
 
-def _post_json(url: str, data: dict[str, Any], timeout: int = 10) -> dict[str, Any]:
-    return _http_json(url, data, "POST", timeout)
+def _post_json(url: str, data: dict[str, Any], timeout: int = 10, retries: int = 0) -> dict[str, Any]:
+    last_exc: Exception | None = None
+    for attempt in range(1 + retries):
+        try:
+            return _http_json(url, data, "POST", timeout)
+        except (TimeoutError, OSError) as exc:
+            last_exc = exc
+            if attempt < retries:
+                wait = 5 * (attempt + 1)
+                logger.warning("POST %s timed out (attempt %d/%d), retrying in %ds…", url, attempt + 1, 1 + retries, wait)
+                import time as _time
+                _time.sleep(wait)
+    raise last_exc  # type: ignore[misc]
 
 
 def _put_json(url: str, data: dict[str, Any], timeout: int = 10) -> dict[str, Any]:
@@ -1557,6 +1568,8 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
                     "log_tail": final_log_tail,
                     "pip_list": pip_list_output,
                 },
+                timeout=120,
+                retries=2,
             )
             logger.info("Job %s cancelled by user", job_id)
         else:
@@ -1571,6 +1584,8 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
                     "log_tail": final_log_tail,
                     "pip_list": pip_list_output,
                 },
+                timeout=120,
+                retries=2,
             )
             logger.info("Job %s completed (success=%s)", job_id, success)
 
@@ -1632,6 +1647,8 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
                     "log_tail": _job_tracker.get_log_tail(_LOG_TAIL_MAX),
                     "pip_list": err_pip_list,
                 },
+                timeout=120,
+                retries=2,
             )
         except Exception:
             pass
