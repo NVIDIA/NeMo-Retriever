@@ -57,7 +57,7 @@ ingestor = (
 results = ingestor.ingest_async().result()
 ```
 
-Merge values from `meta_df` (or `file_path`) into each document's `content_metadata` before `vdb_upload`, or follow the step-by-step pattern in [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb), so category, department, and timestamp are present on the chunks LanceDB indexes.
+Merge values from `meta_df` (or `file_path`) into each document's `content_metadata` before `vdb_upload`, or follow the step-by-step pattern in [Attach metadata at ingestion](#attach-metadata-at-ingestion) above, so category, department, and timestamp are present on the chunks LanceDB indexes.
 
 ## Best Practices
 
@@ -87,7 +87,7 @@ Typical keys to filter on include `category`, `department`, `priority`, and `tim
 After ingestion is complete, and documents are uploaded to LanceDB with metadata,
 you can narrow results in the database with a **`where`** clause, or in Python on the returned hits.
 
-**Native LanceDB (SQL pushdown):** connect, embed the query yourself (same model as ingestion), then chain `.where("<LanceDB SQL predicate>")` on `table.search(...)` so filtering happens before the `limit`. Exact SQL depends on how `metadata` is stored; see [LanceDB SQL](https://lancedb.github.io/lancedb/sql/).
+**Native LanceDB (SQL pushdown):** connect, embed the query yourself (same model as ingestion), then chain `.where("<LanceDB SQL predicate>")` on `table.search(...)` so filtering happens before the `limit`. Exact SQL depends on how `metadata` is stored; see [LanceDB metadata filtering](https://docs.lancedb.com/search/filtering).
 
 ```python
 import lancedb
@@ -125,4 +125,4 @@ When you ingest through the **retriever service**, upload the sidecar with [`POS
 ## How metadata is stored { #how-metadata-is-stored }
 
 - [Vector databases](vdbs.md) — canonical LanceDB upload and retrieval guide
-- [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb) — CLI and graph ingest with sidecar metadata
+- [Notebooks for NeMo Retriever Library](notebooks/index.md) — metadata filtering and ingestion examples

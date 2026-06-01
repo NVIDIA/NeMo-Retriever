@@ -46,7 +46,7 @@ environments), use a custom service image that already contains `ffmpeg` and
 2. [Throughput is dataset-dependent](multimodal-extraction.md#extraction-limitations-and-quality)
 3. [Evaluate on your data](evaluate-on-your-data.md)
 
-## When to use NVIDIA-hosted NIMs
+## When to use NVIDIA-hosted NIMs { #when-to-use-nvidia-hosted-nims }
 
 [NVIDIA-hosted NIMs](https://build.nvidia.com/) run inference on NVIDIA-managed infrastructure. You call models with API keys (refer to [Get your API key](api-keys.md)) without operating GPU nodes yourself.
 
@@ -58,7 +58,7 @@ Consider hosted NIMs when:
 
 **Also refer to:** [NVIDIA NIM catalog](https://build.nvidia.com/)
 
-## When to self-host NIMs
+## When to self-host NIMs { #when-to-self-host-nims }
 
 Self-hosted NIMs run on your GPUs or air-gapped hardware, typically with Kubernetes and the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html).
 
