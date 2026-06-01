@@ -9,8 +9,7 @@ in a parsed config, creates LLM clients and judges for each combo, runs
 :class:`QAEvalPipeline`, and writes timestamped result JSONs.
 
 This module is the library counterpart of the ``_run_config_sweep``
-function that previously lived in ``tools/harness/run_qa_eval.py``
-(now deleted; use ``retriever eval run`` instead).
+function from the legacy QA eval runner; use ``retriever eval run`` instead.
 """
 
 from __future__ import annotations

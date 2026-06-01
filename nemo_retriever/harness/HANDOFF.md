@@ -7,7 +7,7 @@ Operator-oriented notes for `nemo_retriever` benchmark runs. Implementation deta
 
 ## Scope
 
-- Standalone harness under `nemo_retriever` (not `tools/harness`).
+- Standalone benchmark harness behind `retriever harness`.
 - Invokes **`nemo_retriever.examples.graph_pipeline`** (`batch` / `inprocess` via `--run-mode`).
 - LanceDB only; recall gating via `recall_required` in config.
 

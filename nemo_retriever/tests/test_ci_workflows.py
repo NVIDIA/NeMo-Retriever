@@ -69,3 +69,35 @@ def test_main_ci_uses_single_job_docker_build_and_test():
 
 def test_legacy_ghcr_push_publish_workflow_is_removed():
     assert not (WORKFLOWS / "docker-build-publish-retriever.yml").exists()
+
+
+def test_legacy_tools_harness_is_removed():
+    assert not (REPO_ROOT / "tools" / "harness").exists()
+
+    legacy_tokens = ("tools/harness", "nv_ingest_harness", "nv-ingest-harness")
+    ignored_dirs = {
+        ".git",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".venv",
+        ".worktrees",
+        "__pycache__",
+    }
+    offenders: list[str] = []
+
+    for path in REPO_ROOT.rglob("*"):
+        relative = path.relative_to(REPO_ROOT)
+        if path == Path(__file__) or not path.is_file() or any(part in ignored_dirs for part in relative.parts):
+            continue
+
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+
+        for token in legacy_tokens:
+            if token in text:
+                offenders.append(f"{relative}: {token}")
+
+    assert offenders == []

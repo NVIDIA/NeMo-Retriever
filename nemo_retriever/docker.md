@@ -20,7 +20,7 @@ For **library-only** Python workflows (no local NIM containers), follow [`README
 | Compose layout, auth, `.env`, runtime, profiles | This page |
 | Building the retriever **service** image for Helm | [`helm/README.md` § Service image](helm/README.md#1-service-image) |
 | Kubernetes values, secrets, upgrades | [`helm/README.md`](helm/README.md) |
-| Harness SKU overrides (`docker-compose.<sku>.yaml`) | [`../tools/harness/plans/SERVICE_MANAGER.md`](../tools/harness/plans/SERVICE_MANAGER.md) (from **NeMo-Retriever** repository root) |
+| GPU SKU Compose overrides (`docker-compose.<sku>.yaml`) | Root-level `docker-compose.<sku>.yaml` files in the **NeMo-Retriever** repository |
 
 ---
 
@@ -31,7 +31,7 @@ The canonical Compose file for NeMo Retriever extraction development lives at th
 - Upstream: [`NVIDIA/NeMo-Retriever` — `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docker-compose.yaml)
 - In a monorepo checkout, run **all** `docker compose` commands from the directory that **contains** that file (the **repository root**), **not** from `nemo_retriever/` alone.
 
-Optional GPU SKU merges use additional files in the same directory, for example `docker-compose.a10g.yaml`, `docker-compose.l40s.yaml`, `docker-compose.a100-40gb.yaml` (see the harness plan above for how automation merges `-f` flags).
+Optional GPU SKU merges use additional files in the same directory, for example `docker-compose.a10g.yaml`, `docker-compose.l40s.yaml`, `docker-compose.a100-40gb.yaml`; merge them with standard Compose `-f` arguments.
 
 ---
 
