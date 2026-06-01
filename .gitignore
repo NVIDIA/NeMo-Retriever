@@ -225,7 +225,7 @@ docs/site
 # Ignore "private_local" scripts that users might have in their local copy of nv-ingest they don't want to commit
 scripts/private_local/
 
-# Test results should go to artifacts directory managed by nv-ingest-harness
+# Test results should go to artifacts directories managed by benchmark harnesses
 test_results/
 sweep_results/
 artifacts/
@@ -237,7 +237,6 @@ tools/private_local/*
 
 # LanceDB artifacts
 lancedb_*/
-tools/harness/lancedb/
 
 # Harness history database
 history.db
