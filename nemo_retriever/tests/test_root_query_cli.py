@@ -82,9 +82,10 @@ def test_root_query_passes_candidate_dedup_and_content_filters(monkeypatch) -> N
 
         def query(self, query: str, **kwargs: Any) -> list[dict[str, Any]]:
             query_kwargs.append(kwargs)
+            # query_documents returns results after Retriever.query has applied
+            # candidate widening, page deduplication, filtering, and top-k.
             return [
                 {"text": "text row", "metadata": {"type": "text"}, "page_number": 1, "source": "doc.pdf"},
-                {"text": "chart row", "metadata": {"type": "chart"}, "page_number": 2, "source": "doc.pdf"},
             ]
 
     monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
@@ -108,7 +109,6 @@ def test_root_query_passes_candidate_dedup_and_content_filters(monkeypatch) -> N
     assert query_kwargs == [{"candidate_k": 3, "page_dedup": True, "content_types": "text,table"}]
     assert json.loads(result.output) == [
         {"page_number": 1, "source": "doc.pdf", "text": "text row"},
-        {"page_number": 2, "source": "doc.pdf", "text": "chart row"},
     ]
 
 

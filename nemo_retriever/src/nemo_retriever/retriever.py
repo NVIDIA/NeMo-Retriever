@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, cast
 
 import pandas as pd
@@ -46,7 +45,7 @@ def _normalize_content_type_allowlist(content_types: str | Sequence[str] | None)
 
     normalized = {content_type for value in raw_values if (content_type := normalize_content_type(value)) is not None}
     if not normalized:
-        raise ValueError("--content-types must include at least one non-empty content type.")
+        raise ValueError("content_types must include at least one non-empty content type.")
     return normalized
 
 
@@ -94,7 +93,7 @@ def _hit_page_key(hit: dict[str, Any]) -> tuple[str, int] | None:
     )
     if not isinstance(raw_doc, str) or not raw_doc.strip():
         return None
-    return (Path(raw_doc).stem, page_number)
+    return (raw_doc.strip(), page_number)
 
 
 def _shape_query_hits(
@@ -317,6 +316,15 @@ class Retriever:
         vdb_kwargs: Optional[dict[str, Any]] = None,
         embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> list[RetrievalHit]:
+        """Run one retrieval query and return shaped hits.
+
+        ``candidate_k`` retrieves a wider candidate pool before final shaping
+        and must be greater than or equal to ``top_k``. ``page_dedup`` keeps
+        the first hit per document page. ``content_types`` accepts a
+        comma-separated string or sequence of content types to keep, such as
+        ``"text,table"``. Page deduplication and content-type filtering are
+        applied after vector retrieval, preserving retriever ranking order.
+        """
         return self.queries(
             [query],
             top_k=top_k,
@@ -338,6 +346,15 @@ class Retriever:
         vdb_kwargs: Optional[dict[str, Any]] = None,
         embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> list[list[RetrievalHit]]:
+        """Run retrieval for multiple query strings and return shaped hits.
+
+        ``candidate_k`` retrieves a wider candidate pool before final shaping
+        and must be greater than or equal to ``top_k``. ``page_dedup`` keeps
+        the first hit per document page. ``content_types`` accepts a
+        comma-separated string or sequence of content types to keep, such as
+        ``"text,table"``. Page deduplication and content-type filtering are
+        applied after vector retrieval, preserving retriever ranking order.
+        """
         query_texts = [str(q) for q in queries]
         if not query_texts:
             return []

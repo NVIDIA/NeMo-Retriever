@@ -159,6 +159,16 @@ class TestQueryHitShaping:
 
         assert [h["text"] for h in out] == ["v1", "v2"]
 
+    def test_page_dedup_fallback_keeps_distinct_source_paths(self) -> None:
+        hits = [
+            {"text": "dir a", "source_id": "/dir_a/report.pdf", "page_number": 1},
+            {"text": "dir b", "source_id": "/dir_b/report.pdf", "page_number": 1},
+        ]
+
+        out = _shape_query_hits(hits, top_k=10, page_dedup=True)
+
+        assert [h["text"] for h in out] == ["dir a", "dir b"]
+
     def test_filters_content_types_from_dict_and_json_metadata(self) -> None:
         hits = [
             {"text": "text row", "metadata": {"type": "text"}, "page_number": 1},
@@ -211,6 +221,10 @@ class TestQueryHitShaping:
         out = _shape_query_hits(hits, top_k=3, content_types="text")
 
         assert [h["text"] for h in out] == ["text row"]
+
+    def test_empty_content_type_allowlist_uses_python_api_name(self) -> None:
+        with pytest.raises(ValueError, match="content_types must include"):
+            _shape_query_hits([], top_k=3, content_types=[])
 
 
 class TestRunModeServiceRequiresHttpEmbed:
