@@ -8,21 +8,9 @@
 #   - ngc-api: opaque secret with the NGC API key entries required by the NIM operator
 # Keep credentials out of this file and out of command history.
 
-# RC6 is the current known-good chart for core NIM coverage. When a new RC is
-# validated, bump the chart version below. If the service image RC differs from
-# the chart package RC, change only x-nrl-service-image-tag.
-x-nrl-chart-version: &nrl_chart_version "26.05-RC6"
-x-nrl-service-image-tag: &nrl_service_image_tag "26.05-RC6"
-
-# This runner class uses A100 MIG resources rather than nvidia.com/gpu.
-# These maps are passed through helm_set as --set-json and replace each NIM's
-# default full-GPU limit. Adjust or remove them for non-MIG clusters.
-x-a100-mig-1g-resource: &a100_mig_1g_resource
-  limits:
-    nvidia.com/mig-1g.10gb: 1
-x-a100-mig-2g-resource: &a100_mig_2g_resource
-  limits:
-    nvidia.com/mig-2g.20gb: 1
+# Use the official 26.5.0 NGC chart. The chart defaults to the matching
+# nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0 service image.
+x-nrl-chart-version: &nrl_chart_version "26.5.0"
 
 active:
   dataset: bo767
@@ -34,14 +22,13 @@ active:
   input_type: pdf
   recall_required: false
   evaluation_mode: none
-  service_max_concurrency: 8
 
   helm_bin: microk8s helm
   kubectl_bin: microk8s kubectl
   helm_sudo: true
   kubectl_sudo: true
 
-  helm_chart: nim-nvstaging/nemo-retriever
+  helm_chart: nemo-microservices/nemo-retriever
   helm_chart_version: *nrl_chart_version
   helm_release: nv-ingest
   helm_namespace: nv-ingest
@@ -51,23 +38,13 @@ active:
   helm_service_local_port: 17670
 
   helm_set:
-    # RC chart defaults still point at localhost:32000/nemo-retriever-service:latest.
-    # Keep these service.image overrides for remote RC chart runs.
-    service.image.repository: nvcr.io/nvstaging/nim/nrl-service
-    service.image.tag: *nrl_service_image_tag
-    service.image.pullPolicy: Always
     ngcImagePullSecret.create: false
     ngcImagePullSecret.name: ngc-secret
     ngcApiSecret.create: false
     ngcApiSecret.name: ngc-api
-    # Replace the chart's default nvidia.com/gpu NIM requests for A100 MIG nodes.
-    nimOperator.page_elements.resources: *a100_mig_1g_resource
-    nimOperator.table_structure.resources: *a100_mig_1g_resource
-    nimOperator.ocr.resources: *a100_mig_2g_resource
-    nimOperator.vlm_embed.resources: *a100_mig_2g_resource
 
 presets:
-  # Service-mode runs use service_max_concurrency; chart sizing lives in Helm values.
+  # Chart sizing lives in Helm values and local overrides.
   dgx_8gpu: {}
 
 datasets:

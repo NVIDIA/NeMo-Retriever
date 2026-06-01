@@ -1464,9 +1464,9 @@ def test_cli_run_passes_managed_helm_options(monkeypatch) -> None:
             "--managed",
             "--keep-up",
             "--helm-chart",
-            "nim-nvstaging/nemo-retriever",
+            "nemo-microservices/nemo-retriever",
             "--helm-chart-version",
-            "26.05-RC6",
+            "26.5.0",
             "--helm-release",
             "nrl-smoke",
             "--helm-namespace",
@@ -1474,22 +1474,22 @@ def test_cli_run_passes_managed_helm_options(monkeypatch) -> None:
             "--helm-values-file",
             "nemo_retriever/harness/helm-profiles/core.yaml",
             "--helm-set",
-            "service.image.repository=nvcr.io/nvstaging/nim/nrl-service",
+            "service.image.repository=nvcr.io/nvidia/nemo-microservices/nrl-service",
             "--helm-set",
-            "service.image.tag=26.05-RC6",
+            "service.image.tag=26.5.0",
         ],
     )
 
     assert result.exit_code == 0, result.output
     assert captured["run_name"] == "managed-pdf"
     assert captured["cli_helm_set"] == [
-        "service.image.repository=nvcr.io/nvstaging/nim/nrl-service",
-        "service.image.tag=26.05-RC6",
+        "service.image.repository=nvcr.io/nvidia/nemo-microservices/nrl-service",
+        "service.image.tag=26.5.0",
     ]
     assert "manage_service=True" in captured["cli_overrides"]
     assert "keep_up=True" in captured["cli_overrides"]
-    assert "helm_chart=nim-nvstaging/nemo-retriever" in captured["cli_overrides"]
-    assert "helm_chart_version=26.05-RC6" in captured["cli_overrides"]
+    assert "helm_chart=nemo-microservices/nemo-retriever" in captured["cli_overrides"]
+    assert "helm_chart_version=26.5.0" in captured["cli_overrides"]
 
 
 def test_run_entry_dispatches_managed_service(monkeypatch, tmp_path: Path) -> None:

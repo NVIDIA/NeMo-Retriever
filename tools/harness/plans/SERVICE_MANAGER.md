@@ -306,8 +306,8 @@ active:
   # Helm-specific settings
   helm_bin: helm  # Helm binary (e.g., "helm", "microk8s helm", "k3s helm")
   helm_sudo: false  # Use sudo for Helm commands (set to true if needed)
-  helm_chart: nim-nvstaging/nemo-retriever  # Remote chart (set to null for local ./helm)
-  helm_chart_version: 26.05-RC6  # Chart version (required for remote charts)
+  helm_chart: nemo-microservices/nemo-retriever  # Remote chart (set to null for local ./helm)
+  helm_chart_version: 26.5.0  # Chart version (required for remote charts)
   helm_release: example-release  # Helm release name
   helm_namespace: example-namespace  # Kubernetes namespace
   helm_values_file: .helm-env  # Optional: path to values file
@@ -384,8 +384,8 @@ uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --
    active:
      deployment_type: helm  # Set Helm as default
      helm_bin: helm  # Use "microk8s helm" for MicroK8s, "k3s helm" for K3s
-     helm_chart: nim-nvstaging/nemo-retriever
-     helm_chart_version: 26.05-RC6
+     helm_chart: nemo-microservices/nemo-retriever
+     helm_chart_version: 26.5.0
      helm_release: example-release
      helm_namespace: example-namespace
      helm_values_file: .helm-env

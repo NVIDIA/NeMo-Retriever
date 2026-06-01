@@ -44,9 +44,9 @@ class TestConfig:
     kubectl_bin: str = "kubectl"  # kubectl binary command (e.g., "kubectl", "microk8s kubectl")
     kubectl_sudo: Optional[bool] = None  # Prepend sudo to kubectl commands (defaults to helm_sudo if not set)
     helm_chart: Optional[str] = (
-        None  # Remote chart reference (e.g., "nim-nvstaging/nemo-retriever"), None = use local chart
+        None  # Remote chart reference (e.g., "nemo-microservices/nemo-retriever"), None = use local chart
     )
-    helm_chart_version: Optional[str] = None  # Chart version (e.g., "26.1.0-RC7")
+    helm_chart_version: Optional[str] = None  # Chart version (e.g., "26.5.0")
     helm_release: str = "nv-ingest"
     helm_namespace: str = "nv-ingest"
     helm_values_file: Optional[str] = None
