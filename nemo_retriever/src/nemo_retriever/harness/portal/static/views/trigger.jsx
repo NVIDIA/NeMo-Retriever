@@ -4,12 +4,17 @@ function TriggerModal({ onClose, onTriggered }) {
   const [presets, setPresets] = useState([]);
   const [graphs, setGraphs] = useState([]);
   const [runners, setRunners] = useState([]);
+  const [clusters, setClusters] = useState([]);
   const [dataset, setDataset] = useState("");
   const [preset, setPreset] = useState("");
-  const [pipelineMode, setPipelineMode] = useState("preset");
+  const [pipelineSource, setPipelineSource] = useState("preset");
   const [graphId, setGraphId] = useState("");
   const [runnerId, setRunnerId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const [runMode, setRunMode] = useState("batch");
+  const [executionTarget, setExecutionTarget] = useState("local");
+  const [clusterId, setClusterId] = useState("");
 
   const [showGit, setShowGit] = useState(false);
   const [gitMode, setGitMode] = useState("default");
@@ -31,6 +36,9 @@ function TriggerModal({ onClose, onTriggered }) {
       if (cfg.presets?.length) setPreset(cfg.presets[0]);
     });
     fetch("/api/runners").then(r=>r.json()).then(setRunners).catch(()=>{});
+    fetch("/api/clusters").then(r=>r.json()).then(list => {
+      setClusters(Array.isArray(list) ? list : []);
+    }).catch(()=>{});
     fetch("/api/graphs").then(r=>r.json()).then(list => {
       const arr = Array.isArray(list) ? list : [];
       setGraphs(arr);
@@ -48,25 +56,35 @@ function TriggerModal({ onClose, onTriggered }) {
     }).catch(()=>{});
   }, []);
 
+  useEffect(() => {
+    if (executionTarget === "cluster" && clusterId) {
+      const cl = clusters.find(c => String(c.id) === clusterId);
+      if (cl && cl.default_run_mode) setRunMode(cl.default_run_mode);
+    }
+  }, [clusterId, executionTarget, clusters]);
+
   const onlineRunners = runners.filter(r => r.status === "online" || r.status === "paused");
+  const onlineClusters = clusters.filter(c => c.status !== "error");
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!dataset) return;
-    if (pipelineMode === "graph" && !graphId) return;
+    if (pipelineSource === "graph" && !graphId) return;
     setSubmitting(true);
     try {
       const payload = {
         dataset,
-        preset: pipelineMode === "preset" ? (preset || null) : null,
-        runner_id: runnerId ? parseInt(runnerId, 10) : null,
+        preset: pipelineSource === "preset" ? (preset || null) : null,
+        run_mode: runMode,
+        execution_target: executionTarget,
+        cluster_id: executionTarget === "cluster" ? parseInt(clusterId, 10) : null,
+        runner_id: executionTarget === "local" && runnerId ? parseInt(runnerId, 10) : null,
         nsys_profile: nsysProfile,
       };
-      if (pipelineMode === "graph") {
+      if (pipelineSource === "graph") {
         payload.graph_id = parseInt(graphId, 10);
       }
-      if (pipelineMode === "service") {
-        payload.run_mode = "service";
+      if (runMode === "service") {
         payload.service_url = serviceUrl.trim();
         payload.service_max_concurrency = serviceMaxConcurrency;
       }
@@ -93,19 +111,19 @@ function TriggerModal({ onClose, onTriggered }) {
 
   const labelStyle = {display:'block',fontSize:'12px',fontWeight:500,color:'var(--nv-text-muted)',marginBottom:'6px',textTransform:'uppercase',letterSpacing:'0.04em'};
   const hintStyle = {fontSize:'11px',color:'var(--nv-text-dim)',marginTop:'4px',lineHeight:'1.5'};
-  const modeBtn = (id, label) => ({
+  const modeBtn = (current, id, label) => ({
     fontSize:'11px',padding:'5px 12px',flex:1,justifyContent:'center',textAlign:'center',
-    background: pipelineMode===id ? 'rgba(118,185,0,0.12)' : 'transparent',
-    color: pipelineMode===id ? 'var(--nv-green)' : 'var(--nv-text-dim)',
-    border: `1px solid ${pipelineMode===id ? 'rgba(118,185,0,0.3)' : 'var(--nv-border)'}`,
-    cursor:'pointer', borderRadius:'6px', fontWeight: pipelineMode===id ? 600 : 400,
+    background: current===id ? 'rgba(118,185,0,0.12)' : 'transparent',
+    color: current===id ? 'var(--nv-green)' : 'var(--nv-text-dim)',
+    border: `1px solid ${current===id ? 'rgba(118,185,0,0.3)' : 'var(--nv-border)'}`,
+    cursor:'pointer', borderRadius:'6px', fontWeight: current===id ? 600 : 400,
   });
 
   const selectedGraph = graphs.find(g => String(g.id) === graphId);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{maxWidth:'520px'}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-content" style={{maxWidth:'560px',maxHeight:'85vh',overflow:'auto'}} onClick={e=>e.stopPropagation()}>
         <div className="modal-head">
           <h2 style={{fontSize:'16px',fontWeight:700,color:'#fff'}}>Trigger New Run</h2>
           <button className="btn btn-ghost btn-icon" onClick={onClose} style={{borderRadius:'50%'}}><IconX /></button>
@@ -119,30 +137,24 @@ function TriggerModal({ onClose, onTriggered }) {
               </select>
             </div>
 
-            {/* Pipeline Mode Toggle */}
+            {/* Pipeline Source Toggle */}
             <div>
-              <label style={labelStyle}>Pipeline</label>
+              <label style={labelStyle}>Pipeline Source</label>
               <div style={{display:'flex',gap:'6px'}}>
-                <button type="button" onClick={()=>setPipelineMode("preset")} className="btn btn-sm" style={modeBtn("preset")}>
+                <button type="button" onClick={()=>setPipelineSource("preset")} className="btn btn-sm" style={modeBtn(pipelineSource,"preset")}>
                   Preset
                 </button>
-                <button type="button" onClick={()=>setPipelineMode("graph")} className="btn btn-sm"
-                  style={modeBtn("graph")} disabled={graphs.length===0}>
+                <button type="button" onClick={()=>setPipelineSource("graph")} className="btn btn-sm"
+                  style={modeBtn(pipelineSource,"graph")} disabled={graphs.length===0}>
                   Graph Pipeline
                 </button>
-                <button type="button" onClick={()=>setPipelineMode("service")} className="btn btn-sm" style={modeBtn("service")}>
-                  Service
-                </button>
               </div>
-              {graphs.length === 0 && pipelineMode === "preset" && (
+              {graphs.length === 0 && pipelineSource === "preset" && (
                 <div style={hintStyle}>No saved graphs available. Create one in the Designer view to enable graph pipeline runs.</div>
-              )}
-              {pipelineMode === "service" && (
-                <div style={hintStyle}>Uploads documents to a running retriever service and measures ingestion throughput. No GPU or Ray cluster needed on the runner.</div>
               )}
             </div>
 
-            {pipelineMode === "preset" && (
+            {pipelineSource === "preset" && (
               <div>
                 <label style={labelStyle}>Preset</label>
                 <select value={preset} onChange={e=>setPreset(e.target.value)} className="select" style={{width:'100%'}}>
@@ -151,7 +163,7 @@ function TriggerModal({ onClose, onTriggered }) {
               </div>
             )}
 
-            {pipelineMode === "graph" && (
+            {pipelineSource === "graph" && (
               <div>
                 <label style={labelStyle}>Graph</label>
                 <select value={graphId} onChange={e=>setGraphId(e.target.value)} className="select" style={{width:'100%'}}>
@@ -168,7 +180,28 @@ function TriggerModal({ onClose, onTriggered }) {
               </div>
             )}
 
-            {pipelineMode === "service" && (
+            {/* Run Mode Selector */}
+            <div style={{borderTop:'1px solid var(--nv-border)',paddingTop:'16px'}}>
+              <label style={labelStyle}>Run Mode</label>
+              <div style={{display:'flex',gap:'6px'}}>
+                <button type="button" onClick={()=>setRunMode("batch")} className="btn btn-sm" style={modeBtn(runMode,"batch")}>
+                  Batch (Ray)
+                </button>
+                <button type="button" onClick={()=>setRunMode("inprocess")} className="btn btn-sm" style={modeBtn(runMode,"inprocess")}>
+                  In-Process
+                </button>
+                <button type="button" onClick={()=>setRunMode("service")} className="btn btn-sm" style={modeBtn(runMode,"service")}>
+                  Service
+                </button>
+              </div>
+              <div style={hintStyle}>
+                {runMode === "batch" && "Distributed execution using Ray Data. Requires a Ray cluster or local Ray."}
+                {runMode === "inprocess" && "Single-process execution using pandas. No Ray cluster needed."}
+                {runMode === "service" && "Uploads documents to a running retriever service for ingestion."}
+              </div>
+            </div>
+
+            {runMode === "service" && (
               <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
                 <div>
                   <label style={labelStyle}>Service URL</label>
@@ -189,18 +222,51 @@ function TriggerModal({ onClose, onTriggered }) {
               </div>
             )}
 
-            <div>
-              <label style={labelStyle}>Runner</label>
-              <select value={runnerId} onChange={e=>setRunnerId(e.target.value)} className="select" style={{width:'100%'}}>
-                <option value="">Any available runner</option>
-                {onlineRunners.map(r=><option key={r.id} value={r.id}>{r.name} ({r.hostname || 'unknown'}) — {r.gpu_type || 'no GPU'} x{r.gpu_count||0}{r.status==='paused'?' [PAUSED]':''}</option>)}
-              </select>
+            {/* Execution Target */}
+            <div style={{borderTop:'1px solid var(--nv-border)',paddingTop:'16px'}}>
+              <label style={labelStyle}>Execution Target</label>
+              <div style={{display:'flex',gap:'6px'}}>
+                <button type="button" onClick={()=>setExecutionTarget("local")} className="btn btn-sm" style={modeBtn(executionTarget,"local")}>
+                  Local Runner
+                </button>
+                <button type="button" onClick={()=>setExecutionTarget("cluster")} className="btn btn-sm"
+                  style={modeBtn(executionTarget,"cluster")} disabled={clusters.length===0}>
+                  K8s Cluster
+                </button>
+              </div>
               <div style={hintStyle}>
-                {onlineRunners.length === 0
-                  ? "No runners online. The job will wait until a runner becomes available."
-                  : `${onlineRunners.length} runner${onlineRunners.length!==1?'s':''} online`}
+                {executionTarget === "local" && "Job will be claimed and executed by a registered runner agent."}
+                {executionTarget === "cluster" && "Job will be dispatched as a Kubernetes Job on the selected cluster."}
               </div>
             </div>
+
+            {executionTarget === "local" && (
+              <div>
+                <label style={labelStyle}>Runner</label>
+                <select value={runnerId} onChange={e=>setRunnerId(e.target.value)} className="select" style={{width:'100%'}}>
+                  <option value="">Any available runner</option>
+                  {onlineRunners.map(r=><option key={r.id} value={r.id}>{r.name} ({r.hostname || 'unknown'}) — {r.gpu_type || 'no GPU'} x{r.gpu_count||0}{r.status==='paused'?' [PAUSED]':''}</option>)}
+                </select>
+                <div style={hintStyle}>
+                  {onlineRunners.length === 0
+                    ? "No runners online. The job will wait until a runner becomes available."
+                    : `${onlineRunners.length} runner${onlineRunners.length!==1?'s':''} online`}
+                </div>
+              </div>
+            )}
+
+            {executionTarget === "cluster" && (
+              <div>
+                <label style={labelStyle}>Cluster</label>
+                <select value={clusterId} onChange={e=>setClusterId(e.target.value)} className="select" style={{width:'100%'}}>
+                  <option value="">Select a cluster...</option>
+                  {onlineClusters.map(c=><option key={c.id} value={c.id}>{c.name} ({c.namespace}) — {c.gpu_type || 'no GPU'} x{c.gpu_count||0}</option>)}
+                </select>
+                {clusters.length === 0 && (
+                  <div style={hintStyle}>No clusters registered. Add clusters in the Clusters view.</div>
+                )}
+              </div>
+            )}
 
             {/* Git Override Section */}
             <div style={{borderTop:'1px solid var(--nv-border)',paddingTop:'16px'}}>
@@ -307,8 +373,12 @@ function TriggerModal({ onClose, onTriggered }) {
           </div>
           <div className="modal-foot">
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={submitting||!dataset||(pipelineMode==='graph'&&!graphId)||(pipelineMode==='service'&&!serviceUrl.trim())} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
-              {submitting ? <><span className="spinner" style={{marginRight:'8px'}}></span>Triggering…</> : (pipelineMode==='graph' ? 'Run Graph Pipeline' : pipelineMode==='service' ? 'Run Service Ingest' : 'Start Run')}
+            <button type="submit" disabled={submitting||!dataset||(pipelineSource==='graph'&&!graphId)||(runMode==='service'&&!serviceUrl.trim())||(executionTarget==='cluster'&&!clusterId)} className="btn btn-primary" style={{flex:1,justifyContent:'center'}}>
+              {submitting ? <><span className="spinner" style={{marginRight:'8px'}}></span>Triggering…</> : (
+                executionTarget==='cluster' ? 'Run on Cluster' :
+                pipelineSource==='graph' ? 'Run Graph Pipeline' :
+                runMode==='service' ? 'Run Service Ingest' : 'Start Run'
+              )}
             </button>
           </div>
         </form>

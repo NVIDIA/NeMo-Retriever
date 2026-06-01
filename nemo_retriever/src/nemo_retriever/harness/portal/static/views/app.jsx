@@ -34,6 +34,8 @@ function App() {
   const [alertRulesLoading, setAlertRulesLoading] = useState(true);
   const [alertEvents, setAlertEvents] = useState([]);
   const [alertEventsLoading, setAlertEventsLoading] = useState(true);
+  const [clusters, setClusters] = useState([]);
+  const [clustersLoading, setClustersLoading] = useState(true);
   const [githubRepoUrl, setGithubRepoUrl] = useState("");
 
   const fetchRuns = useCallback(async () => {
@@ -120,7 +122,13 @@ function App() {
     finally { setAlertEventsLoading(false); }
   }, [alertEvents.length]);
 
-  useEffect(() => { fetchRuns(); fetchDatasets(); fetchJobs(); fetchRunners(); fetchSchedules(); fetchManagedDatasets(); fetchManagedPresets(); fetchPresetMatrices(); fetchAlertRules(); fetchAlertEvents(); }, [fetchRuns, fetchDatasets, fetchJobs, fetchRunners, fetchSchedules, fetchManagedDatasets, fetchManagedPresets, fetchPresetMatrices, fetchAlertRules, fetchAlertEvents]);
+  const fetchClusters = useCallback(async () => {
+    setClustersLoading(prev => clusters.length === 0 ? true : prev);
+    try { const res = await fetch("/api/clusters"); setClusters(await res.json()); } catch {}
+    finally { setClustersLoading(false); }
+  }, [clusters.length]);
+
+  useEffect(() => { fetchRuns(); fetchDatasets(); fetchJobs(); fetchRunners(); fetchSchedules(); fetchManagedDatasets(); fetchManagedPresets(); fetchPresetMatrices(); fetchAlertRules(); fetchAlertEvents(); fetchClusters(); }, [fetchRuns, fetchDatasets, fetchJobs, fetchRunners, fetchSchedules, fetchManagedDatasets, fetchManagedPresets, fetchPresetMatrices, fetchAlertRules, fetchAlertEvents, fetchClusters]);
 
   // Sync URL hash <-> activeView & deep-link run modal
   useEffect(() => {
@@ -164,11 +172,12 @@ function App() {
       if (activeView === "datasets")   { fetchManagedDatasets(); }
       if (activeView === "presets")    { fetchManagedPresets(); fetchPresetMatrices(); }
       if (activeView === "runners")    { fetchRunners(); }
+      if (activeView === "clusters")   { fetchClusters(); }
       if (activeView === "scheduling") { fetchSchedules(); }
       if (activeView === "alerts")     { fetchAlertRules(); fetchAlertEvents(); }
     }, 10000);
     return () => clearInterval(interval);
-  }, [activeView, fetchRuns, fetchJobs, fetchRunners, fetchSchedules, fetchManagedDatasets, fetchManagedPresets, fetchPresetMatrices, fetchAlertRules, fetchAlertEvents]);
+  }, [activeView, fetchRuns, fetchJobs, fetchRunners, fetchClusters, fetchSchedules, fetchManagedDatasets, fetchManagedPresets, fetchPresetMatrices, fetchAlertRules, fetchAlertEvents]);
 
   // Fast polling (3s) when jobs are actively running
   useEffect(() => {
@@ -203,7 +212,7 @@ function App() {
     } catch {}
   }
 
-  const viewTitles = { runs: "Runs", analytics: "Analytics", reporting: "Reporting", datasets: "Datasets", presets: "Presets", runners: "Runners", scheduling: "Scheduling", alerts: "Alerts", ingestion: "Ingestion", retrieval: "Retrieval", models: "Models", designer: "Pipeline Designer", settings: "Settings", database: "Database", mcp: "MCP" };
+  const viewTitles = { runs: "Runs", analytics: "Analytics", reporting: "Reporting", datasets: "Datasets", presets: "Presets", runners: "Runners", clusters: "Clusters", scheduling: "Scheduling", alerts: "Alerts", ingestion: "Ingestion", retrieval: "Retrieval", models: "Models", designer: "Pipeline Designer", settings: "Settings", database: "Database", mcp: "MCP" };
 
   const activeJobCount = jobs.filter(j => j.status==="running" || j.status==="pending" || j.status==="cancelling").length;
 
@@ -225,6 +234,7 @@ function App() {
       return parts.join(", ") + " configured";
     }
     if (activeView === "runners") return runnersLoading ? "Loading\u2026" : `${runners.length} runner${runners.length!==1?'s':''} registered`;
+    if (activeView === "clusters") return clustersLoading ? "Loading\u2026" : `${clusters.length} cluster${clusters.length!==1?'s':''} registered`;
     if (activeView === "scheduling") return schedulesLoading ? "Loading\u2026" : `${schedules.length} schedule${schedules.length!==1?'s':''} configured`;
     if (activeView === "alerts") {
       const unack = alertEvents.filter(e=>!e.acknowledged).length;
@@ -278,6 +288,9 @@ function App() {
           {activeView==="runners" && (
             <button className="btn btn-ghost btn-icon" onClick={fetchRunners} title="Refresh"><IconRefresh /></button>
           )}
+          {activeView==="clusters" && (
+            <button className="btn btn-ghost btn-icon" onClick={fetchClusters} title="Refresh"><IconRefresh /></button>
+          )}
           {activeView==="scheduling" && (
             <button className="btn btn-ghost btn-icon" onClick={fetchSchedules} title="Refresh"><IconRefresh /></button>
           )}
@@ -311,6 +324,7 @@ function App() {
               presetMatrices={presetMatrices} presetMatricesLoading={presetMatricesLoading} />
           )}
           {activeView==="runners" && <RunnersView runners={runners} loading={runnersLoading} onRefresh={fetchRunners} githubRepoUrl={githubRepoUrl} />}
+          {activeView==="clusters" && <ClustersView clusters={clusters} loading={clustersLoading} onRefresh={fetchClusters} />}
           {activeView==="scheduling" && <SchedulingView schedules={schedules} loading={schedulesLoading} onRefresh={fetchSchedules} runners={runners} />}
           {activeView==="alerts" && (
             <AlertsView alertRules={alertRules} alertEvents={alertEvents}

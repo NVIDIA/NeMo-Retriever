@@ -228,6 +228,8 @@ class TriggerRequest(BaseModel):
     nsys_profile: bool = False
     graph_id: int | None = None
     run_mode: str | None = None
+    execution_target: str = "local"
+    cluster_id: int | None = None
     service_url: str | None = None
     service_max_concurrency: int | None = None
 
@@ -290,6 +292,9 @@ class ScheduleCreateRequest(BaseModel):
     preferred_runner_ids: list[int] | None = None
     enabled: bool = True
     tags: list[str] | None = None
+    run_mode: str | None = None
+    execution_target: str = "local"
+    cluster_id: int | None = None
 
 
 class ScheduleUpdateRequest(BaseModel):
@@ -311,6 +316,9 @@ class ScheduleUpdateRequest(BaseModel):
     preferred_runner_ids: list[int] | None = None
     enabled: bool | None = None
     tags: list[str] | None = None
+    run_mode: str | None = None
+    execution_target: str | None = None
+    cluster_id: int | None = None
 
 
 class JobCompleteRequest(BaseModel):
@@ -329,6 +337,9 @@ class PresetCreateRequest(BaseModel):
     config: dict[str, Any] = {}
     tags: list[str] | None = None
     overrides: dict[str, Any] = {}
+    run_mode: str | None = None
+    execution_target: str = "local"
+    cluster_id: int | None = None
 
 
 class PresetUpdateRequest(BaseModel):
@@ -337,6 +348,9 @@ class PresetUpdateRequest(BaseModel):
     config: dict[str, Any] | None = None
     tags: list[str] | None = None
     overrides: dict[str, Any] | None = None
+    run_mode: str | None = None
+    execution_target: str | None = None
+    cluster_id: int | None = None
 
 
 class PresetMatrixCreateRequest(BaseModel):
@@ -350,6 +364,9 @@ class PresetMatrixCreateRequest(BaseModel):
     git_ref: str | None = None
     git_commit: str | None = None
     nsys_profile: bool = False
+    run_mode: str | None = None
+    execution_target: str = "local"
+    cluster_id: int | None = None
 
 
 class PresetMatrixUpdateRequest(BaseModel):
@@ -363,6 +380,9 @@ class PresetMatrixUpdateRequest(BaseModel):
     git_ref: str | None = None
     git_commit: str | None = None
     nsys_profile: bool | None = None
+    run_mode: str | None = None
+    execution_target: str | None = None
+    cluster_id: int | None = None
 
 
 class MatrixTriggerRequest(BaseModel):
@@ -457,6 +477,44 @@ class AlertRuleUpdateRequest(BaseModel):
     preset_filter: str | None = None
     enabled: bool | None = None
     slack_notify: bool | None = None
+
+
+class ClusterCreateRequest(BaseModel):
+    name: str
+    description: str | None = None
+    api_server_url: str
+    namespace: str = "default"
+    auth_method: str = "kubeconfig"
+    kubeconfig_context: str | None = None
+    kubeconfig_data: str | None = None
+    service_account_token: str | None = None
+    ca_cert_data: str | None = None
+    default_run_mode: str = "batch"
+    default_image: str | None = None
+    node_selector: dict[str, str] | None = None
+    node_hostnames: list[str] | None = None
+    gpu_type: str | None = None
+    gpu_count: int = 0
+    tags: list[str] | None = None
+
+
+class ClusterUpdateRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    api_server_url: str | None = None
+    namespace: str | None = None
+    auth_method: str | None = None
+    kubeconfig_context: str | None = None
+    kubeconfig_data: str | None = None
+    service_account_token: str | None = None
+    ca_cert_data: str | None = None
+    default_run_mode: str | None = None
+    default_image: str | None = None
+    node_selector: dict[str, str] | None = None
+    node_hostnames: list[str] | None = None
+    gpu_type: str | None = None
+    gpu_count: int | None = None
+    tags: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -2256,12 +2314,18 @@ async def trigger_run(req: TriggerRequest):
         req.git_commit,
     )
 
+    if req.run_mode:
+        merged_overrides["run_mode"] = req.run_mode
     if req.run_mode == "service":
-        merged_overrides["run_mode"] = "service"
         if req.service_url:
             merged_overrides["service_url"] = req.service_url
         if req.service_max_concurrency:
             merged_overrides["service_max_concurrency"] = req.service_max_concurrency
+
+    if req.execution_target == "cluster" and req.cluster_id:
+        cluster = history.get_cluster_by_id(req.cluster_id)
+        if not cluster:
+            raise HTTPException(404, "Cluster not found")
 
     base_job: dict[str, Any] = {
         "dataset": req.dataset,
@@ -2273,6 +2337,9 @@ async def trigger_run(req: TriggerRequest):
         "git_commit": pinned_sha,
         "git_ref": pinned_ref,
         "nsys_profile": int(req.nsys_profile),
+        "execution_target": req.execution_target,
+        "cluster_id": req.cluster_id if req.execution_target == "cluster" else None,
+        "run_mode": req.run_mode,
     }
     if dataset_meta:
         base_job["dataset_id"] = dataset_meta["dataset_id"]
@@ -2304,6 +2371,18 @@ async def trigger_run(req: TriggerRequest):
         )
 
     job = await asyncio.to_thread(history.create_job, base_job)
+
+    if req.execution_target == "cluster" and req.cluster_id:
+        try:
+            from nemo_retriever.harness.cluster_executor import dispatch_job_to_cluster
+
+            cluster = history.get_cluster_by_id(req.cluster_id)
+            await asyncio.to_thread(dispatch_job_to_cluster, job, cluster)
+        except ImportError:
+            logger.warning("cluster_executor not available — job %s will remain pending", job["id"])
+        except Exception as exc:
+            logger.error("Failed to dispatch job %s to cluster: %s", job["id"], exc)
+
     return TriggerResponse(job_id=job["id"], status="pending")
 
 
@@ -3706,6 +3785,74 @@ async def export_runs_json(
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="harness_runs_export_{ts}.json"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Clusters
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/clusters")
+async def list_clusters():
+    return history.get_all_clusters()
+
+
+@app.post("/api/clusters")
+async def create_cluster(req: ClusterCreateRequest):
+    data = req.model_dump(exclude_none=True)
+    try:
+        cluster = history.create_cluster(data)
+    except Exception as exc:
+        if "UNIQUE constraint" in str(exc):
+            raise HTTPException(status_code=409, detail=f"Cluster '{req.name}' already exists")
+        raise HTTPException(status_code=400, detail=str(exc))
+    return cluster
+
+
+@app.get("/api/clusters/{cluster_id}")
+async def get_cluster(cluster_id: int):
+    cluster = history.get_cluster_by_id(cluster_id)
+    if cluster is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    return cluster
+
+
+@app.put("/api/clusters/{cluster_id}")
+async def update_cluster(cluster_id: int, req: ClusterUpdateRequest):
+    existing = history.get_cluster_by_id(cluster_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    data = req.model_dump(exclude_none=True)
+    updated = history.update_cluster(cluster_id, data)
+    return updated
+
+
+@app.delete("/api/clusters/{cluster_id}")
+async def delete_cluster(cluster_id: int):
+    deleted = history.delete_cluster(cluster_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    return {"ok": True}
+
+
+@app.post("/api/clusters/{cluster_id}/health-check")
+async def cluster_health_check(cluster_id: int):
+    """Test connectivity to a registered K8s cluster and update its status."""
+    cluster = history.get_cluster_by_id(cluster_id)
+    if cluster is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+
+    try:
+        from nemo_retriever.harness.cluster_executor import check_cluster_health
+
+        status, message = await asyncio.to_thread(check_cluster_health, cluster)
+    except ImportError:
+        status, message = "unknown", "cluster_executor module not available"
+    except Exception as exc:
+        status, message = "error", str(exc)
+
+    updated = history.update_cluster_status(cluster_id, status)
+    return {"status": status, "message": message, "cluster": updated}
 
 
 # ---------------------------------------------------------------------------
