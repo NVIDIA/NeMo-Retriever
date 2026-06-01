@@ -77,8 +77,16 @@ Highlights for the 26.05 release include:
 
 ## Release Notes for Previous Versions
 
-- [26.03 (26.3.0)](https://docs.nvidia.com/nemo/retriever/latest/extraction/releasenotes/#2603-release-notes-2630) — on the published release notes page above
-- 26.1.2, 26.1.1, 25.9.0, 25.6.3, 25.6.2, 25.4.2, 25.3.0, 24.12.1, and 24.12.0 — earlier trains; release notes are not published as separate versioned pages on docs.nvidia.com
+| [26.03](https://docs.nvidia.com/nemo/retriever/26.3.0/extraction/releasenotes/)
+| [26.1.2](https://docs.nvidia.com/nemo/retriever/26.1.2/extraction/releasenotes/)
+| [26.1.1](https://docs.nvidia.com/nemo/retriever/26.1.1/extraction/releasenotes/)
+| [25.9.0](https://docs.nvidia.com/nemo/retriever/25.9.0/extraction/releasenotes/) 
+| [25.6.3](https://docs.nvidia.com/nemo/retriever/25.6.3/extraction/releasenotes/) 
+| [25.6.2](https://docs.nvidia.com/nemo/retriever/25.6.2/extraction/releasenotes/) 
+| [25.4.2](https://docs.nvidia.com/nemo/retriever/25.4.2/extraction/releasenotes/) 
+| [25.3.0](https://docs.nvidia.com/nemo/retriever/25.3.0/extraction/releasenotes/) 
+| [24.12.1](https://docs.nvidia.com/nemo/retriever/25.3.0/extraction/releasenotes/#release-24121) 
+| [24.12.0](https://docs.nvidia.com/nemo/retriever/25.3.0/extraction/releasenotes/#release-2412) 
 
 ## Related Topics
 
