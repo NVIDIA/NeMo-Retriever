@@ -93,16 +93,17 @@ Common constructor arguments include:
 
 `RetrieveVdbOperator` wraps the same concrete **`VDB`** instance but calls **`retrieval(vectors, **kwargs)`** instead of `run`. It merges per-call kwargs with the operator’s stored `vdb_kwargs` and returns **`normalize_retrieval_results(...)`** output (see `operators.py`, `records.py`).
 
-Important: retrieval here expects **`vectors`** — a list of query embedding vectors — **not** raw query strings. String queries are embedded elsewhere (e.g. in `Retriever`).
+Important: retrieval here expects **`vectors`** — a list of query embedding vectors — as the primary input. String queries are embedded elsewhere (e.g. in `Retriever`). Hybrid backends that need raw text receive aligned `query_texts` as execution-only call context.
 
 ### LanceDB inside `RetrieveVdbOperator`
 
 For `vdb_op="lancedb"`, **`LanceDB.retrieval`**:
 
 - Opens the table with `lancedb.connect(table_path).open_table(table_name)`.
-- For each query vector: **`table.search([vector], vector_column_name=..., **search_kwargs)`**, optional **`.where(where_clause)`** (Lance / DataFusion SQL; `metadata` / `source` are stored as JSON strings), then **`.limit(top_k).refine_factor(...).nprobes(...)`**.
+- For dense retrieval, each query vector uses **`table.search([vector], vector_column_name=..., **search_kwargs)`**, optional **`.where(where_clause)`** (Lance / DataFusion SQL; `metadata` / `source` are stored as JSON strings), then **`.limit(top_k).refine_factor(...).nprobes(...)`**.
+- For hybrid retrieval, callers pass `hybrid=True` plus `query_texts` aligned with the vectors. LanceDB uses **`table.search(query_type="hybrid", vector_column_name=..., fts_columns="text").vector(vector).text(query_text)`** before applying the same `where`, limit, refine, probe, and select handling.
 
-Notable kwargs: `top_k`, `refine_factor`, `n_probe` / `nprobes`, `where` or `_filter`, `table_path`, `table_name`, `search_kwargs`. **Hybrid search with precomputed vectors is not implemented** in this path (`NotImplementedError` if `hybrid=True`).
+Notable kwargs: `top_k`, `refine_factor`, `n_probe` / `nprobes`, `where` or `_filter`, `table_path`, `table_name`, `search_kwargs`, `hybrid`, and `query_texts`. `query_texts` is stripped from constructor kwargs and forwarded only for retrieval calls whose effective mode is hybrid.
 
 Example of **direct** operator use (you supply vectors):
 
@@ -224,9 +225,9 @@ hits = filter_hits_by_content_metadata(
 
 Each hit's `metadata` field is a JSON string. Use **`parse_hit_content_metadata(hit)`** to get a `dict` you can read directly (this is what `filter_hits_by_content_metadata` uses internally). Both helpers are exported from `nemo_retriever.vdb`.
 
-### Not implemented in this path
+### Hybrid retrieval
 
-Hybrid search (`hybrid=True`) is not implemented for the precomputed-vector retrieval path — `LanceDB.retrieval` raises `NotImplementedError`. Filters above apply only to dense vector search.
+Hybrid search (`hybrid=True`) is implemented for LanceDB's precomputed-vector retrieval path. It requires `query_texts` aligned one-to-one with the query vectors so the backend can combine the dense vector query with full-text search. Filters above apply to both dense and hybrid search.
 
 ---
 

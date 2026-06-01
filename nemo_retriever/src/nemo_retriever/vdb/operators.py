@@ -217,7 +217,11 @@ class RetrieveVdbOperator(AbstractOperator):
         from nemo_retriever.retriever_graph_utils import filter_retrieval_kwargs
 
         retrieval_kwargs = {**self._retrieval_vdb_kwargs, **filter_retrieval_kwargs(kwargs)}
-        if retrieval_kwargs.get("hybrid") and "query_texts" in kwargs:
+        if "hybrid" in retrieval_kwargs:
+            effective_hybrid = bool(retrieval_kwargs["hybrid"])
+        else:
+            effective_hybrid = bool(getattr(self._vdb, "hybrid", False))
+        if effective_hybrid and "query_texts" in kwargs:
             retrieval_kwargs["query_texts"] = kwargs["query_texts"]
         return normalize_retrieval_results(self._vdb.retrieval(data, **retrieval_kwargs))
 

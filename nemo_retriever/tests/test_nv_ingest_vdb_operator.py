@@ -191,6 +191,24 @@ def test_retrieve_operator_forwards_runtime_query_texts() -> None:
     ]
 
 
+def test_retrieve_operator_forwards_query_texts_for_hybrid_vdb_instance() -> None:
+    vdb = FakeVDB(hybrid=True)
+    operator = RetrieveVdbOperator(vdb=vdb)
+
+    operator.process([[0.1, 0.2]], top_k=3, query_texts=["current"])
+
+    assert vdb.retrieval_calls == [([[0.1, 0.2]], {"top_k": 3, "query_texts": ["current"]})]
+
+
+def test_retrieve_operator_respects_dense_override_for_hybrid_vdb_instance() -> None:
+    vdb = FakeVDB(hybrid=True)
+    operator = RetrieveVdbOperator(vdb=vdb)
+
+    operator.process([[0.1, 0.2]], top_k=3, hybrid=False, query_texts=["current"])
+
+    assert vdb.retrieval_calls == [([[0.1, 0.2]], {"top_k": 3, "hybrid": False})]
+
+
 def test_retrieve_operator_does_not_forward_query_texts_for_dense_retrieval() -> None:
     vdb = FakeVDB()
     operator = RetrieveVdbOperator(vdb=vdb, vdb_kwargs={"collection_name": "docs", "model_name": "embedder"})
