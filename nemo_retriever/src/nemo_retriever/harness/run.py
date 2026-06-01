@@ -1150,6 +1150,22 @@ def _run_service_mode(
     typer.echo(f"  Files           : {len(input_files)}")
     typer.echo(f"  Max concurrency : {cfg.service_max_concurrency}")
 
+    command_text = (
+        f"{sys.executable} -m nemo_retriever.harness.run"
+        f" --run-mode service"
+        f" --dataset {shlex.quote(str(Path(cfg.dataset_dir).resolve()))}"
+        f" --service-url {shlex.quote(cfg.service_url)}"
+        f" --service-max-concurrency {cfg.service_max_concurrency}"
+        f" --input-type {cfg.input_type}"
+    )
+    if cfg.preset:
+        command_text += f" --preset {shlex.quote(cfg.preset)}"
+    if cfg.evaluation_mode and cfg.evaluation_mode != "none":
+        command_text += f" --evaluation-mode {cfg.evaluation_mode}"
+    if cfg.api_key:
+        command_text += " --api-key $NVIDIA_API_KEY"
+    (artifact_dir / "command.txt").write_text(command_text + "\n", encoding="utf-8")
+
     ingestor = ServiceIngestor(
         base_url=cfg.service_url,
         documents=[str(f) for f in input_files],
@@ -1191,7 +1207,12 @@ def _run_service_mode(
     elapsed = float(getattr(result_obj, "elapsed_s", 0.0))
     failures = list(getattr(result_obj, "failures", []))
     document_ids = list(getattr(result_obj, "document_ids", []))
-    pages_processed = len(result_obj)
+    documents_completed = len(result_obj)
+    df = getattr(result_obj, "dataframe", None)
+    if df is not None and hasattr(df, "__len__") and len(df) > 0:
+        pages_processed = len(df)
+    else:
+        pages_processed = documents_completed
     pages_failed = len(failures)
     total_pages = pages_processed + pages_failed
 
@@ -1199,6 +1220,7 @@ def _run_service_mode(
 
     metrics_payload: dict[str, Any] = {
         "files": len(input_files),
+        "documents_completed": documents_completed,
         "pages": total_pages,
         "pages_processed": pages_processed,
         "pages_failed": pages_failed,
@@ -1286,6 +1308,7 @@ def _run_service_mode(
         "service_document_ids": document_ids,
         "service_job_status": getattr(result_obj, "job_status", None),
         "artifacts": {
+            "command_file": str((artifact_dir / "command.txt").resolve()),
             "runtime_metrics_dir": str(runtime_dir.resolve()),
         },
     }

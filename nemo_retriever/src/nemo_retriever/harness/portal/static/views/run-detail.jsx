@@ -240,10 +240,38 @@ function RunDetailModal({ run, onClose, onDelete, githubRepoUrl }) {
                 <div className="detail-label">Trigger Source</div>
                 <div className="detail-value"><TriggerSourceBadge source={run.trigger_source} /></div>
               </div>
+              {(() => {
+                const mode = (raw.test_config || {}).run_mode || run.run_mode;
+                if (!mode) return null;
+                const modeColors = {
+                  batch: { bg: 'rgba(100,180,255,0.12)', color: '#64b4ff', border: 'rgba(100,180,255,0.25)' },
+                  inprocess: { bg: 'rgba(118,185,0,0.12)', color: '#76b900', border: 'rgba(118,185,0,0.25)' },
+                  service: { bg: 'rgba(255,165,0,0.12)', color: '#ffa500', border: 'rgba(255,165,0,0.25)' },
+                };
+                const mc = modeColors[mode] || { bg: 'rgba(150,150,150,0.12)', color: '#aaa', border: 'rgba(150,150,150,0.25)' };
+                return (
+                  <div className="detail-item">
+                    <div className="detail-label">Run Mode</div>
+                    <div className="detail-value">
+                      <span className="badge" style={{background: mc.bg, color: mc.color, border: `1px solid ${mc.border}`}}>{mode}</span>
+                    </div>
+                  </div>
+                );
+              })()}
               {run.schedule_id && (
                 <div className="detail-item">
                   <div className="detail-label">Schedule ID</div>
                   <div className="detail-value">#{run.schedule_id}</div>
+                </div>
+              )}
+              {run.execution_target && run.execution_target !== "local" && (
+                <div className="detail-item">
+                  <div className="detail-label">Execution Target</div>
+                  <div className="detail-value">
+                    <span className="badge" style={{background:'rgba(180,100,255,0.12)',color:'#b464ff',border:'1px solid rgba(180,100,255,0.25)'}}>
+                      {run.execution_target === "cluster" ? "K8s Cluster" : run.execution_target}
+                    </span>
+                  </div>
                 </div>
               )}
               <div className="detail-item">
