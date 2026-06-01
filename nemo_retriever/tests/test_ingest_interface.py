@@ -126,6 +126,41 @@ def test_extract_unified_defaults() -> None:
     assert all(ingestor._split_config[k] is None for k in ("text", "html", "pdf", "audio", "image", "video"))
 
 
+def test_extract_rejects_unknown_kwargs() -> None:
+    """`.extract()` must fail loudly on kwargs that are not fields of ExtractParams.
+
+    The audio-video.md hosted-Parakeet snippet historically passed
+    ``extract_method``/``extract_audio_params`` (and ``document_type``) into
+    ``.extract()``; those silently flowed through ``_coerce()`` /
+    ``params.model_copy(update=...)``, bypassing ``ExtractParams``'s
+    ``extra="forbid"`` config. Audio credentials never reached the ASR actor,
+    which then fell back to the local HF model with no signal to the user.
+    Regression-guard the strict validation that fixes that silent drop.
+    """
+    ingestor = GraphIngestor(run_mode="inprocess")
+
+    with pytest.raises(TypeError, match="garbage_kwarg"):
+        ingestor.extract(garbage_kwarg="x")
+
+    with pytest.raises(TypeError) as exc_info:
+        ingestor.extract(
+            document_type="mp3",
+            extract_method="audio",
+            extract_audio_params={
+                "grpc_endpoint": "grpc.nvcf.nvidia.com:443",
+                "auth_token": "fake-key",
+                "function_id": "fake-function-id",
+                "segment_audio": True,
+            },
+        )
+    message = str(exc_info.value)
+    # Pin the rejected-keys list as a single repr so this test fails loudly if
+    # any of these keys ever become real ExtractParams fields.
+    expected_rejected = repr(sorted(["document_type", "extract_method", "extract_audio_params"]))
+    assert expected_rejected in message
+    assert "asr_params" in message
+
+
 def test_extract_default_pdf_only_builds_dedicated_pdf_graph(tmp_path) -> None:
     document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
@@ -150,16 +185,20 @@ def test_extract_default_direct_images_materialize_page_image(monkeypatch, tmp_p
     def passthrough_detection(self, batch_df):
         return batch_df
 
+    def fail_pdf_split(self, batch_df):
+        raise AssertionError("direct image extraction routed through PDFSplitActor")
+
     monkeypatch.setattr(
         "nemo_retriever.graph.multi_type_extract_operator._MultiTypeExtractBase._run_detection_pipeline",
         passthrough_detection,
     )
+    monkeypatch.setattr("nemo_retriever.pdf.split.PDFSplitActor.run", fail_pdf_split)
 
     result = (
-        GraphIngestor(run_mode="inprocess", show_progress=False)
+        create_ingestor(run_mode="inprocess")
         .files([str(image_path)])
         .extract(
-            ExtractParams(
+            params=ExtractParams(
                 extract_text=True,
                 extract_images=True,
                 extract_tables=False,
@@ -177,15 +216,19 @@ def test_extract_default_direct_images_materialize_page_image(monkeypatch, tmp_p
     assert result.iloc[0]["metadata"]["source_path"] == str(image_path.resolve())
 
 
-def test_extract_default_mixed_pdf_and_image_uses_multitype_graph(tmp_path) -> None:
+def test_extract_default_mixed_pdf_and_image_plans_ordered_branches(tmp_path) -> None:
     pdf = tmp_path / "manual.pdf"
     image = tmp_path / "scan.bmp"
     pdf.write_bytes(b"%PDF-1.4\n")
     image.write_bytes(b"bmp")
 
-    ingestor = GraphIngestor(run_mode="inprocess").files([str(pdf), str(image)]).extract()
+    ingestor = GraphIngestor(run_mode="inprocess").files([str(image), str(pdf)]).extract()
 
-    assert _effective_graph_node_names(ingestor) == ["MultiTypeExtractOperator"]
+    branches = ingestor._plan_default_extraction_branches()
+    assert [(branch.family, branch.extraction_mode, branch.input_paths) for branch in branches] == [
+        ("pdf", "pdf", (str(pdf),)),
+        ("image", "image", (str(image),)),
+    ]
 
 
 def test_extract_explicit_pdf_rejects_image_input(tmp_path) -> None:

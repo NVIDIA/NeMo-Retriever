@@ -65,7 +65,8 @@ class TrialResult:
     ranked_retrieved: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     retriever_first_use_turn: int | None = None
-    retriever_used_ever: bool = False
+    retriever_attempted: bool = False
+    retriever_succeeded: bool = False
     skill_fired: bool | None = None
     is_setup: bool = False
     domain: str = ""
@@ -575,54 +576,95 @@ _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _WRAPPER_CMDS = {"sudo", "time", "nice", "nohup", "exec", "env", "command", "builtin"}
 
 
-def _retriever_in_command(cmd: str) -> bool:
+# In c1_base the retriever CLI is intentionally denied: a bare ``retriever``
+# resolves to the PATH deny shim, and any workdir-relative path (e.g.
+# ``./.bin/retriever`` or a bundled ``./retriever/bin/retriever`` venv leaked by
+# skill setup) is a stub/leak rather than the real CLI. Only an absolute
+# installed-CLI path -- or ``uv run`` / ``python -m`` which resolve the
+# installed package -- counts as genuine retriever usage there. In c2/c3 the
+# CLI is provided, so every invocation form counts.
+_REAL_RETRIEVER_KINDS = frozenset({"abs", "uv", "pythonm"})
+
+
+def _retriever_segment_kind(seg: str) -> str | None:
+    """Classify the executable head of one pipeline segment.
+
+    Returns ``"bare"`` (``retriever`` resolved via PATH), ``"rel"`` (a
+    workdir-relative path such as ``./retriever`` or ``./.bin/retriever``),
+    ``"abs"`` (an absolute path such as ``/raid/.../bin/retriever``), ``"uv"``
+    (``uv run retriever``), ``"pythonm"`` (``python -m nemo_retriever``), or
+    ``None`` when the segment does not invoke the retriever CLI. Deliberately
+    ignores cases where ``retriever`` appears only as a path argument or prose.
+    """
+    while seg:
+        first = seg.split(None, 1)
+        if not first:
+            break
+        head = first[0]
+        rest = first[1] if len(first) > 1 else ""
+        if _ENV_ASSIGN.match(head) or head in _WRAPPER_CMDS:
+            seg = rest
+            continue
+        break
+    if not seg:
+        return None
+
+    tokens = seg.split()
+    head = tokens[0]
+    if head == "retriever":
+        return "bare"
+    if head == "./retriever":
+        return "rel"
+    if head.endswith("/retriever") and "/" in head[: -len("/retriever") + 1]:
+        return "abs" if head.startswith("/") else "rel"
+    if len(tokens) >= 3 and tokens[0] == "uv" and tokens[1] == "run" and tokens[2] == "retriever":
+        return "uv"
+    if (
+        len(tokens) >= 3
+        and tokens[0].startswith("python")
+        and tokens[1] == "-m"
+        and tokens[2].startswith("nemo_retriever")
+    ):
+        return "pythonm"
+    return None
+
+
+def _retriever_in_command(cmd: str, condition: str = "") -> bool:
     """Return whether this shell command invokes the retriever CLI as a command.
 
-    Matches when the executable in any pipeline segment is the retriever CLI:
-    ``retriever``, ``./retriever``, ``/abs/path/retriever``, ``uv run
-    retriever``, or ``python -m nemo_retriever``. Deliberately does not match
-    cases where ``retriever`` appears only as a path argument or prose.
+    Condition-aware: under ``c1_base`` only the real installed CLI counts (see
+    :data:`_REAL_RETRIEVER_KINDS`); under every other condition any retriever
+    invocation form counts.
     """
     if not cmd:
         return False
 
     for segment in _PIPELINE_SEP.split(cmd):
-        seg = segment.strip()
-        while seg:
-            first = seg.split(None, 1)
-            if not first:
-                break
-            head = first[0]
-            rest = first[1] if len(first) > 1 else ""
-            if _ENV_ASSIGN.match(head):
-                seg = rest
-                continue
-            if head in _WRAPPER_CMDS:
-                seg = rest
-                continue
-            break
-        if not seg:
+        kind = _retriever_segment_kind(segment.strip())
+        if kind is None:
             continue
-        head = seg.split(None, 1)[0]
-        if head == "retriever" or head == "./retriever":
-            return True
-        if head.endswith("/retriever") and "/" in head[: -len("/retriever") + 1]:
-            # Reject c1_base's deny shim; invoking it is the opposite of using
-            # the real retriever CLI.
-            if "/.bin/retriever" in head:
-                continue
-            return True
-        tokens = seg.split()
-        if len(tokens) >= 3 and tokens[0] == "uv" and tokens[1] == "run" and tokens[2] == "retriever":
-            return True
-        if (
-            len(tokens) >= 3
-            and tokens[0].startswith("python")
-            and tokens[1] == "-m"
-            and tokens[2].startswith("nemo_retriever")
-        ):
-            return True
+        if condition == BASE_CONDITION and kind not in _REAL_RETRIEVER_KINDS:
+            continue
+        return True
     return False
+
+
+_CODEX_EXIT_RE = re.compile(r"exited with code (\d+)")
+
+
+def _codex_exit_ok(output: str) -> bool:
+    """Return whether a codex ``exec_command`` output reports a clean exit.
+
+    Codex wraps command output with a ``Process exited with code N`` line. A
+    missing exit line (interrupted, killed, or still-running command) is treated
+    as a failure so blocked/hung retriever calls do not count as succeeded.
+    """
+    if not output:
+        return False
+    match = _CODEX_EXIT_RE.search(output)
+    if match is None:
+        return False
+    return match.group(1) == "0"
 
 
 def _claude_session_log_path(workdir: Path, session_uuid: str) -> Path:
@@ -913,11 +955,15 @@ def _scan_claude_transcript_for_signals(
     envelope: dict[str, Any],
     workdir: Path | None,
     session_uuid: str | None,
-) -> tuple[int | None, bool]:
+    condition: str,
+) -> tuple[int | None, bool, bool]:
+    """Return ``(first_use_turn, attempted, succeeded)`` for a Claude session."""
     if workdir is not None and session_uuid:
         log_path = _claude_session_log_path(workdir, session_uuid)
         if log_path.exists():
             try:
+                matched_tool_ids: set[str] = set()
+                error_by_id: dict[str, bool] = {}
                 with log_path.open(encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
@@ -934,34 +980,76 @@ def _scan_claude_transcript_for_signals(
                         for item in content:
                             if not isinstance(item, dict):
                                 continue
-                            if item.get("type") != "tool_use" or item.get("name") != "Bash":
-                                continue
-                            cmd = (item.get("input") or {}).get("command") or ""
-                            if _retriever_in_command(cmd):
-                                return 1, True
-                return None, False
+                            itype = item.get("type")
+                            if itype == "tool_use" and item.get("name") == "Bash":
+                                cmd = (item.get("input") or {}).get("command") or ""
+                                tool_id = item.get("id")
+                                if isinstance(tool_id, str) and _retriever_in_command(cmd, condition):
+                                    matched_tool_ids.add(tool_id)
+                            elif itype == "tool_result":
+                                tool_id = item.get("tool_use_id")
+                                if isinstance(tool_id, str):
+                                    error_by_id[tool_id] = bool(item.get("is_error"))
+                attempted = bool(matched_tool_ids)
+                # Succeeded only when a matched call has a recorded non-error
+                # result; a missing result (interrupted/killed) counts as failed.
+                succeeded = any(not error_by_id.get(tid, True) for tid in matched_tool_ids)
+                return (1 if attempted else None), attempted, succeeded
             except OSError:
                 pass
 
     text = str(envelope.get("result") or "")
     used = "retriever " in text or "\nretriever\n" in text
-    return (1 if used else None), used
+    return (1 if used else None), used, False
 
 
 def _scan_codex_transcript_for_signals(
     session_uuid: str,
     fallback_events: list[dict[str, Any]],
-) -> tuple[int | None, bool]:
+    condition: str,
+) -> tuple[int | None, bool, bool]:
+    """Return ``(first_use_turn, attempted, succeeded)`` for a codex session."""
     log_events = _read_jsonl_events(_codex_session_log_path(session_uuid))
     events = log_events or fallback_events
+
+    # Map call_id -> output text so each matched call can be checked for a clean
+    # exit; outputs may appear before or after their function_call in the log.
+    outputs_by_call: dict[str, str] = {}
+    has_function_calls = False
+    for ev in events:
+        if ev.get("type") != "response_item":
+            continue
+        payload = ev.get("payload") or {}
+        if not isinstance(payload, dict):
+            continue
+        ptype = payload.get("type")
+        if ptype == "function_call":
+            has_function_calls = True
+        elif ptype == "function_call_output":
+            call_id = payload.get("call_id")
+            if isinstance(call_id, str):
+                outputs_by_call[call_id] = str(payload.get("output") or "")
+
+    attempted = False
+    succeeded = False
     for ev in events:
         if ev.get("type") != "response_item":
             continue
         payload = ev.get("payload") or {}
         if not isinstance(payload, dict) or payload.get("type") != "function_call":
             continue
-        if _retriever_in_command(_codex_tool_command(payload)):
-            return 1, True
+        if not _retriever_in_command(_codex_tool_command(payload), condition):
+            continue
+        attempted = True
+        call_id = payload.get("call_id")
+        if isinstance(call_id, str) and _codex_exit_ok(outputs_by_call.get(call_id, "")):
+            succeeded = True
+
+    # Trust the structured verdict whenever tool calls were recorded. Only when
+    # there are no tool calls at all do we fall back to a weak prose heuristic
+    # (no reliable success signal there, so succeeded stays False).
+    if attempted or has_function_calls:
+        return (1 if attempted else None), attempted, succeeded
 
     text_parts: list[str] = []
     for ev in events:
@@ -974,23 +1062,24 @@ def _scan_codex_transcript_for_signals(
             text_parts.append(_string_from_content_items(payload.get("content"), input_text=False))
     text = "\n".join(text_parts)
     used = "retriever " in text or "\nretriever\n" in text
-    return (1 if used else None), used
+    return (1 if used else None), used, False
 
 
 def _scan_transcript_for_signals(
     *,
     agent: str,
+    condition: str,
     envelope: dict[str, Any],
     codex_events: list[dict[str, Any]],
     workdir: Path | None = None,
     session_uuid: str | None = None,
-) -> tuple[int | None, bool]:
-    """Detect whether the agent invoked the ``retriever`` CLI."""
+) -> tuple[int | None, bool, bool]:
+    """Detect retriever CLI usage, returning ``(first_use, attempted, succeeded)``."""
     if agent == "claude":
-        return _scan_claude_transcript_for_signals(envelope, workdir, session_uuid)
+        return _scan_claude_transcript_for_signals(envelope, workdir, session_uuid, condition)
     if agent == "codex" and session_uuid:
-        return _scan_codex_transcript_for_signals(session_uuid, codex_events)
-    return None, False
+        return _scan_codex_transcript_for_signals(session_uuid, codex_events, condition)
+    return None, False, False
 
 
 def _run_one_turn(
@@ -1137,19 +1226,21 @@ def _run_one_turn(
         if out_path.exists():
             out_path.rename(workdir / f"output_e{entry_id}.json")
 
-    first_use, used = _scan_transcript_for_signals(
+    first_use, attempted, succeeded = _scan_transcript_for_signals(
         agent=agent,
+        condition=condition,
         envelope=envelope,
         codex_events=codex_events,
         workdir=workdir,
         session_uuid=actual_session_id,
     )
     result.retriever_first_use_turn = first_use
-    result.retriever_used_ever = used
+    result.retriever_attempted = attempted
+    result.retriever_succeeded = succeeded
     # c1 has the skill unavailable; leave skill_fired=None to distinguish from
     # "loaded but didn't fire".
     if condition in ("c2_retriever", "c3_retriever_skill"):
-        result.skill_fired = used and (first_use is not None) and first_use <= 2
+        result.skill_fired = attempted and (first_use is not None) and first_use <= 2
     return result
 
 

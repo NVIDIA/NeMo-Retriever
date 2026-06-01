@@ -111,3 +111,98 @@ class FileClassifier:
             category=category,
             content_type=content_type,
         )
+
+
+_MEDIA_CATEGORIES: frozenset[FileCategory] = frozenset({FileCategory.AUDIO, FileCategory.VIDEO})
+
+
+def infer_extraction_mode_from_filename(filename: str) -> str | None:
+    """Map a filename suffix to a GraphIngestor ``extraction_mode`` string.
+
+    Returns ``"text"`` / ``"html"`` / ``"image"`` / ``"audio"`` / ``"video"``
+    / ``"pdf"`` for known extensions, or ``None`` when the suffix is not in
+    :attr:`FileClassifier.SUFFIX_MAP`. Used by the service worker to avoid
+    routing text-like uploads through the PDF or audio-only graphs when the
+    client leaves ``extraction_mode`` at the default ``"auto"``.
+    """
+    dot = filename.rfind(".")
+    suffix = filename[dot:].lower() if dot != -1 else ""
+    entry = FileClassifier.SUFFIX_MAP.get(suffix)
+    if entry is None:
+        return None
+    category, _ = entry
+    if category == FileCategory.TEXT:
+        return "text"
+    if category == FileCategory.HTML:
+        return "html"
+    if category == FileCategory.IMAGE:
+        return "image"
+    if category == FileCategory.AUDIO:
+        return "audio"
+    if category == FileCategory.VIDEO:
+        return "video"
+    if category == FileCategory.DOCUMENT:
+        return "pdf"
+    return None
+
+
+def is_text_like_filename(filename: str) -> bool:
+    """True when *filename* is a supported plain-text or HTML ingest type."""
+    mode = infer_extraction_mode_from_filename(filename)
+    return mode in {"text", "html"}
+
+
+def category_requires_media_deps(category: FileCategory) -> bool:
+    """True when *category* needs ``ffmpeg``/``ffprobe`` to ingest.
+
+    Only audio and video uploads exercise the ``MediaChunkActor`` /
+    ``MediaInterface`` code paths that shell out to ``ffmpeg`` and
+    ``ffprobe``. PDF / image / text / HTML uploads are unaffected by
+    media-dependency availability.
+    """
+    return category in _MEDIA_CATEGORIES
+
+
+def enforce_media_dependencies(classification: FileClassification) -> None:
+    """Reject media uploads up-front when the container is missing FFmpeg.
+
+    Translates what would otherwise surface as a Ray worker crash
+    (``RuntimeError: MediaChunkActor requires media dependencies; missing:
+    ffmpeg, ffprobe``) into an HTTP 501 with an actionable Helm value
+    and ``apt-get`` command. The check is local to this process — the
+    gateway, realtime and batch pods all share the same container image,
+    so an inconsistency between them is not possible under the standard
+    chart layout.
+
+    Audio / video ingestion only — other file categories are passed
+    through without invoking the FFmpeg probe.
+    """
+    if not category_requires_media_deps(classification.category):
+        return
+
+    from nemo_retriever.audio.media_interface import (
+        HELM_FFMPEG_INSTALL_VALUE,
+        MANUAL_FFMPEG_INSTALL_COMMAND,
+        is_media_available,
+        missing_media_dependencies,
+    )
+
+    if is_media_available():
+        return
+
+    missing = ", ".join(missing_media_dependencies()) or "ffmpeg, ffprobe"
+    raise HTTPException(
+        status_code=501,
+        detail=(
+            f"Audio and video ingestion require FFmpeg in the retriever "
+            f"service container, but the following dependencies are "
+            f"missing: {missing}. Re-deploy the Helm chart with "
+            f"`--set {HELM_FFMPEG_INSTALL_VALUE}` to install FFmpeg at "
+            f"container startup, install it manually inside the container "
+            f"with `{MANUAL_FFMPEG_INSTALL_COMMAND}`, or build a custom "
+            f"image that already includes ffmpeg/ffprobe (recommended for "
+            f"air-gapped clusters). See the Helm chart README "
+            f'("Audio / video extraction") for details. File: '
+            f"{classification.filename!r}."
+        ),
+    )

@@ -36,6 +36,13 @@ The chart ships two deployable layers behind feature flags:
 > the service at one replica. The chart already exposes the HPA scaffolding
 > so it's a one-line change once the planned PostgreSQL backend lands.
 
+> For behavioral consistency between local HuggingFace deployments and Helm service deployments: 
+> `results = ingestor.ingest(...return_results=True)
+> return_results defaults to True. This incurs a significant performance and system memory usage cost. 
+> Unless you know explicitly you need to fetch extraction results to the client, you should use:
+> return_results=False
+> If you must return results, you may need to increase pod memory specs to support the increased pod memory usage.
+
 ---
 
 ## Layout
@@ -61,9 +68,9 @@ nemo_retriever/helm/
     └── nims/
         ├── nemotron-page-elements-v3.yaml     # NIMCache + NIMService
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
-        ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService
+        ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService (OCR)
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
-        ├── llama-nemotron-rerank-1b-v2.yaml   # NIMCache + NIMService (optional; not auto-wired)
+        ├── llama-nemotron-rerank-vl-1b-v2.yaml  # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-3-nano-omni-30b-a3b-reasoning.yaml  # NIMCache + NIMService (optional; not auto-wired)
         └── audio.yaml                         # NIMCache + NIMService (optional; not auto-wired)
@@ -112,6 +119,24 @@ Do not also set `INSTALL_FFMPEG` in `service.env`; the chart fails rendering
 when both are configured so the rendered Pod does not contain duplicate
 environment variables.
 
+When `service.installFfmpeg=false` (the default), the service still starts
+normally and processes PDF, image, text and HTML uploads. Audio / video
+uploads are rejected up-front with **HTTP 501**:
+
+```text
+Audio and video ingestion require FFmpeg in the retriever service
+container, but the following dependencies are missing: ffmpeg, ffprobe.
+Re-deploy the Helm chart with `--set service.installFfmpeg=true` …
+```
+
+The retriever-service container also logs a `WARNING` at startup when
+FFmpeg is missing so cluster operators can fix the deployment before
+the first media upload arrives, instead of debugging a Ray worker
+traceback (`RuntimeError: MediaChunkActor requires media dependencies;
+missing: ffmpeg, ffprobe`) after the fact. The same WARNING is emitted
+on every pod (gateway, realtime, batch) because all roles classify
+uploads — flipping `service.installFfmpeg=true` updates them all.
+
 Runtime installation uses passwordless `sudo` scoped to installing the
 `ffmpeg` package in the service image. The pod must have network egress to the
 Ubuntu package repositories, a writable root filesystem, and a security policy
@@ -159,7 +184,14 @@ the secret is absent (useful for fully local NIM endpoints).
 
 Install the [NIM Operator](https://docs.nvidia.com/nim-operator/) first so
 the `NIMCache` / `NIMService` CRDs (`apps.nvidia.com/v1alpha1`) are
-registered. For **26.05 production**, use the [recommended minimal install](#recommended-minimal-install-2605) (four core NIMs only). A plain `helm install` without overrides may also reconcile optional NIMs when their `enabled` flags are `true` in `values.yaml`.
+registered. A plain `helm install` reconciles the four core NIMs
+(`page_elements`, `table_structure`, `ocr`, `vlm_embed`) — every other
+NIM (the VL reranker `rerankqa`, Nemotron Parse, Omni 30B, and the
+Parakeet `audio` ASR NIM) is **disabled by default** to honor the
+"optional and disabled by default" contract in
+[deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md);
+see [Recommended minimal install (26.05)](#recommended-minimal-install-2605)
+for the opt-in `--set` flags that turn any of them on.
 
 ```bash
 helm install retriever ./nemo_retriever/helm \
@@ -169,21 +201,26 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcApiSecret.password=$NGC_API_KEY
 ```
 
-### Recommended minimal install (26.05)
+### Recommended minimal install (26.05) { #recommended-minimal-install-2605 }
 
-Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`). Disable optional NIMs unless your workload needs reranking, Nemotron Parse, Omni captioning, or ASR:
+Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`):
 
 ```bash
 helm install retriever ./nemo_retriever/helm \
   --set ngcImagePullSecret.create=true \
   --set ngcImagePullSecret.password=$NGC_API_KEY \
   --set ngcApiSecret.create=true \
-  --set ngcApiSecret.password=$NGC_API_KEY \
-  --set nimOperator.rerankqa.enabled=false \
-  --set nimOperator.nemotron_parse.enabled=false \
-  --set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=false \
-  --set nimOperator.audio.enabled=false
+  --set ngcApiSecret.password=$NGC_API_KEY
 ```
+
+> The VL reranker (`rerankqa`), Nemotron Parse, the Nemotron 3 Nano Omni 30B caption NIM, and the Parakeet `audio` ASR NIM are **all off by default** in 26.05 — they only reconcile when you explicitly opt in. Opt-in flags:
+>
+> * VL reranker — `--set nimOperator.rerankqa.enabled=true`
+> * Nemotron Parse — `--set nimOperator.nemotron_parse.enabled=true`
+> * Omni 30B captioner — `--set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`
+> * Parakeet ASR — `--set nimOperator.audio.enabled=true` (also set `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051` to wire ASR into the service, plus `service.installFfmpeg=true` if your image does not bundle ffmpeg)
+>
+> This matches the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md) and avoids silently pulling ≈ 62 GiB of Omni weights or claiming a second dedicated GPU on a "default" install. See the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table for per-NIM GPU and disk costs.
 
 The chart auto-wires the operator-managed in-cluster URLs of the four
 "core" NIMs into the service's `nim_endpoints` block:
@@ -202,9 +239,43 @@ kubectl get nimcache,nimservice -n <namespace>
 kubectl describe nimservice nemotron-page-elements-v3 -n <namespace>
 ```
 
-First-time NIMCache reconciliation downloads model weights to a PVC; the
-NIMCache resources carry the `helm.sh/resource-policy: keep` annotation so
-those downloads survive `helm uninstall`.
+First-time NIMCache reconciliation downloads model weights to a PVC. By
+default (`nimOperator.nimCache.keepOnUninstall: true`) every **NIMCache**
+carries `helm.sh/resource-policy: keep` so those downloads survive
+`helm uninstall`. **NIMService** CRs do not use `keep` and are removed by
+Helm on uninstall.
+
+### Why NIM resources still exist after `helm uninstall`
+
+| What you see | Typical cause |
+|--------------|----------------|
+| `NIMCache` + PVC remain | **Expected** when `keepOnUninstall` is true (default). Helm intentionally skips deleting caches so you do not re-pull multi‑GiB weights. |
+| `NIMService` CR remains | **Not expected** on a normal uninstall. Usually an **orphan** from a failed install/upgrade (release never recorded the resource, or the chart renamed a NIM). |
+| Deployments / GPU pods still running | Often the operator workload for a **kept** `NIMCache`, or a stale `NIMService` that Helm did not own. Check `kubectl get nimservice,nimcache -n <ns>`. |
+| `nemotron-*-job-*` pods in `Error` | The NIM Operator's **model-download Job** for a `NIMCache` (not the retriever service). Failed cache pulls retry and leave Error pods until the Job or `NIMCache` is deleted. Common after a failed `helm install` when the release is rolled back but `keep` retains the cache CR. |
+| `helm uninstall` appears to do nothing | Release may be missing or failed (`helm list -n <ns> -a`). CRs created before a failed install can be left without a release to clean them up. |
+
+**Full teardown** (dev cluster — deletes caches and PVCs Helm kept):
+
+```bash
+NS=retriever
+REL=nemo-retriever
+
+helm uninstall "${REL}" -n "${NS}" 2>/dev/null || true
+
+# Orphans and kept NIMCaches (Helm keep does not block kubectl delete):
+kubectl delete nimservice,nimcache -n "${NS}" --all
+# Optional: drop model PVCs if you will re-pull from NGC
+kubectl delete pvc -n "${NS}" -l 'app.kubernetes.io/managed-by=nvidia-nim-operator' 2>/dev/null || true
+```
+
+**Dev installs** that should not retain caches on uninstall:
+
+```bash
+helm upgrade --install "${REL}" ./nemo_retriever/helm -n "${NS}" \
+  --set nimOperator.nimCache.keepOnUninstall=false \
+  ...
+```
 
 ---
 
@@ -247,9 +318,44 @@ The retriever service picks up the in-cluster ASR endpoint when `nimOperator.aud
 | `serviceConfig.server.port`                       | `7670`  | Container + Service port. |
 | `serviceConfig.pipeline.realtimeWorkers`          | `24`    | Per-pod realtime worker count. |
 | `serviceConfig.pipeline.batchWorkers`             | `48`    | Per-pod batch worker count. See [Timeouts and alleviating ingest failures](#timeouts-and-alleviating-ingest-failures) if embed or pool errors appear under load. |
-| `serviceConfig.nimEndpoints.*InvokeUrl`           | `""`    | Override the auto-resolved NIM Operator URL. |
+| `serviceConfig.nimEndpoints.*InvokeUrl`           | `""`    | Override the auto-resolved NIM Operator URL. Available knobs: `pageElementsInvokeUrl`, `tableStructureInvokeUrl`, `ocrInvokeUrl`, `embedInvokeUrl`, and `captionInvokeUrl` (see [Image captioning (Omni 30B)](#image-captioning-omni-30b)). |
+| `serviceConfig.nimEndpoints.captionModelName`     | `""`    | Model id sent to the remote VLM. Auto-set to `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` whenever a caption URL is resolved. |
+| `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the LanceDB vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (see [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
 | `serviceConfig.vectordb.embedModel`               | `nvidia/llama-nemotron-embed-vl-1b-v2` | Passed to vectordb + worker `embed_model_name`. |
+
+#### VectorDB and the embed endpoint { #vectordb-and-the-embed-endpoint }
+
+The vectordb Pod's `/v1/query` handler embeds the incoming query text
+before searching LanceDB.  It needs a NIM embedding endpoint to do that,
+and rendering the Deployment with an empty `--embed-endpoint` produces a
+Pod that passes its `/v1/health` probe but answers every `/v1/query`
+request with `HTTP 501 No embedding endpoint configured.` — a healthy
+deployment that silently breaks retrieval.
+
+To prevent this, the chart now refuses to render
+`deployment-vectordb.yaml` when no embed endpoint can be resolved.
+`helm install` / `helm upgrade --install` fails with a message listing
+the three supported escape valves:
+
+```
+serviceConfig.vectordb.enabled=true but the embed endpoint could not be
+resolved.  Pick one of:
+
+  1. --set serviceConfig.nimEndpoints.embedInvokeUrl=http://<host>:<port>/v1/embeddings
+  2. --set nimOperator.vlm_embed.enabled=true   # requires apps.nvidia.com/v1alpha1 CRDs
+  3. --set serviceConfig.vectordb.enabled=false
+```
+
+Resolution order matches the rest of the chart (see [Mix and match NIM
+sources](#3-install-with-the-nim-operator-in-cluster-nims)):
+
+1. Explicit `serviceConfig.nimEndpoints.embedInvokeUrl` always wins.
+2. Otherwise the operator-managed URL of
+   `nimOperator.vlm_embed.nimServiceName` is used, provided
+   `nimOperator.vlm_embed.enabled=true` **and** the
+   `apps.nvidia.com/v1alpha1` CRDs are installed in the cluster.
+3. Otherwise the chart fails the install.
 
 ### NIM Operator sub-stack
 
@@ -266,19 +372,23 @@ pair gated on three conditions ALL holding:
 | `nimOperator.page_elements.enabled`    | `true`  | Page-elements detector NIM. |
 | `nimOperator.table_structure.enabled`  | `true`  | Table-structure detector NIM. |
 | `nimOperator.ocr.enabled`              | `true`  | OCR NIM. |
+| `nimOperator.ocr.image`              | `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0` | Default OCR NIM image. |
 | `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
 | `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
 | `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
-| `nimOperator.rerankqa.enabled`         | `true`  | Reranker NIM (optional; not auto-wired). Set `false` for [minimal install](#recommended-minimal-install-2605). |
-| `nimOperator.nemotron_parse.enabled`   | `true`  | Structured-parse NIM (optional). Set `false` unless using `extract_method="nemotron_parse"`. |
-| `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `true` | Omni caption NIM (optional). Set `false` unless enabling image captioning. |
-| `nimOperator.audio.enabled`            | `true`  | ASR NIM (optional). Set `false` unless using audio/video transcription. |
+| `nimOperator.rerankqa.enabled`         | `false` | VL reranker NIM (optional; not auto-wired). Set `true` to opt in. Default `false` so 26.05 installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md) and do not silently provision an extra ≈ 3.1 GiB GPU NIM. The image points at the **VL** SKU (`llama-nemotron-rerank-vl-1b-v2`) per [prerequisites-support-matrix.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#default-helm-nims) — the text-only `llama-nemotron-rerank-1b-v2` silently degrades multimodal reranking and is not the documented POR. |
+| `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` when using `extract_method="nemotron_parse"`. Default `false` so 26.05 installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). Image tag follows the [image tag conventions](#image-tag-conventions). |
+| `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `false` | Omni 30B caption NIM (optional). Set `true` to enable image captioning — see [Image captioning (Omni 30B)](#image-captioning-omni-30b). Default `false` so 26.05 installs do not silently pull ≈ 62 GiB of BF16 weights or claim a second dedicated GPU. Image tag follows the [image tag conventions](#image-tag-conventions). |
+| `nimOperator.audio.enabled`            | `false` | Parakeet ASR NIM (optional). Set `true` for audio/video transcription; pair with `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051` so the retriever-service can reach it. |
 | `nimOperator.<key>.image.repository`   | `nvcr.io/nim/nvidia/...` | Per-NIM image. |
 | `nimOperator.<key>.image.pullSecrets`  | `[ngc-secret]` | Referenced by the NIMService CR. |
 | `nimOperator.<key>.authSecret`         | `ngc-api`      | NIM auth Secret name. |
 | `nimOperator.<key>.storage.pvc.size`   | `25Gi` (50Gi for vlm_embed/rerankqa, 100Gi parse, 300Gi VL) | NIMCache PVC size. |
 | `nimOperator.<key>.replicas`           | `1`     | Per-NIMService replica count. |
-| `nimOperator.<key>.resources.limits.nvidia.com/gpu` | `1` | GPUs per NIM pod. |
+| `nimOperator.nimServiceGpuLimit`       | `1`     | Default `nvidia.com/gpu` limit on every NIMService when per-NIM `resources` is `{}`. Set to `null` for operator-only reconciliation (not reliable on all NIM Operator versions — see [GPU limits and `helm upgrade`](#gpu-limits-and-helm-upgrade)). |
+| `nimOperator.<key>.resources`          | `{}`    | Per-NIM override of the whole `resources` block. Empty uses `nimServiceGpuLimit`; non-empty replaces the chart default (may require `--force-conflicts` on later `helm upgrade`). |
+| `nimOperator.modelProfile`             | `{}`    | Chart-wide NIMCache GPU/profile filter. Applied to every NIMCache that does not have its own override. See [Filtering cached GPU profiles](#filtering-cached-gpu-profiles). |
+| `nimOperator.<key>.modelProfile`       | `{}`    | Per-NIM NIMCache GPU/profile filter. Non-empty values REPLACE the chart-wide default (no merge). See [Filtering cached GPU profiles](#filtering-cached-gpu-profiles). |
 | `nimOperator.<key>.expose.service.port` | `8000` (9000 for audio) | HTTP port. |
 | `nimOperator.<key>.expose.service.grpcPort` | `8001` (50051 for audio) | gRPC port. |
 
@@ -288,11 +398,198 @@ pair gated on three conditions ALL holding:
 > retriever-service won't call them unless you wire your pipeline to use them.
 > For 26.05, prefer the [minimal install](#recommended-minimal-install-2605) overrides.
 
-**Charts and captioning.** Charts and infographics use **page_elements**
-and **ocr** (no `graphic_elements` operator NIM in this chart). PDF regions labeled
-**chart** are not sent to the caption stage. For image captioning scope and validation,
-set `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true` when needed — see
-[Image captioning](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605).
+#### Filtering cached GPU profiles { #filtering-cached-gpu-profiles }
+
+Every NIMCache the chart renders supports the NIM Operator's
+`spec.source.ngc.model` block, which restricts which model profiles the
+cache job downloads. The chart exposes this through two values:
+
+| Path | Scope | Behaviour |
+| ---- | ----- | --------- |
+| `nimOperator.modelProfile` | Chart-wide | Applied to every NIMCache that doesn't carry its own override. |
+| `nimOperator.<key>.modelProfile` | Per-NIM | When non-empty, **REPLACES** the chart-wide default (no merge). |
+
+Both default to `{}`. With both empty the chart emits no `model:`
+block and the NIM Operator falls back to its "cache every profile
+applicable to the detected GPUs" default — fine on a single-GPU
+laptop, but on heterogeneous clusters (or any cluster with ≥ 3 NIMs)
+this wastes tens of GiB of PVC storage, NGC bandwidth, and cache-job
+runtime.
+
+The mapping is rendered verbatim under `spec.source.ngc.model`, so the
+shape lines up 1:1 with the [NIMCache CRD](https://docs.nvidia.com/nim-operator/latest/reference-nimcache.html).
+Two filter dimensions are supported (use whichever fits your cluster;
+`gpus` is the common case):
+
+```yaml
+nimOperator:
+  modelProfile:
+    gpus:
+      # NIMCache only downloads profiles compatible with at least one
+      # of these GPU selectors. Each selector is {ids: [...], product: ...}.
+      - ids: ["26B5"]                       # PCI device ID(s)
+        product: "NVIDIA-H100-80GB-HBM3"    # NVIDIA marketing name
+    # profiles:
+    #   # Alternative: list of exact profile UUIDs from `ngc registry
+    #   # model list-profiles <repo>/<image>:<tag>`.
+    #   - "11111111-2222-3333-4444-555555555555"
+```
+
+Equivalent overrides via `--set`:
+
+```bash
+# Homogeneous H100 80 GB cluster — every NIMCache only pulls the H100 profile:
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set 'nimOperator.modelProfile.gpus[0].ids[0]=26B5' \
+  --set 'nimOperator.modelProfile.gpus[0].product=NVIDIA-H100-80GB-HBM3'
+
+# Restrict only the page_elements NIMCache to a specific profile UUID, leave the rest alone:
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set 'nimOperator.page_elements.modelProfile.profiles[0]=11111111-2222-3333-4444-555555555555'
+
+# Chart-wide H100 default plus a per-NIM override (the override REPLACES the global; it does NOT merge):
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set 'nimOperator.modelProfile.gpus[0].product=NVIDIA-H100-80GB-HBM3' \
+  --set 'nimOperator.vlm_embed.modelProfile.profiles[0]=22222222-3333-4444-5555-666666666666'
+```
+
+Tips:
+
+- Run `ngc registry model list-profiles nvcr.io/nim/nvidia/<image>:<tag>` to enumerate the available profiles for any chart-pinned NIM image and pick the smallest profile that matches your GPU.
+- Filter mismatches surface as `NIMCache` events such as `NoCompatibleProfile`; check with `kubectl describe nimcache <name>`.
+- The chart's defaults (`{}`) preserve operator behaviour, so adding `modelProfile` is a strict opt-in — existing releases keep working unchanged.
+
+#### Image tag conventions { #image-tag-conventions }
+
+Every NIM in this chart pins an exact NGC image tag in `values.yaml`
+— there is no `:latest` floating reference. Two tag families show up:
+
+| Family | Example | Meaning |
+| ------ | ------- | ------- |
+| Plain semver | `nemotron-page-elements-v3:1.8.0` | A standard NIM release, identical bytes on every pull. Used by the four core NIMs and the reranker / ASR NIMs. |
+| `<semver>-variant` | `nemotron-parse-v1.2:1.7.0-variant`, `nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` | The Nemotron Parse and Nemotron 3 Nano Omni 30B builds that ship per-GPU TensorRT engine variants the NIM Operator selects from at reconciliation time (see the Omni and Parse rows in the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table). The `-variant` suffix is the NGC tag that ships alongside the 26.05 chart and matches footnote ³ of the support matrix. |
+
+For air-gapped mirror pipelines: mirror the *exact* tag — both the
+plain semver and the `-variant` form — and do not substitute `:latest`.
+Substituting `:latest` would pin to a moving target that may not match
+the engine plans the NIM Operator profile expects for a given GPU.
+
+If you want a different NIM build, override the tag explicitly:
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true \
+  --set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.image.tag=<your-tag>
+```
+
+and validate against the same release of the retriever service before
+production rollout.
+
+**Charts and captioning (26.05).** Charts and infographics use **page_elements**
+and **ocr** (no `graphic_elements` operator NIM in this chart). For image
+captioning, set `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true` — see
+[Image captioning (Omni 30B)](#image-captioning-omni-30b) for the
+chart-side wiring and
+[Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605)
+for the product matrix.
+
+#### Image captioning (Omni 30B) { #image-captioning-omni-30b }
+
+The Nemotron 3 Nano Omni VLM is the canonical image-caption NIM for
+26.05.  When you enable it,
+
+```bash
+helm upgrade --install retriever ./nemo_retriever/helm \
+  --set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true \
+  ...
+```
+
+the chart now auto-wires two fields into the rendered
+`retriever-service.yaml` ConfigMap:
+
+```yaml
+nim_endpoints:
+  caption_invoke_url: "http://nemotron-3-nano-omni-30b-a3b-reasoning:8000/v1/chat/completions"
+  caption_model_name: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+```
+
+The service derives `caption_enabled=true` from a non-null
+`caption_invoke_url`, so the ingestion pipeline routes caption work to
+the in-cluster Omni Pod with no manual ConfigMap edits.
+
+Resolution order mirrors every other NIM endpoint (see the
+[NIM Operator sub-stack](#nim-operator-sub-stack) section):
+
+1. Explicit `serviceConfig.nimEndpoints.captionInvokeUrl` always wins
+   (use this to point at a hosted endpoint, e.g.
+   `https://integrate.api.nvidia.com/v1/chat/completions`).
+2. Otherwise the operator-managed URL of
+   `nemotron-3-nano-omni-30b-a3b-reasoning` is used, provided
+   `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`
+   **and** the `apps.nvidia.com/v1alpha1` CRDs are installed.
+3. Otherwise `caption_invoke_url` stays `null` and the caption stage
+   is disabled.
+
+`serviceConfig.nimEndpoints.captionModelName` follows the same order —
+it defaults to the canonical Omni remote model id
+(`nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`, matching
+`nemo_retriever.caption.model_profiles.OMNI_REMOTE_MODEL_ID`) whenever
+the chart resolves any caption URL. Override only when pointing at a
+different VLM SKU.
+
+#### GPU limits and `helm upgrade` { #gpu-limits-and-helm-upgrade }
+
+The chart defaults to **`nimOperator.nimServiceGpuLimit: 1`**, which
+renders `spec.resources.limits.nvidia.com/gpu: 1` on every NIMService
+unless a per-NIM `resources` map overrides it. This is required on
+NIM Operator **v3.1.1** (and other versions tested on A100/H100): when
+the chart omits the `resources` block entirely, the operator often
+**does not** populate GPU limits from the model profile, and NIM pods
+start without GPU access (`The NVIDIA Driver was not detected`).
+
+**Trade-off:** Helm and the NIM Operator may both server-side-apply
+`spec.resources.limits.nvidia.com/gpu`. A later `helm upgrade --install`
+can then fail with:
+
+```
+Error: UPGRADE FAILED: conflict occurred while applying object
+  <ns>/<nim> apps.nvidia.com/v1alpha1, Kind=NIMService:
+  Apply failed with 1 conflict:
+  conflict with "manager" using apps.nvidia.com/v1alpha1:
+    .spec.resources.limits.nvidia.com/gpu
+```
+
+**Operator-only mode** (omit GPU limits from Helm — only if your NIM
+Operator version reliably reconciles them):
+
+```yaml
+nimOperator:
+  nimServiceGpuLimit: null
+```
+
+**If upgrades hit SSA conflicts** after the operator has reconciled GPU
+limits, use one of:
+
+1. `helm upgrade --install … --force-conflicts --server-side`
+2. `kubectl -n <ns> edit nimservice <name>` to set GPU limits outside Helm
+
+To pin a non-default GPU count chart-wide, set `nimServiceGpuLimit: 2`
+(or set per-NIM `resources.limits.nvidia.com/gpu`).
+
+### OCR NIM configuration { #ocr-nim-configuration }
+
+The core OCR NIM is configured under [`nimOperator.ocr`](./values.yaml) (the `ocr:`
+block). Confirm `image.repository` and `image.tag` before you upgrade.
+
+| Path | Role |
+|------|------|
+| `nimOperator.nimCache.keepOnUninstall` | When `true`, NIMCache CRs survive `helm uninstall` (`helm.sh/resource-policy: keep`). NIMService CRs are always removed. Set `false` for dev clusters that should fully tear down on uninstall. |
+| `nimOperator.ocr.enabled` | Reconcile the OCR `NIMService` |
+| `nimOperator.ocr.image.repository` | NIM image (default `nvcr.io/nim/nvidia/nemotron-ocr-v1`) |
+| `nimOperator.ocr.image.tag` | Pin the image tag for reproducible upgrades |
+
+Override the auto-wired in-cluster URL with `serviceConfig.nimEndpoints.ocrInvokeUrl`
+when the OCR service runs outside the operator sub-stack.
 
 ### Persistence
 
@@ -642,6 +939,157 @@ sanity check before opening Grafana.
 
 ---
 
+## OpenShift deployment { #openshift-deployment }
+
+The chart defaults target generic Kubernetes clusters that allow fixed numeric
+UIDs (`runAsUser` / `runAsGroup` / `fsGroup` **1000**). **OpenShift 4.x**
+namespaces under the default **restricted-v2** Security Context Constraint (SCC)
+and **Pod Security Admission (PSA) `restricted`** profile assign a per-namespace
+UID/GID range instead. A stock `helm install` without overrides therefore fails
+SCC validation, emits PSA warnings, or crashes on log paths the random UID cannot
+write.
+
+We do **not** change chart defaults for OpenShift-only behavior (that would affect
+other platforms). Use the overrides below on OpenShift, or save the YAML block
+into a local values file and pass `-f <file>`.
+
+### Cluster posture (typical QA / hardened namespaces)
+
+| Control | Typical default on a new OpenShift project |
+| --- | --- |
+| SCC | **restricted-v2** (first match in priority order) |
+| PSA | `pod-security.kubernetes.io/warn=restricted` (and often `audit=restricted`; `enforce` may be unset on dev clusters) |
+| UID assignment | SCC injects `runAsUser` / `fsGroup` from the namespace range (for example `1000750000–1000759999`) |
+
+On clusters with **PSA `enforce=restricted`**, missing container `securityContext`
+fields become hard rejections, not warnings.
+
+### Override reference (maps to chart limitations)
+
+| Symptom on stock install | Cause | Helm override |
+| --- | --- | --- |
+| `FailedCreate`: UID/GID **1000** not in namespace range | Hardcoded `service.podSecurityContext` UID/GID/fsGroup | Omit `runAsUser`, `runAsGroup`, and `fsGroup`; keep only `runAsNonRoot: true` |
+| PSA warning: `allowPrivilegeEscalation`, capabilities, `seccompProfile` | Empty `service.securityContext` | Set restricted baseline on `service.securityContext` (see sample below) |
+| `PermissionError` on `/var/lib/nemo-retriever/retriever-service.log` when `persistence.enabled=false` | Default log path is image-owned; random UID cannot write without a PVC | Point `serviceConfig.logging.file` at `/tmp/...` (chart mounts `emptyDir` at `/tmp`) |
+| `CreateContainerConfigError`: non-numeric image `USER nemo` on **vectordb** | Vectordb container has no `securityContext` block for SCC to annotate | Disable vectordb for smoke tests, or patch the vectordb Deployment after install (below) |
+| PSA warnings on **otel-collector** | Otel Deployment has no `securityContext` in the chart | `topology.otel.enabled=false` unless you patch that Deployment |
+
+### Recommended value overrides
+
+```yaml
+# OpenShift overrides for nemo-retriever Helm chart (restricted-v2 / PSA restricted).
+# Save locally, then: helm install retriever ./nemo_retriever/helm -f <your-file>.yaml ...
+
+service:
+  podSecurityContext:
+    runAsNonRoot: true
+    # Do NOT set runAsUser, runAsGroup, or fsGroup — OpenShift SCC assigns them.
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+serviceConfig:
+  logging:
+    # Writable without persistence PVC (chart always mounts emptyDir at /tmp).
+    file: /tmp/retriever-service.log
+  vectordb:
+    # Set false for minimal service-only validation; see vectordb patch below if enabled.
+    enabled: false
+
+topology:
+  otel:
+    enabled: false
+```
+
+When **`persistence.enabled=true`**, you can keep the default log path under
+`persistence.mountPath` (`/var/lib/nemo-retriever`) because the PVC is mounted and
+SCC-assigned `fsGroup` applies. When persistence is off, always relocate logs to
+`/tmp` (or another path backed by `service.extraVolumes`).
+
+### Example install on OpenShift 4.20 (service-only smoke test)
+
+Matches QA validation with external NIMs disabled, no persistence, and no results
+PVC:
+
+```bash
+oc new-project nemo-retriever
+
+oc create secret docker-registry ngc-secret -n nemo-retriever \
+  --docker-server=nvcr.io --docker-username='$oauthtoken' \
+  --docker-password="$NGC_API_KEY"
+
+oc create secret generic ngc-api -n nemo-retriever \
+  --from-literal=NGC_API_KEY="$NGC_API_KEY" \
+  --from-literal=NGC_CLI_API_KEY="$NGC_API_KEY"
+
+helm install retriever ./nemo_retriever/helm -n nemo-retriever \
+  -f <your-openshift-overrides>.yaml \
+  --set ngcImagePullSecret.create=false \
+  --set ngcApiSecret.create=false \
+  --set nims.enabled=false \
+  --set persistence.enabled=false \
+  --set retrieverResults.enabled=false \
+  --set service.image.repository=nvcr.io/nvstaging/nim/nrl-service \
+  --set service.image.tag=26.05-RC4
+```
+
+Verify pods:
+
+```bash
+oc get pods -n nemo-retriever
+oc describe pod -l app.kubernetes.io/name=nemo-retriever -n nemo-retriever
+```
+
+You should see SCC-assigned numeric `runAsUser` on containers that declare a
+`securityContext` block, and no PSA warnings once overrides are applied.
+
+### Enabling the vectordb Deployment on OpenShift
+
+`serviceConfig.vectordb.enabled=true` renders a **vectordb** container from the
+same image (`USER nemo`, non-numeric). The chart does not yet expose a
+`securityContext` value for that container. After `helm install`, patch the
+Deployment so OpenShift can inject a numeric UID into the container spec:
+
+```bash
+RELEASE=retriever
+NS=nemo-retriever
+VDB_DEPLOY="${RELEASE}-nemo-retriever-vectordb"
+
+oc patch deployment "$VDB_DEPLOY" -n "$NS" --type=json -p='[
+  {"op": "add", "path": "/spec/template/spec/containers/0/securityContext", "value": {
+    "allowPrivilegeEscalation": false,
+    "capabilities": {"drop": ["ALL"]},
+    "runAsNonRoot": true,
+    "seccompProfile": {"type": "RuntimeDefault"}
+  }}
+]'
+```
+
+Re-apply the patch after `helm upgrade` if the Deployment is recreated. A future
+chart release may add first-class `topology.vectordb.securityContext` values.
+
+### Enabling the OpenTelemetry collector on OpenShift
+
+The chart’s otel-collector Deployment likewise lacks `securityContext` fields.
+Prefer `topology.otel.enabled=false` (as in the sample values) unless you operate
+your own collector or patch `*-otel` the same way as vectordb.
+
+### What we intentionally do not require on OpenShift
+
+Do **not** bind the namespace to **anyuid** SCC or set PSA `enforce=privileged`
+unless your security team explicitly approves it. The overrides above are intended
+to keep **restricted-v2** / PSA **restricted** posture.
+
+### Related documentation
+
+- [Pre-Requisites & Support Matrix](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md)
+- [Deployment options](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md)
+
+---
+
 ## Air-gapped deployment { #air-gapped-deployment }
 
 See [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment) for overview and workflow. Chart-specific reference for mirroring:
@@ -659,7 +1107,7 @@ Verify tags on the Git branch or tag you ship (for example `26.05` or
 | Table structure | `table_structure` | `nvcr.io/nim/nvidia/nemotron-table-structure-v1:1.8.0` |
 | OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0` |
 | VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` |
-| Reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-1b-v2:1.10.0` |
+| VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:1.10.0` |
 | Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
 | Omni caption (optional) | `nemotron_3_nano_omni_30b_a3b_reasoning` | `nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` |
 | Parakeet ASR (optional) | `audio` | `nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us:1.5.0` |
@@ -749,9 +1197,23 @@ locally:
 
 ```bash
 helm lint nemo_retriever/helm
-helm template r nemo_retriever/helm > /tmp/r.yaml                                         # operator CRDs absent
-helm template r nemo_retriever/helm --api-versions apps.nvidia.com/v1alpha1 > /tmp/r-op.yaml  # operator CRDs present
+
+# Operator CRDs present: vectordb resolves vlm_embed via the operator URL.
+helm template r nemo_retriever/helm \
+  --api-versions apps.nvidia.com/v1alpha1 > /tmp/r-op.yaml
+
+# Operator CRDs absent: vectordb has no operator URL to fall back to, so
+# either disable vectordb or supply an explicit embed endpoint.
+helm template r nemo_retriever/helm \
+  --set serviceConfig.vectordb.enabled=false > /tmp/r.yaml
+#   or:
+# helm template r nemo_retriever/helm \
+#   --set serviceConfig.nimEndpoints.embedInvokeUrl=http://embed.svc:8000/v1/embeddings \
+#   > /tmp/r.yaml
 ```
 
 Both renders should succeed cleanly and parse as valid Kubernetes manifests
-(`kubectl apply --dry-run=client -f /tmp/r.yaml`).
+(`kubectl apply --dry-run=client -f /tmp/r.yaml`). See [VectorDB and the
+embed endpoint](#vectordb-and-the-embed-endpoint) for why
+`helm template r nemo_retriever/helm` without flags is rejected as a
+misconfiguration.

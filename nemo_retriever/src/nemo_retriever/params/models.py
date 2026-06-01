@@ -118,6 +118,7 @@ class IngestExecuteParams(_ParamsModel):
     return_failures: bool = False
     save_to_disk: bool = False
     return_traces: bool = False
+    return_results: bool = True
     parallel: bool = False
     max_workers: Optional[int] = None
     gpu_devices: list[str] = Field(default_factory=list)
@@ -181,6 +182,9 @@ class ASRParams(_ParamsModel):
 
     audio_endpoints: Tuple[Optional[str], Optional[str]] = (None, None)
     audio_infer_protocol: str = "grpc"
+    # ``auto``: streaming (online) for NVCF; offline recognize for other gRPC
+    # endpoints (e.g. Helm Parakeet NIM with ``mode=ofl``).
+    audio_infer_mode: Literal["auto", "online", "offline"] = "auto"
     function_id: Optional[str] = None
     auth_token: Optional[str] = None
     segment_audio: bool = False

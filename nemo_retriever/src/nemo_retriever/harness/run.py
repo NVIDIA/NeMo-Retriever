@@ -4,9 +4,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import errno
 from importlib import metadata
 import json
+import logging
 import os
 import pty
 import re
@@ -41,6 +43,7 @@ from nemo_retriever.utils.input_files import resolve_input_files
 
 
 ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+logger = logging.getLogger(__name__)
 
 
 def _collect_gpu_metadata() -> tuple[int | None, str | None]:
@@ -1068,6 +1071,50 @@ def _run_graph_pipeline(
     return result_payload
 
 
+def _service_beir_dataset_name(cfg: HarnessConfig) -> str:
+    dataset_name = cfg.beir_dataset_name or cfg.dataset_label
+    if cfg.beir_loader in {"bo767_csv", "bo10k_csv", "earnings_csv", "financebench_json", "jp20_csv"} and cfg.query_csv:
+        return str(Path(cfg.query_csv).resolve())
+    return str(dataset_name)
+
+
+def _run_service_beir_evaluation(cfg: HarnessConfig) -> tuple[float, dict[str, float], int]:
+    import time as _time
+
+    from nemo_retriever.recall.beir import BeirConfig, evaluate_service_beir, resolve_beir_dataset_options
+
+    beir_options = resolve_beir_dataset_options(
+        dataset_name=_service_beir_dataset_name(cfg),
+        loader=cfg.beir_loader,
+        doc_id_field=cfg.beir_doc_id_field,
+        ks=cfg.beir_ks,
+    )
+    if not beir_options.loader:
+        raise ValueError("beir_loader is required for service-mode BEIR evaluation")
+    if not beir_options.dataset_name:
+        raise ValueError("beir_dataset_name is required for service-mode BEIR evaluation")
+
+    beir_cfg = BeirConfig(
+        lancedb_uri=str(cfg.lancedb_uri or "lancedb"),
+        lancedb_table=str(cfg.lancedb_table_name or "nv-ingest"),
+        embedding_model=cfg.embed_model_name,
+        loader=str(beir_options.loader),
+        dataset_name=str(beir_options.dataset_name),
+        split=str(cfg.beir_split),
+        query_language=cfg.beir_query_language,
+        doc_id_field=str(beir_options.doc_id_field),
+        ks=beir_options.ks,
+        hybrid=bool(cfg.hybrid),
+        service_url=cfg.service_url,
+        service_api_token=cfg.api_key,
+        service_max_concurrent=int(cfg.service_max_concurrency),
+    )
+
+    eval_start = _time.perf_counter()
+    beir_dataset, _raw_hits, _run, metrics = evaluate_service_beir(beir_cfg)
+    return _time.perf_counter() - eval_start, metrics, len(beir_dataset.query_ids)
+
+
 def _run_service_mode(
     cfg: HarnessConfig,
     artifact_dir: Path,
@@ -1141,9 +1188,11 @@ def _run_service_mode(
         write_json(artifact_dir / "results.json", result_payload)
         return result_payload
 
-    elapsed = result_obj.elapsed_s
+    elapsed = float(getattr(result_obj, "elapsed_s", 0.0))
+    failures = list(getattr(result_obj, "failures", []))
+    document_ids = list(getattr(result_obj, "document_ids", []))
     pages_processed = len(result_obj)
-    pages_failed = len(result_obj.failures)
+    pages_failed = len(failures)
     total_pages = pages_processed + pages_failed
 
     pps = round(total_pages / elapsed, 2) if elapsed and elapsed > 0 else None
@@ -1157,20 +1206,47 @@ def _run_service_mode(
         "pages_per_sec_ingest": pps,
     }
 
-    if result_obj.metrics:
-        for model, vals in result_obj.metrics.items():
-            metrics_payload[f"model_{model}_invocations"] = vals.get("invocations", 0)
-            metrics_payload[f"model_{model}_detections"] = vals.get("detections", 0)
+    runtime_summary: dict[str, Any] | None = None
+    evaluation_metrics: dict[str, float] = {}
+    recall_metrics: dict[str, float] = {}
+    evaluation_failure: str | None = None
+    if cfg.evaluation_mode == "beir":
+        typer.echo("  Running service-mode BEIR evaluation...")
+        try:
+            evaluation_secs, evaluation_metrics, evaluation_count = _run_service_beir_evaluation(cfg)
+            recall_metrics = {name: value for name, value in evaluation_metrics.items() if name.startswith("recall@")}
+            metrics_payload.update(
+                {_normalize_recall_metric_key(name): value for name, value in evaluation_metrics.items()}
+            )
+            runtime_summary = {
+                "evaluation_label": "BEIR",
+                "evaluation_time_secs": round(evaluation_secs, 2),
+                "evaluation_metrics": evaluation_metrics,
+                "evaluation_count": evaluation_count,
+            }
+        except Exception as exc:
+            evaluation_failure = f"{type(exc).__name__}: {exc}"
+    elif cfg.evaluation_mode != "none":
+        evaluation_failure = f"evaluation_mode={cfg.evaluation_mode!r} is not supported in service mode"
 
-    summary_metrics: dict[str, Any] = {
-        "pages": total_pages,
-        "files": len(input_files),
-        "ingest_secs": round(elapsed, 2),
-        "pages_per_sec_ingest": pps,
-    }
+    effective_rc, failure_reason, success = _evaluate_run_outcome(
+        process_rc=0,
+        evaluation_mode=cfg.evaluation_mode,
+        recall_required=bool(cfg.recall_required),
+        recall_metrics=recall_metrics,
+        evaluation_metrics=evaluation_metrics,
+    )
+    if pages_failed:
+        success = False
+        effective_rc = 1
+        failure_reason = f"{pages_failed} page(s) failed during service ingestion"
+    if evaluation_failure:
+        success = False
+        effective_rc = 1
+        failure_reason = evaluation_failure
 
-    success = pages_failed == 0
-    failure_reason = f"{pages_failed} page(s) failed during service ingestion" if pages_failed > 0 else None
+    summary_metrics = _resolve_summary_metrics(cfg, metrics_payload, runtime_summary, subprocess_elapsed_secs=elapsed)
+    summary_metrics["files"] = len(input_files)
 
     run_metadata = _collect_run_metadata()
     run_metadata["ray_cluster_mode"] = "none (service mode)"
@@ -1179,8 +1255,8 @@ def _run_service_mode(
         "timestamp": now_timestr(),
         "latest_commit": last_commit(),
         "success": success,
-        "return_code": 0 if success else 1,
-        "failure_reason": failure_reason,
+        "return_code": effective_rc,
+        "failure_reason": failure_reason or None,
         "test_config": {
             "dataset_label": cfg.dataset_label,
             "dataset_dir": cfg.dataset_dir,
@@ -1190,19 +1266,31 @@ def _run_service_mode(
             "service_max_concurrency": cfg.service_max_concurrency,
             "input_type": cfg.input_type,
             "api_key": "(set)" if cfg.api_key else None,
+            "query_csv": cfg.query_csv,
+            "effective_query_csv": cfg.query_csv if cfg.evaluation_mode == "beir" else None,
+            "recall_required": cfg.recall_required,
+            "evaluation_mode": cfg.evaluation_mode,
+            "beir_loader": cfg.beir_loader,
+            "beir_dataset_name": cfg.beir_dataset_name,
+            "beir_split": cfg.beir_split,
+            "beir_query_language": cfg.beir_query_language,
+            "beir_doc_id_field": cfg.beir_doc_id_field,
+            "beir_ks": list(cfg.beir_ks),
         },
         "metrics": metrics_payload,
         "summary_metrics": summary_metrics,
         "run_metadata": run_metadata,
-        "runtime_summary": None,
+        "runtime_summary": runtime_summary,
         "detection_summary": None,
-        "service_job_ids": result_obj.job_ids,
+        "service_job_id": getattr(result_obj, "job_id", None),
+        "service_document_ids": document_ids,
+        "service_job_status": getattr(result_obj, "job_status", None),
         "artifacts": {
             "runtime_metrics_dir": str(runtime_dir.resolve()),
         },
     }
-    if result_obj.failures:
-        result_payload["failures"] = result_obj.failures
+    if failures:
+        result_payload["failures"] = failures
     if tags:
         result_payload["tags"] = list(tags)
 
@@ -1216,11 +1304,102 @@ def _run_service_mode(
         except Exception:
             pass
 
-    typer.echo(f"\n  Service ingestion complete: {total_pages} pages in {elapsed:.1f}s " f"({pps:.2f} pages/sec)")
+    pps_text = f"{pps:.2f}" if pps is not None else "n/a"
+    typer.echo(f"\n  Service ingestion complete: {total_pages} pages in {elapsed:.1f}s ({pps_text} pages/sec)")
     if pages_failed:
         typer.echo(f"  WARNING: {pages_failed} page(s) failed")
+    if evaluation_failure:
+        typer.echo(f"  WARNING: service evaluation failed: {evaluation_failure}")
 
     return result_payload
+
+
+def _run_managed_service_mode(
+    cfg: HarnessConfig,
+    artifact_dir: Path,
+    run_id: str,
+    tags: list[str] | None = None,
+    skip_local_history: bool = False,
+) -> dict[str, Any]:
+    from nemo_retriever.harness.helm_manager import HelmServiceManager
+
+    manager = HelmServiceManager(cfg)
+    start_error: str | None = None
+    start_rc = 1
+    try:
+        try:
+            start_rc = manager.start()
+        except Exception as exc:
+            start_error = f"{type(exc).__name__}: {exc}"
+            start_rc = 1
+
+        if start_rc != 0:
+            result_payload: dict[str, Any] = {
+                "timestamp": now_timestr(),
+                "latest_commit": last_commit(),
+                "success": False,
+                "return_code": start_rc,
+                "failure_reason": start_error or f"managed Helm service failed to become ready (exit {start_rc})",
+                "test_config": {
+                    "dataset_label": cfg.dataset_label,
+                    "dataset_dir": cfg.dataset_dir,
+                    "preset": cfg.preset,
+                    "run_mode": "service",
+                    "manage_service": True,
+                    "helm_chart": cfg.helm_chart,
+                    "helm_chart_version": cfg.helm_chart_version,
+                    "helm_release": cfg.helm_release,
+                    "helm_namespace": cfg.helm_namespace or cfg.helm_release,
+                },
+                "metrics": {"files": None, "pages": None, "ingest_secs": None},
+                "summary_metrics": {"pages": None, "files": None, "ingest_secs": None, "pages_per_sec_ingest": None},
+                "run_metadata": _collect_run_metadata(),
+                "runtime_summary": None,
+                "detection_summary": None,
+                "artifacts": {"runtime_metrics_dir": str((artifact_dir / "runtime_metrics").resolve())},
+            }
+            if tags:
+                result_payload["tags"] = list(tags)
+            try:
+                manager.dump_logs(artifact_dir)
+            except Exception as exc:
+                result_payload["service_log_collection_error"] = f"{type(exc).__name__}: {exc}"
+            write_json(artifact_dir / "results.json", result_payload)
+            return result_payload
+
+        service_cfg = replace(cfg, service_url=manager.get_service_url())
+        result = _run_service_mode(
+            service_cfg,
+            artifact_dir,
+            run_id=run_id,
+            tags=tags,
+            skip_local_history=True,
+        )
+        result["managed_service"] = {
+            "helm_release": cfg.helm_release,
+            "helm_namespace": cfg.helm_namespace or cfg.helm_release,
+            "service_url": service_cfg.service_url,
+            "kept_up": bool(cfg.keep_up),
+        }
+        if not result.get("success"):
+            try:
+                manager.dump_logs(artifact_dir)
+            except Exception as exc:
+                result["service_log_collection_error"] = f"{type(exc).__name__}: {exc}"
+        write_json(artifact_dir / "results.json", result)
+        if not skip_local_history:
+            try:
+                from nemo_retriever.harness.history import record_run as _record_history
+
+                _record_history(result, artifact_dir)
+            except Exception:
+                pass
+        return result
+    finally:
+        try:
+            manager.stop(uninstall=not cfg.keep_up)
+        except Exception as exc:
+            logger.warning("Managed Helm cleanup failed: %s", exc)
 
 
 def _run_entry(
@@ -1232,6 +1411,7 @@ def _run_entry(
     preset: str | None,
     sweep_overrides: dict[str, Any] | None = None,
     cli_overrides: list[str] | None = None,
+    cli_helm_set: list[str] | None = None,
     recall_required: bool | None = None,
     tags: list[str] | None = None,
     skip_local_history: bool = False,
@@ -1244,6 +1424,7 @@ def _run_entry(
         sweep_overrides=sweep_overrides,
         cli_overrides=cli_overrides,
         cli_recall_required=recall_required,
+        cli_helm_set=cli_helm_set,
     )
 
     if session_dir is None:
@@ -1265,9 +1446,18 @@ def _run_entry(
             skip_local_history=skip_local_history,
         )
     elif cfg.run_mode == "service":
-        result = _run_service_mode(
-            cfg, artifact_dir, run_id=resolved_run_name, tags=normalized_tags, skip_local_history=skip_local_history
-        )
+        if cfg.manage_service:
+            result = _run_managed_service_mode(
+                cfg,
+                artifact_dir,
+                run_id=resolved_run_name,
+                tags=normalized_tags,
+                skip_local_history=skip_local_history,
+            )
+        else:
+            result = _run_service_mode(
+                cfg, artifact_dir, run_id=resolved_run_name, tags=normalized_tags, skip_local_history=skip_local_history
+            )
     else:
         run_kwargs: dict[str, Any] = {
             "run_id": resolved_run_name,
@@ -1320,14 +1510,63 @@ def run_command(
     recall_required: bool | None = typer.Option(
         None, "--recall-required/--no-recall-required", help="Override recall-required gate for this run."
     ),
+    managed: bool | None = typer.Option(None, "--managed/--no-managed", help="Manage the service with Helm."),
+    keep_up: bool | None = typer.Option(
+        None, "--keep-up/--no-keep-up", help="Keep Helm release running after a managed run."
+    ),
+    helm_chart: str | None = typer.Option(None, "--helm-chart", help="Helm chart path or remote chart ref."),
+    helm_chart_version: str | None = typer.Option(None, "--helm-chart-version", help="Remote Helm chart version."),
+    helm_release: str | None = typer.Option(None, "--helm-release", help="Helm release name for managed service."),
+    helm_namespace: str | None = typer.Option(
+        None, "--helm-namespace", help="Kubernetes namespace for managed service."
+    ),
+    helm_values_file: str | None = typer.Option(
+        None, "--helm-values-file", help="Helm values file for managed service."
+    ),
+    helm_set: list[str] = typer.Option([], "--helm-set", help="Helm value override KEY=VALUE. Repeatable."),
+    helm_timeout: int | None = typer.Option(None, "--helm-timeout", help="Helm install/upgrade timeout in seconds."),
+    readiness_timeout: int | None = typer.Option(
+        None, "--readiness-timeout", help="Managed service readiness timeout in seconds."
+    ),
+    helm_service_local_port: int | None = typer.Option(
+        None, "--helm-service-local-port", help="Local port for managed service port-forward."
+    ),
+    helm_bin: str | None = typer.Option(None, "--helm-bin", help="Helm binary command."),
+    kubectl_bin: str | None = typer.Option(None, "--kubectl-bin", help="kubectl binary command."),
+    helm_sudo: bool | None = typer.Option(None, "--helm-sudo/--no-helm-sudo", help="Run Helm through sudo."),
+    kubectl_sudo: bool | None = typer.Option(
+        None, "--kubectl-sudo/--no-kubectl-sudo", help="Run kubectl through sudo."
+    ),
 ) -> None:
+    effective_overrides = list(override)
+
+    def _add_override(name: str, value: object | None) -> None:
+        if value is not None:
+            effective_overrides.append(f"{name}={value}")
+
+    _add_override("manage_service", managed)
+    _add_override("keep_up", keep_up)
+    _add_override("helm_chart", helm_chart)
+    _add_override("helm_chart_version", helm_chart_version)
+    _add_override("helm_release", helm_release)
+    _add_override("helm_namespace", helm_namespace)
+    _add_override("helm_values_file", helm_values_file)
+    _add_override("helm_timeout", helm_timeout)
+    _add_override("readiness_timeout", readiness_timeout)
+    _add_override("helm_service_local_port", helm_service_local_port)
+    _add_override("helm_bin", helm_bin)
+    _add_override("kubectl_bin", kubectl_bin)
+    _add_override("helm_sudo", helm_sudo)
+    _add_override("kubectl_sudo", kubectl_sudo)
+
     result = _run_entry(
         run_name=run_name,
         config_file=config,
         session_dir=None,
         dataset=dataset,
         preset=preset,
-        cli_overrides=override,
+        cli_overrides=effective_overrides,
+        cli_helm_set=helm_set,
         recall_required=recall_required,
         tags=tag,
     )

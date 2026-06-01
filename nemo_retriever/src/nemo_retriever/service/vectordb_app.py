@@ -201,6 +201,20 @@ def create_vectordb_app(
             embed_endpoint or "(none)",
             MAX_CONCURRENT_QUERIES,
         )
+        # The Helm chart (deployment-vectordb.yaml) fails-fast when
+        # vectordb is enabled with an unresolved embed endpoint, but
+        # this Pod is also reachable from bespoke launchers / docker
+        # compose / local `python -m ...` invocations.  Surface the
+        # misconfiguration loudly at startup so operators see it in
+        # the Pod log instead of waiting for the first failing query.
+        if not embed_endpoint:
+            logger.error(
+                "VectorDB started with an empty --embed-endpoint; "
+                "/v1/query will return HTTP 501 until an endpoint is "
+                "configured.  Restart the Pod with --embed-endpoint set, "
+                "or disable serviceConfig.vectordb.enabled in the Helm "
+                "release if no query path is needed."
+            )
         yield
         _state = None
         _query_semaphore = None

@@ -6,10 +6,11 @@ attribute consumed by ``extract_tables_and_columns``.
 """
 
 import pandas as pd
+import pytest
 
 from nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor import (
     JoinPair,
-    NotValidSyntaxError,
+    SQLSyntaxError,
     TableMatch,
     UnionPair,
     extract_tables_and_columns,
@@ -226,18 +227,17 @@ def test_ast_node_count_is_positive():
     assert result.ast_node_count > 0
 
 
-def test_empty_sql_returns_empty():
-    result = extract_tables_and_columns("", all_schemas=_ALL_SCHEMAS)
-    assert result.tables == {}
+def test_empty_sql_raises_syntax_error():
+    """An empty SQL string is a parse failure, not a "no tables found" outcome."""
+    with pytest.raises(SQLSyntaxError):
+        extract_tables_and_columns("", dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
 
 
-def test_invalid_sql_raises():
-    try:
-        extract_tables_and_columns("NOT VALID SQL !!!", all_schemas=_ALL_SCHEMAS)
-        raised = False
-    except NotValidSyntaxError:
-        raised = True
-    assert raised
+def test_invalid_sql_raises_syntax_error():
+    """sqlglot ParseError surfaces as a dedicated SQLSyntaxError so callers can
+    distinguish unparseable SQL from valid SQL that references no known table."""
+    with pytest.raises(SQLSyntaxError):
+        extract_tables_and_columns("NOT VALID SQL !!!", dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
 
 
 # ---------------------------------------------------------------------------
@@ -533,9 +533,10 @@ def test_canonical_order_consistent():
     assert result_a.joins[0].right_table == result_b.joins[0].right_table
 
 
-def test_empty_sql_returns_no_joins():
-    result = extract_tables_and_columns("", all_schemas=_ALL_SCHEMAS)
-    assert result.joins == []
+def test_empty_sql_raises_for_join_extraction():
+    """Empty SQL is a parse failure; the join-extraction path must surface it."""
+    with pytest.raises(SQLSyntaxError):
+        extract_tables_and_columns("", dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
 
 
 # ---------------------------------------------------------------------------

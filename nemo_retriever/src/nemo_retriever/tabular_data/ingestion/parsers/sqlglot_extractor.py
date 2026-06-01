@@ -28,11 +28,18 @@ from dataclasses import dataclass, field
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.errors import ParseError, TokenError
 from sqlglot.optimizer.qualify import qualify
 
 
-class NotValidSyntaxError(Exception):
-    """Raised when SQL cannot be parsed with any of the given dialects."""
+class SQLSyntaxError(ValueError):
+    """Raised when ``sqlglot`` cannot parse the SQL with any of the given dialects.
+
+    Distinguishes pure syntax/tokenization failures from later resolution
+    issues (e.g. unknown tables, schema mismatches), so callers can classify
+    validation outcomes precisely instead of treating an unparseable query
+    the same as a parseable query that references no known tables.
+    """
 
 
 @dataclass
@@ -511,28 +518,33 @@ def extract_tables_and_columns(
 
     Raises
     ------
-    NotValidSyntaxError
-        When *sql* cannot be parsed with any dialect in *dialects*.
+    SQLSyntaxError
+        When *sql* cannot be parsed with any dialect in *dialects* (including
+        empty/whitespace-only input).
     """
-
-    if not sql:
-        return ExtractionResult()
-
     statement = None
     dialect_used: str = ""
+    last_err: Exception | None = None
     for i, dialect in enumerate(dialects):
         try:
             statement = sqlglot.parse_one(sql, dialect=dialect)
             dialect_used = dialect
             break
-        except Exception:
+        except (ParseError, TokenError) as err:
+            last_err = err
             is_last_dialect = i == len(dialects) - 1
             if is_last_dialect:
-                raise NotValidSyntaxError(
-                    "Invalid query syntax or unsupported dialect. " f"Supported dialects: {','.join(dialects)}"
-                ) from None
+                raise SQLSyntaxError(
+                    f"Invalid query syntax or unsupported dialect. Supported dialects: {','.join(dialects)}. "
+                    f"Last parser error: {err}"
+                ) from err
 
-    assert statement is not None and dialect_used is not None
+    if statement is None:
+        raise SQLSyntaxError(
+            f"Invalid query syntax or unsupported dialect. Supported dialects: {','.join(dialects)}."
+            + (f" Last parser error: {last_err}" if last_err else "")
+        )
+
     dialect = dialect_used
 
     ast_node_count = sum(1 for _ in statement.walk())
