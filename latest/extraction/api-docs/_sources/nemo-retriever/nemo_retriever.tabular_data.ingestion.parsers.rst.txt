@@ -1,0 +1,37 @@
+nemo\_retriever.tabular\_data.ingestion.parsers package
+=======================================================
+
+Submodules
+----------
+
+nemo\_retriever.tabular\_data.ingestion.parsers.query\_comparator module
+------------------------------------------------------------------------
+
+.. automodule:: nemo_retriever.tabular_data.ingestion.parsers.query_comparator
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.tabular\_data.ingestion.parsers.schemas\_parser module
+----------------------------------------------------------------------
+
+.. automodule:: nemo_retriever.tabular_data.ingestion.parsers.schemas_parser
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.tabular\_data.ingestion.parsers.sqlglot\_extractor module
+-------------------------------------------------------------------------
+
+.. automodule:: nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.tabular_data.ingestion.parsers
+   :members:
+   :show-inheritance:
+   :undoc-members:

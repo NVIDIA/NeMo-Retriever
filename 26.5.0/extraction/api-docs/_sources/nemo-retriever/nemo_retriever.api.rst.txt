@@ -1,0 +1,10 @@
+nemo\_retriever.api package
+===========================
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.api
+   :members:
+   :show-inheritance:
+   :undoc-members:

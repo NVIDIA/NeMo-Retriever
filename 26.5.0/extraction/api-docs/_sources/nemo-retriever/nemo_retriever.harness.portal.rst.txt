@@ -1,0 +1,45 @@
+nemo\_retriever.harness.portal package
+======================================
+
+Submodules
+----------
+
+nemo\_retriever.harness.portal.app module
+-----------------------------------------
+
+.. automodule:: nemo_retriever.harness.portal.app
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.harness.portal.mcp\_registry module
+---------------------------------------------------
+
+.. automodule:: nemo_retriever.harness.portal.mcp_registry
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.harness.portal.mcp\_server module
+-------------------------------------------------
+
+.. automodule:: nemo_retriever.harness.portal.mcp_server
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.harness.portal.mcp\_tools module
+------------------------------------------------
+
+.. automodule:: nemo_retriever.harness.portal.mcp_tools
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.harness.portal
+   :members:
+   :show-inheritance:
+   :undoc-members:
