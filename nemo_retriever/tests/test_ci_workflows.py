@@ -161,7 +161,11 @@ def test_dev_compose_helpers_are_feature_scoped():
         assert "nv-ingest-ms-runtime" not in text
 
     neo4j_healthcheck = compose_data["neo4j.compose.yaml"]["services"]["neo4j"]["healthcheck"]["test"]
-    assert "${NEO4J_USERNAME:-neo4j}" in neo4j_healthcheck
+    assert neo4j_healthcheck[0] == "CMD-SHELL"
+    assert "-u" not in neo4j_healthcheck
+    assert "-p" not in neo4j_healthcheck
+    assert any("NEO4J_AUTH%%/*" in part for part in neo4j_healthcheck)
+    assert any("NEO4J_AUTH#*/" in part for part in neo4j_healthcheck)
 
     helper_readme = compose_dir / "README.md"
     assert helper_readme.exists()
