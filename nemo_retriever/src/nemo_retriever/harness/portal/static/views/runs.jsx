@@ -408,7 +408,7 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
           <table className="runs-table">
             <thead>
               <tr>
-                <th>Status</th><th>Source</th><th>Timestamp</th><th>Host</th><th style={{textAlign:'right'}}>GPUs</th><th>Commit</th><th>Dataset</th>
+                <th>Status</th><th>Mode</th><th>Source</th><th>Timestamp</th><th>Host</th><th style={{textAlign:'right'}}>GPUs</th><th>Commit</th><th>Dataset</th>
                 <th>Preset</th><th style={{textAlign:'right'}}>Pages</th>
                 <th style={{textAlign:'right'}}>PPS</th><th style={{textAlign:'right'}}>Recall@5</th>
                 <th style={{textAlign:'right'}}>Ingest (s)</th>
@@ -417,11 +417,11 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="13" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                <tr><td colSpan="14" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
                   <div className="spinner spinner-lg" style={{margin:'0 auto 12px'}}></div><div>Loading runs…</div>
                 </td></tr>
               ) : runs.length === 0 ? (
-                <tr><td colSpan="13" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
+                <tr><td colSpan="14" style={{textAlign:'center',padding:'60px',color:'var(--nv-text-muted)'}}>
                   <div style={{marginBottom:'8px',fontSize:'15px'}}>No runs found</div>
                   <div style={{fontSize:'12px',color:'var(--nv-text-dim)'}}>
                     Trigger a run or use <code className="mono" style={{background:'rgba(255,255,255,0.06)',padding:'2px 6px',borderRadius:'4px'}}>retriever harness backfill</code> to import existing results.
@@ -433,6 +433,12 @@ function RunsView({ runs, datasets, loading, filterDataset, setFilterDataset, fi
                     <StatusBadge success={run.success} />
                     {run.failure_reason && <div style={{fontSize:'11px',color:'#ff5050',marginTop:'2px',maxWidth:'140px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={run.failure_reason}>{run.failure_reason}</div>}
                   </td>
+                  <td>{(() => {
+                    const mode = run.run_mode;
+                    if (!mode) return <span style={{color:'var(--nv-text-dim)'}}>—</span>;
+                    const mc = { batch: '#64b4ff', inprocess: '#76b900', service: '#ffa500' };
+                    return <span style={{fontSize:'11px',fontWeight:600,padding:'2px 6px',borderRadius:'4px',background:`${mc[mode] || '#aaa'}1e`,color:mc[mode]||'#aaa'}}>{mode}</span>;
+                  })()}</td>
                   <td><TriggerSourceBadge source={run.trigger_source} /></td>
                   <td style={{color:'var(--nv-text-muted)',whiteSpace:'nowrap'}}>{fmtTs(run.timestamp)}</td>
                   <td style={{color:'var(--nv-text-muted)',whiteSpace:'nowrap',fontSize:'12px'}}>

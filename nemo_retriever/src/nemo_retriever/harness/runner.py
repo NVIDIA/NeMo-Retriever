@@ -1874,6 +1874,13 @@ def runner_start_command(
                 current_sha = _get_current_git_commit()
                 if current_sha and current_sha.startswith(update_commit[:7]):
                     logger.info("Already at requested commit %s — skipping update", update_commit[:12])
+                    try:
+                        _post_json(
+                            f"{base_url}/api/runners/{runner_id}/update-complete",
+                            {"previous_commit": current_sha, "new_commit": current_sha},
+                        )
+                    except Exception as exc:
+                        logger.warning("Failed to notify portal of no-op update: %s", exc)
                 elif active_job_thread is not None and active_job_thread.is_alive():
                     logger.info("Update to %s pending — waiting for current job to finish", update_commit[:12])
                 else:

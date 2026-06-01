@@ -3861,6 +3861,119 @@ async def cluster_health_check(cluster_id: int):
     return {"status": status, "message": message, "cluster": updated}
 
 
+@app.get("/api/clusters/{cluster_id}/pods")
+async def get_cluster_pods(cluster_id: int):
+    """Query the K8s API for pods running in the cluster's namespace."""
+    cluster = history.get_cluster_by_id(cluster_id)
+    if cluster is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+
+    def _fetch_pods(cluster_data: dict) -> list[dict]:
+        from nemo_retriever.harness.cluster_executor import _get_k8s_client
+        from kubernetes import client as k8s_client
+
+        api_client, namespace = _get_k8s_client(cluster_data)
+        v1 = k8s_client.CoreV1Api(api_client)
+        pods = v1.list_namespaced_pod(namespace=namespace)
+        results = []
+        for pod in pods.items:
+            containers = []
+            for cs in (pod.status.container_statuses or []):
+                state = "unknown"
+                if cs.state.running:
+                    state = "running"
+                elif cs.state.waiting:
+                    state = f"waiting ({cs.state.waiting.reason or 'unknown'})"
+                elif cs.state.terminated:
+                    state = f"terminated ({cs.state.terminated.reason or 'unknown'})"
+                containers.append({
+                    "name": cs.name,
+                    "image": cs.image,
+                    "state": state,
+                    "ready": cs.ready,
+                    "restart_count": cs.restart_count,
+                })
+            spec_containers = pod.spec.containers or []
+            resources = {}
+            if spec_containers:
+                res = spec_containers[0].resources
+                if res:
+                    resources = {
+                        "requests": dict(res.requests or {}),
+                        "limits": dict(res.limits or {}),
+                    }
+
+            start_time = None
+            if pod.status.start_time:
+                start_time = pod.status.start_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            labels = dict(pod.metadata.labels or {})
+            results.append({
+                "name": pod.metadata.name,
+                "namespace": pod.metadata.namespace,
+                "phase": pod.status.phase,
+                "node": pod.spec.node_name,
+                "start_time": start_time,
+                "labels": labels,
+                "containers": containers,
+                "resources": resources,
+                "app_label": labels.get("app") or labels.get("app.kubernetes.io/name") or "",
+                "version": labels.get("app.kubernetes.io/version") or labels.get("version") or "",
+                "component": labels.get("app.kubernetes.io/component") or labels.get("component") or "",
+            })
+        return results
+
+    try:
+        pods = await asyncio.to_thread(_fetch_pods, cluster)
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"Missing dependency: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to query cluster: {exc}")
+
+    return {"pods": pods, "namespace": cluster.get("namespace", "default"), "cluster_name": cluster["name"]}
+
+
+@app.get("/api/clusters/{cluster_id}/config")
+async def get_cluster_config(cluster_id: int):
+    """Fetch Helm release configmaps from the cluster's namespace."""
+    cluster = history.get_cluster_by_id(cluster_id)
+    if cluster is None:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+
+    def _fetch_config(cluster_data: dict) -> list[dict]:
+        from nemo_retriever.harness.cluster_executor import _get_k8s_client
+        from kubernetes import client as k8s_client
+
+        api_client, namespace = _get_k8s_client(cluster_data)
+        v1 = k8s_client.CoreV1Api(api_client)
+        configmaps = v1.list_namespaced_config_map(namespace=namespace)
+        results = []
+        for cm in configmaps.items:
+            labels = dict(cm.metadata.labels or {})
+            is_helm = "app.kubernetes.io/managed-by" in labels or "helm.sh/chart" in labels
+            data = dict(cm.data or {})
+            results.append({
+                "name": cm.metadata.name,
+                "labels": labels,
+                "helm_managed": is_helm,
+                "chart": labels.get("helm.sh/chart") or "",
+                "app": labels.get("app.kubernetes.io/name") or labels.get("app") or "",
+                "data_keys": list(data.keys()),
+                "data": data,
+                "created_at": cm.metadata.creation_timestamp.strftime("%Y-%m-%dT%H:%M:%SZ") if cm.metadata.creation_timestamp else None,
+            })
+        return results
+
+    try:
+        configs = await asyncio.to_thread(_fetch_config, cluster)
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"Missing dependency: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to query cluster: {exc}")
+
+    return {"configmaps": configs, "namespace": cluster.get("namespace", "default"), "cluster_name": cluster["name"]}
+
+
 # ---------------------------------------------------------------------------
 # Database Management
 # ---------------------------------------------------------------------------

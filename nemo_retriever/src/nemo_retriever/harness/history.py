@@ -346,6 +346,7 @@ _MIGRATIONS = [
     "ALTER TABLE schedules ADD COLUMN execution_target TEXT DEFAULT 'local'",
     "ALTER TABLE schedules ADD COLUMN cluster_id INTEGER",
     "ALTER TABLE clusters ADD COLUMN node_hostnames TEXT",
+    "ALTER TABLE runs ADD COLUMN run_mode TEXT",
 ]
 
 CREATE_DATA_MIGRATIONS_TABLE_SQL = """
@@ -528,6 +529,7 @@ def record_run(
             "nsys_profile": nsys_profile,
             "dataset_id": dataset_id,
             "dataset_config_hash": dataset_config_hash,
+            "run_mode": (result.get("test_config") or {}).get("run_mode"),
         }
 
         columns = ", ".join(row.keys())
@@ -558,7 +560,7 @@ def get_runs(
             " recall_10, files, tags,"
             " artifact_dir, hostname, gpu_type, trigger_source, schedule_id,"
             " ray_cluster_mode, ray_dashboard_url, execution_commit, num_gpus,"
-            " nsys_profile"
+            " nsys_profile, run_mode"
             " FROM runs WHERE 1=1"
         )
         params: list[Any] = []

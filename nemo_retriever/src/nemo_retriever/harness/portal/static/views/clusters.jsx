@@ -2,6 +2,7 @@
 function ClustersView({ clusters, loading, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [editCluster, setEditCluster] = useState(null);
+  const [detailCluster, setDetailCluster] = useState(null);
   const [healthChecking, setHealthChecking] = useState({});
   const pg = usePagination(clusters, 25);
 
@@ -74,7 +75,7 @@ function ClustersView({ clusters, loading, onRefresh }) {
                 return (
                   <tr key={c.id} style={{ background: rowBg }}>
                     <td>{statusBadge(c.status)}</td>
-                    <td style={{ color: '#fff', fontWeight: 500 }}>{c.name}</td>
+                    <td><span style={{ color: '#fff', fontWeight: 500, cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,0.3)' }} onClick={() => setDetailCluster(c)}>{c.name}</span></td>
                     <td className="mono" style={{ fontSize: '12px', color: 'var(--nv-text-muted)' }}>{c.api_server_url}</td>
                     <td style={{ fontSize: '12px', color: 'var(--nv-text-muted)' }}>{c.namespace}</td>
                     <td style={{ fontSize: '11px' }}>
@@ -113,9 +114,304 @@ function ClustersView({ clusters, loading, onRefresh }) {
           onSaved={() => { setShowForm(false); onRefresh(); }}
         />
       )}
+      {detailCluster && (
+        <ClusterDetailModal
+          cluster={detailCluster}
+          onClose={() => setDetailCluster(null)}
+        />
+      )}
     </>
   );
 }
+
+function ClusterDetailModal({ cluster, onClose }) {
+  const [pods, setPods] = useState(null);
+  const [configs, setConfigs] = useState(null);
+  const [podsLoading, setPodsLoading] = useState(true);
+  const [configsLoading, setConfigsLoading] = useState(false);
+  const [podsError, setPodsError] = useState("");
+  const [configsError, setConfigsError] = useState("");
+  const [activeTab, setActiveTab] = useState("pods");
+  const [expandedPod, setExpandedPod] = useState(null);
+  const [expandedConfig, setExpandedConfig] = useState(null);
+
+  useEffect(() => {
+    setPodsLoading(true);
+    setPodsError("");
+    fetch(`/api/clusters/${cluster.id}/pods`)
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(data => setPods(data.pods || []))
+      .catch(e => setPodsError(e.message))
+      .finally(() => setPodsLoading(false));
+  }, [cluster.id]);
+
+  function loadConfigs() {
+    if (configs !== null) return;
+    setConfigsLoading(true);
+    setConfigsError("");
+    fetch(`/api/clusters/${cluster.id}/config`)
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(data => setConfigs(data.configmaps || []))
+      .catch(e => setConfigsError(e.message))
+      .finally(() => setConfigsLoading(false));
+  }
+
+  function podAge(startTime) {
+    if (!startTime) return "\u2014";
+    const ms = Date.now() - new Date(startTime).getTime();
+    const secs = Math.floor(ms / 1000);
+    if (secs < 60) return `${secs}s`;
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ${mins % 60}m`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ${hrs % 24}h`;
+  }
+
+  function phaseBadge(phase) {
+    const styles = {
+      Running: { bg: 'rgba(118,185,0,0.12)', color: '#76b900' },
+      Succeeded: { bg: 'rgba(100,180,255,0.12)', color: '#64b4ff' },
+      Pending: { bg: 'rgba(255,200,0,0.12)', color: '#ffc800' },
+      Failed: { bg: 'rgba(255,80,80,0.12)', color: '#ff6666' },
+    };
+    const s = styles[phase] || { bg: 'rgba(150,150,150,0.1)', color: '#aaa' };
+    return <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px', background: s.bg, color: s.color }}>{phase}</span>;
+  }
+
+  const tabStyle = (active) => ({
+    fontSize: '13px', fontWeight: 600, padding: '8px 16px', cursor: 'pointer',
+    borderBottom: active ? '2px solid var(--nv-green)' : '2px solid transparent',
+    color: active ? '#fff' : 'var(--nv-text-muted)', transition: 'color 0.15s',
+  });
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" style={{ maxWidth: '900px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <IconCloud />
+            <div>
+              <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#fff' }}>{cluster.name}</h2>
+              <span style={{ fontSize: '12px', color: 'var(--nv-text-muted)' }}>{cluster.namespace} — {cluster.api_server_url}</span>
+            </div>
+          </div>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ borderRadius: '50%' }}><IconX /></button>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--nv-border)', padding: '0 24px' }}>
+          <span style={tabStyle(activeTab === "pods")} onClick={() => setActiveTab("pods")}>
+            Pods {pods ? `(${pods.length})` : ''}
+          </span>
+          <span style={tabStyle(activeTab === "config")} onClick={() => { setActiveTab("config"); loadConfigs(); }}>
+            Configuration
+          </span>
+        </div>
+
+        <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
+          {activeTab === "pods" && (
+            podsLoading ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--nv-text-muted)' }}>
+                <div className="spinner spinner-lg" style={{ margin: '0 auto 12px' }}></div>
+                <div>Querying cluster pods…</div>
+              </div>
+            ) : podsError ? (
+              <div style={{ padding: '20px', borderRadius: '8px', background: 'rgba(255,80,80,0.08)', border: '1px solid rgba(255,80,80,0.2)' }}>
+                <div style={{ fontWeight: 600, color: '#ff6666', marginBottom: '6px' }}>Failed to fetch pods</div>
+                <div style={{ fontSize: '13px', color: 'var(--nv-text-muted)' }}>{podsError}</div>
+              </div>
+            ) : pods && pods.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--nv-text-dim)' }}>
+                No pods found in namespace <strong>{cluster.namespace}</strong>.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {(pods || []).map(pod => {
+                  const isExpanded = expandedPod === pod.name;
+                  return (
+                    <div key={pod.name} style={{
+                      borderRadius: '8px', border: '1px solid var(--nv-border)',
+                      background: 'rgba(255,255,255,0.02)', overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: '1fr auto auto auto auto',
+                        gap: '12px', alignItems: 'center', padding: '12px 16px', cursor: 'pointer',
+                      }} onClick={() => setExpandedPod(isExpanded ? null : pod.name)}>
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff', marginBottom: '2px' }}>
+                            {pod.app_label || pod.name}
+                          </div>
+                          <div className="mono" style={{ fontSize: '11px', color: 'var(--nv-text-dim)' }}>{pod.name}</div>
+                        </div>
+                        <div>{phaseBadge(pod.phase)}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--nv-text-muted)', minWidth: '60px', textAlign: 'right' }}>
+                          {podAge(pod.start_time)}
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--nv-text-dim)', minWidth: '80px' }}>
+                          {pod.version || "\u2014"}
+                        </div>
+                        <span style={{ fontSize: '10px', color: 'var(--nv-text-dim)', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.15s' }}>{"\u25B6"}</span>
+                      </div>
+
+                      {isExpanded && (
+                        <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--nv-border)' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', padding: '12px 0' }}>
+                            <div>
+                              <div style={{ fontSize: '11px', fontWeight: 500, color: 'var(--nv-text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Node</div>
+                              <div style={{ fontSize: '13px', color: '#fff' }}>{pod.node || "\u2014"}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', fontWeight: 500, color: 'var(--nv-text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Component</div>
+                              <div style={{ fontSize: '13px', color: '#fff' }}>{pod.component || "\u2014"}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', fontWeight: 500, color: 'var(--nv-text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Started</div>
+                              <div style={{ fontSize: '13px', color: '#fff' }}>{pod.start_time ? fmtTs(pod.start_time) : "\u2014"}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', fontWeight: 500, color: 'var(--nv-text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Namespace</div>
+                              <div style={{ fontSize: '13px', color: '#fff' }}>{pod.namespace}</div>
+                            </div>
+                          </div>
+
+                          {pod.resources && (pod.resources.requests && Object.keys(pod.resources.requests).length > 0 || pod.resources.limits && Object.keys(pod.resources.limits).length > 0) && (
+                            <div style={{ marginTop: '8px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 500, color: 'var(--nv-text-muted)', textTransform: 'uppercase', marginBottom: '6px' }}>Resources</div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                {pod.resources.requests && Object.keys(pod.resources.requests).length > 0 && (
+                                  <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'rgba(118,185,0,0.06)', border: '1px solid rgba(118,185,0,0.15)' }}>
+                                    <div style={{ fontSize: '10px', color: 'var(--nv-green)', fontWeight: 600, marginBottom: '4px' }}>REQUESTS</div>
+                                    {Object.entries(pod.resources.requests).map(([k, v]) => (
+                                      <div key={k} style={{ fontSize: '12px', color: 'var(--nv-text-muted)' }}>{k}: <span style={{ color: '#fff' }}>{v}</span></div>
+                                    ))}
+                                  </div>
+                                )}
+                                {pod.resources.limits && Object.keys(pod.resources.limits).length > 0 && (
+                                  <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'rgba(255,165,0,0.06)', border: '1px solid rgba(255,165,0,0.15)' }}>
+                                    <div style={{ fontSize: '10px', color: '#ffa500', fontWeight: 600, marginBottom: '4px' }}>LIMITS</div>
+                                    {Object.entries(pod.resources.limits).map(([k, v]) => (
+                                      <div key={k} style={{ fontSize: '12px', color: 'var(--nv-text-muted)' }}>{k}: <span style={{ color: '#fff' }}>{v}</span></div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {pod.containers && pod.containers.length > 0 && (
+                            <div style={{ marginTop: '12px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 500, color: 'var(--nv-text-muted)', textTransform: 'uppercase', marginBottom: '6px' }}>Containers</div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {pod.containers.map(ct => (
+                                  <div key={ct.name} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto auto', gap: '8px', alignItems: 'center', padding: '6px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.2)' }}>
+                                    <span style={{ fontSize: '12px', fontWeight: 500, color: '#fff' }}>{ct.name}</span>
+                                    <span className="mono" style={{ fontSize: '11px', color: 'var(--nv-text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ct.image}</span>
+                                    <span style={{ fontSize: '11px', color: ct.ready ? '#76b900' : '#ffa500' }}>{ct.ready ? "Ready" : "Not Ready"}</span>
+                                    {ct.restart_count > 0 && <span style={{ fontSize: '11px', color: '#ff6666' }}>{ct.restart_count} restart{ct.restart_count !== 1 ? 's' : ''}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {pod.labels && Object.keys(pod.labels).length > 0 && (
+                            <div style={{ marginTop: '12px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 500, color: 'var(--nv-text-muted)', textTransform: 'uppercase', marginBottom: '6px' }}>Labels</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                {Object.entries(pod.labels).map(([k, v]) => (
+                                  <span key={k} style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', color: 'var(--nv-text-dim)' }}>
+                                    {k}={v}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
+
+          {activeTab === "config" && (
+            configsLoading ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--nv-text-muted)' }}>
+                <div className="spinner spinner-lg" style={{ margin: '0 auto 12px' }}></div>
+                <div>Fetching configuration…</div>
+              </div>
+            ) : configsError ? (
+              <div style={{ padding: '20px', borderRadius: '8px', background: 'rgba(255,80,80,0.08)', border: '1px solid rgba(255,80,80,0.2)' }}>
+                <div style={{ fontWeight: 600, color: '#ff6666', marginBottom: '6px' }}>Failed to fetch config</div>
+                <div style={{ fontSize: '13px', color: 'var(--nv-text-muted)' }}>{configsError}</div>
+              </div>
+            ) : configs && configs.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: 'var(--nv-text-dim)' }}>
+                No configmaps found in namespace <strong>{cluster.namespace}</strong>.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {(configs || []).map(cm => {
+                  const isExpanded = expandedConfig === cm.name;
+                  return (
+                    <div key={cm.name} style={{
+                      borderRadius: '8px', border: '1px solid var(--nv-border)',
+                      background: cm.helm_managed ? 'rgba(118,185,0,0.02)' : 'rgba(255,255,255,0.02)',
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: '1fr auto auto auto',
+                        gap: '12px', alignItems: 'center', padding: '12px 16px', cursor: 'pointer',
+                      }} onClick={() => setExpandedConfig(isExpanded ? null : cm.name)}>
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: '#fff', marginBottom: '2px' }}>{cm.name}</div>
+                          {cm.app && <span style={{ fontSize: '11px', color: 'var(--nv-text-dim)' }}>{cm.app}</span>}
+                        </div>
+                        {cm.helm_managed && (
+                          <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(118,185,0,0.12)', color: '#76b900', fontWeight: 600 }}>HELM</span>
+                        )}
+                        <span style={{ fontSize: '11px', color: 'var(--nv-text-dim)' }}>{cm.data_keys.length} key{cm.data_keys.length !== 1 ? 's' : ''}</span>
+                        <span style={{ fontSize: '10px', color: 'var(--nv-text-dim)', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.15s' }}>{"\u25B6"}</span>
+                      </div>
+                      {isExpanded && (
+                        <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--nv-border)' }}>
+                          {cm.chart && (
+                            <div style={{ fontSize: '12px', color: 'var(--nv-text-muted)', padding: '8px 0' }}>
+                              Chart: <span style={{ color: '#fff' }}>{cm.chart}</span>
+                              {cm.created_at && <span style={{ marginLeft: '16px' }}>Created: {fmtTs(cm.created_at)}</span>}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
+                            {Object.entries(cm.data || {}).map(([key, value]) => (
+                              <div key={key} style={{ borderRadius: '6px', background: 'rgba(0,0,0,0.2)', padding: '8px 12px' }}>
+                                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--nv-green)', marginBottom: '4px' }}>{key}</div>
+                                <pre className="mono" style={{
+                                  fontSize: '11px', color: 'var(--nv-text-muted)', margin: 0,
+                                  whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '200px', overflow: 'auto',
+                                }}>{value}</pre>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
+        </div>
+
+        <div className="modal-foot" style={{ justifyContent: 'flex-end' }}>
+          <button className="btn btn-secondary" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function ClusterFormModal({ cluster, onClose, onSaved }) {
   const isEdit = !!cluster;
