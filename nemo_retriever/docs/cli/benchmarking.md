@@ -6,20 +6,15 @@ with no guarantees — see [Supported vs development / experimental subcommands]
 This page covers benchmark workflows for NeMo Retriever Library. See also
 `docs/docs/extraction/benchmarking.md` for published extraction benchmark notes and
 [`nemo_retriever/harness/HANDOFF.md`](../../harness/HANDOFF.md) for operator-oriented
-notes on the harness behind `retriever harness`.
+notes on `retriever harness`.
 
-The load-bearing harness stack is the Retriever CLI harness:
+Use `retriever harness` for benchmark orchestration and `retriever benchmark` for
+per-stage micro-benchmarks.
 
-| Stack | How you run it | Config |
-|-------|----------------|--------|
-| **Retriever CLI** (`nemo_retriever.harness`) | `retriever harness run` | `nemo_retriever/harness/test_configs.yaml` |
-
-The `retriever` CLI also exposes per-stage `retriever benchmark ...` micro-benchmarks.
-
-## Retriever harness (development / experimental)
+## Harness (development / experimental)
 
 Run from the repository root (or any directory; pass `--config` if needed). Uses
-`--dataset` and `--preset` — there is no `--case` flag on this harness.
+`--dataset` and `--preset` against `nemo_retriever/harness/test_configs.yaml`.
 
 ```bash
 # Named dataset from nemo_retriever/harness/test_configs.yaml
@@ -59,7 +54,6 @@ Image persistence is configured on `retriever pipeline run`, not on the harness.
 Use `--store-images-uri <uri>` (local path or fsspec URI). Stored assets follow
 `--embed-granularity` (page vs element images).
 
-
 ## Per-stage micro-benchmarks
 
 Stage throughput benchmarks on the main CLI (no full harness required):
@@ -84,12 +78,12 @@ retriever benchmark extract ./data/pdf_corpus \
 
 Each benchmark reports rows/sec (or chunk rows/sec for audio) for its actor.
 
-## Parity notes
+## Notes
 
 - **Configuration:** `retriever harness` uses `--dataset` / `--preset` /
   `--override KEY=VALUE` against
   `nemo_retriever/harness/test_configs.yaml`.
 - **Launcher:** for internal benchmarking, `retriever harness run …` is the
-  retriever-CLI entry point (development / experimental; no guarantees).
+  benchmark orchestration entry point (development / experimental; no guarantees).
 - **Stage benchmarks:** `retriever benchmark …` is specific to the retriever CLI and
   covers per-stage throughput rather than full harness orchestration.
