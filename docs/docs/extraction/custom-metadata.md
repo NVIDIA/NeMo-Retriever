@@ -57,7 +57,7 @@ ingestor = (
 results = ingestor.ingest_async().result()
 ```
 
-Merge values from `meta_df` (or `file_path`) into each document's `content_metadata` before `vdb_upload`, or follow the step-by-step pattern in [Attach metadata at ingestion](#attach-metadata-at-ingestion) above, so category, department, and timestamp are present on the chunks LanceDB indexes.
+Merge values from `meta_df` (or `file_path`) into each document's `content_metadata` before `vdb_upload`, or follow the step-by-step pattern in [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb), so category, department, and timestamp are present on the chunks LanceDB indexes.
 
 ## Best Practices
 
@@ -125,4 +125,4 @@ When you ingest through the **retriever service**, upload the sidecar with [`POS
 ## How metadata is stored { #how-metadata-is-stored }
 
 - [Vector databases](vdbs.md) — canonical LanceDB upload and retrieval guide
-- [Notebooks for NeMo Retriever Library](notebooks/index.md) — metadata filtering and ingestion examples
+- [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb) — CLI and graph ingest with sidecar metadata

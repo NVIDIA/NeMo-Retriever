@@ -94,7 +94,7 @@ To generate one extracted element for each sentence-like ASR segment, include `e
 
     To generate one extracted element for each sentence-like ASR segment, pass `asr_params=ASRParams(segment_audio=True)` to `.extract_audio(...)`. This option applies when audio extraction runs with a self-hosted Parakeet NIM or using build.nvidia.com hosted inference, but has no effect when using the local Hugging Face Parakeet model.
 
-    For more Python examples, refer to [Workflow: Ingest documents into a searchable VDB collection](workflow-document-ingestion.md).
+    For more Python examples, refer to [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
 
 ## Parakeet with hosted inference (build.nvidia.com) { #parakeet-hosted-inference-build-nvidia }
 
@@ -128,7 +128,7 @@ Instead of running the pipeline locally, you can call Parakeet through [build.nv
 
     !!! tip
 
-        For more Python examples, refer to [Workflow: Ingest documents into a searchable VDB collection](workflow-document-ingestion.md).
+        For more Python examples, refer to [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
 
 ## Video and frame OCR { #video-and-frame-ocr }
 
