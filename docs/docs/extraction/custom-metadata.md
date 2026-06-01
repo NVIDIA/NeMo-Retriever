@@ -87,7 +87,7 @@ Typical keys to filter on include `category`, `department`, `priority`, and `tim
 After ingestion is complete, and documents are uploaded to LanceDB with metadata,
 you can narrow results in the database with a **`where`** clause, or in Python on the returned hits.
 
-**Native LanceDB (SQL pushdown):** connect, embed the query yourself (same model as ingestion), then chain `.where("<LanceDB SQL predicate>")` on `table.search(...)` so filtering happens before the `limit`. Exact SQL depends on how `metadata` is stored; see [LanceDB metadata filtering](https://docs.lancedb.com/search/filtering).
+**Native LanceDB (SQL pushdown):** connect, embed the query yourself (same model as ingestion), then chain `.where("<LanceDB SQL predicate>")` on `table.search(...)` so filtering happens before the `limit`. Exact SQL depends on how `metadata` is stored; see [LanceDB SQL](https://lancedb.github.io/lancedb/sql/).
 
 ```python
 import lancedb
