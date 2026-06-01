@@ -51,11 +51,11 @@ Rows that use subcommands other than `ingest`, `query`, or `pipeline` are
 
 | Topic | Location | Replaces example(s) in |
 |-------|----------|------------------------|
-| Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/); **Docker Compose** (unsupported): [`docker.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/HEAD/nemo_retriever/docker.md) |
+| Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) |
 | CLI reference | [below](#cli-reference) | Prior `cli-reference` pages under `docs/docs/extraction/` |
 | Client usage walk-through | [below](#client-usage-walk-through) | `client/client_examples/examples/cli_client_usage.ipynb` |
 | PDF pre-splitting | [API guide](../../../docs/docs/extraction/nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest); [Large PDF page batches](#large-pdf-page-batches) below | Prior extraction docs |
-| Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
+| Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `nemo_retriever/harness/HANDOFF.md` |
 
 <!-- --8<-- [start:quickstart] -->
 
@@ -64,10 +64,7 @@ Rows that use subcommands other than `ingest`, `query`, or `pipeline` are
 
 ## Quick start
 
-Local **Docker Compose** workflows are **unsupported developer tooling** only — see
-[`docker.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/HEAD/nemo_retriever/docker.md) (GitHub `HEAD` = default branch; pin to your release tag when not on `main`).
-
-For **supported** deployment of NeMo Retriever / **NIM** containers, use
+For deployment of NeMo Retriever / **NIM** containers, use
 [nemo_retriever/helm](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm)
 and the [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)
 Helm install guides.
