@@ -2,7 +2,7 @@
 
 Before you begin using [NeMo Retriever Library](overview.md), confirm your software stack, deployment hardware, and—if you use them—advanced features (audio and video, Nemotron Parse, VLM image captioning, reranking) against the guidance in this page.
 
-## Software Requirements
+## Software Requirements { #software-requirements }
 
 - Linux operating systems (Ubuntu 22.04 or later recommended)
 - [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `580`, CUDA >= `13.0`)
@@ -64,7 +64,7 @@ Ensure your deployment environment meets these specifications before running the
 
 The NeMo Retriever Library extraction core pipeline features run on a single A10G or better GPU.
 
-### Default Helm NIMs
+### Default Helm NIMs { #default-helm-nims }
 
 The production Helm chart enables these NIM microservices **by default** (for example via `nimOperator.*.enabled=true`):
 
@@ -122,7 +122,7 @@ Optional features listed in the table above require additional GPU support, disk
 
 For published NIM model IDs and deployment-specific constraints, use the product support matrices linked under [Related Topics](#related-topics) below.
 
-## Model Hardware Requirements
+## Model Hardware Requirements { #model-hardware-requirements }
 
 NeMo Retriever Library supports the following GPU hardware given system constraints in the table.
 
