@@ -152,6 +152,35 @@ python3 build_report.py /tmp/runs/agenteval_claude_skill_<ts> --no-judge
 **Outputs:** `report.md` + `report.json` inside each run dir; `comparison.md` +
 `comparison.json` in `--out` when multiple runs are passed.
 
+### Cost & token accounting
+
+Cost and token totals are made apples-to-apples across agents inside `build_report.py`:
+
+- **Claude** emits `total_cost_usd` directly (used as-is) and reports `input_tokens`
+  *exclusive* of cached tokens (`cache_read` is separate).
+- **Codex** emits **no dollar cost**, so it's derived from tokens via a per-model
+  price table (`_PRICING`, $/1M):
+
+  | model | input | cached_input | output |
+  |---|---|---|---|
+  | `gpt-5.5` | $5.00 | $0.50 | $30.00 |
+
+  `cost = (fresh_input·input + cached·cached_input + output·output) / 1e6`, where
+  `fresh_input = input_tokens − cached_input_tokens`. Codex's `output_tokens` already
+  includes reasoning tokens, so they aren't added again. **To price a new model, add a
+  row to `_PRICING`** (top of `build_report.py`); models not in the table fall back to
+  whatever cost the CLI emitted (or `n/a`).
+
+- **Token-total convention:** codex reports `input_tokens` *inclusive* of the cached
+  subset (OpenAI style), so the report normalizes `input → input − cache_read`
+  (`_norm_tokens`, codex only) **for the displayed totals** — otherwise the sum
+  `input + output + cache_read` would double-count cached tokens. Cost is computed from
+  the raw tokens *before* this normalization, so it's unaffected. Net: every run's
+  `total` = `non-cached-input + output + cache_read` regardless of agent.
+
+This is all report-side — no adapter change, no meta mutation — so it applies to
+existing run artifacts on re-report (judge scores reuse the cache, so re-reporting is fast).
+
 ---
 
 ## End-to-end example
@@ -187,8 +216,8 @@ python3 build_report.py /tmp/skill/agenteval_claude_skill_*   /tmp/skill/agentev
   (override with `--allow-unsafe-save-root`).
 - **Skill GPU contention** — many concurrent query processes default to GPU 0 and OOM;
   use `--gpus`/`--gpu-list` to spread them (≈ 1–2 engines per GPU).
-- **codex cost** is `n/a` (the codex CLI doesn't emit `total_cost_usd`); token counts are
-  still captured.
+- **codex cost** is derived from tokens × `_PRICING` (the codex CLI emits no
+  `total_cost_usd`) — see *Cost & token accounting* above. Update `_PRICING` if rates change.
 - **codex `retr_succeeded_clean` is low by design** — codex's ~1s exec-yield backgrounds
   `retriever query`, so it rarely captures a clean exit even though the engine returns
   hits (see `retr_succeeded_engine`).

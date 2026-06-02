@@ -60,6 +60,41 @@ def _norm_doc(doc_id: str) -> str:
     return d[:-4] if d.lower().endswith(".pdf") else d
 
 
+# Per-model token prices ($/1M) for agents whose CLI doesn't emit a dollar cost
+# (e.g. codex). Claude emits total_cost_usd directly, so it's not priced here.
+# `input` is the FRESH (non-cached) input rate; `cached_input` the cache-read rate.
+_PRICING = {
+    "gpt-5.5": {"input": 5.00, "cached_input": 0.50, "output": 30.00},
+}
+
+
+def _compute_cost(tokens: dict, model: str | None) -> float | None:
+    """Derive cost from a tokens dict {input, output, cache_read, ...} using
+    _PRICING. ``input`` is OpenAI-style inclusive of the cached subset, and
+    ``output`` already includes reasoning tokens, so neither is double-counted.
+    Returns None if the model isn't priced."""
+    p = _PRICING.get(str(model or ""))
+    if not p or not tokens:
+        return None
+    inp = int(tokens.get("input", 0) or 0)
+    cached = int(tokens.get("cache_read", 0) or 0)
+    out = int(tokens.get("output", 0) or 0)
+    fresh = max(0, inp - cached)
+    return round((fresh * p["input"] + cached * p["cached_input"] + out * p["output"]) / 1_000_000, 4)
+
+
+def _norm_tokens(tokens: dict, agent: str | None) -> dict:
+    """Normalize a tokens dict to Claude's convention (``input`` = non-cached) so
+    totals are apples-to-apples. Codex reports ``input_tokens`` inclusive of the
+    cached subset, which would double-count ``cache_read`` in the sum. Cost is
+    computed from the raw dict beforehand, so this only affects displayed totals."""
+    if str(agent or "") == "codex" and tokens:
+        t = dict(tokens)
+        t["input"] = max(0, int(t.get("input", 0) or 0) - int(t.get("cache_read", 0) or 0))
+        return t
+    return tokens
+
+
 def load_gold(manifest_path: Path) -> dict[str, Gold]:
     raw = json.loads(manifest_path.read_text())
     entries = raw if isinstance(raw, list) else (raw.get("entries") or list(raw.values()))
@@ -95,6 +130,10 @@ _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _WRAPPERS = {"sudo", "time", "nice", "nohup", "exec", "env", "command", "builtin"}
 _TIMEOUT_VAL_FLAGS = {"-k", "--kill-after", "-s", "--signal"}
 _PARSE_ERR = re.compile(r"pdf_basename|JSONDecodeError|Extra data|_default_decoder|KeyError", re.I)
+# The baseline profile installs a PATH shim that prints this and exits 127. A
+# retriever command that hits it was blocked, not used — don't count it (and don't
+# let a pipeline tail like `| head` exiting 0 read as a clean retriever exit).
+_SHIM_BLOCKED = re.compile(r"command not found \(baseline profile\)|exited with code 127", re.I)
 
 
 def _strip_wrappers(seg: str) -> list[str]:
@@ -192,12 +231,20 @@ def detect_retriever_usage_codex(agent_log: Path) -> dict[str, bool]:
     for cid, cmd in calls.items():
         if not cmd_uses_retriever(cmd):
             continue
+        out = outs.get(cid, "")
+        if _SHIM_BLOCKED.search(out):  # baseline shim blocked it — not real retriever use
+            continue
         attempted = True
-        m = _CODEX_EXIT_RE.search(outs.get(cid, ""))
+        m = _CODEX_EXIT_RE.search(out)
         if m and m.group(1) == "0":
             clean = True
             engine = True
-    if hits_seen:
+    # Codex backgrounds `retriever query` (1s yield), so its hits often arrive in a
+    # later polled output rather than a clean exit. Credit that to engine — but ONLY
+    # when a real retriever-query command was attempted, so direct LanceDB pandas
+    # reads (which also emit page_number/source/text) aren't miscounted. Guarantees
+    # engine ⊆ attempted.
+    if attempted and hits_seen:
         engine = True
     return {"attempted": attempted, "clean": clean, "engine": engine}
 
@@ -230,10 +277,12 @@ def detect_retriever_usage(agent_log: Path) -> dict[str, bool]:
     for tid, cmd in cmd_by_id.items():
         if not cmd_uses_retriever(cmd):
             continue
+        iserr, txt = res_by_id.get(tid, (True, ""))
+        if _SHIM_BLOCKED.search(txt):  # baseline shim blocked it — not real retriever use
+            continue
         attempted = True
         if tid not in res_by_id:
             continue
-        iserr, txt = res_by_id[tid]
         if not iserr:
             clean = True
             engine = True
@@ -313,6 +362,9 @@ def score_query(
         duration_ms=meta.get("duration_ms"),
         tokens=meta.get("tokens") or {},
     )
+    if qs.cost_usd is None:  # agent CLI emitted no $ (e.g. codex) — derive from RAW tokens
+        qs.cost_usd = _compute_cost(qs.tokens, meta.get("model"))
+    qs.tokens = _norm_tokens(qs.tokens, agent)  # then normalize for apples-to-apples totals
     # recall (only where gold pages exist)
     if gold and gold.pages:
         ranked = _ranked_pairs(chunks, page_base)
@@ -533,10 +585,20 @@ def _load_setup_metas(run_dir: Path) -> list[dict]:
 
 def _token_summary(scores: list[QueryScore], setup_metas: list[dict]) -> dict[str, Any]:
     query_tok = _sum_tokens([s.tokens for s in scores])
-    setup_tok = _sum_tokens([m.get("tokens") for m in setup_metas])
+    setup_tok = _sum_tokens([_norm_tokens(m.get("tokens") or {}, m.get("agent")) for m in setup_metas])
     full = {f: setup_tok[f] + query_tok[f] for f in (*_TOK_FIELDS, "total")}
     query_cost = round(sum(s.cost_usd for s in scores if s.cost_usd), 4)
-    setup_cost = round(sum(m.get("cost_usd") or 0 for m in setup_metas), 4)
+    setup_cost = round(
+        sum(
+            (
+                m.get("cost_usd")
+                if m.get("cost_usd") is not None
+                else (_compute_cost(m.get("tokens") or {}, m.get("model")) or 0)
+            )
+            for m in setup_metas
+        ),
+        4,
+    )
     return {
         "setup": setup_tok | {"cost_usd": setup_cost, "n_turns": len(setup_metas)},
         "query": query_tok | {"cost_usd": query_cost, "n_turns": len(scores)},
