@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 def load_schema_from_graph(
     database_name,
     schema_name,
-    db_node=None,
+    database_node=None,
 ):
     tables_df = get_schema_tables(database_name, schema_name)
     columns_df = get_schema_columns(database_name, schema_name)
@@ -30,25 +30,25 @@ def load_schema_from_graph(
         tables_df = None
         columns_df = None
 
-    if db_node is None:
-        db_node = Neo4jNode(name=database_name, label=Labels.DB, props={"name": database_name})
+    if database_node is None:
+        database_node = Neo4jNode(name=database_name, label=Labels.DB, props={"name": database_name})
 
-    schema = Schema(db_node, tables_df, columns_df)
+    schema = Schema(database_node, tables_df, columns_df)
     schema.create_schema_node(schema_name)
     return schema
 
 
-def get_schemas_ids_and_names(db_id: str = None, database_name: str = None):
-    if db_id:
-        db_filter = " {id:$db_id}"
-        params = {"db_id": db_id}
+def get_schemas_ids_and_names(database_id: str = None, database_name: str = None):
+    if database_id:
+        database_filter = " {id:$database_id}"
+        params = {"database_id": database_id}
     elif database_name:
-        db_filter = " {name:$database_name}"
+        database_filter = " {name:$database_name}"
         params = {"database_name": database_name}
     else:
-        db_filter = ""
+        database_filter = ""
         params = {}
-    query = f"""MATCH(db:{Labels.DB}{db_filter})-[:{Edges.CONTAINS}]->(s:{Labels.SCHEMA})
+    query = f"""MATCH(db:{Labels.DB}{database_filter})-[:{Edges.CONTAINS}]->(s:{Labels.SCHEMA})
                 RETURN s.name as schema_name, s.id as schema_id
             """
     result = pd.DataFrame(get_neo4j_conn().query_read(query=query, parameters=params))

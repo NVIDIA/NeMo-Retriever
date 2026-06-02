@@ -76,8 +76,8 @@ def get_schemas_by_ids(relevant_schemas_ids: list = None):
     schema_dfs = {}
     dbs_nodes = {}
     for database_name in dbs:
-        db_node = Neo4jNode(name=database_name, label=Labels.DB, props={"name": database_name})
-        dbs_nodes[database_name] = db_node
+        database_node = Neo4jNode(name=database_name, label=Labels.DB, props={"name": database_name})
+        dbs_nodes[database_name] = database_node
 
     tables_df = data_df[["database_name", "table_schema", "table_name", "table_id"]].drop_duplicates(
         subset=["database_name", "table_schema", "table_name"]
@@ -100,12 +100,12 @@ def get_schemas_by_ids(relevant_schemas_ids: list = None):
             continue
 
         schema_database_name: str = schema["database_name"]
-        schema_db_node = dbs_nodes[schema_database_name]
+        schema_database_node = dbs_nodes[schema_database_name]
         tables_df = pd.DataFrame(schema_dfs[table_schema]["tables"])
         columns_df = pd.DataFrame(schema_dfs[table_schema]["columns"])
 
         all_schemas[table_schema.lower()] = Schema(
-            schema_db_node,
+            schema_database_node,
             tables_df,
             columns_df,
             table_schema,
