@@ -121,7 +121,7 @@ For 26.05, use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the 
 
     To validate caption traffic during ingest, inspect metadata such as `page_elements_v3_counts_by_label`. If the figure is labeled `chart`, expect no Omni chat-completions requests for that region even when captioning is enabled.
 
-For direct `/v1/chat/completions` smoke tests against the Omni NIM (outside the retriever service), set `chat_template_kwargs.enable_thinking=false` so the caption appears in `message.content`. The service caption profile already applies this during ingest. See [Omni caption manual smoke testing](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#omni-caption-manual-smoke-testing) for a request example.
+For direct Omni NIM smoke tests, see [Omni caption manual smoke testing](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#omni-caption-manual-smoke-testing) in the Helm chart README.
 
 Optional features listed in the table above require additional GPU support, disk space, and feature-specific system dependencies beyond the four default NIMs.
 

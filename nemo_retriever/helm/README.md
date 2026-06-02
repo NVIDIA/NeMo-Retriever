@@ -1100,20 +1100,26 @@ so CUDA/driver libraries from the GPU Operator stack were visible at runtime.
 Symptoms are `CrashLoopBackOff` and log lines referencing a missing `.so` (for
 example `libcudart` or `libcudnn`).
 
-Merge additional `env` entries under the relevant `nimOperator.<key>.env` list in
-your values file (retain the chart's existing `env` entries for that NIM and
-append `LD_LIBRARY_PATH`):
+Helm **replaces** the whole `env` list when you override `nimOperator.<key>.env`
+in a values file. Copy the chart defaults from `values.yaml` for that NIM, then
+append `LD_LIBRARY_PATH`:
 
 ```yaml
 nimOperator:
   audio:
     env:
-      # ... chart defaults (NIM_TAGS_SELECTOR, NIM_TRITON_LOG_VERBOSE, etc.) ...
+      - name: NIM_TAGS_SELECTOR
+        value: "name=parakeet-1-1b-ctc-en-us,mode=ofl,vad=default,diarizer=disabled"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
       - name: LD_LIBRARY_PATH
         value: "/usr/local/nvidia/lib64:/usr/local/cuda/lib64"
   nemotron_3_nano_omni_30b_a3b_reasoning:
     env:
-      # ... chart defaults (NIM_HTTP_API_PORT, etc.) ...
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
       - name: LD_LIBRARY_PATH
         value: "/usr/local/nvidia/lib64:/usr/local/cuda/lib64"
 ```
