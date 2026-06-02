@@ -37,6 +37,10 @@ meta_df = pd.DataFrame(
     }
 )
 
+hostname = "localhost"
+table_name = "nemo_retriever_collection"
+lancedb_uri = "./lancedb_data"
+
 ingestor = (
     create_ingestor(run_mode="service", base_url=f"http://{hostname}:7670")
         .files(["data/woods_frost.pdf", "data/multimodal_test.pdf"])
@@ -58,6 +62,10 @@ results = ingestor.ingest_async().result()
 ```
 
 Merge values from `meta_df` (or `file_path`) into each document's `content_metadata` before `vdb_upload`, or follow the step-by-step pattern in [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb), so category, department, and timestamp are present on the chunks LanceDB indexes.
+
+## How metadata is stored { #how-metadata-is-stored }
+
+During ingestion, each chunk's `content_metadata` is serialized as a **compact JSON string** (no spaces after `:` or `,`) in the LanceDB table's `metadata` column. Sidecar columns from `meta_dataframe`, `meta_source_field`, and `meta_fields` are merged into that JSON object before upload, so custom keys live in the same string—not separate columns. That is why `Retriever.query` filters often use `metadata LIKE '%\"key\":\"value\"%'`. For operator behavior and predicate examples, see [Vector DB operators and LanceDB — Metadata filtering](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering).
 
 ## Best Practices
 
@@ -122,7 +130,7 @@ For a runnable end-to-end flow (ingest, `Retriever.query`, and both filter modes
 
 When you ingest through the **retriever service**, upload the sidecar with [`POST /v1/ingest/sidecar`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/routers/ingest.py#L1040-L1129) (multipart file; response [`SidecarUploadResponse`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/models/responses.py#L60-L68)), then pass the returned `sidecar_id` as `meta_dataframe_id` with `meta_source_field` and `meta_fields` in `pipeline.vdb_upload_params` on [`POST /v1/ingest`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/models/requests.py#L15-L32) ([`PipelineSpec`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/models/pipeline_spec.py#L55-L78)). Request and response shapes, form fields, and auth headers are in the service OpenAPI UI at `/docs` (or `/openapi.json`) on your retriever base URL (for example `http://localhost:7670/docs` after `retriever service start`). Do not send a raw local path as `meta_dataframe` on the service spec.
 
-## How metadata is stored { #how-metadata-is-stored }
+## Related content { #related-content }
 
 - [Vector databases](vdbs.md) — canonical LanceDB upload and retrieval guide
 - [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb) — CLI and graph ingest with sidecar metadata
