@@ -73,17 +73,23 @@ class PostgresDatabase(SQLDatabase):
                 t.table_schema AS table_schema,
                 t.table_name   AS table_name,
                 CASE
-                    WHEN mv.matviewname IS NOT NULL THEN '{matview}'
                     WHEN lower(t.table_type) = 'view' THEN '{view}'
                     ELSE '{base}'
                 END AS table_type
             FROM information_schema.tables t
-            LEFT JOIN pg_catalog.pg_matviews mv
-                ON mv.schemaname = t.table_schema
-               AND mv.matviewname = t.table_name
             WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema')
               AND t.table_type IN ('BASE TABLE', 'VIEW')
-            ORDER BY t.table_schema, t.table_name
+
+            UNION ALL
+
+            SELECT
+                mv.schemaname  AS table_schema,
+                mv.matviewname AS table_name,
+                '{matview}'    AS table_type
+            FROM pg_catalog.pg_matviews mv
+            WHERE mv.schemaname NOT IN ('pg_catalog', 'information_schema')
+
+            ORDER BY table_schema, table_name
         """
         )
 
