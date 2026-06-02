@@ -33,6 +33,13 @@ if TYPE_CHECKING:
 
 
 def _normalize_content_type_allowlist(content_types: str | Sequence[str] | None) -> set[str] | None:
+    """Normalize query-time ``content_types`` filters to stored hit metadata values.
+
+    ``Retriever.query`` and ``Retriever.queries`` accept user-facing values such
+    as ``"text,table"`` and aliases such as ``"images"``. Retrieved hit metadata
+    uses canonical content types, so normalize the allowlist once before shaping
+    query results.
+    """
     if content_types is None:
         return None
     raw_values: list[str]
@@ -103,6 +110,11 @@ def _shape_query_hits(
     page_dedup: bool = False,
     content_types: str | Sequence[str] | None = None,
 ) -> list[RetrievalHit]:
+    """Apply query-time filtering, page deduplication, and final truncation.
+
+    When ``content_types`` is set, hits without a recognizable content type are
+    excluded because they cannot be matched against the allowlist.
+    """
     allowed_types = _normalize_content_type_allowlist(content_types)
     shaped: list[RetrievalHit] = []
     seen_pages: set[tuple[str, int]] = set()
@@ -318,12 +330,17 @@ class Retriever:
     ) -> list[RetrievalHit]:
         """Run one retrieval query and return shaped hits.
 
-        ``candidate_k`` retrieves a wider candidate pool before final shaping
-        and must be greater than or equal to ``top_k``. ``page_dedup`` keeps
-        the first hit per document page. ``content_types`` accepts a
+        ``top_k`` is the final number of hits to return. ``candidate_k`` is the
+        wider pre-filter/pre-dedup candidate pool and must be greater than or
+        equal to ``top_k``. Increase it when page deduplication or content-type
+        filtering would otherwise reduce the final hit count. ``page_dedup``
+        keeps the first hit per document page. ``content_types`` accepts a
         comma-separated string or sequence of content types to keep, such as
-        ``"text,table"``. Page deduplication and content-type filtering are
-        applied after vector retrieval, preserving retriever ranking order.
+        ``"text,table"``, and normalizes values to the canonical content types
+        stored in hit metadata. Hits with missing or unknown content types are
+        excluded while this filter is active. Page deduplication and
+        content-type filtering are applied after vector retrieval, preserving
+        retriever ranking order.
         """
         return self.queries(
             [query],
@@ -348,12 +365,17 @@ class Retriever:
     ) -> list[list[RetrievalHit]]:
         """Run retrieval for multiple query strings and return shaped hits.
 
-        ``candidate_k`` retrieves a wider candidate pool before final shaping
-        and must be greater than or equal to ``top_k``. ``page_dedup`` keeps
-        the first hit per document page. ``content_types`` accepts a
+        ``top_k`` is the final number of hits to return. ``candidate_k`` is the
+        wider pre-filter/pre-dedup candidate pool and must be greater than or
+        equal to ``top_k``. Increase it when page deduplication or content-type
+        filtering would otherwise reduce the final hit count. ``page_dedup``
+        keeps the first hit per document page. ``content_types`` accepts a
         comma-separated string or sequence of content types to keep, such as
-        ``"text,table"``. Page deduplication and content-type filtering are
-        applied after vector retrieval, preserving retriever ranking order.
+        ``"text,table"``, and normalizes values to the canonical content types
+        stored in hit metadata. Hits with missing or unknown content types are
+        excluded while this filter is active. Page deduplication and
+        content-type filtering are applied after vector retrieval, preserving
+        retriever ranking order.
         """
         query_texts = [str(q) for q in queries]
         if not query_texts:
@@ -362,7 +384,9 @@ class Retriever:
         effective_top_k = int(top_k) if top_k is not None else int(self.top_k)
         candidate_top_k = int(candidate_k) if candidate_k is not None else effective_top_k
         if candidate_top_k < effective_top_k:
-            raise ValueError("candidate_k must be greater than or equal to top_k.")
+            raise ValueError(
+                f"candidate_k ({candidate_top_k}) must be greater than or equal to top_k ({effective_top_k})."
+            )
         refine = self._refine_factor()
         retrieval_top_k = candidate_top_k * refine if self.rerank else candidate_top_k
 

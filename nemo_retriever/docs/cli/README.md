@@ -133,12 +133,17 @@ retriever query "annual revenue by region" \
   --content-types table
 ```
 
-`--candidate-k` must be greater than or equal to `--top-k`. Page deduplication
-and content-type filtering are applied after vector retrieval, preserving the
+`--top-k` is the final number of hits returned. `--candidate-k` is the wider
+candidate pool retrieved before page deduplication, content-type filtering, and
+final truncation. It must be greater than or equal to `--top-k`, and should
+usually be larger when page deduplication or content-type filtering might
+otherwise remove too many of the top retrieved rows. Page deduplication and
+content-type filtering are applied after vector retrieval, preserving the
 retriever's ranking order and truncating the final output to `--top-k`.
 `--content-types` accepts comma-separated content types such as `text`, `table`,
 `chart`, `image`, and `infographic`. `images` is accepted as an alias for
-captioned image rows emitted by ingest.
+captioned image rows emitted by ingest. Hits with missing or unknown content
+types are excluded while `--content-types` is active.
 
 `NVIDIA_API_KEY` is required only when those URLs point at hosted
 build.nvidia.com endpoints. `NGC_API_KEY` is used separately when pulling or

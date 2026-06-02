@@ -572,12 +572,15 @@ def ingest_command(
 @app.command("query")
 def query_command(
     query: str = typer.Argument(..., help="Query text."),
-    top_k: int = typer.Option(10, "--top-k", min=1, help="Number of hits to retrieve."),
+    top_k: int = typer.Option(10, "--top-k", min=1, help="Final number of hits to return."),
     candidate_k: int | None = typer.Option(
         None,
         "--candidate-k",
         min=1,
-        help="Retrieve this many candidates before final filtering and truncation.",
+        help=(
+            "Candidate pool size before page deduplication or content-type filtering; "
+            "must be greater than or equal to --top-k."
+        ),
     ),
     page_dedup: bool = typer.Option(
         False,
@@ -587,7 +590,7 @@ def query_command(
     content_types: str | None = typer.Option(
         None,
         "--content-types",
-        help="Comma-separated content types to keep, such as text,table.",
+        help="Comma-separated content types to keep, such as text,table; untyped hits are excluded.",
     ),
     lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
     table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),

@@ -120,7 +120,7 @@ class TestQueriesGraphExecution:
         assert resolved.execute.call_args.kwargs["top_k"] == 5
 
     def test_candidate_k_must_cover_top_k(self) -> None:
-        with pytest.raises(ValueError, match="candidate_k"):
+        with pytest.raises(ValueError, match=r"candidate_k \(2\).*top_k \(5\)"):
             _make_retriever(top_k=5).queries(["q"], candidate_k=2)
 
 
@@ -219,6 +219,16 @@ class TestQueryHitShaping:
         ]
 
         out = _shape_query_hits(hits, top_k=3, content_types="text")
+
+        assert [h["text"] for h in out] == ["text row"]
+
+    def test_content_type_filter_excludes_untyped_hits(self) -> None:
+        hits = [
+            {"text": "legacy row", "metadata": {}, "page_number": 1},
+            {"text": "text row", "metadata": {"type": "text"}, "page_number": 2},
+        ]
+
+        out = _shape_query_hits(hits, top_k=10, content_types="text")
 
         assert [h["text"] for h in out] == ["text row"]
 

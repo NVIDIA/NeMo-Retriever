@@ -54,10 +54,10 @@ Top-3, custom table:
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--top-k` | `10` | Max hits to return. Must be ≥ 1. |
-| `--candidate-k` | unset | Retrieve a wider candidate pool before final filtering/truncation. |
+| `--top-k` | `10` | Final number of hits to return. Must be >= 1. |
+| `--candidate-k` | unset | Wider pre-filter/pre-dedup candidate pool. When set, it must be >= `--top-k`; make it larger when `--page-dedup` or `--content-types` could reduce final hits. |
 | `--page-dedup` | `false` | Collapse results to unique document pages. |
-| `--content-types` | unset | Comma-separated content types to keep, such as `text,table` or `image,chart`; `images` is accepted as an alias for captioned image rows. |
+| `--content-types` | unset | Comma-separated content types to keep, such as `text,table` or `image,chart`; query-time values are normalized to canonical hit metadata types, `images` is accepted as an alias for captioned image rows, and untyped hits are excluded. |
 | `--lancedb-uri` | `lancedb` | Must match what `ingest` wrote to. |
 | `--table-name` | `nemo-retriever` | Must match what `ingest` wrote to. |
 
