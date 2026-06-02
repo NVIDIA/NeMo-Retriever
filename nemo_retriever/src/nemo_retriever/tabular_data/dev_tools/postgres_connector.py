@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import pandas as pd
@@ -14,6 +15,8 @@ import psycopg2.extras
 
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import TableTypes
 from nemo_retriever.tabular_data.sql_database import SQLDatabase
+
+logger = logging.getLogger(__name__)
 
 
 class PostgresDatabase(SQLDatabase):
@@ -113,8 +116,12 @@ class PostgresDatabase(SQLDatabase):
                 LIMIT 100
             """
             )
-        except psycopg2.Error:
+        except psycopg2.Error as exc:
             self._conn.rollback()
+            logger.warning(
+                "pg_stat_statements unavailable or query failed: %s; returning empty query stats.",
+                exc,
+            )
             return pd.DataFrame(columns=["end_time", "query_text"])
 
     def get_views(self) -> pd.DataFrame:

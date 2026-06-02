@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for persisting table_type through tabular ingestion normalization."""
 
 import pandas as pd
@@ -101,3 +105,4 @@ def test_reset_tables_props_sets_type():
     props = schema.tables_df.iloc[0]["props"]
     assert props["type"] == "base table"
     assert props["name"] == "orders"
+
