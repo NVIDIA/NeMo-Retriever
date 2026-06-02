@@ -933,6 +933,7 @@ def query_documents(
     table_name: str = DEFAULT_TABLE_NAME,
     embed_invoke_url: str | None = None,
     embed_model_name: str | None = None,
+    query_embed_backend: str | None = None,
     reranker_invoke_url: str | None = None,
     reranker_model_name: str | None = None,
     reranker_backend: str | None = None,
@@ -942,8 +943,14 @@ def query_documents(
 
     Reranking is opt-in: pass ``rerank=True`` (or any of the rerank-related
     args via the CLI, which implicitly set ``rerank=True``) to enable.
+
+    ``query_embed_backend`` selects the local query-embedding backend ('vllm'
+    or 'hf') when no ``embed_invoke_url`` is given; 'hf' has a much faster cold
+    start, which matters for single-query CLI use.
     """
-    embed_kwargs = _build_embed_kwargs(embed_invoke_url, embed_model_name)
+    embed_kwargs = _build_embed_kwargs(
+        embed_invoke_url, embed_model_name, local_ingest_embed_backend=query_embed_backend
+    )
     retriever_kwargs: dict[str, Any] = {
         "top_k": top_k,
         "vdb_kwargs": {"uri": lancedb_uri, "table_name": table_name},

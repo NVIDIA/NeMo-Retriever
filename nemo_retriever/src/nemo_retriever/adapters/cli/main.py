@@ -581,6 +581,15 @@ def query_command(
         "--embed-model-name",
         help="Optional embedding model name override.",
     ),
+    query_embed_backend: str | None = typer.Option(
+        None,
+        "--query-embed-backend",
+        help=(
+            "Backend for the local query embedder when no --embed-invoke-url is given: "
+            "'vllm' (default — high-throughput batch) or 'hf' (HuggingFace, faster cold "
+            "start; preferred for ad-hoc / single-query CLI use)."
+        ),
+    ),
     reranker_invoke_url: str | None = typer.Option(None, "--reranker-invoke-url", help="Reranker NIM endpoint URL."),
     reranker_model_name: str | None = typer.Option(
         None,
@@ -620,6 +629,7 @@ def query_command(
                 table_name=table_name,
                 embed_invoke_url=embed_invoke_url,
                 embed_model_name=embed_model_name,
+                query_embed_backend=query_embed_backend,
                 reranker_invoke_url=reranker_invoke_url,
                 reranker_model_name=reranker_model_name,
                 reranker_backend=reranker_backend,
