@@ -1,0 +1,45 @@
+nemo\_retriever.infographic package
+===================================
+
+Submodules
+----------
+
+nemo\_retriever.infographic.commands module
+-------------------------------------------
+
+.. automodule:: nemo_retriever.infographic.commands
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.infographic.config module
+-----------------------------------------
+
+.. automodule:: nemo_retriever.infographic.config
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.infographic.infographic\_detection module
+---------------------------------------------------------
+
+.. automodule:: nemo_retriever.infographic.infographic_detection
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.infographic.processor module
+--------------------------------------------
+
+.. automodule:: nemo_retriever.infographic.processor
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.infographic
+   :members:
+   :show-inheritance:
+   :undoc-members:

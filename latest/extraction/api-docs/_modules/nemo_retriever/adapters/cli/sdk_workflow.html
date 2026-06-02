@@ -1,0 +1,1525 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.adapters.cli.sdk_workflow &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/adapters/cli/sdk_workflow';</script>
+
+    <link rel="icon" href="../../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../nemo-retriever/modules.html">nemo_retriever</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.html">nemo_retriever package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.adapters.html">nemo_retriever.adapters package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.adapters.cli.html">nemo_retriever.adapters.cli package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.api.html">nemo_retriever.api package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.application.html">nemo_retriever.application package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.application.pipeline.html">nemo_retriever.application.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.audio.html">nemo_retriever.audio package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.caption.html">nemo_retriever.caption package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.chart.html">nemo_retriever.chart package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.dedup.html">nemo_retriever.dedup package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.evaluation.html">nemo_retriever.evaluation package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.graph.html">nemo_retriever.graph package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.harness.html">nemo_retriever.harness package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.harness.portal.html">nemo_retriever.harness.portal package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.html.html">nemo_retriever.html package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.image.html">nemo_retriever.image package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.infographic.html">nemo_retriever.infographic package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.io.html">nemo_retriever.io package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.llm.html">nemo_retriever.llm package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.llm.clients.html">nemo_retriever.llm.clients package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.local.html">nemo_retriever.local package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.local.stages.html">nemo_retriever.local.stages package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.model.html">nemo_retriever.model package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.model.local.html">nemo_retriever.model.local package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.nim.html">nemo_retriever.nim package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.ocr.html">nemo_retriever.ocr package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.operators.html">nemo_retriever.operators package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.page_elements.html">nemo_retriever.page_elements package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.params.html">nemo_retriever.params package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.parse.html">nemo_retriever.parse package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.pdf.html">nemo_retriever.pdf package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.pipeline.html">nemo_retriever.pipeline package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.recall.html">nemo_retriever.recall package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.rerank.html">nemo_retriever.rerank package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.service.html">nemo_retriever.service package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.service.models.html">nemo_retriever.service.models package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.service.routers.html">nemo_retriever.service.routers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.service.services.html">nemo_retriever.service.services package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.service.utils.html">nemo_retriever.service.utils package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.skill_eval.html">nemo_retriever.skill_eval package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.skill_eval.configs.html">nemo_retriever.skill_eval.configs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.skill_eval.prompts.html">nemo_retriever.skill_eval.prompts package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.table.html">nemo_retriever.table package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.tabular_data.html">nemo_retriever.tabular_data package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.html">nemo_retriever.tabular_data.ingestion package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.tabular_data.neo4j.html">nemo_retriever.tabular_data.neo4j package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.tabular_data.retrieval.html">nemo_retriever.tabular_data.retrieval package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.text_embed.html">nemo_retriever.text_embed package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.txt.html">nemo_retriever.txt package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.utils.html">nemo_retriever.utils package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.utils.benchmark.html">nemo_retriever.utils.benchmark package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.utils.compare.html">nemo_retriever.utils.compare package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.utils.convert.html">nemo_retriever.utils.convert package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.utils.image.html">nemo_retriever.utils.image package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.utils.pipeline.html">nemo_retriever.utils.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.vdb.html">nemo_retriever.vdb package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.video.html">nemo_retriever.video package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.adapters.cli.sdk_workflow</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.adapters.cli.sdk_workflow</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">cast</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.ingest_manifest</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ExtractionBranchPlan</span><span class="p">,</span>
+    <span class="n">build_input_manifest</span><span class="p">,</span>
+    <span class="n">format_branch_summary</span><span class="p">,</span>
+    <span class="n">plan_extraction_branches</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.ingestor</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_ingestor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.ocr.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">OCRLang</span><span class="p">,</span> <span class="n">OCRVersion</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ASRParams</span><span class="p">,</span>
+    <span class="n">AudioChunkParams</span><span class="p">,</span>
+    <span class="n">AudioVisualFuseParams</span><span class="p">,</span>
+    <span class="n">BatchTuningParams</span><span class="p">,</span>
+    <span class="n">CaptionParams</span><span class="p">,</span>
+    <span class="n">EmbedParams</span><span class="p">,</span>
+    <span class="n">ExtractParams</span><span class="p">,</span>
+    <span class="n">HtmlChunkParams</span><span class="p">,</span>
+    <span class="n">TextChunkParams</span><span class="p">,</span>
+    <span class="n">VdbUploadParams</span><span class="p">,</span>
+    <span class="n">VideoFrameParams</span><span class="p">,</span>
+    <span class="n">VideoFrameTextDedupParams</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">normalize_embed_kwargs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.retriever</span><span class="w"> </span><span class="kn">import</span> <span class="n">Retriever</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.utils.input_files</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">AUTO_INPUT_EXTENSIONS</span><span class="p">,</span>
+    <span class="n">INPUT_TYPE_EXTENSIONS</span><span class="p">,</span>
+    <span class="n">expand_input_file_patterns</span><span class="p">,</span>
+    <span class="n">resolve_input_files</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.utils.remote_auth</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_remote_api_key</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.vdb.records</span><span class="w"> </span><span class="kn">import</span> <span class="n">RetrievalHit</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="n">IngestRunModeValue</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;inprocess&quot;</span><span class="p">,</span> <span class="s2">&quot;batch&quot;</span><span class="p">]</span>
+<span class="n">IngestInputTypeValue</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;auto&quot;</span><span class="p">,</span> <span class="s2">&quot;pdf&quot;</span><span class="p">,</span> <span class="s2">&quot;doc&quot;</span><span class="p">,</span> <span class="s2">&quot;txt&quot;</span><span class="p">,</span> <span class="s2">&quot;html&quot;</span><span class="p">,</span> <span class="s2">&quot;image&quot;</span><span class="p">,</span> <span class="s2">&quot;audio&quot;</span><span class="p">,</span> <span class="s2">&quot;video&quot;</span><span class="p">]</span>
+<span class="n">IngestProfileValue</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;auto&quot;</span><span class="p">,</span> <span class="s2">&quot;fast-text&quot;</span><span class="p">]</span>
+<span class="n">AudioSplitTypeValue</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;size&quot;</span><span class="p">,</span> <span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="s2">&quot;frame&quot;</span><span class="p">]</span>
+<span class="n">LocalIngestEmbedBackendValue</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;vllm&quot;</span><span class="p">,</span> <span class="s2">&quot;hf&quot;</span><span class="p">]</span>
+<span class="n">OcrLangValue</span> <span class="o">=</span> <span class="n">OCRLang</span>
+<span class="n">OcrVersionValue</span> <span class="o">=</span> <span class="n">OCRVersion</span>
+<span class="n">TableOutputFormatValue</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;pseudo_markdown&quot;</span><span class="p">,</span> <span class="s2">&quot;markdown&quot;</span><span class="p">]</span>
+<span class="n">_SUPPORTED_RUN_MODES</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">IngestRunModeValue</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;inprocess&quot;</span><span class="p">,</span> <span class="s2">&quot;batch&quot;</span><span class="p">)</span>
+<span class="n">_SUPPORTED_PROFILES</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">IngestProfileValue</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;auto&quot;</span><span class="p">,</span> <span class="s2">&quot;fast-text&quot;</span><span class="p">)</span>
+<span class="n">_SUPPORTED_AUDIO_SPLIT_TYPES</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">AudioSplitTypeValue</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;size&quot;</span><span class="p">,</span> <span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="s2">&quot;frame&quot;</span><span class="p">)</span>
+<span class="n">_SUPPORTED_INPUT_TYPES</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">IngestInputTypeValue</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">&quot;auto&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;pdf&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;doc&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;txt&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;html&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;image&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;audio&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;video&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">_AUDIO_SPLIT_INTERVAL</span> <span class="o">=</span> <span class="mi">500000</span>
+<span class="n">_VIDEO_FRAME_FPS</span> <span class="o">=</span> <span class="mf">0.5</span>
+<span class="n">_VIDEO_TEXT_DEDUP_MAX_DROPPED_FRAMES</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="n">DEFAULT_LANCEDB_URI</span> <span class="o">=</span> <span class="s2">&quot;lancedb&quot;</span>
+<span class="n">DEFAULT_TABLE_NAME</span> <span class="o">=</span> <span class="s2">&quot;nemo-retriever&quot;</span>
+<span class="n">_DRY_RUN_SECRET_FIELD_PATTERNS</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;api_key&quot;</span><span class="p">,</span> <span class="s2">&quot;password&quot;</span><span class="p">,</span> <span class="s2">&quot;secret&quot;</span><span class="p">,</span> <span class="s2">&quot;credential&quot;</span><span class="p">,</span> <span class="s2">&quot;bearer&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_run_mode</span><span class="p">(</span><span class="n">run_mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">IngestRunModeValue</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">run_mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_SUPPORTED_RUN_MODES</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;run_mode must be one of </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_SUPPORTED_RUN_MODES</span><span class="p">)</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="n">run_mode</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cast</span><span class="p">(</span><span class="n">IngestRunModeValue</span><span class="p">,</span> <span class="n">run_mode</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_input_type</span><span class="p">(</span><span class="n">input_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">IngestInputTypeValue</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">input_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_SUPPORTED_INPUT_TYPES</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;input_type must be one of </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_SUPPORTED_INPUT_TYPES</span><span class="p">)</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="n">input_type</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cast</span><span class="p">(</span><span class="n">IngestInputTypeValue</span><span class="p">,</span> <span class="n">input_type</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_profile</span><span class="p">(</span><span class="n">profile</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">IngestProfileValue</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">profile</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_SUPPORTED_PROFILES</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;profile must be one of </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_SUPPORTED_PROFILES</span><span class="p">)</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="n">profile</span><span class="si">!r}</span><span class="s2">.&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cast</span><span class="p">(</span><span class="n">IngestProfileValue</span><span class="p">,</span> <span class="n">profile</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_audio_split_type</span><span class="p">(</span><span class="n">split_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AudioSplitTypeValue</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">split_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_SUPPORTED_AUDIO_SPLIT_TYPES</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;audio_split_type must be one of </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_SUPPORTED_AUDIO_SPLIT_TYPES</span><span class="p">)</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="n">split_type</span><span class="si">!r}</span><span class="s2">.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">cast</span><span class="p">(</span><span class="n">AudioSplitTypeValue</span><span class="p">,</span> <span class="n">split_type</span><span class="p">)</span>
+
+
+<span class="c1"># The ingest command accepts bare dataset directories; expand those to supported</span>
+<span class="c1"># files before passing file/glob inputs through the shared input normalizer.</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_ingest_document_types</span><span class="p">(</span><span class="n">documents</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">input_type</span><span class="p">:</span> <span class="n">IngestInputTypeValue</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">allowed_extensions</span> <span class="o">=</span> <span class="n">AUTO_INPUT_EXTENSIONS</span> <span class="k">if</span> <span class="n">input_type</span> <span class="o">==</span> <span class="s2">&quot;auto&quot;</span> <span class="k">else</span> <span class="n">INPUT_TYPE_EXTENSIONS</span><span class="p">[</span><span class="n">input_type</span><span class="p">]</span>
+    <span class="n">unsupported</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">document</span>
+        <span class="k">for</span> <span class="n">document</span> <span class="ow">in</span> <span class="n">documents</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">ch</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">document</span><span class="p">)</span> <span class="k">for</span> <span class="n">ch</span> <span class="ow">in</span> <span class="s2">&quot;*?[&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">Path</span><span class="p">(</span><span class="n">document</span><span class="p">)</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed_extensions</span>
+    <span class="p">]</span>
+    <span class="k">if</span> <span class="n">unsupported</span><span class="p">:</span>
+        <span class="n">examples</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">unsupported</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported input file type(s) for retriever ingest: </span><span class="si">{</span><span class="n">examples</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_expand_ingest_documents</span><span class="p">(</span><span class="n">documents</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">input_type</span><span class="p">:</span> <span class="n">IngestInputTypeValue</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="n">inputs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">document</span> <span class="ow">in</span> <span class="n">documents</span><span class="p">:</span>
+        <span class="n">raw_document</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">document</span><span class="p">)</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">raw_document</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
+            <span class="n">directory_files</span> <span class="o">=</span> <span class="n">resolve_input_files</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">input_type</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">directory_files</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No supported ingest files found under directory: </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">file</span><span class="p">)</span> <span class="k">for</span> <span class="n">file</span> <span class="ow">in</span> <span class="n">directory_files</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">raw_document</span><span class="p">)</span>
+
+    <span class="n">document_list</span> <span class="o">=</span> <span class="n">expand_input_file_patterns</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
+    <span class="n">_validate_ingest_document_types</span><span class="p">(</span><span class="n">document_list</span><span class="p">,</span> <span class="n">input_type</span><span class="o">=</span><span class="n">input_type</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">document_list</span>
+
+
+<div class="viewcode-block" id="ResolvedIngestPlan">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.adapters.cli.html#nemo_retriever.adapters.cli.sdk_workflow.ResolvedIngestPlan">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ResolvedIngestPlan</span><span class="p">:</span>
+    <span class="n">documents</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="n">profile</span><span class="p">:</span> <span class="n">IngestProfileValue</span>
+    <span class="n">branches</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ExtractionBranchPlan</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">create_kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span>
+    <span class="n">extract_params</span><span class="p">:</span> <span class="n">ExtractParams</span>
+    <span class="n">text_params</span><span class="p">:</span> <span class="n">TextChunkParams</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">html_params</span><span class="p">:</span> <span class="n">HtmlChunkParams</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">audio_chunk_params</span><span class="p">:</span> <span class="n">AudioChunkParams</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">asr_params</span><span class="p">:</span> <span class="n">ASRParams</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">video_frame_params</span><span class="p">:</span> <span class="n">VideoFrameParams</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">video_text_dedup_params</span><span class="p">:</span> <span class="n">VideoFrameTextDedupParams</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">av_fuse_params</span><span class="p">:</span> <span class="n">AudioVisualFuseParams</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">caption_params</span><span class="p">:</span> <span class="n">CaptionParams</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">embed_params</span><span class="p">:</span> <span class="n">EmbedParams</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">vdb_params</span><span class="p">:</span> <span class="n">VdbUploadParams</span>
+    <span class="n">lancedb_uri</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">table_name</span><span class="p">:</span> <span class="nb">str</span>
+
+<div class="viewcode-block" id="ResolvedIngestPlan.extract_call_kwargs">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.adapters.cli.html#nemo_retriever.adapters.cli.sdk_workflow.ResolvedIngestPlan.extract_call_kwargs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">extract_call_kwargs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+        <span class="n">kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">{</span>
+            <span class="s2">&quot;text_params&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">text_params</span><span class="p">,</span>
+            <span class="s2">&quot;html_params&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">html_params</span><span class="p">,</span>
+            <span class="s2">&quot;audio_chunk_params&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">audio_chunk_params</span><span class="p">,</span>
+            <span class="s2">&quot;asr_params&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">asr_params</span><span class="p">,</span>
+            <span class="s2">&quot;video_frame_params&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">video_frame_params</span><span class="p">,</span>
+            <span class="s2">&quot;video_text_dedup_params&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">video_text_dedup_params</span><span class="p">,</span>
+            <span class="s2">&quot;av_fuse_params&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">av_fuse_params</span><span class="p">,</span>
+        <span class="p">}</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">kwargs</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="k">return</span> <span class="n">kwargs</span></div>
+
+
+<div class="viewcode-block" id="ResolvedIngestPlan.dry_run_data">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.adapters.cli.html#nemo_retriever.adapters.cli.sdk_workflow.ResolvedIngestPlan.dry_run_data">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">dry_run_data</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;dry_run&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="s2">&quot;profile&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">profile</span><span class="p">,</span>
+            <span class="s2">&quot;documents&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">documents</span><span class="p">),</span>
+            <span class="s2">&quot;branches&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;family&quot;</span><span class="p">:</span> <span class="n">branch</span><span class="o">.</span><span class="n">family</span><span class="p">,</span>
+                    <span class="s2">&quot;extraction_mode&quot;</span><span class="p">:</span> <span class="n">branch</span><span class="o">.</span><span class="n">extraction_mode</span><span class="p">,</span>
+                    <span class="s2">&quot;count&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">branch</span><span class="o">.</span><span class="n">input_paths</span><span class="p">),</span>
+                    <span class="s2">&quot;input_paths&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">branch</span><span class="o">.</span><span class="n">input_paths</span><span class="p">),</span>
+                <span class="p">}</span>
+                <span class="k">for</span> <span class="n">branch</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">branches</span>
+            <span class="p">],</span>
+            <span class="s2">&quot;branch_summary&quot;</span><span class="p">:</span> <span class="n">format_branch_summary</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">branches</span><span class="p">),</span>
+            <span class="s2">&quot;create_ingestor&quot;</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">create_kwargs</span><span class="p">),</span>
+            <span class="s2">&quot;extract&quot;</span><span class="p">:</span> <span class="n">_params_to_dry_run_dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">extract_params</span><span class="p">),</span>
+            <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">_params_to_dry_run_dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">text_params</span><span class="p">),</span>
+            <span class="s2">&quot;html&quot;</span><span class="p">:</span> <span class="n">_params_to_dry_run_dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">html_params</span><span class="p">),</span>
+            <span class="s2">&quot;audio&quot;</span><span class="p">:</span> <span class="n">_params_to_dry_run_dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">audio_chunk_params</span><span class="p">),</span>
+            <span class="s2">&quot;asr&quot;</span><span class="p">:</span> <span class="n">_params_to_dry_run_dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">asr_params</span><span class="p">),</span>
+            <span class="s2">&quot;video_frames&quot;</span><span class="p">:</span> <span class="n">_params_to_dry_run_dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">video_frame_params</span><span class="p">),</span>
+            <span class="s2">&quot;video_frame_text_dedup&quot;</span><span class="p">:</span> <span class="n">_params_to_dry_run_dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">video_text_dedup_params</span><span class="p">),</span>
+            <span class="s2">&quot;audio_visual_fuse&quot;</span><span class="p">:</span> <span class="n">_params_to_dry_run_dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">av_fuse_params</span><span class="p">),</span>
+            <span class="s2">&quot;caption&quot;</span><span class="p">:</span> <span class="n">_params_to_dry_run_dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">caption_params</span><span class="p">),</span>
+            <span class="s2">&quot;embed&quot;</span><span class="p">:</span> <span class="n">_params_to_dry_run_dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">embed_params</span><span class="p">),</span>
+            <span class="s2">&quot;vdb_upload&quot;</span><span class="p">:</span> <span class="n">_params_to_dry_run_dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vdb_params</span><span class="p">),</span>
+        <span class="p">}</span></div>
+</div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_params_to_dry_run_dict</span><span class="p">(</span><span class="n">params</span><span class="p">:</span> <span class="n">Any</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="s2">&quot;model_dump&quot;</span><span class="p">):</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">params</span><span class="p">)}</span>
+    <span class="k">return</span> <span class="n">_strip_secret_values</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_is_dry_run_secret_field</span><span class="p">(</span><span class="n">key</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="n">normalized_key</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">key</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">normalized_key</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;token&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">any</span><span class="p">(</span>
+        <span class="n">pattern</span> <span class="ow">in</span> <span class="n">normalized_key</span> <span class="k">for</span> <span class="n">pattern</span> <span class="ow">in</span> <span class="n">_DRY_RUN_SECRET_FIELD_PATTERNS</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_strip_secret_values</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Redact secrets from dry-run reporting only.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="n">out</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">nested</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">_is_dry_run_secret_field</span><span class="p">(</span><span class="n">key</span><span class="p">):</span>
+                <span class="n">out</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;&lt;redacted&gt;&quot;</span> <span class="k">if</span> <span class="n">nested</span> <span class="k">else</span> <span class="n">nested</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">out</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">_strip_secret_values</span><span class="p">(</span><span class="n">nested</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">_strip_secret_values</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">value</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_branch_families</span><span class="p">(</span><span class="n">branches</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">ExtractionBranchPlan</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="p">{</span><span class="n">branch</span><span class="o">.</span><span class="n">family</span> <span class="k">for</span> <span class="n">branch</span> <span class="ow">in</span> <span class="n">branches</span><span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_require_branch_families</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">profile</span><span class="p">:</span> <span class="n">IngestProfileValue</span><span class="p">,</span>
+    <span class="n">branches</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">ExtractionBranchPlan</span><span class="p">],</span>
+    <span class="n">allowed</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">observed</span> <span class="o">=</span> <span class="n">_branch_families</span><span class="p">(</span><span class="n">branches</span><span class="p">)</span>
+    <span class="n">disallowed</span> <span class="o">=</span> <span class="n">observed</span> <span class="o">-</span> <span class="n">allowed</span>
+    <span class="k">if</span> <span class="n">disallowed</span><span class="p">:</span>
+        <span class="n">allowed_text</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">allowed</span><span class="p">))</span>
+        <span class="n">observed_text</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">observed</span><span class="p">))</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;--profile </span><span class="si">{</span><span class="n">profile</span><span class="si">}</span><span class="s2"> only supports </span><span class="si">{</span><span class="n">description</span><span class="si">}</span><span class="s2"> inputs (</span><span class="si">{</span><span class="n">allowed_text</span><span class="si">}</span><span class="s2">); observed </span><span class="si">{</span><span class="n">observed_text</span><span class="si">}</span><span class="s2">.&quot;</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_profile_manifest</span><span class="p">(</span><span class="n">profile</span><span class="p">:</span> <span class="n">IngestProfileValue</span><span class="p">,</span> <span class="n">branches</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">ExtractionBranchPlan</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">profile</span> <span class="o">==</span> <span class="s2">&quot;fast-text&quot;</span><span class="p">:</span>
+        <span class="n">_require_branch_families</span><span class="p">(</span><span class="n">profile</span><span class="o">=</span><span class="n">profile</span><span class="p">,</span> <span class="n">branches</span><span class="o">=</span><span class="n">branches</span><span class="p">,</span> <span class="n">allowed</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">},</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;PDF/document&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_profile_extract_defaults</span><span class="p">(</span><span class="n">profile</span><span class="p">:</span> <span class="n">IngestProfileValue</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">profile</span> <span class="o">==</span> <span class="s2">&quot;fast-text&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;pdfium&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;extract_text&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="s2">&quot;extract_images&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;extract_tables&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;extract_charts&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;extract_infographics&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;extract_page_as_image&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;use_page_elements&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="k">return</span> <span class="p">{}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_asr_params</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">segment_audio</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">needed</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ASRParams</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">needed</span> <span class="ow">and</span> <span class="n">segment_audio</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.audio.asr_actor</span><span class="w"> </span><span class="kn">import</span> <span class="n">asr_params_from_env</span>
+
+    <span class="n">params</span> <span class="o">=</span> <span class="n">asr_params_from_env</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">segment_audio</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">params</span>
+    <span class="k">return</span> <span class="n">params</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;segment_audio&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">segment_audio</span><span class="p">)})</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_media_params</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">branches</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">ExtractionBranchPlan</span><span class="p">],</span>
+    <span class="n">segment_audio</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">audio_split_type</span><span class="p">:</span> <span class="n">AudioSplitTypeValue</span><span class="p">,</span>
+    <span class="n">audio_split_interval</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_extract_audio</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_extract_frames</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_frame_fps</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_frame_dedup</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_frame_text_dedup</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_frame_text_dedup_max_dropped_frames</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_av_fuse</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span>
+    <span class="n">AudioChunkParams</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ASRParams</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">VideoFrameParams</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">VideoFrameTextDedupParams</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">AudioVisualFuseParams</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">]:</span>
+    <span class="n">families</span> <span class="o">=</span> <span class="n">_branch_families</span><span class="p">(</span><span class="n">branches</span><span class="p">)</span>
+    <span class="n">needs_audio</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">families</span> <span class="o">&amp;</span> <span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">,</span> <span class="s2">&quot;video&quot;</span><span class="p">})</span>
+    <span class="n">needs_video</span> <span class="o">=</span> <span class="s2">&quot;video&quot;</span> <span class="ow">in</span> <span class="n">families</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">needs_audio</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">needs_video</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="n">_build_asr_params</span><span class="p">(</span><span class="n">segment_audio</span><span class="o">=</span><span class="n">segment_audio</span><span class="p">,</span> <span class="n">needed</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+    <span class="n">split_interval</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">audio_split_interval</span><span class="p">)</span> <span class="k">if</span> <span class="n">audio_split_interval</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">_AUDIO_SPLIT_INTERVAL</span>
+    <span class="n">audio_chunk_params</span> <span class="o">=</span> <span class="n">AudioChunkParams</span><span class="p">(</span>
+        <span class="n">enabled</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">video_extract_audio</span><span class="p">)</span> <span class="k">if</span> <span class="n">video_extract_audio</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">needs_video</span> <span class="k">else</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="n">split_type</span><span class="o">=</span><span class="n">audio_split_type</span><span class="p">,</span>
+        <span class="n">split_interval</span><span class="o">=</span><span class="n">split_interval</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">asr_params</span> <span class="o">=</span> <span class="n">_build_asr_params</span><span class="p">(</span><span class="n">segment_audio</span><span class="o">=</span><span class="n">segment_audio</span><span class="p">,</span> <span class="n">needed</span><span class="o">=</span><span class="n">needs_audio</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">needs_video</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">audio_chunk_params</span><span class="p">,</span> <span class="n">asr_params</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+    <span class="n">video_frame_params</span> <span class="o">=</span> <span class="n">VideoFrameParams</span><span class="p">(</span>
+        <span class="n">enabled</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">video_extract_frames</span><span class="p">)</span> <span class="k">if</span> <span class="n">video_extract_frames</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="n">fps</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">video_frame_fps</span><span class="p">)</span> <span class="k">if</span> <span class="n">video_frame_fps</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">_VIDEO_FRAME_FPS</span><span class="p">,</span>
+        <span class="n">dedup</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">video_frame_dedup</span><span class="p">)</span> <span class="k">if</span> <span class="n">video_frame_dedup</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">video_text_dedup_params</span> <span class="o">=</span> <span class="n">VideoFrameTextDedupParams</span><span class="p">(</span>
+        <span class="n">enabled</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">video_frame_text_dedup</span><span class="p">)</span> <span class="k">if</span> <span class="n">video_frame_text_dedup</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="n">max_dropped_frames</span><span class="o">=</span><span class="p">(</span>
+            <span class="nb">int</span><span class="p">(</span><span class="n">video_frame_text_dedup_max_dropped_frames</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">video_frame_text_dedup_max_dropped_frames</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="k">else</span> <span class="n">_VIDEO_TEXT_DEDUP_MAX_DROPPED_FRAMES</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">av_fuse_params</span> <span class="o">=</span> <span class="n">AudioVisualFuseParams</span><span class="p">(</span><span class="n">enabled</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">video_av_fuse</span><span class="p">)</span> <span class="k">if</span> <span class="n">video_av_fuse</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">audio_chunk_params</span><span class="p">,</span> <span class="n">asr_params</span><span class="p">,</span> <span class="n">video_frame_params</span><span class="p">,</span> <span class="n">video_text_dedup_params</span><span class="p">,</span> <span class="n">av_fuse_params</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_caption_params</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">caption</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">caption_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">caption_model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">caption_context_text_max_chars</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">caption_infographics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CaptionParams</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">overrides</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;caption_invoke_url&quot;</span><span class="p">:</span> <span class="n">caption_invoke_url</span><span class="p">,</span>
+        <span class="s2">&quot;caption_model_name&quot;</span><span class="p">:</span> <span class="n">caption_model_name</span><span class="p">,</span>
+        <span class="s2">&quot;caption_context_text_max_chars&quot;</span><span class="p">:</span> <span class="n">caption_context_text_max_chars</span><span class="p">,</span>
+        <span class="s2">&quot;caption_infographics&quot;</span><span class="p">:</span> <span class="n">caption_infographics</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">caption</span><span class="p">:</span>
+        <span class="n">provided</span> <span class="o">=</span> <span class="p">[</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">overrides</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">provided</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Caption options require --caption: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">provided</span><span class="p">)</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">caption_context_text_max_chars</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">caption_context_text_max_chars</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;caption_context_text_max_chars must be &gt;= 0.&quot;</span><span class="p">)</span>
+
+    <span class="n">caption_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">key</span><span class="p">:</span> <span class="n">value</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">{</span>
+            <span class="s2">&quot;endpoint_url&quot;</span><span class="p">:</span> <span class="n">caption_invoke_url</span><span class="p">,</span>
+            <span class="s2">&quot;model_name&quot;</span><span class="p">:</span> <span class="n">caption_model_name</span><span class="p">,</span>
+            <span class="s2">&quot;context_text_max_chars&quot;</span><span class="p">:</span> <span class="n">caption_context_text_max_chars</span><span class="p">,</span>
+            <span class="s2">&quot;caption_infographics&quot;</span><span class="p">:</span> <span class="n">caption_infographics</span><span class="p">,</span>
+        <span class="p">}</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">CaptionParams</span><span class="p">(</span><span class="o">**</span><span class="n">caption_kwargs</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_embed_kwargs</span><span class="p">(</span>
+    <span class="n">embed_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">local_ingest_embed_backend</span><span class="p">:</span> <span class="n">LocalIngestEmbedBackendValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">embed_kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="n">embed_invoke_url</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">embed_kwargs</span><span class="p">[</span><span class="s2">&quot;embed_invoke_url&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">embed_invoke_url</span>
+    <span class="k">if</span> <span class="n">embed_model_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Remote HTTP embedding reads model_name; local/GPU paths read embed_model_name.</span>
+        <span class="n">embed_kwargs</span><span class="p">[</span><span class="s2">&quot;model_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">embed_model_name</span>
+        <span class="n">embed_kwargs</span><span class="p">[</span><span class="s2">&quot;embed_model_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">embed_model_name</span>
+    <span class="k">if</span> <span class="n">local_ingest_embed_backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">embed_kwargs</span><span class="p">[</span><span class="s2">&quot;local_ingest_embed_backend&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">local_ingest_embed_backend</span>
+    <span class="n">embed_tuning</span> <span class="o">=</span> <span class="n">_build_embed_batch_tuning</span><span class="p">(</span>
+        <span class="n">embed_workers</span><span class="o">=</span><span class="n">embed_workers</span><span class="p">,</span>
+        <span class="n">embed_batch_size</span><span class="o">=</span><span class="n">embed_batch_size</span><span class="p">,</span>
+        <span class="n">embed_cpus_per_actor</span><span class="o">=</span><span class="n">embed_cpus_per_actor</span><span class="p">,</span>
+        <span class="n">embed_gpus_per_actor</span><span class="o">=</span><span class="n">embed_gpus_per_actor</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">embed_tuning</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">embed_kwargs</span><span class="p">[</span><span class="s2">&quot;batch_tuning&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">embed_tuning</span>
+    <span class="k">return</span> <span class="n">normalize_embed_kwargs</span><span class="p">(</span><span class="n">embed_kwargs</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_extract_batch_tuning</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">pdf_extract_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">pdf_extract_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">pdf_extract_cpus_per_task</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">page_elements_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">page_elements_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">page_elements_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">page_elements_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BatchTuningParams</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">tuning_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">key</span><span class="p">:</span> <span class="n">value</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">{</span>
+            <span class="s2">&quot;pdf_extract_workers&quot;</span><span class="p">:</span> <span class="n">pdf_extract_workers</span><span class="p">,</span>
+            <span class="s2">&quot;pdf_extract_batch_size&quot;</span><span class="p">:</span> <span class="n">pdf_extract_batch_size</span><span class="p">,</span>
+            <span class="c1"># BatchTuningParams names this per-Ray-task reservation num_cpus.</span>
+            <span class="s2">&quot;pdf_extract_num_cpus&quot;</span><span class="p">:</span> <span class="n">pdf_extract_cpus_per_task</span><span class="p">,</span>
+            <span class="s2">&quot;page_elements_workers&quot;</span><span class="p">:</span> <span class="n">page_elements_workers</span><span class="p">,</span>
+            <span class="s2">&quot;page_elements_batch_size&quot;</span><span class="p">:</span> <span class="n">page_elements_batch_size</span><span class="p">,</span>
+            <span class="s2">&quot;page_elements_cpus_per_actor&quot;</span><span class="p">:</span> <span class="n">page_elements_cpus_per_actor</span><span class="p">,</span>
+            <span class="s2">&quot;gpu_page_elements&quot;</span><span class="p">:</span> <span class="n">page_elements_gpus_per_actor</span><span class="p">,</span>
+            <span class="s2">&quot;ocr_workers&quot;</span><span class="p">:</span> <span class="n">ocr_workers</span><span class="p">,</span>
+            <span class="s2">&quot;ocr_inference_batch_size&quot;</span><span class="p">:</span> <span class="n">ocr_batch_size</span><span class="p">,</span>
+            <span class="s2">&quot;ocr_cpus_per_actor&quot;</span><span class="p">:</span> <span class="n">ocr_cpus_per_actor</span><span class="p">,</span>
+            <span class="s2">&quot;gpu_ocr&quot;</span><span class="p">:</span> <span class="n">ocr_gpus_per_actor</span><span class="p">,</span>
+            <span class="s2">&quot;table_structure_workers&quot;</span><span class="p">:</span> <span class="n">table_structure_workers</span><span class="p">,</span>
+            <span class="s2">&quot;table_structure_batch_size&quot;</span><span class="p">:</span> <span class="n">table_structure_batch_size</span><span class="p">,</span>
+            <span class="s2">&quot;table_structure_cpus_per_actor&quot;</span><span class="p">:</span> <span class="n">table_structure_cpus_per_actor</span><span class="p">,</span>
+            <span class="s2">&quot;gpu_table_structure&quot;</span><span class="p">:</span> <span class="n">table_structure_gpus_per_actor</span><span class="p">,</span>
+        <span class="p">}</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">BatchTuningParams</span><span class="p">(</span><span class="o">**</span><span class="n">tuning_kwargs</span><span class="p">)</span> <span class="k">if</span> <span class="n">tuning_kwargs</span> <span class="k">else</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_embed_batch_tuning</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">embed_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BatchTuningParams</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">tuning_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">key</span><span class="p">:</span> <span class="n">value</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">{</span>
+            <span class="s2">&quot;embed_workers&quot;</span><span class="p">:</span> <span class="n">embed_workers</span><span class="p">,</span>
+            <span class="s2">&quot;embed_batch_size&quot;</span><span class="p">:</span> <span class="n">embed_batch_size</span><span class="p">,</span>
+            <span class="s2">&quot;embed_cpus_per_actor&quot;</span><span class="p">:</span> <span class="n">embed_cpus_per_actor</span><span class="p">,</span>
+            <span class="s2">&quot;gpu_embed&quot;</span><span class="p">:</span> <span class="n">embed_gpus_per_actor</span><span class="p">,</span>
+        <span class="p">}</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">BatchTuningParams</span><span class="p">(</span><span class="o">**</span><span class="n">tuning_kwargs</span><span class="p">)</span> <span class="k">if</span> <span class="n">tuning_kwargs</span> <span class="k">else</span> <span class="kc">None</span>
+
+
+<span class="n">_LOCAL_VL_RERANK_MODEL</span> <span class="o">=</span> <span class="s2">&quot;nvidia/llama-nemotron-rerank-vl-1b-v2&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_rerank_kwargs</span><span class="p">(</span>
+    <span class="n">reranker_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">reranker_model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">reranker_backend</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build kwargs for the rerank stage. Mirrors :func:`_build_embed_kwargs`:</span>
+<span class="sd">    if ``reranker_invoke_url`` is given the remote NIM path is configured;</span>
+<span class="sd">    otherwise the local GPU reranker runs with ``reranker_model_name`` (or the</span>
+<span class="sd">    matching VL default to pair with the local VL embedder).</span>
+
+<span class="sd">    ``reranker_backend`` only applies to the local path and selects the local</span>
+<span class="sd">    inference backend (``&quot;vllm&quot;`` or ``&quot;hf&quot;``); ``None`` defers to the library</span>
+<span class="sd">    default in ``_default_rerank_actor_kwargs``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">reranker_url</span> <span class="o">=</span> <span class="p">(</span><span class="n">reranker_invoke_url</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">reranker_url</span><span class="p">:</span>
+        <span class="n">rerank_kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;rerank_invoke_url&quot;</span><span class="p">:</span> <span class="n">reranker_url</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">reranker_model_name</span><span class="p">:</span>
+            <span class="n">rerank_kwargs</span><span class="p">[</span><span class="s2">&quot;model_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">reranker_model_name</span>
+        <span class="n">api_key</span> <span class="o">=</span> <span class="n">resolve_remote_api_key</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">api_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">rerank_kwargs</span><span class="p">[</span><span class="s2">&quot;api_key&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">api_key</span>
+        <span class="k">return</span> <span class="n">rerank_kwargs</span>
+
+    <span class="c1"># Local GPU reranker — VL by default to pair with the local VL embedder.</span>
+    <span class="c1"># ``NemotronRerankGPUActor`` loads the model once per actor; the rerank</span>
+    <span class="c1"># model is ~2 GB and coexists with the vLLM embedder (which respects</span>
+    <span class="c1"># ``gpu_memory_utilization=0.45``).</span>
+    <span class="n">local</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;model_name&quot;</span><span class="p">:</span> <span class="n">reranker_model_name</span> <span class="ow">or</span> <span class="n">_LOCAL_VL_RERANK_MODEL</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">reranker_backend</span><span class="p">:</span>
+        <span class="n">local</span><span class="p">[</span><span class="s2">&quot;local_reranker_backend&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">reranker_backend</span>
+    <span class="k">return</span> <span class="n">local</span>
+
+
+<div class="viewcode-block" id="resolve_ingest_plan">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.adapters.cli.html#nemo_retriever.adapters.cli.sdk_workflow.resolve_ingest_plan">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_ingest_plan</span><span class="p">(</span>
+    <span class="n">documents</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">profile</span><span class="p">:</span> <span class="n">IngestProfileValue</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span><span class="p">,</span>
+    <span class="n">input_type</span><span class="p">:</span> <span class="n">IngestInputTypeValue</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span><span class="p">,</span>
+    <span class="n">run_mode</span><span class="p">:</span> <span class="n">IngestRunModeValue</span> <span class="o">=</span> <span class="s2">&quot;inprocess&quot;</span><span class="p">,</span>
+    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">dpi</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">extract_text</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">extract_images</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">extract_tables</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">extract_charts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">extract_infographics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">extract_page_as_image</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">use_page_elements</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">segment_audio</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">audio_split_type</span><span class="p">:</span> <span class="n">AudioSplitTypeValue</span> <span class="o">=</span> <span class="s2">&quot;size&quot;</span><span class="p">,</span>
+    <span class="n">audio_split_interval</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_extract_audio</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_extract_frames</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_frame_fps</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_frame_dedup</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_frame_text_dedup</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_frame_text_dedup_max_dropped_frames</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_av_fuse</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">caption</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">caption_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">caption_model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">caption_context_text_max_chars</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">caption_infographics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ray_address</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ray_log_to_driver</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">lancedb_uri</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">DEFAULT_LANCEDB_URI</span><span class="p">,</span>
+    <span class="n">table_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">DEFAULT_TABLE_NAME</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">page_elements_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_version</span><span class="p">:</span> <span class="n">OcrVersionValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_lang</span><span class="p">:</span> <span class="n">OcrLangValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">graphic_elements_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_output_format</span><span class="p">:</span> <span class="n">TableOutputFormatValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">local_ingest_embed_backend</span><span class="p">:</span> <span class="n">LocalIngestEmbedBackendValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">pdf_extract_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">pdf_extract_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">pdf_extract_cpus_per_task</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">page_elements_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">page_elements_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">page_elements_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">page_elements_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ResolvedIngestPlan</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve root ingest options into ordinary params for one extract call.</span>
+
+<span class="sd">    Root ``retriever ingest`` defaults to ``run_mode=&quot;inprocess&quot;`` (no Ray).</span>
+<span class="sd">    Pass ``run_mode=&quot;batch&quot;`` for Ray Data scale-out. ``input_type`` remains a private</span>
+<span class="sd">    expansion/validation constraint; extraction still routes from the manifest.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">validated_run_mode</span> <span class="o">=</span> <span class="n">_validate_run_mode</span><span class="p">(</span><span class="n">run_mode</span><span class="p">)</span>
+    <span class="n">validated_profile</span> <span class="o">=</span> <span class="n">_validate_profile</span><span class="p">(</span><span class="n">profile</span><span class="p">)</span>
+    <span class="n">validated_input_type</span> <span class="o">=</span> <span class="n">_validate_input_type</span><span class="p">(</span><span class="n">input_type</span><span class="p">)</span>
+    <span class="n">validated_audio_split_type</span> <span class="o">=</span> <span class="n">_validate_audio_split_type</span><span class="p">(</span><span class="n">audio_split_type</span><span class="p">)</span>
+    <span class="n">document_list</span> <span class="o">=</span> <span class="n">_expand_ingest_documents</span><span class="p">(</span><span class="n">documents</span><span class="p">,</span> <span class="n">input_type</span><span class="o">=</span><span class="n">validated_input_type</span><span class="p">)</span>
+    <span class="n">branches</span> <span class="o">=</span> <span class="n">plan_extraction_branches</span><span class="p">(</span><span class="n">build_input_manifest</span><span class="p">(</span><span class="n">document_list</span><span class="p">))</span>
+    <span class="n">_validate_profile_manifest</span><span class="p">(</span><span class="n">validated_profile</span><span class="p">,</span> <span class="n">branches</span><span class="p">)</span>
+
+    <span class="n">extract_kwargs</span> <span class="o">=</span> <span class="n">_profile_extract_defaults</span><span class="p">(</span><span class="n">validated_profile</span><span class="p">)</span>
+    <span class="n">extract_kwargs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="n">key</span><span class="p">:</span> <span class="n">value</span>
+            <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">{</span>
+                <span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="n">method</span><span class="p">,</span>
+                <span class="s2">&quot;dpi&quot;</span><span class="p">:</span> <span class="n">dpi</span><span class="p">,</span>
+                <span class="s2">&quot;extract_text&quot;</span><span class="p">:</span> <span class="n">extract_text</span><span class="p">,</span>
+                <span class="s2">&quot;extract_images&quot;</span><span class="p">:</span> <span class="n">extract_images</span><span class="p">,</span>
+                <span class="s2">&quot;extract_tables&quot;</span><span class="p">:</span> <span class="n">extract_tables</span><span class="p">,</span>
+                <span class="s2">&quot;extract_charts&quot;</span><span class="p">:</span> <span class="n">extract_charts</span><span class="p">,</span>
+                <span class="s2">&quot;extract_infographics&quot;</span><span class="p">:</span> <span class="n">extract_infographics</span><span class="p">,</span>
+                <span class="s2">&quot;extract_page_as_image&quot;</span><span class="p">:</span> <span class="n">extract_page_as_image</span><span class="p">,</span>
+                <span class="s2">&quot;use_page_elements&quot;</span><span class="p">:</span> <span class="n">use_page_elements</span><span class="p">,</span>
+                <span class="s2">&quot;page_elements_invoke_url&quot;</span><span class="p">:</span> <span class="n">page_elements_invoke_url</span><span class="p">,</span>
+                <span class="s2">&quot;ocr_invoke_url&quot;</span><span class="p">:</span> <span class="n">ocr_invoke_url</span><span class="p">,</span>
+                <span class="s2">&quot;ocr_version&quot;</span><span class="p">:</span> <span class="n">ocr_version</span><span class="p">,</span>
+                <span class="s2">&quot;ocr_lang&quot;</span><span class="p">:</span> <span class="n">ocr_lang</span><span class="p">,</span>
+                <span class="s2">&quot;graphic_elements_invoke_url&quot;</span><span class="p">:</span> <span class="n">graphic_elements_invoke_url</span><span class="p">,</span>
+                <span class="s2">&quot;table_structure_invoke_url&quot;</span><span class="p">:</span> <span class="n">table_structure_invoke_url</span><span class="p">,</span>
+                <span class="s2">&quot;table_output_format&quot;</span><span class="p">:</span> <span class="n">table_output_format</span><span class="p">,</span>
+            <span class="p">}</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">table_output_format</span> <span class="o">==</span> <span class="s2">&quot;markdown&quot;</span><span class="p">:</span>
+        <span class="n">extract_kwargs</span><span class="p">[</span><span class="s2">&quot;use_table_structure&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="n">extract_tuning</span> <span class="o">=</span> <span class="n">_build_extract_batch_tuning</span><span class="p">(</span>
+        <span class="n">pdf_extract_workers</span><span class="o">=</span><span class="n">pdf_extract_workers</span><span class="p">,</span>
+        <span class="n">pdf_extract_batch_size</span><span class="o">=</span><span class="n">pdf_extract_batch_size</span><span class="p">,</span>
+        <span class="n">pdf_extract_cpus_per_task</span><span class="o">=</span><span class="n">pdf_extract_cpus_per_task</span><span class="p">,</span>
+        <span class="n">page_elements_workers</span><span class="o">=</span><span class="n">page_elements_workers</span><span class="p">,</span>
+        <span class="n">page_elements_batch_size</span><span class="o">=</span><span class="n">page_elements_batch_size</span><span class="p">,</span>
+        <span class="n">page_elements_cpus_per_actor</span><span class="o">=</span><span class="n">page_elements_cpus_per_actor</span><span class="p">,</span>
+        <span class="n">page_elements_gpus_per_actor</span><span class="o">=</span><span class="n">page_elements_gpus_per_actor</span><span class="p">,</span>
+        <span class="n">ocr_workers</span><span class="o">=</span><span class="n">ocr_workers</span><span class="p">,</span>
+        <span class="n">ocr_batch_size</span><span class="o">=</span><span class="n">ocr_batch_size</span><span class="p">,</span>
+        <span class="n">ocr_cpus_per_actor</span><span class="o">=</span><span class="n">ocr_cpus_per_actor</span><span class="p">,</span>
+        <span class="n">ocr_gpus_per_actor</span><span class="o">=</span><span class="n">ocr_gpus_per_actor</span><span class="p">,</span>
+        <span class="n">table_structure_workers</span><span class="o">=</span><span class="n">table_structure_workers</span><span class="p">,</span>
+        <span class="n">table_structure_batch_size</span><span class="o">=</span><span class="n">table_structure_batch_size</span><span class="p">,</span>
+        <span class="n">table_structure_cpus_per_actor</span><span class="o">=</span><span class="n">table_structure_cpus_per_actor</span><span class="p">,</span>
+        <span class="n">table_structure_gpus_per_actor</span><span class="o">=</span><span class="n">table_structure_gpus_per_actor</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">extract_tuning</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">extract_kwargs</span><span class="p">[</span><span class="s2">&quot;batch_tuning&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">extract_tuning</span>
+
+    <span class="n">embed_kwargs</span> <span class="o">=</span> <span class="n">_build_embed_kwargs</span><span class="p">(</span>
+        <span class="n">embed_invoke_url</span><span class="p">,</span>
+        <span class="n">embed_model_name</span><span class="p">,</span>
+        <span class="n">local_ingest_embed_backend</span><span class="o">=</span><span class="n">local_ingest_embed_backend</span><span class="p">,</span>
+        <span class="n">embed_workers</span><span class="o">=</span><span class="n">embed_workers</span><span class="p">,</span>
+        <span class="n">embed_batch_size</span><span class="o">=</span><span class="n">embed_batch_size</span><span class="p">,</span>
+        <span class="n">embed_cpus_per_actor</span><span class="o">=</span><span class="n">embed_cpus_per_actor</span><span class="p">,</span>
+        <span class="n">embed_gpus_per_actor</span><span class="o">=</span><span class="n">embed_gpus_per_actor</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">extract_params</span> <span class="o">=</span> <span class="n">ExtractParams</span><span class="p">(</span><span class="o">**</span><span class="n">extract_kwargs</span><span class="p">)</span>
+    <span class="n">embed_params</span> <span class="o">=</span> <span class="n">EmbedParams</span><span class="p">(</span><span class="o">**</span><span class="n">embed_kwargs</span><span class="p">)</span> <span class="k">if</span> <span class="n">embed_kwargs</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="n">vdb_params</span> <span class="o">=</span> <span class="n">VdbUploadParams</span><span class="p">(</span>
+        <span class="n">vdb_kwargs</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;uri&quot;</span><span class="p">:</span> <span class="n">lancedb_uri</span><span class="p">,</span> <span class="s2">&quot;table_name&quot;</span><span class="p">:</span> <span class="n">table_name</span><span class="p">,</span> <span class="s2">&quot;overwrite&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">overwrite</span><span class="p">)}</span>
+    <span class="p">)</span>
+    <span class="n">caption_params</span> <span class="o">=</span> <span class="n">_build_caption_params</span><span class="p">(</span>
+        <span class="n">caption</span><span class="o">=</span><span class="n">caption</span><span class="p">,</span>
+        <span class="n">caption_invoke_url</span><span class="o">=</span><span class="n">caption_invoke_url</span><span class="p">,</span>
+        <span class="n">caption_model_name</span><span class="o">=</span><span class="n">caption_model_name</span><span class="p">,</span>
+        <span class="n">caption_context_text_max_chars</span><span class="o">=</span><span class="n">caption_context_text_max_chars</span><span class="p">,</span>
+        <span class="n">caption_infographics</span><span class="o">=</span><span class="n">caption_infographics</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">families</span> <span class="o">=</span> <span class="n">_branch_families</span><span class="p">(</span><span class="n">branches</span><span class="p">)</span>
+    <span class="n">text_params</span> <span class="o">=</span> <span class="n">TextChunkParams</span><span class="p">()</span> <span class="k">if</span> <span class="s2">&quot;txt&quot;</span> <span class="ow">in</span> <span class="n">families</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="n">html_params</span> <span class="o">=</span> <span class="n">HtmlChunkParams</span><span class="p">()</span> <span class="k">if</span> <span class="s2">&quot;html&quot;</span> <span class="ow">in</span> <span class="n">families</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="p">(</span>
+        <span class="n">audio_chunk_params</span><span class="p">,</span>
+        <span class="n">asr_params</span><span class="p">,</span>
+        <span class="n">video_frame_params</span><span class="p">,</span>
+        <span class="n">video_text_dedup_params</span><span class="p">,</span>
+        <span class="n">av_fuse_params</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">=</span> <span class="n">_resolve_media_params</span><span class="p">(</span>
+        <span class="n">branches</span><span class="o">=</span><span class="n">branches</span><span class="p">,</span>
+        <span class="n">segment_audio</span><span class="o">=</span><span class="n">segment_audio</span><span class="p">,</span>
+        <span class="n">audio_split_type</span><span class="o">=</span><span class="n">validated_audio_split_type</span><span class="p">,</span>
+        <span class="n">audio_split_interval</span><span class="o">=</span><span class="n">audio_split_interval</span><span class="p">,</span>
+        <span class="n">video_extract_audio</span><span class="o">=</span><span class="n">video_extract_audio</span><span class="p">,</span>
+        <span class="n">video_extract_frames</span><span class="o">=</span><span class="n">video_extract_frames</span><span class="p">,</span>
+        <span class="n">video_frame_fps</span><span class="o">=</span><span class="n">video_frame_fps</span><span class="p">,</span>
+        <span class="n">video_frame_dedup</span><span class="o">=</span><span class="n">video_frame_dedup</span><span class="p">,</span>
+        <span class="n">video_frame_text_dedup</span><span class="o">=</span><span class="n">video_frame_text_dedup</span><span class="p">,</span>
+        <span class="n">video_frame_text_dedup_max_dropped_frames</span><span class="o">=</span><span class="n">video_frame_text_dedup_max_dropped_frames</span><span class="p">,</span>
+        <span class="n">video_av_fuse</span><span class="o">=</span><span class="n">video_av_fuse</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">create_kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;run_mode&quot;</span><span class="p">:</span> <span class="n">validated_run_mode</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">ray_address</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">create_kwargs</span><span class="p">[</span><span class="s2">&quot;ray_address&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ray_address</span>
+    <span class="k">if</span> <span class="n">ray_log_to_driver</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">create_kwargs</span><span class="p">[</span><span class="s2">&quot;ray_log_to_driver&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ray_log_to_driver</span>
+
+    <span class="k">return</span> <span class="n">ResolvedIngestPlan</span><span class="p">(</span>
+        <span class="n">documents</span><span class="o">=</span><span class="n">document_list</span><span class="p">,</span>
+        <span class="n">profile</span><span class="o">=</span><span class="n">validated_profile</span><span class="p">,</span>
+        <span class="n">branches</span><span class="o">=</span><span class="n">branches</span><span class="p">,</span>
+        <span class="n">create_kwargs</span><span class="o">=</span><span class="n">create_kwargs</span><span class="p">,</span>
+        <span class="n">extract_params</span><span class="o">=</span><span class="n">extract_params</span><span class="p">,</span>
+        <span class="n">text_params</span><span class="o">=</span><span class="n">text_params</span><span class="p">,</span>
+        <span class="n">html_params</span><span class="o">=</span><span class="n">html_params</span><span class="p">,</span>
+        <span class="n">audio_chunk_params</span><span class="o">=</span><span class="n">audio_chunk_params</span><span class="p">,</span>
+        <span class="n">asr_params</span><span class="o">=</span><span class="n">asr_params</span><span class="p">,</span>
+        <span class="n">video_frame_params</span><span class="o">=</span><span class="n">video_frame_params</span><span class="p">,</span>
+        <span class="n">video_text_dedup_params</span><span class="o">=</span><span class="n">video_text_dedup_params</span><span class="p">,</span>
+        <span class="n">av_fuse_params</span><span class="o">=</span><span class="n">av_fuse_params</span><span class="p">,</span>
+        <span class="n">caption_params</span><span class="o">=</span><span class="n">caption_params</span><span class="p">,</span>
+        <span class="n">embed_params</span><span class="o">=</span><span class="n">embed_params</span><span class="p">,</span>
+        <span class="n">vdb_params</span><span class="o">=</span><span class="n">vdb_params</span><span class="p">,</span>
+        <span class="n">lancedb_uri</span><span class="o">=</span><span class="n">lancedb_uri</span><span class="p">,</span>
+        <span class="n">table_name</span><span class="o">=</span><span class="n">table_name</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="ingest_documents">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.adapters.cli.html#nemo_retriever.adapters.cli.sdk_workflow.ingest_documents">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">ingest_documents</span><span class="p">(</span>
+    <span class="n">documents</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">profile</span><span class="p">:</span> <span class="n">IngestProfileValue</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span><span class="p">,</span>
+    <span class="n">input_type</span><span class="p">:</span> <span class="n">IngestInputTypeValue</span> <span class="o">=</span> <span class="s2">&quot;auto&quot;</span><span class="p">,</span>
+    <span class="n">run_mode</span><span class="p">:</span> <span class="n">IngestRunModeValue</span> <span class="o">=</span> <span class="s2">&quot;inprocess&quot;</span><span class="p">,</span>
+    <span class="n">dry_run</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">dpi</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">extract_text</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">extract_images</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">extract_tables</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">extract_charts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">extract_infographics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">extract_page_as_image</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">use_page_elements</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">segment_audio</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">audio_split_type</span><span class="p">:</span> <span class="n">AudioSplitTypeValue</span> <span class="o">=</span> <span class="s2">&quot;size&quot;</span><span class="p">,</span>
+    <span class="n">audio_split_interval</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_extract_audio</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_extract_frames</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_frame_fps</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_frame_dedup</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_frame_text_dedup</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_frame_text_dedup_max_dropped_frames</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">video_av_fuse</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">caption</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">caption_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">caption_model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">caption_context_text_max_chars</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">caption_infographics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ray_address</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ray_log_to_driver</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">lancedb_uri</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">DEFAULT_LANCEDB_URI</span><span class="p">,</span>
+    <span class="n">table_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">DEFAULT_TABLE_NAME</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">page_elements_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_version</span><span class="p">:</span> <span class="n">OcrVersionValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_lang</span><span class="p">:</span> <span class="n">OcrLangValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">graphic_elements_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_output_format</span><span class="p">:</span> <span class="n">TableOutputFormatValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">local_ingest_embed_backend</span><span class="p">:</span> <span class="n">LocalIngestEmbedBackendValue</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">pdf_extract_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">pdf_extract_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">pdf_extract_cpus_per_task</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">page_elements_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">page_elements_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">page_elements_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">page_elements_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ocr_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_structure_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_gpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run the root CLI ingestion path through the SDK adapter.</span>
+
+<span class="sd">    Input families are inferred from concrete file extensions and routed by</span>
+<span class="sd">    the graph ingestor manifest planner; the root CLI intentionally has no</span>
+<span class="sd">    user-facing input-type selector.</span>
+
+<span class="sd">    ``ray_address`` and ``ray_log_to_driver`` are forwarded only when the</span>
+<span class="sd">    caller sets them, preserving the default ``create_ingestor`` behavior.</span>
+<span class="sd">    Batch tuning arguments are opt-in and are translated into</span>
+<span class="sd">    ``BatchTuningParams`` for extraction or embedding; they are meaningful for</span>
+<span class="sd">    ``run_mode=&quot;batch&quot;`` and ignored by callers that leave them unset.</span>
+<span class="sd">    Root ``retriever ingest`` defaults to ``run_mode=&quot;inprocess&quot;``; pass</span>
+<span class="sd">    ``run_mode=&quot;batch&quot;`` for Ray Data scale-out.</span>
+<span class="sd">    The legacy ``input_type`` argument constrains directory expansion and file</span>
+<span class="sd">    validation only; extraction routing remains manifest-planned.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">plan</span> <span class="o">=</span> <span class="n">resolve_ingest_plan</span><span class="p">(</span>
+        <span class="n">documents</span><span class="p">,</span>
+        <span class="n">profile</span><span class="o">=</span><span class="n">profile</span><span class="p">,</span>
+        <span class="n">input_type</span><span class="o">=</span><span class="n">input_type</span><span class="p">,</span>
+        <span class="n">run_mode</span><span class="o">=</span><span class="n">run_mode</span><span class="p">,</span>
+        <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span>
+        <span class="n">dpi</span><span class="o">=</span><span class="n">dpi</span><span class="p">,</span>
+        <span class="n">extract_text</span><span class="o">=</span><span class="n">extract_text</span><span class="p">,</span>
+        <span class="n">extract_images</span><span class="o">=</span><span class="n">extract_images</span><span class="p">,</span>
+        <span class="n">extract_tables</span><span class="o">=</span><span class="n">extract_tables</span><span class="p">,</span>
+        <span class="n">extract_charts</span><span class="o">=</span><span class="n">extract_charts</span><span class="p">,</span>
+        <span class="n">extract_infographics</span><span class="o">=</span><span class="n">extract_infographics</span><span class="p">,</span>
+        <span class="n">extract_page_as_image</span><span class="o">=</span><span class="n">extract_page_as_image</span><span class="p">,</span>
+        <span class="n">use_page_elements</span><span class="o">=</span><span class="n">use_page_elements</span><span class="p">,</span>
+        <span class="n">segment_audio</span><span class="o">=</span><span class="n">segment_audio</span><span class="p">,</span>
+        <span class="n">audio_split_type</span><span class="o">=</span><span class="n">audio_split_type</span><span class="p">,</span>
+        <span class="n">audio_split_interval</span><span class="o">=</span><span class="n">audio_split_interval</span><span class="p">,</span>
+        <span class="n">video_extract_audio</span><span class="o">=</span><span class="n">video_extract_audio</span><span class="p">,</span>
+        <span class="n">video_extract_frames</span><span class="o">=</span><span class="n">video_extract_frames</span><span class="p">,</span>
+        <span class="n">video_frame_fps</span><span class="o">=</span><span class="n">video_frame_fps</span><span class="p">,</span>
+        <span class="n">video_frame_dedup</span><span class="o">=</span><span class="n">video_frame_dedup</span><span class="p">,</span>
+        <span class="n">video_frame_text_dedup</span><span class="o">=</span><span class="n">video_frame_text_dedup</span><span class="p">,</span>
+        <span class="n">video_frame_text_dedup_max_dropped_frames</span><span class="o">=</span><span class="n">video_frame_text_dedup_max_dropped_frames</span><span class="p">,</span>
+        <span class="n">video_av_fuse</span><span class="o">=</span><span class="n">video_av_fuse</span><span class="p">,</span>
+        <span class="n">caption</span><span class="o">=</span><span class="n">caption</span><span class="p">,</span>
+        <span class="n">caption_invoke_url</span><span class="o">=</span><span class="n">caption_invoke_url</span><span class="p">,</span>
+        <span class="n">caption_model_name</span><span class="o">=</span><span class="n">caption_model_name</span><span class="p">,</span>
+        <span class="n">caption_context_text_max_chars</span><span class="o">=</span><span class="n">caption_context_text_max_chars</span><span class="p">,</span>
+        <span class="n">caption_infographics</span><span class="o">=</span><span class="n">caption_infographics</span><span class="p">,</span>
+        <span class="n">ray_address</span><span class="o">=</span><span class="n">ray_address</span><span class="p">,</span>
+        <span class="n">ray_log_to_driver</span><span class="o">=</span><span class="n">ray_log_to_driver</span><span class="p">,</span>
+        <span class="n">lancedb_uri</span><span class="o">=</span><span class="n">lancedb_uri</span><span class="p">,</span>
+        <span class="n">table_name</span><span class="o">=</span><span class="n">table_name</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="n">page_elements_invoke_url</span><span class="o">=</span><span class="n">page_elements_invoke_url</span><span class="p">,</span>
+        <span class="n">ocr_invoke_url</span><span class="o">=</span><span class="n">ocr_invoke_url</span><span class="p">,</span>
+        <span class="n">ocr_version</span><span class="o">=</span><span class="n">ocr_version</span><span class="p">,</span>
+        <span class="n">ocr_lang</span><span class="o">=</span><span class="n">ocr_lang</span><span class="p">,</span>
+        <span class="n">graphic_elements_invoke_url</span><span class="o">=</span><span class="n">graphic_elements_invoke_url</span><span class="p">,</span>
+        <span class="n">table_structure_invoke_url</span><span class="o">=</span><span class="n">table_structure_invoke_url</span><span class="p">,</span>
+        <span class="n">table_output_format</span><span class="o">=</span><span class="n">table_output_format</span><span class="p">,</span>
+        <span class="n">embed_invoke_url</span><span class="o">=</span><span class="n">embed_invoke_url</span><span class="p">,</span>
+        <span class="n">embed_model_name</span><span class="o">=</span><span class="n">embed_model_name</span><span class="p">,</span>
+        <span class="n">local_ingest_embed_backend</span><span class="o">=</span><span class="n">local_ingest_embed_backend</span><span class="p">,</span>
+        <span class="n">pdf_extract_workers</span><span class="o">=</span><span class="n">pdf_extract_workers</span><span class="p">,</span>
+        <span class="n">pdf_extract_batch_size</span><span class="o">=</span><span class="n">pdf_extract_batch_size</span><span class="p">,</span>
+        <span class="n">pdf_extract_cpus_per_task</span><span class="o">=</span><span class="n">pdf_extract_cpus_per_task</span><span class="p">,</span>
+        <span class="n">page_elements_workers</span><span class="o">=</span><span class="n">page_elements_workers</span><span class="p">,</span>
+        <span class="n">page_elements_batch_size</span><span class="o">=</span><span class="n">page_elements_batch_size</span><span class="p">,</span>
+        <span class="n">page_elements_cpus_per_actor</span><span class="o">=</span><span class="n">page_elements_cpus_per_actor</span><span class="p">,</span>
+        <span class="n">page_elements_gpus_per_actor</span><span class="o">=</span><span class="n">page_elements_gpus_per_actor</span><span class="p">,</span>
+        <span class="n">ocr_workers</span><span class="o">=</span><span class="n">ocr_workers</span><span class="p">,</span>
+        <span class="n">ocr_batch_size</span><span class="o">=</span><span class="n">ocr_batch_size</span><span class="p">,</span>
+        <span class="n">ocr_cpus_per_actor</span><span class="o">=</span><span class="n">ocr_cpus_per_actor</span><span class="p">,</span>
+        <span class="n">ocr_gpus_per_actor</span><span class="o">=</span><span class="n">ocr_gpus_per_actor</span><span class="p">,</span>
+        <span class="n">table_structure_workers</span><span class="o">=</span><span class="n">table_structure_workers</span><span class="p">,</span>
+        <span class="n">table_structure_batch_size</span><span class="o">=</span><span class="n">table_structure_batch_size</span><span class="p">,</span>
+        <span class="n">table_structure_cpus_per_actor</span><span class="o">=</span><span class="n">table_structure_cpus_per_actor</span><span class="p">,</span>
+        <span class="n">table_structure_gpus_per_actor</span><span class="o">=</span><span class="n">table_structure_gpus_per_actor</span><span class="p">,</span>
+        <span class="n">embed_workers</span><span class="o">=</span><span class="n">embed_workers</span><span class="p">,</span>
+        <span class="n">embed_batch_size</span><span class="o">=</span><span class="n">embed_batch_size</span><span class="p">,</span>
+        <span class="n">embed_cpus_per_actor</span><span class="o">=</span><span class="n">embed_cpus_per_actor</span><span class="p">,</span>
+        <span class="n">embed_gpus_per_actor</span><span class="o">=</span><span class="n">embed_gpus_per_actor</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">dry_run</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">plan</span><span class="o">.</span><span class="n">dry_run_data</span><span class="p">()</span>
+
+    <span class="n">initial_n_rows</span> <span class="o">=</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">overwrite</span> <span class="k">else</span> <span class="n">_count_lancedb_rows</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">lancedb_uri</span><span class="p">,</span> <span class="n">plan</span><span class="o">.</span><span class="n">table_name</span><span class="p">)</span>
+    <span class="n">ingestor</span> <span class="o">=</span> <span class="n">create_ingestor</span><span class="p">(</span><span class="o">**</span><span class="n">plan</span><span class="o">.</span><span class="n">create_kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">files</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">documents</span><span class="p">)</span>
+    <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">extract_params</span><span class="p">,</span> <span class="o">**</span><span class="n">plan</span><span class="o">.</span><span class="n">extract_call_kwargs</span><span class="p">())</span>
+    <span class="k">if</span> <span class="n">plan</span><span class="o">.</span><span class="n">caption_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">caption</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">caption_params</span><span class="p">)</span>
+    <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">embed_params</span><span class="p">)</span> <span class="k">if</span> <span class="n">plan</span><span class="o">.</span><span class="n">embed_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">embed</span><span class="p">()</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">vdb_upload</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">vdb_params</span><span class="p">)</span><span class="o">.</span><span class="n">ingest</span><span class="p">()</span>
+    <span class="n">n_rows</span> <span class="o">=</span> <span class="n">_count_lancedb_rows</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">lancedb_uri</span><span class="p">,</span> <span class="n">plan</span><span class="o">.</span><span class="n">table_name</span><span class="p">)</span>
+    <span class="n">_raise_for_empty_ingest</span><span class="p">(</span>
+        <span class="n">documents</span><span class="o">=</span><span class="n">plan</span><span class="o">.</span><span class="n">documents</span><span class="p">,</span>
+        <span class="n">lancedb_uri</span><span class="o">=</span><span class="n">plan</span><span class="o">.</span><span class="n">lancedb_uri</span><span class="p">,</span>
+        <span class="n">table_name</span><span class="o">=</span><span class="n">plan</span><span class="o">.</span><span class="n">table_name</span><span class="p">,</span>
+        <span class="n">n_rows</span><span class="o">=</span><span class="n">n_rows</span><span class="p">,</span>
+        <span class="n">initial_n_rows</span><span class="o">=</span><span class="n">initial_n_rows</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;documents&quot;</span><span class="p">:</span> <span class="n">plan</span><span class="o">.</span><span class="n">documents</span><span class="p">,</span>
+        <span class="s2">&quot;lancedb_uri&quot;</span><span class="p">:</span> <span class="n">plan</span><span class="o">.</span><span class="n">lancedb_uri</span><span class="p">,</span>
+        <span class="s2">&quot;result&quot;</span><span class="p">:</span> <span class="n">result</span><span class="p">,</span>
+        <span class="s2">&quot;table_name&quot;</span><span class="p">:</span> <span class="n">plan</span><span class="o">.</span><span class="n">table_name</span><span class="p">,</span>
+        <span class="s2">&quot;n_rows&quot;</span><span class="p">:</span> <span class="n">n_rows</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_raise_for_empty_ingest</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">documents</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">lancedb_uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">table_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">n_rows</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">initial_n_rows</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">target</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">lancedb_uri</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">table_name</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">if</span> <span class="n">n_rows</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;retriever ingest could not verify rows in LanceDB </span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2"> for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">documents</span><span class="p">)</span><span class="si">}</span><span class="s2"> input file(s). &quot;</span>
+            <span class="s2">&quot;This usually means the LanceDB table was not created or could not be read after ingestion; check &quot;</span>
+            <span class="s2">&quot;the captured stage logs above, and verify NVIDIA_API_KEY/NGC_API_KEY or the configured local/remote &quot;</span>
+            <span class="s2">&quot;endpoints.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">n_rows</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="p">(</span><span class="n">initial_n_rows</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">n_rows</span> <span class="o">&gt;</span> <span class="n">initial_n_rows</span><span class="p">):</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">initial_n_rows</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;retriever ingest did not add rows to LanceDB </span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2">; row count stayed at </span><span class="si">{</span><span class="n">n_rows</span><span class="si">}</span><span class="s2"> &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">documents</span><span class="p">)</span><span class="si">}</span><span class="s2"> input file(s). This usually means extraction or embedding failed before &quot;</span>
+            <span class="s2">&quot;any rows were written; check the captured stage logs above, and verify NVIDIA_API_KEY/NGC_API_KEY &quot;</span>
+            <span class="s2">&quot;or the configured local/remote endpoints.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;retriever ingest produced 0 rows in LanceDB </span><span class="si">{</span><span class="n">target</span><span class="si">}</span><span class="s2"> for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">documents</span><span class="p">)</span><span class="si">}</span><span class="s2"> input file(s). &quot;</span>
+        <span class="s2">&quot;This usually means extraction or embedding failed before any rows were written; check the captured &quot;</span>
+        <span class="s2">&quot;stage logs above, and verify NVIDIA_API_KEY/NGC_API_KEY or the configured local/remote endpoints.&quot;</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_count_lancedb_rows</span><span class="p">(</span><span class="n">lancedb_uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">table_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the actual row count in ``&lt;lancedb_uri&gt;/&lt;table_name&gt;`` or ``None``.</span>
+
+<span class="sd">    The low-level reader is best-effort so callers can decide whether an</span>
+<span class="sd">    unknown count is acceptable. Root ingest treats an unknown final count as a</span>
+<span class="sd">    failure because agents need proof that rows landed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">lancedb</span>  <span class="c1"># local import — keeps the CLI startup snappy</span>
+
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">lancedb</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">lancedb_uri</span><span class="p">)</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="n">table_name</span><span class="p">)</span><span class="o">.</span><span class="n">count_rows</span><span class="p">())</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>  <span class="c1"># noqa: BLE001 — diagnostic only</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;could not count rows in </span><span class="si">%s</span><span class="s2">/</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">lancedb_uri</span><span class="p">,</span> <span class="n">table_name</span><span class="p">,</span> <span class="n">exc</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+
+<div class="viewcode-block" id="query_documents">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.adapters.cli.html#nemo_retriever.adapters.cli.sdk_workflow.query_documents">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">query_documents</span><span class="p">(</span>
+    <span class="n">query</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">top_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">lancedb_uri</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">DEFAULT_LANCEDB_URI</span><span class="p">,</span>
+    <span class="n">table_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">DEFAULT_TABLE_NAME</span><span class="p">,</span>
+    <span class="n">embed_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">embed_model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">reranker_invoke_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">reranker_model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">reranker_backend</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">rerank</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RetrievalHit</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run the minimal SDK query path used by the root CLI.</span>
+
+<span class="sd">    Reranking is opt-in: pass ``rerank=True`` (or any of the rerank-related</span>
+<span class="sd">    args via the CLI, which implicitly set ``rerank=True``) to enable.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">embed_kwargs</span> <span class="o">=</span> <span class="n">_build_embed_kwargs</span><span class="p">(</span><span class="n">embed_invoke_url</span><span class="p">,</span> <span class="n">embed_model_name</span><span class="p">)</span>
+    <span class="n">retriever_kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;top_k&quot;</span><span class="p">:</span> <span class="n">top_k</span><span class="p">,</span>
+        <span class="s2">&quot;vdb_kwargs&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;uri&quot;</span><span class="p">:</span> <span class="n">lancedb_uri</span><span class="p">,</span> <span class="s2">&quot;table_name&quot;</span><span class="p">:</span> <span class="n">table_name</span><span class="p">},</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">embed_kwargs</span><span class="p">:</span>
+        <span class="n">retriever_kwargs</span><span class="p">[</span><span class="s2">&quot;embed_kwargs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">embed_kwargs</span>
+    <span class="k">if</span> <span class="n">rerank</span><span class="p">:</span>
+        <span class="n">rerank_kwargs</span> <span class="o">=</span> <span class="n">_build_rerank_kwargs</span><span class="p">(</span><span class="n">reranker_invoke_url</span><span class="p">,</span> <span class="n">reranker_model_name</span><span class="p">,</span> <span class="n">reranker_backend</span><span class="p">)</span>
+        <span class="n">retriever_kwargs</span><span class="p">[</span><span class="s2">&quot;rerank&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="n">rerank_kwargs</span><span class="p">:</span>
+            <span class="n">retriever_kwargs</span><span class="p">[</span><span class="s2">&quot;rerank_kwargs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">rerank_kwargs</span>
+
+    <span class="n">retriever</span> <span class="o">=</span> <span class="n">Retriever</span><span class="p">(</span><span class="o">**</span><span class="n">retriever_kwargs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">retriever</span><span class="o">.</span><span class="n">query</span><span class="p">(</span><span class="n">query</span><span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

@@ -1,0 +1,982 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.caption.model_profiles &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/caption/model_profiles';</script>
+
+    <link rel="icon" href="../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nemo-retriever/modules.html">nemo_retriever</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.html">nemo_retriever package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.adapters.html">nemo_retriever.adapters package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.adapters.cli.html">nemo_retriever.adapters.cli package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.api.html">nemo_retriever.api package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.application.html">nemo_retriever.application package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.application.pipeline.html">nemo_retriever.application.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.audio.html">nemo_retriever.audio package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.caption.html">nemo_retriever.caption package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.chart.html">nemo_retriever.chart package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.dedup.html">nemo_retriever.dedup package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.evaluation.html">nemo_retriever.evaluation package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.graph.html">nemo_retriever.graph package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.harness.html">nemo_retriever.harness package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.harness.portal.html">nemo_retriever.harness.portal package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.html.html">nemo_retriever.html package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.image.html">nemo_retriever.image package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.infographic.html">nemo_retriever.infographic package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.io.html">nemo_retriever.io package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.llm.html">nemo_retriever.llm package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.llm.clients.html">nemo_retriever.llm.clients package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.local.html">nemo_retriever.local package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.local.stages.html">nemo_retriever.local.stages package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.model.html">nemo_retriever.model package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.model.local.html">nemo_retriever.model.local package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.nim.html">nemo_retriever.nim package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.ocr.html">nemo_retriever.ocr package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.operators.html">nemo_retriever.operators package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.page_elements.html">nemo_retriever.page_elements package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.params.html">nemo_retriever.params package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.parse.html">nemo_retriever.parse package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.pdf.html">nemo_retriever.pdf package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.pipeline.html">nemo_retriever.pipeline package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.recall.html">nemo_retriever.recall package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.rerank.html">nemo_retriever.rerank package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.html">nemo_retriever.service package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.models.html">nemo_retriever.service.models package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.routers.html">nemo_retriever.service.routers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.services.html">nemo_retriever.service.services package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.utils.html">nemo_retriever.service.utils package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.html">nemo_retriever.skill_eval package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.configs.html">nemo_retriever.skill_eval.configs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.prompts.html">nemo_retriever.skill_eval.prompts package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.table.html">nemo_retriever.table package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.html">nemo_retriever.tabular_data package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.html">nemo_retriever.tabular_data.ingestion package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.neo4j.html">nemo_retriever.tabular_data.neo4j package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.retrieval.html">nemo_retriever.tabular_data.retrieval package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.text_embed.html">nemo_retriever.text_embed package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.txt.html">nemo_retriever.txt package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.html">nemo_retriever.utils package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.benchmark.html">nemo_retriever.utils.benchmark package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.compare.html">nemo_retriever.utils.compare package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.convert.html">nemo_retriever.utils.convert package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.image.html">nemo_retriever.utils.image package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.pipeline.html">nemo_retriever.utils.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.vdb.html">nemo_retriever.vdb package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.video.html">nemo_retriever.video package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.caption.model_profiles</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.caption.model_profiles</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mapping</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">copy</span><span class="w"> </span><span class="kn">import</span> <span class="n">deepcopy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">types</span><span class="w"> </span><span class="kn">import</span> <span class="n">MappingProxyType</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Literal</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.utils.hf_model_registry</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_hf_revision</span>
+
+<span class="n">CaptionTarget</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;local&quot;</span><span class="p">,</span> <span class="s2">&quot;remote&quot;</span><span class="p">]</span>
+
+<span class="n">NANO_BF16_MODEL_ID</span> <span class="o">=</span> <span class="s2">&quot;nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16&quot;</span>
+<span class="n">NANO_FP8_MODEL_ID</span> <span class="o">=</span> <span class="s2">&quot;nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8&quot;</span>
+<span class="n">NANO_NVFP4_QAD_MODEL_ID</span> <span class="o">=</span> <span class="s2">&quot;nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD&quot;</span>
+<span class="n">NANO_REMOTE_MODEL_ID</span> <span class="o">=</span> <span class="s2">&quot;nvidia/nemotron-nano-12b-v2-vl&quot;</span>
+
+<span class="n">OMNI_BF16_MODEL_ID</span> <span class="o">=</span> <span class="s2">&quot;nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16&quot;</span>
+<span class="n">OMNI_FP8_MODEL_ID</span> <span class="o">=</span> <span class="s2">&quot;nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8&quot;</span>
+<span class="n">OMNI_NVFP4_MODEL_ID</span> <span class="o">=</span> <span class="s2">&quot;nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4&quot;</span>
+<span class="n">OMNI_REMOTE_MODEL_ID</span> <span class="o">=</span> <span class="s2">&quot;nvidia/nemotron-3-nano-omni-30b-a3b-reasoning&quot;</span>
+
+<span class="n">_NANO_BF16_REMOTE_MODEL_ID</span> <span class="o">=</span> <span class="n">NANO_REMOTE_MODEL_ID</span>
+<span class="n">_NANO_FP8_REMOTE_MODEL_ID</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">NANO_REMOTE_MODEL_ID</span><span class="si">}</span><span class="s2">-fp8&quot;</span>
+<span class="n">_NANO_NVFP4_QAD_REMOTE_MODEL_ID</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">NANO_REMOTE_MODEL_ID</span><span class="si">}</span><span class="s2">-nvfp4-qad&quot;</span>
+<span class="n">_OMNI_NO_THINK_EXTRAS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;chat_template_kwargs&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable_thinking&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">}}</span>
+
+
+<div class="viewcode-block" id="CaptionCapabilities">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.caption.html#nemo_retriever.caption.model_profiles.CaptionCapabilities">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">CaptionCapabilities</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Capabilities currently exposed by the caption pipeline for a model profile.&quot;&quot;&quot;</span>
+
+    <span class="n">image_captioning</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">audio_input</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">video_input</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">document_intelligence</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">reasoning_control</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="CaptionModelProfile">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.caption.html#nemo_retriever.caption.model_profiles.CaptionModelProfile">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">CaptionModelProfile</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Immutable caption model metadata for local and remote model resolution.&quot;&quot;&quot;</span>
+
+    <span class="n">family</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">variant</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">local_model_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">remote_model_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">revision</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">capabilities</span><span class="p">:</span> <span class="n">CaptionCapabilities</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">CaptionCapabilities</span><span class="p">)</span>
+    <span class="n">local_request_extras</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">remote_request_extras</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">local_engine_kwargs</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;local_request_extras&quot;</span><span class="p">,</span> <span class="n">_freeze_metadata</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">local_request_extras</span><span class="p">))</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;remote_request_extras&quot;</span><span class="p">,</span> <span class="n">_freeze_metadata</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">remote_request_extras</span><span class="p">))</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;local_engine_kwargs&quot;</span><span class="p">,</span> <span class="n">_freeze_metadata</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">local_engine_kwargs</span><span class="p">))</span>
+
+<div class="viewcode-block" id="CaptionModelProfile.request_extras_for">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.caption.html#nemo_retriever.caption.model_profiles.CaptionModelProfile.request_extras_for">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">request_extras_for</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">target</span><span class="p">:</span> <span class="n">CaptionTarget</span> <span class="o">|</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return mutable default request extras for the local or remote caption target.&quot;&quot;&quot;</span>
+
+        <span class="n">target</span> <span class="o">=</span> <span class="n">_validate_target</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+        <span class="n">extras</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">local_request_extras</span> <span class="k">if</span> <span class="n">target</span> <span class="o">==</span> <span class="s2">&quot;local&quot;</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">remote_request_extras</span>
+        <span class="k">return</span> <span class="n">_mutable_metadata_copy</span><span class="p">(</span><span class="n">extras</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CaptionModelProfile.engine_kwargs_for_local">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.caption.html#nemo_retriever.caption.model_profiles.CaptionModelProfile.engine_kwargs_for_local">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">engine_kwargs_for_local</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return mutable vLLM engine defaults for local caption model loading.&quot;&quot;&quot;</span>
+
+        <span class="k">return</span> <span class="n">_mutable_metadata_copy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">local_engine_kwargs</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_freeze_metadata</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">MappingProxyType</span><span class="p">({</span><span class="n">key</span><span class="p">:</span> <span class="n">_freeze_metadata</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">items</span><span class="p">()})</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">list</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">_freeze_metadata</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">set</span> <span class="o">|</span> <span class="nb">frozenset</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">frozenset</span><span class="p">(</span><span class="n">_freeze_metadata</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_mutable_metadata_copy</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">_mutable_metadata_copy</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">_mutable_metadata_copy</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">frozenset</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">_mutable_metadata_copy</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="p">}</span>
+    <span class="k">return</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="merge_request_extras">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.caption.html#nemo_retriever.caption.model_profiles.merge_request_extras">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">merge_request_extras</span><span class="p">(</span>
+    <span class="n">defaults</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">user</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Deep-merge profile default request extras with user request extras.</span>
+
+<span class="sd">    Nested mappings are merged recursively. Default-only keys are preserved, while user values win</span>
+<span class="sd">    when both inputs define the same key or nested leaf.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">merged</span> <span class="o">=</span> <span class="n">_mutable_metadata_copy</span><span class="p">(</span><span class="n">defaults</span> <span class="ow">or</span> <span class="p">{})</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">(</span><span class="n">user</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">current</span> <span class="o">=</span> <span class="n">merged</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+            <span class="n">merged</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">merge_request_extras</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">merged</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">merged</span></div>
+
+
+
+<div class="viewcode-block" id="supported_caption_model_names">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.caption.html#nemo_retriever.caption.model_profiles.supported_caption_model_names">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">supported_caption_model_names</span><span class="p">(</span><span class="n">target</span><span class="p">:</span> <span class="n">CaptionTarget</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;local&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return supported model IDs and aliases for the local or remote caption target.&quot;&quot;&quot;</span>
+
+    <span class="n">target</span> <span class="o">=</span> <span class="n">_validate_target</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_SUPPORTED_NAMES_BY_TARGET</span><span class="p">[</span><span class="n">target</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="supported_caption_models_by_variant">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.caption.html#nemo_retriever.caption.model_profiles.supported_caption_models_by_variant">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">supported_caption_models_by_variant</span><span class="p">(</span><span class="n">target</span><span class="p">:</span> <span class="n">CaptionTarget</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;local&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return canonical target model IDs keyed by model variant label.&quot;&quot;&quot;</span>
+
+    <span class="n">target</span> <span class="o">=</span> <span class="n">_validate_target</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="n">variant</span><span class="p">:</span> <span class="n">_target_model_id</span><span class="p">(</span><span class="n">profile</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span> <span class="k">for</span> <span class="n">variant</span><span class="p">,</span> <span class="n">profile</span> <span class="ow">in</span> <span class="n">_PROFILES_BY_VARIANT</span><span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="caption_model_aliases">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.caption.html#nemo_retriever.caption.model_profiles.caption_model_aliases">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">caption_model_aliases</span><span class="p">(</span><span class="n">target</span><span class="p">:</span> <span class="n">CaptionTarget</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;local&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return alias-to-canonical-model mappings for the local or remote caption target.&quot;&quot;&quot;</span>
+
+    <span class="n">target</span> <span class="o">=</span> <span class="n">_validate_target</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="n">alias</span><span class="p">:</span> <span class="n">_target_model_id</span><span class="p">(</span><span class="n">profile</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span> <span class="k">for</span> <span class="n">alias</span><span class="p">,</span> <span class="n">profile</span> <span class="ow">in</span> <span class="n">_PROFILE_LOOKUP_BY_TARGET</span><span class="p">[</span><span class="n">target</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span></div>
+
+
+
+<div class="viewcode-block" id="caption_model_revisions">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.caption.html#nemo_retriever.caption.model_profiles.caption_model_revisions">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">caption_model_revisions</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return pinned Hugging Face revisions keyed by local model ID.&quot;&quot;&quot;</span>
+
+    <span class="k">return</span> <span class="p">{</span><span class="n">profile</span><span class="o">.</span><span class="n">local_model_id</span><span class="p">:</span> <span class="n">profile</span><span class="o">.</span><span class="n">revision</span> <span class="k">for</span> <span class="n">profile</span> <span class="ow">in</span> <span class="n">_CAPTION_MODEL_PROFILES</span><span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="get_caption_model_profile">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.caption.html#nemo_retriever.caption.model_profiles.get_caption_model_profile">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_caption_model_profile</span><span class="p">(</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">target</span><span class="p">:</span> <span class="n">CaptionTarget</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">strict</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CaptionModelProfile</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Look up a caption model profile by model ID or alias.</span>
+
+<span class="sd">    ``target`` restricts lookup to ``&quot;local&quot;`` or ``&quot;remote&quot;`` model names; ``None`` searches both.</span>
+<span class="sd">    When ``strict`` is True, unknown names raise ``ValueError``. When False, unknown names return None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">profile</span> <span class="o">=</span> <span class="n">_get_caption_model_profile</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="n">target</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">profile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">strict</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">profile</span>
+
+    <span class="n">target_label</span> <span class="o">=</span> <span class="s2">&quot;any target&quot;</span> <span class="k">if</span> <span class="n">target</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;target=</span><span class="si">{</span><span class="n">target</span><span class="si">!r}</span><span class="s2">&quot;</span>
+    <span class="n">supported_names</span> <span class="o">=</span> <span class="n">_supported_names_for_error</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Unsupported caption model </span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2"> for </span><span class="si">{</span><span class="n">target_label</span><span class="si">}</span><span class="s2">.</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;Supported caption models:</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  - </span><span class="si">{</span><span class="n">supported_name</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">supported_name</span> <span class="ow">in</span> <span class="n">supported_names</span><span class="p">)</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="resolve_caption_model_name">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.caption.html#nemo_retriever.caption.model_profiles.resolve_caption_model_name">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_caption_model_name</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">target</span><span class="p">:</span> <span class="n">CaptionTarget</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;local&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve a model ID or alias to the canonical model name for the target.&quot;&quot;&quot;</span>
+
+    <span class="n">target</span> <span class="o">=</span> <span class="n">_validate_target</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+    <span class="n">profile</span> <span class="o">=</span> <span class="n">get_caption_model_profile</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="n">target</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">profile</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">name</span>
+    <span class="k">return</span> <span class="n">_target_model_id</span><span class="p">(</span><span class="n">profile</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_target</span><span class="p">(</span><span class="n">target</span><span class="p">:</span> <span class="n">CaptionTarget</span> <span class="o">|</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CaptionTarget</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">target</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;local&quot;</span><span class="p">,</span> <span class="s2">&quot;remote&quot;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported caption target </span><span class="si">{</span><span class="n">target</span><span class="si">!r}</span><span class="s2">. Supported targets: &#39;local&#39;, &#39;remote&#39;.&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">target</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_name</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">name</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">casefold</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_target_model_id</span><span class="p">(</span><span class="n">profile</span><span class="p">:</span> <span class="n">CaptionModelProfile</span><span class="p">,</span> <span class="n">target</span><span class="p">:</span> <span class="n">CaptionTarget</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">profile</span><span class="o">.</span><span class="n">local_model_id</span> <span class="k">if</span> <span class="n">target</span> <span class="o">==</span> <span class="s2">&quot;local&quot;</span> <span class="k">else</span> <span class="n">profile</span><span class="o">.</span><span class="n">remote_model_id</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_caption_model_profile</span><span class="p">(</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">target</span><span class="p">:</span> <span class="n">CaptionTarget</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CaptionModelProfile</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">normalized</span> <span class="o">=</span> <span class="n">_normalize_name</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">target</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_LOCAL_PROFILE_LOOKUP</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">normalized</span><span class="p">)</span> <span class="ow">or</span> <span class="n">_REMOTE_PROFILE_LOOKUP</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">normalized</span><span class="p">)</span>
+
+    <span class="n">target</span> <span class="o">=</span> <span class="n">_validate_target</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_PROFILE_LOOKUP_BY_TARGET</span><span class="p">[</span><span class="n">target</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">normalized</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_supported_names_for_error</span><span class="p">(</span><span class="n">target</span><span class="p">:</span> <span class="n">CaptionTarget</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">target</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_unique</span><span class="p">(</span><span class="n">_LOCAL_SUPPORTED_NAMES</span> <span class="o">+</span> <span class="n">_REMOTE_SUPPORTED_NAMES</span><span class="p">)</span>
+    <span class="n">target</span> <span class="o">=</span> <span class="n">_validate_target</span><span class="p">(</span><span class="n">target</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_SUPPORTED_NAMES_BY_TARGET</span><span class="p">[</span><span class="n">target</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_unique</span><span class="p">(</span><span class="n">names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+    <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="n">result</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">names</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+            <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+
+
+<span class="n">_BF16_ENGINE_KWARGS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="s2">&quot;bfloat16&quot;</span><span class="p">}</span>
+<span class="n">_FP8_ENGINE_KWARGS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="s2">&quot;auto&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;quantization&quot;</span><span class="p">:</span> <span class="s2">&quot;fp8&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;hf_overrides&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;quantization_config&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;quant_method&quot;</span><span class="p">:</span> <span class="s2">&quot;fp8&quot;</span><span class="p">,</span> <span class="s2">&quot;activation_scheme&quot;</span><span class="p">:</span> <span class="s2">&quot;static&quot;</span><span class="p">}},</span>
+<span class="p">}</span>
+<span class="n">_NVFP4_ENGINE_KWARGS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="s2">&quot;auto&quot;</span><span class="p">,</span> <span class="s2">&quot;quantization&quot;</span><span class="p">:</span> <span class="s2">&quot;modelopt&quot;</span><span class="p">}</span>
+
+<span class="n">_OMNI_CAPABILITIES</span> <span class="o">=</span> <span class="n">CaptionCapabilities</span><span class="p">(</span>
+    <span class="c1"># These describe capabilities exposed by the current caption pipeline,</span>
+    <span class="c1"># not every modality the underlying Omni model may support.</span>
+    <span class="n">image_captioning</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">audio_input</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">video_input</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">document_intelligence</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">reasoning_control</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">_NANO_BF16_PROFILE</span> <span class="o">=</span> <span class="n">CaptionModelProfile</span><span class="p">(</span>
+    <span class="n">family</span><span class="o">=</span><span class="s2">&quot;nemotron-nano&quot;</span><span class="p">,</span>
+    <span class="n">variant</span><span class="o">=</span><span class="s2">&quot;BF16&quot;</span><span class="p">,</span>
+    <span class="n">local_model_id</span><span class="o">=</span><span class="n">NANO_BF16_MODEL_ID</span><span class="p">,</span>
+    <span class="n">remote_model_id</span><span class="o">=</span><span class="n">_NANO_BF16_REMOTE_MODEL_ID</span><span class="p">,</span>
+    <span class="n">revision</span><span class="o">=</span><span class="n">get_hf_revision</span><span class="p">(</span><span class="n">NANO_BF16_MODEL_ID</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+    <span class="n">local_engine_kwargs</span><span class="o">=</span><span class="n">_BF16_ENGINE_KWARGS</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">_NANO_FP8_PROFILE</span> <span class="o">=</span> <span class="n">CaptionModelProfile</span><span class="p">(</span>
+    <span class="n">family</span><span class="o">=</span><span class="s2">&quot;nemotron-nano&quot;</span><span class="p">,</span>
+    <span class="n">variant</span><span class="o">=</span><span class="s2">&quot;FP8&quot;</span><span class="p">,</span>
+    <span class="n">local_model_id</span><span class="o">=</span><span class="n">NANO_FP8_MODEL_ID</span><span class="p">,</span>
+    <span class="n">remote_model_id</span><span class="o">=</span><span class="n">_NANO_FP8_REMOTE_MODEL_ID</span><span class="p">,</span>
+    <span class="n">revision</span><span class="o">=</span><span class="n">get_hf_revision</span><span class="p">(</span><span class="n">NANO_FP8_MODEL_ID</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+    <span class="n">local_engine_kwargs</span><span class="o">=</span><span class="n">_FP8_ENGINE_KWARGS</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">_NANO_NVFP4_QAD_PROFILE</span> <span class="o">=</span> <span class="n">CaptionModelProfile</span><span class="p">(</span>
+    <span class="n">family</span><span class="o">=</span><span class="s2">&quot;nemotron-nano&quot;</span><span class="p">,</span>
+    <span class="n">variant</span><span class="o">=</span><span class="s2">&quot;NVFP4-QAD&quot;</span><span class="p">,</span>
+    <span class="n">local_model_id</span><span class="o">=</span><span class="n">NANO_NVFP4_QAD_MODEL_ID</span><span class="p">,</span>
+    <span class="n">remote_model_id</span><span class="o">=</span><span class="n">_NANO_NVFP4_QAD_REMOTE_MODEL_ID</span><span class="p">,</span>
+    <span class="n">revision</span><span class="o">=</span><span class="n">get_hf_revision</span><span class="p">(</span><span class="n">NANO_NVFP4_QAD_MODEL_ID</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+    <span class="n">local_engine_kwargs</span><span class="o">=</span><span class="n">_NVFP4_ENGINE_KWARGS</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">_OMNI_BF16_PROFILE</span> <span class="o">=</span> <span class="n">CaptionModelProfile</span><span class="p">(</span>
+    <span class="n">family</span><span class="o">=</span><span class="s2">&quot;nemotron-3-nano-omni&quot;</span><span class="p">,</span>
+    <span class="n">variant</span><span class="o">=</span><span class="s2">&quot;BF16&quot;</span><span class="p">,</span>
+    <span class="n">local_model_id</span><span class="o">=</span><span class="n">OMNI_BF16_MODEL_ID</span><span class="p">,</span>
+    <span class="n">remote_model_id</span><span class="o">=</span><span class="n">OMNI_REMOTE_MODEL_ID</span><span class="p">,</span>
+    <span class="n">revision</span><span class="o">=</span><span class="n">get_hf_revision</span><span class="p">(</span><span class="n">OMNI_BF16_MODEL_ID</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+    <span class="n">capabilities</span><span class="o">=</span><span class="n">_OMNI_CAPABILITIES</span><span class="p">,</span>
+    <span class="n">local_request_extras</span><span class="o">=</span><span class="n">_OMNI_NO_THINK_EXTRAS</span><span class="p">,</span>
+    <span class="n">remote_request_extras</span><span class="o">=</span><span class="n">_OMNI_NO_THINK_EXTRAS</span><span class="p">,</span>
+    <span class="n">local_engine_kwargs</span><span class="o">=</span><span class="n">_BF16_ENGINE_KWARGS</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">_OMNI_FP8_PROFILE</span> <span class="o">=</span> <span class="n">CaptionModelProfile</span><span class="p">(</span>
+    <span class="n">family</span><span class="o">=</span><span class="s2">&quot;nemotron-3-nano-omni&quot;</span><span class="p">,</span>
+    <span class="n">variant</span><span class="o">=</span><span class="s2">&quot;FP8&quot;</span><span class="p">,</span>
+    <span class="n">local_model_id</span><span class="o">=</span><span class="n">OMNI_FP8_MODEL_ID</span><span class="p">,</span>
+    <span class="n">remote_model_id</span><span class="o">=</span><span class="n">OMNI_REMOTE_MODEL_ID</span><span class="p">,</span>
+    <span class="n">revision</span><span class="o">=</span><span class="n">get_hf_revision</span><span class="p">(</span><span class="n">OMNI_FP8_MODEL_ID</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+    <span class="n">capabilities</span><span class="o">=</span><span class="n">_OMNI_CAPABILITIES</span><span class="p">,</span>
+    <span class="n">local_request_extras</span><span class="o">=</span><span class="n">_OMNI_NO_THINK_EXTRAS</span><span class="p">,</span>
+    <span class="n">remote_request_extras</span><span class="o">=</span><span class="n">_OMNI_NO_THINK_EXTRAS</span><span class="p">,</span>
+    <span class="n">local_engine_kwargs</span><span class="o">=</span><span class="n">_FP8_ENGINE_KWARGS</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">_OMNI_NVFP4_PROFILE</span> <span class="o">=</span> <span class="n">CaptionModelProfile</span><span class="p">(</span>
+    <span class="n">family</span><span class="o">=</span><span class="s2">&quot;nemotron-3-nano-omni&quot;</span><span class="p">,</span>
+    <span class="n">variant</span><span class="o">=</span><span class="s2">&quot;NVFP4&quot;</span><span class="p">,</span>
+    <span class="n">local_model_id</span><span class="o">=</span><span class="n">OMNI_NVFP4_MODEL_ID</span><span class="p">,</span>
+    <span class="n">remote_model_id</span><span class="o">=</span><span class="n">OMNI_REMOTE_MODEL_ID</span><span class="p">,</span>
+    <span class="n">revision</span><span class="o">=</span><span class="n">get_hf_revision</span><span class="p">(</span><span class="n">OMNI_NVFP4_MODEL_ID</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+    <span class="n">capabilities</span><span class="o">=</span><span class="n">_OMNI_CAPABILITIES</span><span class="p">,</span>
+    <span class="n">local_request_extras</span><span class="o">=</span><span class="n">_OMNI_NO_THINK_EXTRAS</span><span class="p">,</span>
+    <span class="n">remote_request_extras</span><span class="o">=</span><span class="n">_OMNI_NO_THINK_EXTRAS</span><span class="p">,</span>
+    <span class="n">local_engine_kwargs</span><span class="o">=</span><span class="n">_NVFP4_ENGINE_KWARGS</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">_CAPTION_MODEL_PROFILES</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">_NANO_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_NANO_FP8_PROFILE</span><span class="p">,</span>
+    <span class="n">_NANO_NVFP4_QAD_PROFILE</span><span class="p">,</span>
+    <span class="n">_OMNI_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_OMNI_FP8_PROFILE</span><span class="p">,</span>
+    <span class="n">_OMNI_NVFP4_PROFILE</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">_PROFILES_BY_VARIANT</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="p">(</span><span class="s2">&quot;BF16&quot;</span><span class="p">,</span> <span class="n">_NANO_BF16_PROFILE</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">&quot;FP8&quot;</span><span class="p">,</span> <span class="n">_NANO_FP8_PROFILE</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">&quot;NVFP4-QAD&quot;</span><span class="p">,</span> <span class="n">_NANO_NVFP4_QAD_PROFILE</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">&quot;OMNI-BF16&quot;</span><span class="p">,</span> <span class="n">_OMNI_BF16_PROFILE</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">&quot;OMNI-FP8&quot;</span><span class="p">,</span> <span class="n">_OMNI_FP8_PROFILE</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">&quot;OMNI-NVFP4&quot;</span><span class="p">,</span> <span class="n">_OMNI_NVFP4_PROFILE</span><span class="p">),</span>
+<span class="p">)</span>
+
+<span class="n">_NANO_BF16_ALIAS</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">NANO_REMOTE_MODEL_ID</span><span class="si">}</span><span class="s2">-bf16&quot;</span>
+<span class="n">_OMNI_BF16_ALIAS</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">OMNI_REMOTE_MODEL_ID</span><span class="si">}</span><span class="s2">-bf16&quot;</span>
+<span class="n">_OMNI_FP8_ALIAS</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">OMNI_REMOTE_MODEL_ID</span><span class="si">}</span><span class="s2">-fp8&quot;</span>
+<span class="n">_OMNI_NVFP4_ALIAS</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">OMNI_REMOTE_MODEL_ID</span><span class="si">}</span><span class="s2">-nvfp4&quot;</span>
+
+<span class="n">_LOCAL_SUPPORTED_NAMES</span> <span class="o">=</span> <span class="n">_unique</span><span class="p">(</span>
+    <span class="p">(</span>
+        <span class="n">NANO_BF16_MODEL_ID</span><span class="p">,</span>
+        <span class="n">NANO_FP8_MODEL_ID</span><span class="p">,</span>
+        <span class="n">NANO_NVFP4_QAD_MODEL_ID</span><span class="p">,</span>
+        <span class="n">NANO_REMOTE_MODEL_ID</span><span class="p">,</span>
+        <span class="n">_NANO_BF16_ALIAS</span><span class="p">,</span>
+        <span class="n">_NANO_FP8_REMOTE_MODEL_ID</span><span class="p">,</span>
+        <span class="n">_NANO_NVFP4_QAD_REMOTE_MODEL_ID</span><span class="p">,</span>
+        <span class="n">OMNI_BF16_MODEL_ID</span><span class="p">,</span>
+        <span class="n">OMNI_FP8_MODEL_ID</span><span class="p">,</span>
+        <span class="n">OMNI_NVFP4_MODEL_ID</span><span class="p">,</span>
+        <span class="n">OMNI_REMOTE_MODEL_ID</span><span class="p">,</span>
+        <span class="n">_OMNI_BF16_ALIAS</span><span class="p">,</span>
+        <span class="n">_OMNI_FP8_ALIAS</span><span class="p">,</span>
+        <span class="n">_OMNI_NVFP4_ALIAS</span><span class="p">,</span>
+    <span class="p">)</span>
+<span class="p">)</span>
+<span class="n">_REMOTE_SUPPORTED_NAMES</span> <span class="o">=</span> <span class="n">_LOCAL_SUPPORTED_NAMES</span>
+
+<span class="n">_LOCAL_PROFILE_LOOKUP</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">NANO_BF16_MODEL_ID</span><span class="p">):</span> <span class="n">_NANO_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">NANO_FP8_MODEL_ID</span><span class="p">):</span> <span class="n">_NANO_FP8_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">NANO_NVFP4_QAD_MODEL_ID</span><span class="p">):</span> <span class="n">_NANO_NVFP4_QAD_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">NANO_REMOTE_MODEL_ID</span><span class="p">):</span> <span class="n">_NANO_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">_NANO_BF16_ALIAS</span><span class="p">):</span> <span class="n">_NANO_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">_NANO_FP8_REMOTE_MODEL_ID</span><span class="p">):</span> <span class="n">_NANO_FP8_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">_NANO_NVFP4_QAD_REMOTE_MODEL_ID</span><span class="p">):</span> <span class="n">_NANO_NVFP4_QAD_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">OMNI_BF16_MODEL_ID</span><span class="p">):</span> <span class="n">_OMNI_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">OMNI_FP8_MODEL_ID</span><span class="p">):</span> <span class="n">_OMNI_FP8_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">OMNI_NVFP4_MODEL_ID</span><span class="p">):</span> <span class="n">_OMNI_NVFP4_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">OMNI_REMOTE_MODEL_ID</span><span class="p">):</span> <span class="n">_OMNI_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">_OMNI_BF16_ALIAS</span><span class="p">):</span> <span class="n">_OMNI_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">_OMNI_FP8_ALIAS</span><span class="p">):</span> <span class="n">_OMNI_FP8_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">_OMNI_NVFP4_ALIAS</span><span class="p">):</span> <span class="n">_OMNI_NVFP4_PROFILE</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="n">_REMOTE_PROFILE_LOOKUP</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">NANO_BF16_MODEL_ID</span><span class="p">):</span> <span class="n">_NANO_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">NANO_FP8_MODEL_ID</span><span class="p">):</span> <span class="n">_NANO_FP8_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">NANO_NVFP4_QAD_MODEL_ID</span><span class="p">):</span> <span class="n">_NANO_NVFP4_QAD_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">NANO_REMOTE_MODEL_ID</span><span class="p">):</span> <span class="n">_NANO_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">_NANO_BF16_ALIAS</span><span class="p">):</span> <span class="n">_NANO_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">_NANO_FP8_REMOTE_MODEL_ID</span><span class="p">):</span> <span class="n">_NANO_FP8_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">_NANO_NVFP4_QAD_REMOTE_MODEL_ID</span><span class="p">):</span> <span class="n">_NANO_NVFP4_QAD_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">OMNI_BF16_MODEL_ID</span><span class="p">):</span> <span class="n">_OMNI_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">OMNI_FP8_MODEL_ID</span><span class="p">):</span> <span class="n">_OMNI_FP8_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">OMNI_NVFP4_MODEL_ID</span><span class="p">):</span> <span class="n">_OMNI_NVFP4_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">OMNI_REMOTE_MODEL_ID</span><span class="p">):</span> <span class="n">_OMNI_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">_OMNI_BF16_ALIAS</span><span class="p">):</span> <span class="n">_OMNI_BF16_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">_OMNI_FP8_ALIAS</span><span class="p">):</span> <span class="n">_OMNI_FP8_PROFILE</span><span class="p">,</span>
+    <span class="n">_normalize_name</span><span class="p">(</span><span class="n">_OMNI_NVFP4_ALIAS</span><span class="p">):</span> <span class="n">_OMNI_NVFP4_PROFILE</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="n">_PROFILE_LOOKUP_BY_TARGET</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;local&quot;</span><span class="p">:</span> <span class="n">_LOCAL_PROFILE_LOOKUP</span><span class="p">,</span>
+    <span class="s2">&quot;remote&quot;</span><span class="p">:</span> <span class="n">_REMOTE_PROFILE_LOOKUP</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="n">_SUPPORTED_NAMES_BY_TARGET</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;local&quot;</span><span class="p">:</span> <span class="n">_LOCAL_SUPPORTED_NAMES</span><span class="p">,</span>
+    <span class="s2">&quot;remote&quot;</span><span class="p">:</span> <span class="n">_REMOTE_SUPPORTED_NAMES</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;CaptionCapabilities&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;CaptionModelProfile&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;CaptionTarget&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;NANO_BF16_MODEL_ID&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;NANO_FP8_MODEL_ID&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;NANO_NVFP4_QAD_MODEL_ID&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;NANO_REMOTE_MODEL_ID&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;OMNI_BF16_MODEL_ID&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;OMNI_FP8_MODEL_ID&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;OMNI_NVFP4_MODEL_ID&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;OMNI_REMOTE_MODEL_ID&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;caption_model_aliases&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;caption_model_revisions&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;get_caption_model_profile&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;merge_request_extras&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;resolve_caption_model_name&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;supported_caption_model_names&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;supported_caption_models_by_variant&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

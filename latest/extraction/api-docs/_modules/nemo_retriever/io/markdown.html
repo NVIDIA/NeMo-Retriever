@@ -1,0 +1,989 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.io.markdown &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/io/markdown';</script>
+
+    <link rel="icon" href="../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nemo-retriever/modules.html">nemo_retriever</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.html">nemo_retriever package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.adapters.html">nemo_retriever.adapters package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.adapters.cli.html">nemo_retriever.adapters.cli package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.api.html">nemo_retriever.api package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.application.html">nemo_retriever.application package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.application.pipeline.html">nemo_retriever.application.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.audio.html">nemo_retriever.audio package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.caption.html">nemo_retriever.caption package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.chart.html">nemo_retriever.chart package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.dedup.html">nemo_retriever.dedup package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.evaluation.html">nemo_retriever.evaluation package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.graph.html">nemo_retriever.graph package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.harness.html">nemo_retriever.harness package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.harness.portal.html">nemo_retriever.harness.portal package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.html.html">nemo_retriever.html package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.image.html">nemo_retriever.image package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.infographic.html">nemo_retriever.infographic package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.io.html">nemo_retriever.io package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.llm.html">nemo_retriever.llm package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.llm.clients.html">nemo_retriever.llm.clients package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.local.html">nemo_retriever.local package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.local.stages.html">nemo_retriever.local.stages package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.model.html">nemo_retriever.model package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.model.local.html">nemo_retriever.model.local package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.nim.html">nemo_retriever.nim package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.ocr.html">nemo_retriever.ocr package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.operators.html">nemo_retriever.operators package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.page_elements.html">nemo_retriever.page_elements package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.params.html">nemo_retriever.params package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.parse.html">nemo_retriever.parse package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.pdf.html">nemo_retriever.pdf package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.pipeline.html">nemo_retriever.pipeline package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.recall.html">nemo_retriever.recall package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.rerank.html">nemo_retriever.rerank package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.html">nemo_retriever.service package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.models.html">nemo_retriever.service.models package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.routers.html">nemo_retriever.service.routers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.services.html">nemo_retriever.service.services package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.utils.html">nemo_retriever.service.utils package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.html">nemo_retriever.skill_eval package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.configs.html">nemo_retriever.skill_eval.configs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.prompts.html">nemo_retriever.skill_eval.prompts package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.table.html">nemo_retriever.table package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.html">nemo_retriever.tabular_data package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.html">nemo_retriever.tabular_data.ingestion package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.neo4j.html">nemo_retriever.tabular_data.neo4j package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.retrieval.html">nemo_retriever.tabular_data.retrieval package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.text_embed.html">nemo_retriever.text_embed package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.txt.html">nemo_retriever.txt package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.html">nemo_retriever.utils package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.benchmark.html">nemo_retriever.utils.benchmark package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.compare.html">nemo_retriever.utils.compare package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.convert.html">nemo_retriever.utils.convert package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.image.html">nemo_retriever.utils.image package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.pipeline.html">nemo_retriever.utils.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.vdb.html">nemo_retriever.vdb package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.video.html">nemo_retriever.video package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.io.markdown</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.io.markdown</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">Mapping</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.dataframe</span><span class="w"> </span><span class="kn">import</span> <span class="n">read_dataframe</span>
+
+<span class="n">_DOCUMENT_TITLE</span> <span class="o">=</span> <span class="s2">&quot;Extracted Content&quot;</span>
+<span class="n">_UNKNOWN_PAGE</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+<span class="n">_RECORD_LIST_KEYS</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;records&quot;</span><span class="p">,</span> <span class="s2">&quot;df_records&quot;</span><span class="p">,</span> <span class="s2">&quot;extracted_df_records&quot;</span><span class="p">,</span> <span class="s2">&quot;primitives&quot;</span><span class="p">)</span>
+<span class="n">_PAGE_CONTENT_COLUMNS</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="p">(</span><span class="s2">&quot;tables&quot;</span><span class="p">,</span> <span class="s2">&quot;Table&quot;</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">&quot;table&quot;</span><span class="p">,</span> <span class="s2">&quot;Table&quot;</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">&quot;charts&quot;</span><span class="p">,</span> <span class="s2">&quot;Chart&quot;</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">&quot;chart&quot;</span><span class="p">,</span> <span class="s2">&quot;Chart&quot;</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">&quot;infographics&quot;</span><span class="p">,</span> <span class="s2">&quot;Infographic&quot;</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">&quot;infographic&quot;</span><span class="p">,</span> <span class="s2">&quot;Infographic&quot;</span><span class="p">),</span>
+<span class="p">)</span>
+
+
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">_PageContent</span><span class="p">:</span>
+    <span class="n">text_blocks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+    <span class="n">sections</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+    <span class="n">counters</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">next_index</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+        <span class="n">next_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">counters</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">counters</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="n">next_value</span>
+        <span class="k">return</span> <span class="n">next_value</span>
+
+
+<div class="viewcode-block" id="to_markdown_by_page">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.io.html#nemo_retriever.io.markdown.to_markdown_by_page">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">to_markdown_by_page</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="nb">object</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Render a single document result as markdown grouped by page.&quot;&quot;&quot;</span>
+    <span class="n">records</span> <span class="o">=</span> <span class="n">_coerce_records</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+    <span class="n">by_page</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">_PageContent</span><span class="p">]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="n">_PageContent</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">records</span><span class="p">:</span>
+        <span class="k">if</span> <span class="s2">&quot;document_type&quot;</span> <span class="ow">in</span> <span class="n">record</span><span class="p">:</span>
+            <span class="n">_collect_primitive_record</span><span class="p">(</span><span class="n">by_page</span><span class="p">,</span> <span class="n">record</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">_collect_page_record</span><span class="p">(</span><span class="n">by_page</span><span class="p">,</span> <span class="n">record</span><span class="p">)</span>
+
+    <span class="n">rendered</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">page_number</span><span class="p">,</span> <span class="n">page_content</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">by_page</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="n">_page_sort_key</span><span class="p">):</span>
+        <span class="n">blocks</span> <span class="o">=</span> <span class="n">_dedupe_blocks</span><span class="p">(</span><span class="n">page_content</span><span class="o">.</span><span class="n">text_blocks</span> <span class="o">+</span> <span class="n">page_content</span><span class="o">.</span><span class="n">sections</span><span class="p">)</span>
+        <span class="n">header</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;## Page </span><span class="si">{</span><span class="n">page_number</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">page_number</span> <span class="o">!=</span> <span class="n">_UNKNOWN_PAGE</span> <span class="k">else</span> <span class="s2">&quot;## Page Unknown&quot;</span>
+        <span class="n">rendered</span><span class="p">[</span><span class="n">page_number</span><span class="p">]</span> <span class="o">=</span> <span class="n">header</span> <span class="o">+</span> <span class="p">(</span><span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">blocks</span><span class="p">)</span> <span class="k">if</span> <span class="n">blocks</span> <span class="k">else</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">rendered</span></div>
+
+
+
+<div class="viewcode-block" id="to_markdown">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.io.html#nemo_retriever.io.markdown.to_markdown">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">to_markdown</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="nb">object</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Render a single document result as one markdown document.&quot;&quot;&quot;</span>
+    <span class="n">pages</span> <span class="o">=</span> <span class="n">to_markdown_by_page</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">pages</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;# </span><span class="si">{</span><span class="n">_DOCUMENT_TITLE</span><span class="si">}</span><span class="se">\n\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">pages</span><span class="o">.</span><span class="n">values</span><span class="p">())</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_coerce_records</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="nb">object</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+    <span class="k">if</span> <span class="n">results</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">results</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(</span><span class="n">orient</span><span class="o">=</span><span class="s2">&quot;records&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">Path</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">read_dataframe</span><span class="p">(</span><span class="n">results</span><span class="p">)</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(</span><span class="n">orient</span><span class="o">=</span><span class="s2">&quot;records&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">results</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">return</span> <span class="n">read_dataframe</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(</span><span class="n">orient</span><span class="o">=</span><span class="s2">&quot;records&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;String inputs must point to a saved results file.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">_records_from_mapping</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="p">(</span><span class="nb">bytes</span><span class="p">,</span> <span class="nb">bytearray</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">_records_from_iterable</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported results type for markdown rendering: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">results</span><span class="p">)</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_records_from_iterable</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+    <span class="n">items</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">items</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">items</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">first</span> <span class="o">=</span> <span class="n">items</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">_coerce_records</span><span class="p">(</span><span class="n">first</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_looks_like_record</span><span class="p">(</span><span class="n">first</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">_records_from_mapping</span><span class="p">(</span><span class="n">first</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">items</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="nb">dict</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">items</span><span class="p">]</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Markdown rendering expects a single document result. Pass one document, such as results[0].&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_records_from_mapping</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">_RECORD_LIST_KEYS</span><span class="p">:</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[</span><span class="nb">dict</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">_looks_like_record</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="nb">dict</span><span class="p">(</span><span class="n">results</span><span class="p">)]</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Markdown rendering expects a document row, row list, or saved results payload.&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_looks_like_record</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="k">return</span> <span class="nb">any</span><span class="p">(</span>
+        <span class="n">key</span> <span class="ow">in</span> <span class="n">record</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span>
+            <span class="s2">&quot;document_type&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;page_number&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;text&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;content&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;metadata&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;tables&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;table&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;charts&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;chart&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;infographics&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;infographic&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_collect_page_record</span><span class="p">(</span><span class="n">by_page</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">_PageContent</span><span class="p">],</span> <span class="n">record</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">page_number</span> <span class="o">=</span> <span class="n">_page_number_for_record</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+    <span class="n">_append_text</span><span class="p">(</span>
+        <span class="n">by_page</span><span class="p">[</span><span class="n">page_number</span><span class="p">],</span> <span class="n">_first_text</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">),</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">),</span> <span class="n">_metadata_content</span><span class="p">(</span><span class="n">record</span><span class="p">))</span>
+    <span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">column_name</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">_PAGE_CONTENT_COLUMNS</span><span class="p">:</span>
+        <span class="n">items</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">column_name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="n">_append_section</span><span class="p">(</span>
+                <span class="n">by_page</span><span class="p">[</span><span class="n">page_number</span><span class="p">],</span>
+                <span class="n">label</span><span class="p">,</span>
+                <span class="n">_first_text</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">),</span> <span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;table_content&quot;</span><span class="p">),</span> <span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">)),</span>
+            <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_collect_primitive_record</span><span class="p">(</span><span class="n">by_page</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">_PageContent</span><span class="p">],</span> <span class="n">record</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">page_number</span> <span class="o">=</span> <span class="n">_page_number_for_record</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+    <span class="n">metadata</span> <span class="o">=</span> <span class="n">_metadata</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+    <span class="n">content_metadata</span> <span class="o">=</span> <span class="n">_content_metadata</span><span class="p">(</span><span class="n">metadata</span><span class="p">)</span>
+    <span class="n">document_type</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;document_type&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">document_type</span> <span class="o">==</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span>
+        <span class="n">_append_text</span><span class="p">(</span>
+            <span class="n">by_page</span><span class="p">[</span><span class="n">page_number</span><span class="p">],</span>
+            <span class="n">_first_text</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">),</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">),</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">)),</span>
+        <span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">document_type</span> <span class="o">==</span> <span class="s2">&quot;structured&quot;</span><span class="p">:</span>
+        <span class="n">label</span> <span class="o">=</span> <span class="n">_label_for_subtype</span><span class="p">(</span><span class="n">content_metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;subtype&quot;</span><span class="p">),</span> <span class="n">fallback</span><span class="o">=</span><span class="s2">&quot;Structured&quot;</span><span class="p">)</span>
+        <span class="n">table_metadata</span> <span class="o">=</span> <span class="n">_nested_mapping</span><span class="p">(</span><span class="n">metadata</span><span class="p">,</span> <span class="s2">&quot;table_metadata&quot;</span><span class="p">)</span>
+        <span class="n">_append_section</span><span class="p">(</span>
+            <span class="n">by_page</span><span class="p">[</span><span class="n">page_number</span><span class="p">],</span>
+            <span class="n">label</span><span class="p">,</span>
+            <span class="n">_first_text</span><span class="p">(</span><span class="n">table_metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;table_content&quot;</span><span class="p">),</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">),</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">)),</span>
+        <span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">document_type</span> <span class="o">==</span> <span class="s2">&quot;image&quot;</span><span class="p">:</span>
+        <span class="n">subtype</span> <span class="o">=</span> <span class="n">content_metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;subtype&quot;</span><span class="p">)</span>
+        <span class="n">label</span> <span class="o">=</span> <span class="s2">&quot;Page Image&quot;</span> <span class="k">if</span> <span class="n">subtype</span> <span class="o">==</span> <span class="s2">&quot;page_image&quot;</span> <span class="k">else</span> <span class="s2">&quot;Image&quot;</span>
+        <span class="n">image_metadata</span> <span class="o">=</span> <span class="n">_nested_mapping</span><span class="p">(</span><span class="n">metadata</span><span class="p">,</span> <span class="s2">&quot;image_metadata&quot;</span><span class="p">)</span>
+        <span class="n">_append_section</span><span class="p">(</span>
+            <span class="n">by_page</span><span class="p">[</span><span class="n">page_number</span><span class="p">],</span>
+            <span class="n">label</span><span class="p">,</span>
+            <span class="n">_first_text</span><span class="p">(</span><span class="n">image_metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">),</span> <span class="n">image_metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;caption&quot;</span><span class="p">),</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">)),</span>
+        <span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">document_type</span> <span class="o">==</span> <span class="s2">&quot;audio&quot;</span><span class="p">:</span>
+        <span class="n">audio_metadata</span> <span class="o">=</span> <span class="n">_nested_mapping</span><span class="p">(</span><span class="n">metadata</span><span class="p">,</span> <span class="s2">&quot;audio_metadata&quot;</span><span class="p">)</span>
+        <span class="n">_append_section</span><span class="p">(</span><span class="n">by_page</span><span class="p">[</span><span class="n">page_number</span><span class="p">],</span> <span class="s2">&quot;Audio&quot;</span><span class="p">,</span> <span class="n">_first_text</span><span class="p">(</span><span class="n">audio_metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;audio_transcript&quot;</span><span class="p">)))</span>
+        <span class="k">return</span>
+
+    <span class="n">_append_text</span><span class="p">(</span><span class="n">by_page</span><span class="p">[</span><span class="n">page_number</span><span class="p">],</span> <span class="n">_first_text</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">),</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">),</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">)))</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_append_text</span><span class="p">(</span><span class="n">page_content</span><span class="p">:</span> <span class="n">_PageContent</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">text</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">page_content</span><span class="o">.</span><span class="n">text_blocks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_append_section</span><span class="p">(</span><span class="n">page_content</span><span class="p">:</span> <span class="n">_PageContent</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">text</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="n">page_content</span><span class="o">.</span><span class="n">sections</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;### </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">page_content</span><span class="o">.</span><span class="n">next_index</span><span class="p">(</span><span class="n">label</span><span class="p">)</span><span class="si">}</span><span class="se">\n\n</span><span class="si">{</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_dedupe_blocks</span><span class="p">(</span><span class="n">blocks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="n">deduped</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">block</span> <span class="ow">in</span> <span class="n">blocks</span><span class="p">:</span>
+        <span class="n">normalized</span> <span class="o">=</span> <span class="n">block</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">normalized</span> <span class="ow">or</span> <span class="n">normalized</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">normalized</span><span class="p">)</span>
+        <span class="n">deduped</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">normalized</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">deduped</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_page_number_for_record</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="n">page_number</span> <span class="o">=</span> <span class="n">_safe_page_number</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;page_number&quot;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">page_number</span> <span class="o">!=</span> <span class="n">_UNKNOWN_PAGE</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">page_number</span>
+
+    <span class="n">metadata</span> <span class="o">=</span> <span class="n">_metadata</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+    <span class="n">content_metadata</span> <span class="o">=</span> <span class="n">_content_metadata</span><span class="p">(</span><span class="n">metadata</span><span class="p">)</span>
+    <span class="n">page_number</span> <span class="o">=</span> <span class="n">_safe_page_number</span><span class="p">(</span><span class="n">content_metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;page_number&quot;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">page_number</span> <span class="o">!=</span> <span class="n">_UNKNOWN_PAGE</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">page_number</span>
+
+    <span class="n">hierarchy</span> <span class="o">=</span> <span class="n">_nested_mapping</span><span class="p">(</span><span class="n">content_metadata</span><span class="p">,</span> <span class="s2">&quot;hierarchy&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_safe_page_number</span><span class="p">(</span><span class="n">hierarchy</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;page&quot;</span><span class="p">))</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_safe_page_number</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">page_number</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">_UNKNOWN_PAGE</span>
+    <span class="k">return</span> <span class="n">page_number</span> <span class="k">if</span> <span class="n">page_number</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">_UNKNOWN_PAGE</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_page_sort_key</span><span class="p">(</span><span class="n">item</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">_PageContent</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+    <span class="n">page_number</span> <span class="o">=</span> <span class="n">item</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">page_number</span> <span class="o">==</span> <span class="n">_UNKNOWN_PAGE</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">page_number</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_metadata</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">metadata</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metadata&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">metadata</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">metadata</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_content_metadata</span><span class="p">(</span><span class="n">metadata</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="n">_nested_mapping</span><span class="p">(</span><span class="n">metadata</span><span class="p">,</span> <span class="s2">&quot;content_metadata&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_nested_mapping</span><span class="p">(</span><span class="n">mapping</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="n">mapping</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">value</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_metadata_content</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">_metadata</span><span class="p">(</span><span class="n">record</span><span class="p">)</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_first_text</span><span class="p">(</span><span class="o">*</span><span class="n">values</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">values</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">text</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">text</span>
+    <span class="k">return</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_label_for_subtype</span><span class="p">(</span><span class="n">subtype</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fallback</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">subtype</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">fallback</span>
+    <span class="n">subtype_map</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;table&quot;</span><span class="p">:</span> <span class="s2">&quot;Table&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;chart&quot;</span><span class="p">:</span> <span class="s2">&quot;Chart&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;infographic&quot;</span><span class="p">:</span> <span class="s2">&quot;Infographic&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;page_image&quot;</span><span class="p">:</span> <span class="s2">&quot;Page Image&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">subtype_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">subtype</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span> <span class="n">fallback</span><span class="p">)</span>
+
+
+<span class="n">_MARKDOWN_PARQUET_COLUMNS</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;path&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;source_id&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;page_number&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;text&quot;</span><span class="p">,</span>
+        <span class="c1"># Top-level ``content`` is a fallback text source used by</span>
+        <span class="c1"># _collect_page_record / _collect_primitive_record when neither</span>
+        <span class="c1"># ``text`` nor ``metadata.content`` is populated.  It must be</span>
+        <span class="c1"># kept so both the Parquet path (_read_parquet_for_markdown)</span>
+        <span class="c1"># and the in-memory ``dataframe=`` path in build_page_index</span>
+        <span class="c1"># render the same output as the renderer unit tests expect.</span>
+        <span class="s2">&quot;content&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;document_type&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;_content_type&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;metadata&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;tables&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;table&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;charts&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;chart&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;infographics&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;infographic&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;images&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_parquet_for_markdown</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Read a Parquet file loading only columns needed for markdown rendering.</span>
+
+<span class="sd">    Extraction Parquet files can contain huge columns (page_image with</span>
+<span class="sd">    base64 images, embedding vectors) that are not used for markdown.</span>
+<span class="sd">    Selecting only the relevant columns avoids multi-GB memory spikes.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">pyarrow.parquet</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pq</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.dataframe</span><span class="w"> </span><span class="kn">import</span> <span class="n">_arrow_table_to_pandas_via_pylist</span>
+
+    <span class="n">pf</span> <span class="o">=</span> <span class="n">pq</span><span class="o">.</span><span class="n">ParquetFile</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">available</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">pf</span><span class="o">.</span><span class="n">schema_arrow</span><span class="o">.</span><span class="n">names</span><span class="p">)</span>
+    <span class="n">columns</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">_MARKDOWN_PARQUET_COLUMNS</span> <span class="o">&amp;</span> <span class="n">available</span><span class="p">)</span>
+    <span class="n">table</span> <span class="o">=</span> <span class="n">pf</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">columns</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">table</span><span class="o">.</span><span class="n">to_pandas</span><span class="p">(</span><span class="n">split_blocks</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_arrow_table_to_pandas_via_pylist</span><span class="p">(</span><span class="n">table</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="build_page_index">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.io.html#nemo_retriever.io.markdown.build_page_index">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_page_index</span><span class="p">(</span>
+    <span class="n">parquet_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">dataframe</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]],</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a ``{source_id: {page_number: markdown}}`` index.</span>
+
+<span class="sd">    Accepts either a directory of Parquet files (from the ingestion</span>
+<span class="sd">    pipeline) or a pre-loaded DataFrame.</span>
+<span class="sd">    Exactly one of the two parameters must be provided.</span>
+
+<span class="sd">    Each document&#39;s extraction records are grouped by source path, then</span>
+<span class="sd">    rendered page-by-page via :func:`to_markdown_by_page`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    parquet_dir:</span>
+<span class="sd">        Directory containing ``.parquet`` files to load and concatenate.</span>
+<span class="sd">    dataframe:</span>
+<span class="sd">        Pre-loaded extraction DataFrame (same schema as the Parquet files).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple[dict[str, dict[str, str]], dict[str, str]]</span>
+<span class="sd">        A 2-tuple of ``(index, failures)``.  *index*: outer key is the</span>
+<span class="sd">        source document path/id, inner key is the string page number,</span>
+<span class="sd">        value is the rendered markdown.  *failures*: maps source_id to</span>
+<span class="sd">        the error message for documents that failed rendering.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">parquet_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">==</span> <span class="p">(</span><span class="n">dataframe</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Provide exactly one of parquet_dir or dataframe.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">dataframe</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Prune to the same allow-list the parquet_dir= path uses so wide</span>
+        <span class="c1"># columns like page_image base64 blobs or embedding vectors never</span>
+        <span class="c1"># reach row.to_dict(). df[relevant] is a column-subset view, not</span>
+        <span class="c1"># a copy -- the caller&#39;s DataFrame is not mutated.</span>
+        <span class="n">relevant</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">_MARKDOWN_PARQUET_COLUMNS</span> <span class="k">if</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">dataframe</span><span class="o">.</span><span class="n">columns</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">relevant</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">relevant</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataframe</span><span class="o">.</span><span class="n">columns</span><span class="p">):</span>
+            <span class="n">df</span> <span class="o">=</span> <span class="n">dataframe</span><span class="p">[</span><span class="n">relevant</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">df</span> <span class="o">=</span> <span class="n">dataframe</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">parquet_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">parquet_dir</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">parquet_path</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Parquet directory not found: </span><span class="si">{</span><span class="n">parquet_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">single</span> <span class="o">=</span> <span class="n">parquet_path</span> <span class="o">/</span> <span class="s2">&quot;extraction.parquet&quot;</span>
+        <span class="k">if</span> <span class="n">single</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
+            <span class="n">parquet_files</span> <span class="o">=</span> <span class="p">[</span><span class="n">single</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">parquet_files</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">parquet_path</span><span class="o">.</span><span class="n">rglob</span><span class="p">(</span><span class="s2">&quot;*.parquet&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span> <span class="o">!=</span> <span class="s2">&quot;extraction.parquet&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">parquet_files</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No .parquet files in </span><span class="si">{</span><span class="n">parquet_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">dfs</span> <span class="o">=</span> <span class="p">[</span><span class="n">_read_parquet_for_markdown</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">parquet_files</span><span class="p">]</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">dfs</span><span class="p">,</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">path_col</span> <span class="o">=</span> <span class="s2">&quot;path&quot;</span> <span class="k">if</span> <span class="s2">&quot;path&quot;</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="k">else</span> <span class="s2">&quot;source_id&quot;</span>
+    <span class="k">if</span> <span class="n">path_col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Neither &#39;path&#39; nor &#39;source_id&#39; found in columns: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">list_keys</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;tables&quot;</span><span class="p">,</span> <span class="s2">&quot;table&quot;</span><span class="p">,</span> <span class="s2">&quot;charts&quot;</span><span class="p">,</span> <span class="s2">&quot;chart&quot;</span><span class="p">,</span> <span class="s2">&quot;infographics&quot;</span><span class="p">,</span> <span class="s2">&quot;infographic&quot;</span><span class="p">)</span>
+
+    <span class="n">docs_grouped</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">source</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">path_col</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">source</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">record</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">list_keys</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">val</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+                <span class="n">record</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+        <span class="n">docs_grouped</span><span class="p">[</span><span class="n">source</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+
+    <span class="n">index</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">failures</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">source_id</span><span class="p">,</span> <span class="n">records</span> <span class="ow">in</span> <span class="n">docs_grouped</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">pages</span> <span class="o">=</span> <span class="n">to_markdown_by_page</span><span class="p">(</span><span class="n">records</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Failed to render pages for </span><span class="si">%r</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">source_id</span><span class="p">,</span> <span class="n">exc</span><span class="p">)</span>
+            <span class="n">failures</span><span class="p">[</span><span class="n">source_id</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="n">index</span><span class="p">[</span><span class="n">source_id</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="nb">str</span><span class="p">(</span><span class="n">page_number</span><span class="p">):</span> <span class="n">md</span> <span class="k">for</span> <span class="n">page_number</span><span class="p">,</span> <span class="n">md</span> <span class="ow">in</span> <span class="n">pages</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+
+    <span class="k">if</span> <span class="n">failures</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="s2">&quot;</span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2"> documents failed page rendering&quot;</span><span class="p">,</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">failures</span><span class="p">),</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">failures</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">index</span><span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">index</span><span class="p">,</span> <span class="n">failures</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

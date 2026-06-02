@@ -1,0 +1,45 @@
+nemo\_retriever.application.pipeline package
+============================================
+
+Submodules
+----------
+
+nemo\_retriever.application.pipeline.build\_plan module
+-------------------------------------------------------
+
+.. automodule:: nemo_retriever.application.pipeline.build_plan
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.application.pipeline.contracts module
+-----------------------------------------------------
+
+.. automodule:: nemo_retriever.application.pipeline.contracts
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.application.pipeline.run\_plan module
+-----------------------------------------------------
+
+.. automodule:: nemo_retriever.application.pipeline.run_plan
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.application.pipeline.stage\_registry module
+-----------------------------------------------------------
+
+.. automodule:: nemo_retriever.application.pipeline.stage_registry
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.application.pipeline
+   :members:
+   :show-inheritance:
+   :undoc-members:

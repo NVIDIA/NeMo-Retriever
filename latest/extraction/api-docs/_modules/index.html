@@ -1,0 +1,782 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Overview: module code &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/index';</script>
+
+    <link rel="icon" href="../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nemo-retriever/modules.html">nemo_retriever</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nemo-retriever/nemo_retriever.html">nemo_retriever package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nemo-retriever/nemo_retriever.adapters.html">nemo_retriever.adapters package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.adapters.cli.html">nemo_retriever.adapters.cli package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.api.html">nemo_retriever.api package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nemo-retriever/nemo_retriever.application.html">nemo_retriever.application package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.application.pipeline.html">nemo_retriever.application.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.audio.html">nemo_retriever.audio package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.caption.html">nemo_retriever.caption package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.chart.html">nemo_retriever.chart package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.dedup.html">nemo_retriever.dedup package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.evaluation.html">nemo_retriever.evaluation package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.graph.html">nemo_retriever.graph package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nemo-retriever/nemo_retriever.harness.html">nemo_retriever.harness package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.harness.portal.html">nemo_retriever.harness.portal package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.html.html">nemo_retriever.html package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.image.html">nemo_retriever.image package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.infographic.html">nemo_retriever.infographic package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.io.html">nemo_retriever.io package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nemo-retriever/nemo_retriever.llm.html">nemo_retriever.llm package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.llm.clients.html">nemo_retriever.llm.clients package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nemo-retriever/nemo_retriever.local.html">nemo_retriever.local package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.local.stages.html">nemo_retriever.local.stages package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nemo-retriever/nemo_retriever.model.html">nemo_retriever.model package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.model.local.html">nemo_retriever.model.local package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.nim.html">nemo_retriever.nim package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.ocr.html">nemo_retriever.ocr package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.operators.html">nemo_retriever.operators package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.page_elements.html">nemo_retriever.page_elements package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.params.html">nemo_retriever.params package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.parse.html">nemo_retriever.parse package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.pdf.html">nemo_retriever.pdf package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.pipeline.html">nemo_retriever.pipeline package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.recall.html">nemo_retriever.recall package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.rerank.html">nemo_retriever.rerank package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nemo-retriever/nemo_retriever.service.html">nemo_retriever.service package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.service.models.html">nemo_retriever.service.models package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.service.routers.html">nemo_retriever.service.routers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.service.services.html">nemo_retriever.service.services package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.service.utils.html">nemo_retriever.service.utils package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nemo-retriever/nemo_retriever.skill_eval.html">nemo_retriever.skill_eval package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.skill_eval.configs.html">nemo_retriever.skill_eval.configs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.skill_eval.prompts.html">nemo_retriever.skill_eval.prompts package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.table.html">nemo_retriever.table package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nemo-retriever/nemo_retriever.tabular_data.html">nemo_retriever.tabular_data package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.tabular_data.ingestion.html">nemo_retriever.tabular_data.ingestion package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.tabular_data.neo4j.html">nemo_retriever.tabular_data.neo4j package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.tabular_data.retrieval.html">nemo_retriever.tabular_data.retrieval package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.text_embed.html">nemo_retriever.text_embed package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.txt.html">nemo_retriever.txt package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nemo-retriever/nemo_retriever.utils.html">nemo_retriever.utils package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.utils.benchmark.html">nemo_retriever.utils.benchmark package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.utils.compare.html">nemo_retriever.utils.compare package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.utils.convert.html">nemo_retriever.utils.convert package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.utils.image.html">nemo_retriever.utils.image package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nemo-retriever/nemo_retriever.utils.pipeline.html">nemo_retriever.utils.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.vdb.html">nemo_retriever.vdb package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../nemo-retriever/nemo_retriever.video.html">nemo_retriever.video package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Overview: module code</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>All modules for which code is available</h1>
+<ul><li><a href="nemo_retriever/adapters/cli/main.html">nemo_retriever.adapters.cli.main</a></li>
+<li><a href="nemo_retriever/adapters/cli/sdk_workflow.html">nemo_retriever.adapters.cli.sdk_workflow</a></li>
+<li><a href="nemo_retriever/audio/asr_actor.html">nemo_retriever.audio.asr_actor</a></li>
+<li><a href="nemo_retriever/audio/chunk_actor.html">nemo_retriever.audio.chunk_actor</a></li>
+<li><a href="nemo_retriever/audio/cli.html">nemo_retriever.audio.cli</a></li>
+<li><a href="nemo_retriever/audio/cpu_actor.html">nemo_retriever.audio.cpu_actor</a></li>
+<li><a href="nemo_retriever/audio/gpu_actor.html">nemo_retriever.audio.gpu_actor</a></li>
+<li><a href="nemo_retriever/audio/media_interface.html">nemo_retriever.audio.media_interface</a></li>
+<li><a href="nemo_retriever/audio/stage.html">nemo_retriever.audio.stage</a></li>
+<li><a href="nemo_retriever/branch_extraction.html">nemo_retriever.branch_extraction</a></li>
+<li><a href="nemo_retriever/caption/caption.html">nemo_retriever.caption.caption</a></li>
+<li><a href="nemo_retriever/caption/model_profiles.html">nemo_retriever.caption.model_profiles</a></li>
+<li><a href="nemo_retriever/chart/commands.html">nemo_retriever.chart.commands</a></li>
+<li><a href="nemo_retriever/chart/config.html">nemo_retriever.chart.config</a></li>
+<li><a href="nemo_retriever/chart/cpu_actor.html">nemo_retriever.chart.cpu_actor</a></li>
+<li><a href="nemo_retriever/chart/gpu_actor.html">nemo_retriever.chart.gpu_actor</a></li>
+<li><a href="nemo_retriever/chart/processor.html">nemo_retriever.chart.processor</a></li>
+<li><a href="nemo_retriever/chart/shared.html">nemo_retriever.chart.shared</a></li>
+<li><a href="nemo_retriever/config_utils.html">nemo_retriever.config_utils</a></li>
+<li><a href="nemo_retriever/dedup/dedup.html">nemo_retriever.dedup.dedup</a></li>
+<li><a href="nemo_retriever/evaluation/cli.html">nemo_retriever.evaluation.cli</a></li>
+<li><a href="nemo_retriever/evaluation/config.html">nemo_retriever.evaluation.config</a></li>
+<li><a href="nemo_retriever/evaluation/eval_operator.html">nemo_retriever.evaluation.eval_operator</a></li>
+<li><a href="nemo_retriever/evaluation/generation.html">nemo_retriever.evaluation.generation</a></li>
+<li><a href="nemo_retriever/evaluation/ground_truth.html">nemo_retriever.evaluation.ground_truth</a></li>
+<li><a href="nemo_retriever/evaluation/judging.html">nemo_retriever.evaluation.judging</a></li>
+<li><a href="nemo_retriever/evaluation/live_retrieval.html">nemo_retriever.evaluation.live_retrieval</a></li>
+<li><a href="nemo_retriever/evaluation/orchestrator.html">nemo_retriever.evaluation.orchestrator</a></li>
+<li><a href="nemo_retriever/evaluation/retrieval_loader.html">nemo_retriever.evaluation.retrieval_loader</a></li>
+<li><a href="nemo_retriever/evaluation/retrievers.html">nemo_retriever.evaluation.retrievers</a></li>
+<li><a href="nemo_retriever/evaluation/runner.html">nemo_retriever.evaluation.runner</a></li>
+<li><a href="nemo_retriever/evaluation/scoring.html">nemo_retriever.evaluation.scoring</a></li>
+<li><a href="nemo_retriever/evaluation/scoring_operator.html">nemo_retriever.evaluation.scoring_operator</a></li>
+<li><a href="nemo_retriever/export.html">nemo_retriever.export</a></li>
+<li><a href="nemo_retriever/graph/abstract_operator.html">nemo_retriever.graph.abstract_operator</a></li>
+<li><a href="nemo_retriever/graph/beir_eval.html">nemo_retriever.graph.beir_eval</a></li>
+<li><a href="nemo_retriever/graph/content_operators.html">nemo_retriever.graph.content_operators</a></li>
+<li><a href="nemo_retriever/graph/content_transforms.html">nemo_retriever.graph.content_transforms</a></li>
+<li><a href="nemo_retriever/graph/cpu_operator.html">nemo_retriever.graph.cpu_operator</a></li>
+<li><a href="nemo_retriever/graph/custom_operator.html">nemo_retriever.graph.custom_operator</a></li>
+<li><a href="nemo_retriever/graph/designer.html">nemo_retriever.graph.designer</a></li>
+<li><a href="nemo_retriever/graph/executor.html">nemo_retriever.graph.executor</a></li>
+<li><a href="nemo_retriever/graph/file_loader_operator.html">nemo_retriever.graph.file_loader_operator</a></li>
+<li><a href="nemo_retriever/graph/gpu_operator.html">nemo_retriever.graph.gpu_operator</a></li>
+<li><a href="nemo_retriever/graph/graph_pipeline_registry.html">nemo_retriever.graph.graph_pipeline_registry</a></li>
+<li><a href="nemo_retriever/graph/ingestor_runtime.html">nemo_retriever.graph.ingestor_runtime</a></li>
+<li><a href="nemo_retriever/graph/lancedb_write_operator.html">nemo_retriever.graph.lancedb_write_operator</a></li>
+<li><a href="nemo_retriever/graph/multi_type_extract_operator.html">nemo_retriever.graph.multi_type_extract_operator</a></li>
+<li><a href="nemo_retriever/graph/operator_archetype.html">nemo_retriever.graph.operator_archetype</a></li>
+<li><a href="nemo_retriever/graph/operator_resolution.html">nemo_retriever.graph.operator_resolution</a></li>
+<li><a href="nemo_retriever/graph/pipeline_graph.html">nemo_retriever.graph.pipeline_graph</a></li>
+<li><a href="nemo_retriever/graph/react_agent_operator.html">nemo_retriever.graph.react_agent_operator</a></li>
+<li><a href="nemo_retriever/graph/recall_eval.html">nemo_retriever.graph.recall_eval</a></li>
+<li><a href="nemo_retriever/graph/rrf_aggregator_operator.html">nemo_retriever.graph.rrf_aggregator_operator</a></li>
+<li><a href="nemo_retriever/graph/selection_agent_operator.html">nemo_retriever.graph.selection_agent_operator</a></li>
+<li><a href="nemo_retriever/graph/store_operator.html">nemo_retriever.graph.store_operator</a></li>
+<li><a href="nemo_retriever/graph/subquery_operator.html">nemo_retriever.graph.subquery_operator</a></li>
+<li><a href="nemo_retriever/graph/tabular_fetch_embeddings_operator.html">nemo_retriever.graph.tabular_fetch_embeddings_operator</a></li>
+<li><a href="nemo_retriever/graph/tabular_schema_extract_operator.html">nemo_retriever.graph.tabular_schema_extract_operator</a></li>
+<li><a href="nemo_retriever/graph/webhook_operator.html">nemo_retriever.graph.webhook_operator</a></li>
+<li><a href="nemo_retriever/graph_ingestor.html">nemo_retriever.graph_ingestor</a></li>
+<li><a href="nemo_retriever/harness/artifacts.html">nemo_retriever.harness.artifacts</a></li>
+<li><a href="nemo_retriever/harness/cli.html">nemo_retriever.harness.cli</a></li>
+<li><a href="nemo_retriever/harness/config.html">nemo_retriever.harness.config</a></li>
+<li><a href="nemo_retriever/harness/history.html">nemo_retriever.harness.history</a></li>
+<li><a href="nemo_retriever/harness/nightly.html">nemo_retriever.harness.nightly</a></li>
+<li><a href="nemo_retriever/harness/parsers.html">nemo_retriever.harness.parsers</a></li>
+<li><a href="nemo_retriever/harness/portal/app.html">nemo_retriever.harness.portal.app</a></li>
+<li><a href="nemo_retriever/harness/portal/mcp_registry.html">nemo_retriever.harness.portal.mcp_registry</a></li>
+<li><a href="nemo_retriever/harness/portal/mcp_server.html">nemo_retriever.harness.portal.mcp_server</a></li>
+<li><a href="nemo_retriever/harness/portal/mcp_tools.html">nemo_retriever.harness.portal.mcp_tools</a></li>
+<li><a href="nemo_retriever/harness/reporting.html">nemo_retriever.harness.reporting</a></li>
+<li><a href="nemo_retriever/harness/run.html">nemo_retriever.harness.run</a></li>
+<li><a href="nemo_retriever/harness/runner.html">nemo_retriever.harness.runner</a></li>
+<li><a href="nemo_retriever/harness/scheduler.html">nemo_retriever.harness.scheduler</a></li>
+<li><a href="nemo_retriever/harness/slack.html">nemo_retriever.harness.slack</a></li>
+<li><a href="nemo_retriever/html/convert.html">nemo_retriever.html.convert</a></li>
+<li><a href="nemo_retriever/html/ray_data.html">nemo_retriever.html.ray_data</a></li>
+<li><a href="nemo_retriever/image/load.html">nemo_retriever.image.load</a></li>
+<li><a href="nemo_retriever/image/ray_data.html">nemo_retriever.image.ray_data</a></li>
+<li><a href="nemo_retriever/infographic/commands.html">nemo_retriever.infographic.commands</a></li>
+<li><a href="nemo_retriever/infographic/config.html">nemo_retriever.infographic.config</a></li>
+<li><a href="nemo_retriever/infographic/infographic_detection.html">nemo_retriever.infographic.infographic_detection</a></li>
+<li><a href="nemo_retriever/infographic/processor.html">nemo_retriever.infographic.processor</a></li>
+<li><a href="nemo_retriever/ingest_config.html">nemo_retriever.ingest_config</a></li>
+<li><a href="nemo_retriever/ingest_manifest.html">nemo_retriever.ingest_manifest</a></li>
+<li><a href="nemo_retriever/ingest_plans.html">nemo_retriever.ingest_plans</a></li>
+<li><a href="nemo_retriever/ingest_results.html">nemo_retriever.ingest_results</a></li>
+<li><a href="nemo_retriever/ingestor.html">nemo_retriever.ingestor</a></li>
+<li><a href="nemo_retriever/io/dataframe.html">nemo_retriever.io.dataframe</a></li>
+<li><a href="nemo_retriever/io/image_store.html">nemo_retriever.io.image_store</a></li>
+<li><a href="nemo_retriever/io/markdown.html">nemo_retriever.io.markdown</a></li>
+<li><a href="nemo_retriever/io/stage_files.html">nemo_retriever.io.stage_files</a></li>
+<li><a href="nemo_retriever/llm/clients.html">nemo_retriever.llm.clients</a></li>
+<ul><li><a href="nemo_retriever/llm/clients/judge.html">nemo_retriever.llm.clients.judge</a></li>
+<li><a href="nemo_retriever/llm/clients/litellm.html">nemo_retriever.llm.clients.litellm</a></li>
+</ul><li><a href="nemo_retriever/llm/text_utils.html">nemo_retriever.llm.text_utils</a></li>
+<li><a href="nemo_retriever/llm/types.html">nemo_retriever.llm.types</a></li>
+<li><a href="nemo_retriever/local/stages/stage1_pdf_extraction.html">nemo_retriever.local.stages.stage1_pdf_extraction</a></li>
+<li><a href="nemo_retriever/local/stages/stage6_vdb_upload.html">nemo_retriever.local.stages.stage6_vdb_upload</a></li>
+<li><a href="nemo_retriever/local/stages/stage7_vdb_query.html">nemo_retriever.local.stages.stage7_vdb_query</a></li>
+<li><a href="nemo_retriever/local/stages/stage999_post_mortem_analysis.html">nemo_retriever.local.stages.stage999_post_mortem_analysis</a></li>
+<li><a href="nemo_retriever/model.html">nemo_retriever.model</a></li>
+<ul><li><a href="nemo_retriever/model/local/nemotron_rerank_v2.html">nemo_retriever.model.local.nemotron_rerank_v2</a></li>
+<li><a href="nemo_retriever/model/local/nemotron_rerank_vl_v2.html">nemo_retriever.model.local.nemotron_rerank_vl_v2</a></li>
+<li><a href="nemo_retriever/model/local/nemotron_rerank_vl_v2_hf.html">nemo_retriever.model.local.nemotron_rerank_vl_v2_hf</a></li>
+<li><a href="nemo_retriever/model/local/nemotron_vlm_captioner.html">nemo_retriever.model.local.nemotron_vlm_captioner</a></li>
+<li><a href="nemo_retriever/model/model.html">nemo_retriever.model.model</a></li>
+</ul><li><a href="nemo_retriever/nim/chat_completions.html">nemo_retriever.nim.chat_completions</a></li>
+<li><a href="nemo_retriever/nim/error_reporter.html">nemo_retriever.nim.error_reporter</a></li>
+<li><a href="nemo_retriever/nim/nim.html">nemo_retriever.nim.nim</a></li>
+<li><a href="nemo_retriever/nim/probe.html">nemo_retriever.nim.probe</a></li>
+<li><a href="nemo_retriever/ocr/config.html">nemo_retriever.ocr.config</a></li>
+<li><a href="nemo_retriever/ocr/cpu_ocr.html">nemo_retriever.ocr.cpu_ocr</a></li>
+<li><a href="nemo_retriever/ocr/cpu_parse.html">nemo_retriever.ocr.cpu_parse</a></li>
+<li><a href="nemo_retriever/ocr/gpu_ocr.html">nemo_retriever.ocr.gpu_ocr</a></li>
+<li><a href="nemo_retriever/ocr/gpu_parse.html">nemo_retriever.ocr.gpu_parse</a></li>
+<li><a href="nemo_retriever/ocr/ocr.html">nemo_retriever.ocr.ocr</a></li>
+<li><a href="nemo_retriever/ocr/shared.html">nemo_retriever.ocr.shared</a></li>
+<li><a href="nemo_retriever/page_elements/cpu_actor.html">nemo_retriever.page_elements.cpu_actor</a></li>
+<li><a href="nemo_retriever/page_elements/gpu_actor.html">nemo_retriever.page_elements.gpu_actor</a></li>
+<li><a href="nemo_retriever/page_elements/local.html">nemo_retriever.page_elements.local</a></li>
+<li><a href="nemo_retriever/page_elements/shared.html">nemo_retriever.page_elements.shared</a></li>
+<li><a href="nemo_retriever/params/models.html">nemo_retriever.params.models</a></li>
+<li><a href="nemo_retriever/params/utils.html">nemo_retriever.params.utils</a></li>
+<li><a href="nemo_retriever/parse/nemotron_parse.html">nemo_retriever.parse.nemotron_parse</a></li>
+<li><a href="nemo_retriever/parse/nemotron_parse_postprocessing.html">nemo_retriever.parse.nemotron_parse_postprocessing</a></li>
+<li><a href="nemo_retriever/pdf/config.html">nemo_retriever.pdf.config</a></li>
+<li><a href="nemo_retriever/pdf/extract.html">nemo_retriever.pdf.extract</a></li>
+<li><a href="nemo_retriever/pdf/io.html">nemo_retriever.pdf.io</a></li>
+<li><a href="nemo_retriever/pdf/split.html">nemo_retriever.pdf.split</a></li>
+<li><a href="nemo_retriever/pdf/stage.html">nemo_retriever.pdf.stage</a></li>
+<li><a href="nemo_retriever/recall/beir.html">nemo_retriever.recall.beir</a></li>
+<li><a href="nemo_retriever/recall/core.html">nemo_retriever.recall.core</a></li>
+<li><a href="nemo_retriever/recall/vdb_recall.html">nemo_retriever.recall.vdb_recall</a></li>
+<li><a href="nemo_retriever/rerank/rerank.html">nemo_retriever.rerank.rerank</a></li>
+<li><a href="nemo_retriever/retriever.html">nemo_retriever.retriever</a></li>
+<li><a href="nemo_retriever/retriever_graph_utils.html">nemo_retriever.retriever_graph_utils</a></li>
+<li><a href="nemo_retriever/service/app.html">nemo_retriever.service.app</a></li>
+<li><a href="nemo_retriever/service/auth.html">nemo_retriever.service.auth</a></li>
+<li><a href="nemo_retriever/service/cli.html">nemo_retriever.service.cli</a></li>
+<li><a href="nemo_retriever/service/client.html">nemo_retriever.service.client</a></li>
+<li><a href="nemo_retriever/service/config.html">nemo_retriever.service.config</a></li>
+<li><a href="nemo_retriever/service/models/base.html">nemo_retriever.service.models.base</a></li>
+<li><a href="nemo_retriever/service/models/document.html">nemo_retriever.service.models.document</a></li>
+<li><a href="nemo_retriever/service/models/job.html">nemo_retriever.service.models.job</a></li>
+<li><a href="nemo_retriever/service/models/pipeline_spec.html">nemo_retriever.service.models.pipeline_spec</a></li>
+<li><a href="nemo_retriever/service/models/requests.html">nemo_retriever.service.models.requests</a></li>
+<li><a href="nemo_retriever/service/models/responses.html">nemo_retriever.service.models.responses</a></li>
+<li><a href="nemo_retriever/service/policy.html">nemo_retriever.service.policy</a></li>
+<li><a href="nemo_retriever/service/routers/admin.html">nemo_retriever.service.routers.admin</a></li>
+<li><a href="nemo_retriever/service/routers/dashboard.html">nemo_retriever.service.routers.dashboard</a></li>
+<li><a href="nemo_retriever/service/routers/ingest.html">nemo_retriever.service.routers.ingest</a></li>
+<li><a href="nemo_retriever/service/routers/metrics.html">nemo_retriever.service.routers.metrics</a></li>
+<li><a href="nemo_retriever/service/services/event_bus.html">nemo_retriever.service.services.event_bus</a></li>
+<li><a href="nemo_retriever/service/services/job_tracker.html">nemo_retriever.service.services.job_tracker</a></li>
+<li><a href="nemo_retriever/service/services/metrics.html">nemo_retriever.service.services.metrics</a></li>
+<li><a href="nemo_retriever/service/services/pipeline_executor.html">nemo_retriever.service.services.pipeline_executor</a></li>
+<li><a href="nemo_retriever/service/services/pipeline_pool.html">nemo_retriever.service.services.pipeline_pool</a></li>
+<li><a href="nemo_retriever/service/services/prometheus.html">nemo_retriever.service.services.prometheus</a></li>
+<li><a href="nemo_retriever/service/services/proxy.html">nemo_retriever.service.services.proxy</a></li>
+<li><a href="nemo_retriever/service/services/sidecar_store.html">nemo_retriever.service.services.sidecar_store</a></li>
+<li><a href="nemo_retriever/service/services/worker_result_store.html">nemo_retriever.service.services.worker_result_store</a></li>
+<li><a href="nemo_retriever/service/utils/file_type.html">nemo_retriever.service.utils.file_type</a></li>
+<li><a href="nemo_retriever/service/vectordb_app.html">nemo_retriever.service.vectordb_app</a></li>
+<li><a href="nemo_retriever/service_ingestor.html">nemo_retriever.service_ingestor</a></li>
+<li><a href="nemo_retriever/skill_eval/cli.html">nemo_retriever.skill_eval.cli</a></li>
+<li><a href="nemo_retriever/skill_eval/dataset.html">nemo_retriever.skill_eval.dataset</a></li>
+<li><a href="nemo_retriever/skill_eval/report.html">nemo_retriever.skill_eval.report</a></li>
+<li><a href="nemo_retriever/skill_eval/runner.html">nemo_retriever.skill_eval.runner</a></li>
+<li><a href="nemo_retriever/skill_eval/score.html">nemo_retriever.skill_eval.score</a></li>
+<li><a href="nemo_retriever/table/commands.html">nemo_retriever.table.commands</a></li>
+<li><a href="nemo_retriever/table/config.html">nemo_retriever.table.config</a></li>
+<li><a href="nemo_retriever/table/cpu_actor.html">nemo_retriever.table.cpu_actor</a></li>
+<li><a href="nemo_retriever/table/gpu_actor.html">nemo_retriever.table.gpu_actor</a></li>
+<li><a href="nemo_retriever/table/processor.html">nemo_retriever.table.processor</a></li>
+<li><a href="nemo_retriever/table/shared.html">nemo_retriever.table.shared</a></li>
+<li><a href="nemo_retriever/tabular_data/ingestion/extract_data.html">nemo_retriever.tabular_data.ingestion.extract_data</a></li>
+<li><a href="nemo_retriever/tabular_data/ingestion/model/neo4j_node.html">nemo_retriever.tabular_data.ingestion.model.neo4j_node</a></li>
+<li><a href="nemo_retriever/tabular_data/ingestion/model/query.html">nemo_retriever.tabular_data.ingestion.model.query</a></li>
+<li><a href="nemo_retriever/tabular_data/ingestion/model/reserved_words.html">nemo_retriever.tabular_data.ingestion.model.reserved_words</a></li>
+<li><a href="nemo_retriever/tabular_data/ingestion/model/schema.html">nemo_retriever.tabular_data.ingestion.model.schema</a></li>
+<li><a href="nemo_retriever/tabular_data/ingestion/parsers/query_comparator.html">nemo_retriever.tabular_data.ingestion.parsers.query_comparator</a></li>
+<li><a href="nemo_retriever/tabular_data/ingestion/parsers/sqlglot_extractor.html">nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor</a></li>
+<li><a href="nemo_retriever/tabular_data/ingestion/utils.html">nemo_retriever.tabular_data.ingestion.utils</a></li>
+<li><a href="nemo_retriever/tabular_data/retrieval.html">nemo_retriever.tabular_data.retrieval</a></li>
+<ul><li><a href="nemo_retriever/tabular_data/retrieval/data_access/relevant_tables.html">nemo_retriever.tabular_data.retrieval.data_access.relevant_tables</a></li>
+<li><a href="nemo_retriever/tabular_data/retrieval/data_access/semantic_search.html">nemo_retriever.tabular_data.retrieval.data_access.semantic_search</a></li>
+<li><a href="nemo_retriever/tabular_data/retrieval/generate_sql.html">nemo_retriever.tabular_data.retrieval.generate_sql</a></li>
+<li><a href="nemo_retriever/tabular_data/retrieval/llm_invoke.html">nemo_retriever.tabular_data.retrieval.llm_invoke</a></li>
+</ul><li><a href="nemo_retriever/tabular_data/sql_database.html">nemo_retriever.tabular_data.sql_database</a></li>
+<li><a href="nemo_retriever/text_embed/config.html">nemo_retriever.text_embed.config</a></li>
+<li><a href="nemo_retriever/text_embed/main_text_embed.html">nemo_retriever.text_embed.main_text_embed</a></li>
+<li><a href="nemo_retriever/text_embed/runtime.html">nemo_retriever.text_embed.runtime</a></li>
+<li><a href="nemo_retriever/text_embed/shared.html">nemo_retriever.text_embed.shared</a></li>
+<li><a href="nemo_retriever/text_embed/text_embed.html">nemo_retriever.text_embed.text_embed</a></li>
+<li><a href="nemo_retriever/text_embed/vllm.html">nemo_retriever.text_embed.vllm</a></li>
+<li><a href="nemo_retriever/txt/ray_data.html">nemo_retriever.txt.ray_data</a></li>
+<li><a href="nemo_retriever/txt/split.html">nemo_retriever.txt.split</a></li>
+<li><a href="nemo_retriever/utils/benchmark/all_actor.html">nemo_retriever.utils.benchmark.all_actor</a></li>
+<li><a href="nemo_retriever/utils/benchmark/audio_extract_actor.html">nemo_retriever.utils.benchmark.audio_extract_actor</a></li>
+<li><a href="nemo_retriever/utils/benchmark/common.html">nemo_retriever.utils.benchmark.common</a></li>
+<li><a href="nemo_retriever/utils/benchmark/extract_actor.html">nemo_retriever.utils.benchmark.extract_actor</a></li>
+<li><a href="nemo_retriever/utils/benchmark/ocr_actor.html">nemo_retriever.utils.benchmark.ocr_actor</a></li>
+<li><a href="nemo_retriever/utils/benchmark/page_elements_actor.html">nemo_retriever.utils.benchmark.page_elements_actor</a></li>
+<li><a href="nemo_retriever/utils/benchmark/split_actor.html">nemo_retriever.utils.benchmark.split_actor</a></li>
+<li><a href="nemo_retriever/utils/convert/to_pdf.html">nemo_retriever.utils.convert.to_pdf</a></li>
+<li><a href="nemo_retriever/utils/detection_summary.html">nemo_retriever.utils.detection_summary</a></li>
+<li><a href="nemo_retriever/utils/hf_cache.html">nemo_retriever.utils.hf_cache</a></li>
+<li><a href="nemo_retriever/utils/hf_model_registry.html">nemo_retriever.utils.hf_model_registry</a></li>
+<li><a href="nemo_retriever/utils/image/render.html">nemo_retriever.utils.image.render</a></li>
+<li><a href="nemo_retriever/utils/input_files.html">nemo_retriever.utils.input_files</a></li>
+<li><a href="nemo_retriever/utils/parquet_to_lancedb.html">nemo_retriever.utils.parquet_to_lancedb</a></li>
+<li><a href="nemo_retriever/utils/pipeline/content.html">nemo_retriever.utils.pipeline.content</a></li>
+<li><a href="nemo_retriever/utils/pipeline/embedding.html">nemo_retriever.utils.pipeline.embedding</a></li>
+<li><a href="nemo_retriever/utils/ray_resource_hueristics.html">nemo_retriever.utils.ray_resource_hueristics</a></li>
+<li><a href="nemo_retriever/utils/remote_auth.html">nemo_retriever.utils.remote_auth</a></li>
+<li><a href="nemo_retriever/utils/table_and_chart.html">nemo_retriever.utils.table_and_chart</a></li>
+<li><a href="nemo_retriever/vdb/adt_vdb.html">nemo_retriever.vdb.adt_vdb</a></li>
+<li><a href="nemo_retriever/vdb/factory.html">nemo_retriever.vdb.factory</a></li>
+<li><a href="nemo_retriever/vdb/lancedb.html">nemo_retriever.vdb.lancedb</a></li>
+<li><a href="nemo_retriever/vdb/lancedb_bulk.html">nemo_retriever.vdb.lancedb_bulk</a></li>
+<li><a href="nemo_retriever/vdb/lancedb_read.html">nemo_retriever.vdb.lancedb_read</a></li>
+<li><a href="nemo_retriever/vdb/lancedb_schema.html">nemo_retriever.vdb.lancedb_schema</a></li>
+<li><a href="nemo_retriever/vdb/operators.html">nemo_retriever.vdb.operators</a></li>
+<li><a href="nemo_retriever/vdb/records.html">nemo_retriever.vdb.records</a></li>
+<li><a href="nemo_retriever/vdb/sidecar_metadata.html">nemo_retriever.vdb.sidecar_metadata</a></li>
+<li><a href="nemo_retriever/vdb/stage.html">nemo_retriever.vdb.stage</a></li>
+<li><a href="nemo_retriever/version.html">nemo_retriever.version</a></li>
+<li><a href="nemo_retriever/video/audio_visual_fuser.html">nemo_retriever.video.audio_visual_fuser</a></li>
+<li><a href="nemo_retriever/video/cli.html">nemo_retriever.video.cli</a></li>
+<li><a href="nemo_retriever/video/frame_actor.html">nemo_retriever.video.frame_actor</a></li>
+<li><a href="nemo_retriever/video/ocr_actor.html">nemo_retriever.video.ocr_actor</a></li>
+<li><a href="nemo_retriever/video/split.html">nemo_retriever.video.split</a></li>
+<li><a href="nemo_retriever/video/stage.html">nemo_retriever.video.stage</a></li>
+<li><a href="nemo_retriever/video/text_dedup.html">nemo_retriever.video.text_dedup</a></li>
+</ul>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

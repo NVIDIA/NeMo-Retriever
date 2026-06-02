@@ -1,0 +1,1192 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>nemo_retriever.caption package &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'nemo-retriever/nemo_retriever.caption';</script>
+
+    <link rel="icon" href="../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="nemo_retriever.chart package" href="nemo_retriever.chart.html" />
+    <link rel="prev" title="nemo_retriever.audio package" href="nemo_retriever.audio.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="modules.html">nemo_retriever</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 current active has-children"><a class="reference internal" href="nemo_retriever.html">nemo_retriever package</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.adapters.html">nemo_retriever.adapters package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.adapters.cli.html">nemo_retriever.adapters.cli package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.api.html">nemo_retriever.api package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.application.html">nemo_retriever.application package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.application.pipeline.html">nemo_retriever.application.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.audio.html">nemo_retriever.audio package</a></li>
+<li class="toctree-l3 current active"><a class="current reference internal" href="#">nemo_retriever.caption package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.chart.html">nemo_retriever.chart package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.dedup.html">nemo_retriever.dedup package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.evaluation.html">nemo_retriever.evaluation package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.graph.html">nemo_retriever.graph package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.harness.html">nemo_retriever.harness package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.harness.portal.html">nemo_retriever.harness.portal package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.html.html">nemo_retriever.html package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.image.html">nemo_retriever.image package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.infographic.html">nemo_retriever.infographic package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.io.html">nemo_retriever.io package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.llm.html">nemo_retriever.llm package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.llm.clients.html">nemo_retriever.llm.clients package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.local.html">nemo_retriever.local package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.local.stages.html">nemo_retriever.local.stages package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.model.html">nemo_retriever.model package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.model.local.html">nemo_retriever.model.local package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.nim.html">nemo_retriever.nim package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.ocr.html">nemo_retriever.ocr package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.operators.html">nemo_retriever.operators package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.page_elements.html">nemo_retriever.page_elements package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.params.html">nemo_retriever.params package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.parse.html">nemo_retriever.parse package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.pdf.html">nemo_retriever.pdf package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.pipeline.html">nemo_retriever.pipeline package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.recall.html">nemo_retriever.recall package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.rerank.html">nemo_retriever.rerank package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.service.html">nemo_retriever.service package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.service.models.html">nemo_retriever.service.models package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.service.routers.html">nemo_retriever.service.routers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.service.services.html">nemo_retriever.service.services package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.service.utils.html">nemo_retriever.service.utils package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.skill_eval.html">nemo_retriever.skill_eval package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.skill_eval.configs.html">nemo_retriever.skill_eval.configs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.skill_eval.prompts.html">nemo_retriever.skill_eval.prompts package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.table.html">nemo_retriever.table package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.tabular_data.html">nemo_retriever.tabular_data package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.tabular_data.ingestion.html">nemo_retriever.tabular_data.ingestion package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.tabular_data.neo4j.html">nemo_retriever.tabular_data.neo4j package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.tabular_data.retrieval.html">nemo_retriever.tabular_data.retrieval package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.text_embed.html">nemo_retriever.text_embed package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.txt.html">nemo_retriever.txt package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.utils.html">nemo_retriever.utils package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.utils.benchmark.html">nemo_retriever.utils.benchmark package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.utils.compare.html">nemo_retriever.utils.compare package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.utils.convert.html">nemo_retriever.utils.convert package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.utils.image.html">nemo_retriever.utils.image package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.utils.pipeline.html">nemo_retriever.utils.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.vdb.html">nemo_retriever.vdb package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.video.html">nemo_retriever.video package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">nemo_retriever</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="nemo_retriever.html" class="nav-link">nemo_retriever package</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.caption package</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="nemo-retriever-caption-package">
+<h1>nemo_retriever.caption package<a class="headerlink" href="#nemo-retriever-caption-package" title="Link to this heading">#</a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">#</a></h2>
+</section>
+<section id="module-nemo_retriever.caption.caption">
+<span id="nemo-retriever-caption-caption-module"></span><h2>nemo_retriever.caption.caption module<a class="headerlink" href="#module-nemo_retriever.caption.caption" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.caption.caption.CaptionActor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.caption.</span></span><span class="sig-name descname"><span class="pre">CaptionActor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="nemo_retriever.params.html#nemo_retriever.params.models.CaptionParams" title="nemo_retriever.params.models.CaptionParams"><span class="pre">CaptionParams</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionActor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.caption.CaptionActor" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference internal" href="nemo_retriever.graph.html#nemo_retriever.graph.operator_archetype.ArchetypeOperator" title="nemo_retriever.graph.operator_archetype.ArchetypeOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArchetypeOperator</span></code></a></p>
+<p>Graph-facing captioning archetype resolved to the local hardware variant.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.caption.CaptionActor.prefers_cpu_variant">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">prefers_cpu_variant</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">operator_kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionActor.prefers_cpu_variant"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.caption.CaptionActor.prefers_cpu_variant" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.caption.caption.CaptionCPUActor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.caption.</span></span><span class="sig-name descname"><span class="pre">CaptionCPUActor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="nemo_retriever.params.html#nemo_retriever.params.models.CaptionParams" title="nemo_retriever.params.models.CaptionParams"><span class="pre">CaptionParams</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionCPUActor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.caption.CaptionCPUActor" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference internal" href="nemo_retriever.graph.html#nemo_retriever.graph.abstract_operator.AbstractOperator" title="nemo_retriever.graph.abstract_operator.AbstractOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">AbstractOperator</span></code></a>, <a class="reference internal" href="nemo_retriever.graph.html#nemo_retriever.graph.cpu_operator.CPUOperator" title="nemo_retriever.graph.cpu_operator.CPUOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">CPUOperator</span></code></a></p>
+<p>CPU-only caption actor that delegates to a remote VLM endpoint.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.caption.CaptionCPUActor.postprocess">
+<span class="sig-name descname"><span class="pre">postprocess</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionCPUActor.postprocess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.caption.CaptionCPUActor.postprocess" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.caption.CaptionCPUActor.preprocess">
+<span class="sig-name descname"><span class="pre">preprocess</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionCPUActor.preprocess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.caption.CaptionCPUActor.preprocess" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.caption.CaptionCPUActor.process">
+<span class="sig-name descname"><span class="pre">process</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionCPUActor.process"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.caption.CaptionCPUActor.process" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.caption.caption.CaptionGPUActor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.caption.</span></span><span class="sig-name descname"><span class="pre">CaptionGPUActor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="nemo_retriever.params.html#nemo_retriever.params.models.CaptionParams" title="nemo_retriever.params.models.CaptionParams"><span class="pre">CaptionParams</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionGPUActor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.caption.CaptionGPUActor" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference internal" href="nemo_retriever.graph.html#nemo_retriever.graph.abstract_operator.AbstractOperator" title="nemo_retriever.graph.abstract_operator.AbstractOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">AbstractOperator</span></code></a>, <a class="reference internal" href="nemo_retriever.graph.html#nemo_retriever.graph.gpu_operator.GPUOperator" title="nemo_retriever.graph.gpu_operator.GPUOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">GPUOperator</span></code></a></p>
+<p>Ray Data actor that holds a local VLM captioner on a single GPU.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.caption.CaptionGPUActor.postprocess">
+<span class="sig-name descname"><span class="pre">postprocess</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionGPUActor.postprocess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.caption.CaptionGPUActor.postprocess" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.caption.CaptionGPUActor.preprocess">
+<span class="sig-name descname"><span class="pre">preprocess</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionGPUActor.preprocess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.caption.CaptionGPUActor.preprocess" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.caption.CaptionGPUActor.process">
+<span class="sig-name descname"><span class="pre">process</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionGPUActor.process"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.caption.CaptionGPUActor.process" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.caption.caption.caption_images">
+<span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.caption.</span></span><span class="sig-name descname"><span class="pre">caption_images</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">endpoint_url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">api_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'Caption</span> <span class="pre">the</span> <span class="pre">content</span> <span class="pre">of</span> <span class="pre">this</span> <span class="pre">image:'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">system_prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'/no_think'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">temperature</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">top_p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">max_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1024</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">8</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">context_text_max_chars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">caption_infographics</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">extra_body</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#caption_images"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.caption.caption_images" title="Link to this definition">#</a></dt>
+<dd><p>Caption images in the <code class="docutils literal notranslate"><span class="pre">images</span></code> column using a VLM.</p>
+<p>Supports two modes:</p>
+<ul class="simple">
+<li><p><strong>Remote</strong> (<code class="docutils literal notranslate"><span class="pre">endpoint_url</span></code> is set): sends images to an HTTP VLM
+endpoint via <code class="docutils literal notranslate"><span class="pre">create_inference_client</span></code> / <code class="docutils literal notranslate"><span class="pre">VLMModelInterface</span></code>.</p></li>
+<li><p><strong>Local</strong> (<code class="docutils literal notranslate"><span class="pre">model</span></code> is set): runs inference through a local
+<code class="docutils literal notranslate"><span class="pre">NemotronVLMCaptioner</span></code> instance loaded from Hugging Face.</p></li>
+</ul>
+<p>When <code class="docutils literal notranslate"><span class="pre">context_text_max_chars</span></code> is greater than zero, the page’s <code class="docutils literal notranslate"><span class="pre">text</span></code>
+column is prepended to the prompt for each image so the VLM can use
+surrounding OCR text as context.  In this mode images are captioned
+one at a time (each gets its own enriched prompt).</p>
+<p>For each row, any item in the <code class="docutils literal notranslate"><span class="pre">images</span></code> list whose <code class="docutils literal notranslate"><span class="pre">text</span></code> field is
+empty will be captioned.  The returned caption is written back into
+<code class="docutils literal notranslate"><span class="pre">images[i][&quot;text&quot;]</span></code>.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">caption_infographics</span></code> is True, infographic entries are cropped
+from the page image and captioned.  The VLM caption is written to the
+<code class="docutils literal notranslate"><span class="pre">caption</span></code> field, preserving the existing OCR <code class="docutils literal notranslate"><span class="pre">text</span></code>.</p>
+</dd></dl>
+
+</section>
+<section id="module-nemo_retriever.caption.model_profiles">
+<span id="nemo-retriever-caption-model-profiles-module"></span><h2>nemo_retriever.caption.model_profiles module<a class="headerlink" href="#module-nemo_retriever.caption.model_profiles" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionCapabilities">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.model_profiles.</span></span><span class="sig-name descname"><span class="pre">CaptionCapabilities</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">image_captioning</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">audio_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">video_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">document_intelligence</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">reasoning_control</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/caption/model_profiles.html#CaptionCapabilities"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Capabilities currently exposed by the caption pipeline for a model profile.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionCapabilities.audio_input">
+<span class="sig-name descname"><span class="pre">audio_input</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities.audio_input" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionCapabilities.document_intelligence">
+<span class="sig-name descname"><span class="pre">document_intelligence</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities.document_intelligence" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionCapabilities.image_captioning">
+<span class="sig-name descname"><span class="pre">image_captioning</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities.image_captioning" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionCapabilities.reasoning_control">
+<span class="sig-name descname"><span class="pre">reasoning_control</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities.reasoning_control" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionCapabilities.video_input">
+<span class="sig-name descname"><span class="pre">video_input</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities.video_input" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionModelProfile">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.model_profiles.</span></span><span class="sig-name descname"><span class="pre">CaptionModelProfile</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">family:</span> <span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">variant:</span> <span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">local_model_id:</span> <span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">remote_model_id:</span> <span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">revision:</span> <span class="pre">str</span> <span class="pre">|</span> <span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">capabilities:</span> <span class="pre">~nemo_retriever.caption.model_profiles.CaptionCapabilities</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">local_request_extras:</span> <span class="pre">~collections.abc.Mapping[str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">remote_request_extras:</span> <span class="pre">~collections.abc.Mapping[str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">local_engine_kwargs:</span> <span class="pre">~collections.abc.Mapping[str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/caption/model_profiles.html#CaptionModelProfile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Immutable caption model metadata for local and remote model resolution.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionModelProfile.capabilities">
+<span class="sig-name descname"><span class="pre">capabilities</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities" title="nemo_retriever.caption.model_profiles.CaptionCapabilities"><span class="pre">CaptionCapabilities</span></a></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.capabilities" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionModelProfile.engine_kwargs_for_local">
+<span class="sig-name descname"><span class="pre">engine_kwargs_for_local</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/model_profiles.html#CaptionModelProfile.engine_kwargs_for_local"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.engine_kwargs_for_local" title="Link to this definition">#</a></dt>
+<dd><p>Return mutable vLLM engine defaults for local caption model loading.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionModelProfile.family">
+<span class="sig-name descname"><span class="pre">family</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.family" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionModelProfile.local_engine_kwargs">
+<span class="sig-name descname"><span class="pre">local_engine_kwargs</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.local_engine_kwargs" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionModelProfile.local_model_id">
+<span class="sig-name descname"><span class="pre">local_model_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.local_model_id" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionModelProfile.local_request_extras">
+<span class="sig-name descname"><span class="pre">local_request_extras</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.local_request_extras" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionModelProfile.remote_model_id">
+<span class="sig-name descname"><span class="pre">remote_model_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.remote_model_id" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionModelProfile.remote_request_extras">
+<span class="sig-name descname"><span class="pre">remote_request_extras</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.remote_request_extras" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionModelProfile.request_extras_for">
+<span class="sig-name descname"><span class="pre">request_extras_for</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'local'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'remote'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/model_profiles.html#CaptionModelProfile.request_extras_for"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.request_extras_for" title="Link to this definition">#</a></dt>
+<dd><p>Return mutable default request extras for the local or remote caption target.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionModelProfile.revision">
+<span class="sig-name descname"><span class="pre">revision</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.revision" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.CaptionModelProfile.variant">
+<span class="sig-name descname"><span class="pre">variant</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.variant" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.caption_model_aliases">
+<span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.model_profiles.</span></span><span class="sig-name descname"><span class="pre">caption_model_aliases</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'local'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'remote'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'local'</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/model_profiles.html#caption_model_aliases"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.model_profiles.caption_model_aliases" title="Link to this definition">#</a></dt>
+<dd><p>Return alias-to-canonical-model mappings for the local or remote caption target.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.caption_model_revisions">
+<span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.model_profiles.</span></span><span class="sig-name descname"><span class="pre">caption_model_revisions</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/model_profiles.html#caption_model_revisions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.model_profiles.caption_model_revisions" title="Link to this definition">#</a></dt>
+<dd><p>Return pinned Hugging Face revisions keyed by local model ID.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.get_caption_model_profile">
+<span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.model_profiles.</span></span><span class="sig-name descname"><span class="pre">get_caption_model_profile</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'local'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'remote'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">strict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile" title="nemo_retriever.caption.model_profiles.CaptionModelProfile"><span class="pre">CaptionModelProfile</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/model_profiles.html#get_caption_model_profile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.model_profiles.get_caption_model_profile" title="Link to this definition">#</a></dt>
+<dd><p>Look up a caption model profile by model ID or alias.</p>
+<p><code class="docutils literal notranslate"><span class="pre">target</span></code> restricts lookup to <code class="docutils literal notranslate"><span class="pre">&quot;local&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;remote&quot;</span></code> model names; <code class="docutils literal notranslate"><span class="pre">None</span></code> searches both.
+When <code class="docutils literal notranslate"><span class="pre">strict</span></code> is True, unknown names raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>. When False, unknown names return None.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.merge_request_extras">
+<span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.model_profiles.</span></span><span class="sig-name descname"><span class="pre">merge_request_extras</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">defaults</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">user</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/model_profiles.html#merge_request_extras"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.model_profiles.merge_request_extras" title="Link to this definition">#</a></dt>
+<dd><p>Deep-merge profile default request extras with user request extras.</p>
+<p>Nested mappings are merged recursively. Default-only keys are preserved, while user values win
+when both inputs define the same key or nested leaf.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.resolve_caption_model_name">
+<span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.model_profiles.</span></span><span class="sig-name descname"><span class="pre">resolve_caption_model_name</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'local'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'remote'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'local'</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/model_profiles.html#resolve_caption_model_name"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.model_profiles.resolve_caption_model_name" title="Link to this definition">#</a></dt>
+<dd><p>Resolve a model ID or alias to the canonical model name for the target.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.supported_caption_model_names">
+<span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.model_profiles.</span></span><span class="sig-name descname"><span class="pre">supported_caption_model_names</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'local'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'remote'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'local'</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/model_profiles.html#supported_caption_model_names"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.model_profiles.supported_caption_model_names" title="Link to this definition">#</a></dt>
+<dd><p>Return supported model IDs and aliases for the local or remote caption target.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.caption.model_profiles.supported_caption_models_by_variant">
+<span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.model_profiles.</span></span><span class="sig-name descname"><span class="pre">supported_caption_models_by_variant</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'local'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'remote'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'local'</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/model_profiles.html#supported_caption_models_by_variant"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.model_profiles.supported_caption_models_by_variant" title="Link to this definition">#</a></dt>
+<dd><p>Return canonical target model IDs keyed by model variant label.</p>
+</dd></dl>
+
+</section>
+<section id="module-nemo_retriever.caption">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-nemo_retriever.caption" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.caption.CaptionActor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.</span></span><span class="sig-name descname"><span class="pre">CaptionActor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="nemo_retriever.params.html#nemo_retriever.params.models.CaptionParams" title="nemo_retriever.params.models.CaptionParams"><span class="pre">CaptionParams</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionActor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.CaptionActor" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference internal" href="nemo_retriever.graph.html#nemo_retriever.graph.operator_archetype.ArchetypeOperator" title="nemo_retriever.graph.operator_archetype.ArchetypeOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArchetypeOperator</span></code></a></p>
+<p>Graph-facing captioning archetype resolved to the local hardware variant.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.CaptionActor.prefers_cpu_variant">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">prefers_cpu_variant</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">operator_kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionActor.prefers_cpu_variant"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.CaptionActor.prefers_cpu_variant" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.caption.CaptionCPUActor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.</span></span><span class="sig-name descname"><span class="pre">CaptionCPUActor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="nemo_retriever.params.html#nemo_retriever.params.models.CaptionParams" title="nemo_retriever.params.models.CaptionParams"><span class="pre">CaptionParams</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionCPUActor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.CaptionCPUActor" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference internal" href="nemo_retriever.graph.html#nemo_retriever.graph.abstract_operator.AbstractOperator" title="nemo_retriever.graph.abstract_operator.AbstractOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">AbstractOperator</span></code></a>, <a class="reference internal" href="nemo_retriever.graph.html#nemo_retriever.graph.cpu_operator.CPUOperator" title="nemo_retriever.graph.cpu_operator.CPUOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">CPUOperator</span></code></a></p>
+<p>CPU-only caption actor that delegates to a remote VLM endpoint.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.CaptionCPUActor.postprocess">
+<span class="sig-name descname"><span class="pre">postprocess</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionCPUActor.postprocess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.CaptionCPUActor.postprocess" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.CaptionCPUActor.preprocess">
+<span class="sig-name descname"><span class="pre">preprocess</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionCPUActor.preprocess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.CaptionCPUActor.preprocess" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.CaptionCPUActor.process">
+<span class="sig-name descname"><span class="pre">process</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionCPUActor.process"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.CaptionCPUActor.process" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.caption.CaptionGPUActor">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.</span></span><span class="sig-name descname"><span class="pre">CaptionGPUActor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="nemo_retriever.params.html#nemo_retriever.params.models.CaptionParams" title="nemo_retriever.params.models.CaptionParams"><span class="pre">CaptionParams</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionGPUActor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.CaptionGPUActor" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference internal" href="nemo_retriever.graph.html#nemo_retriever.graph.abstract_operator.AbstractOperator" title="nemo_retriever.graph.abstract_operator.AbstractOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">AbstractOperator</span></code></a>, <a class="reference internal" href="nemo_retriever.graph.html#nemo_retriever.graph.gpu_operator.GPUOperator" title="nemo_retriever.graph.gpu_operator.GPUOperator"><code class="xref py py-class docutils literal notranslate"><span class="pre">GPUOperator</span></code></a></p>
+<p>Ray Data actor that holds a local VLM captioner on a single GPU.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.CaptionGPUActor.postprocess">
+<span class="sig-name descname"><span class="pre">postprocess</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionGPUActor.postprocess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.CaptionGPUActor.postprocess" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.CaptionGPUActor.preprocess">
+<span class="sig-name descname"><span class="pre">preprocess</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionGPUActor.preprocess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.CaptionGPUActor.preprocess" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.caption.CaptionGPUActor.process">
+<span class="sig-name descname"><span class="pre">process</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#CaptionGPUActor.process"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.CaptionGPUActor.process" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.caption.caption_images">
+<span class="sig-prename descclassname"><span class="pre">nemo_retriever.caption.</span></span><span class="sig-name descname"><span class="pre">caption_images</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DataFrame</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">endpoint_url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">api_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'Caption</span> <span class="pre">the</span> <span class="pre">content</span> <span class="pre">of</span> <span class="pre">this</span> <span class="pre">image:'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">system_prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'/no_think'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">temperature</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">top_p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">max_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1024</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">8</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">context_text_max_chars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">caption_infographics</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">extra_body</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/caption/caption.html#caption_images"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.caption.caption_images" title="Link to this definition">#</a></dt>
+<dd><p>Caption images in the <code class="docutils literal notranslate"><span class="pre">images</span></code> column using a VLM.</p>
+<p>Supports two modes:</p>
+<ul class="simple">
+<li><p><strong>Remote</strong> (<code class="docutils literal notranslate"><span class="pre">endpoint_url</span></code> is set): sends images to an HTTP VLM
+endpoint via <code class="docutils literal notranslate"><span class="pre">create_inference_client</span></code> / <code class="docutils literal notranslate"><span class="pre">VLMModelInterface</span></code>.</p></li>
+<li><p><strong>Local</strong> (<code class="docutils literal notranslate"><span class="pre">model</span></code> is set): runs inference through a local
+<code class="docutils literal notranslate"><span class="pre">NemotronVLMCaptioner</span></code> instance loaded from Hugging Face.</p></li>
+</ul>
+<p>When <code class="docutils literal notranslate"><span class="pre">context_text_max_chars</span></code> is greater than zero, the page’s <code class="docutils literal notranslate"><span class="pre">text</span></code>
+column is prepended to the prompt for each image so the VLM can use
+surrounding OCR text as context.  In this mode images are captioned
+one at a time (each gets its own enriched prompt).</p>
+<p>For each row, any item in the <code class="docutils literal notranslate"><span class="pre">images</span></code> list whose <code class="docutils literal notranslate"><span class="pre">text</span></code> field is
+empty will be captioned.  The returned caption is written back into
+<code class="docutils literal notranslate"><span class="pre">images[i][&quot;text&quot;]</span></code>.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">caption_infographics</span></code> is True, infographic entries are cropped
+from the page image and captioned.  The VLM caption is written to the
+<code class="docutils literal notranslate"><span class="pre">caption</span></code> field, preserving the existing OCR <code class="docutils literal notranslate"><span class="pre">text</span></code>.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="nemo_retriever.audio.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">nemo_retriever.audio package</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="nemo_retriever.chart.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">nemo_retriever.chart package</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#submodules">Submodules</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.caption.caption">nemo_retriever.caption.caption module</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.caption.CaptionActor"><code class="docutils literal notranslate"><span class="pre">CaptionActor</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.caption.CaptionActor.prefers_cpu_variant"><code class="docutils literal notranslate"><span class="pre">prefers_cpu_variant()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.caption.CaptionCPUActor"><code class="docutils literal notranslate"><span class="pre">CaptionCPUActor</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.caption.CaptionCPUActor.postprocess"><code class="docutils literal notranslate"><span class="pre">postprocess()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.caption.CaptionCPUActor.preprocess"><code class="docutils literal notranslate"><span class="pre">preprocess()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.caption.CaptionCPUActor.process"><code class="docutils literal notranslate"><span class="pre">process()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.caption.CaptionGPUActor"><code class="docutils literal notranslate"><span class="pre">CaptionGPUActor</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.caption.CaptionGPUActor.postprocess"><code class="docutils literal notranslate"><span class="pre">postprocess()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.caption.CaptionGPUActor.preprocess"><code class="docutils literal notranslate"><span class="pre">preprocess()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.caption.CaptionGPUActor.process"><code class="docutils literal notranslate"><span class="pre">process()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.caption.caption_images"><code class="docutils literal notranslate"><span class="pre">caption_images()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.caption.model_profiles">nemo_retriever.caption.model_profiles module</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities"><code class="docutils literal notranslate"><span class="pre">CaptionCapabilities</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities.audio_input"><code class="docutils literal notranslate"><span class="pre">audio_input</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities.document_intelligence"><code class="docutils literal notranslate"><span class="pre">document_intelligence</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities.image_captioning"><code class="docutils literal notranslate"><span class="pre">image_captioning</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities.reasoning_control"><code class="docutils literal notranslate"><span class="pre">reasoning_control</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionCapabilities.video_input"><code class="docutils literal notranslate"><span class="pre">video_input</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile"><code class="docutils literal notranslate"><span class="pre">CaptionModelProfile</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.capabilities"><code class="docutils literal notranslate"><span class="pre">capabilities</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.engine_kwargs_for_local"><code class="docutils literal notranslate"><span class="pre">engine_kwargs_for_local()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.family"><code class="docutils literal notranslate"><span class="pre">family</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.local_engine_kwargs"><code class="docutils literal notranslate"><span class="pre">local_engine_kwargs</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.local_model_id"><code class="docutils literal notranslate"><span class="pre">local_model_id</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.local_request_extras"><code class="docutils literal notranslate"><span class="pre">local_request_extras</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.remote_model_id"><code class="docutils literal notranslate"><span class="pre">remote_model_id</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.remote_request_extras"><code class="docutils literal notranslate"><span class="pre">remote_request_extras</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.request_extras_for"><code class="docutils literal notranslate"><span class="pre">request_extras_for()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.revision"><code class="docutils literal notranslate"><span class="pre">revision</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.CaptionModelProfile.variant"><code class="docutils literal notranslate"><span class="pre">variant</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.caption_model_aliases"><code class="docutils literal notranslate"><span class="pre">caption_model_aliases()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.caption_model_revisions"><code class="docutils literal notranslate"><span class="pre">caption_model_revisions()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.get_caption_model_profile"><code class="docutils literal notranslate"><span class="pre">get_caption_model_profile()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.merge_request_extras"><code class="docutils literal notranslate"><span class="pre">merge_request_extras()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.resolve_caption_model_name"><code class="docutils literal notranslate"><span class="pre">resolve_caption_model_name()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.supported_caption_model_names"><code class="docutils literal notranslate"><span class="pre">supported_caption_model_names()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.model_profiles.supported_caption_models_by_variant"><code class="docutils literal notranslate"><span class="pre">supported_caption_models_by_variant()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.caption">Module contents</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.CaptionActor"><code class="docutils literal notranslate"><span class="pre">CaptionActor</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.CaptionActor.prefers_cpu_variant"><code class="docutils literal notranslate"><span class="pre">prefers_cpu_variant()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.CaptionCPUActor"><code class="docutils literal notranslate"><span class="pre">CaptionCPUActor</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.CaptionCPUActor.postprocess"><code class="docutils literal notranslate"><span class="pre">postprocess()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.CaptionCPUActor.preprocess"><code class="docutils literal notranslate"><span class="pre">preprocess()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.CaptionCPUActor.process"><code class="docutils literal notranslate"><span class="pre">process()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.CaptionGPUActor"><code class="docutils literal notranslate"><span class="pre">CaptionGPUActor</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.CaptionGPUActor.postprocess"><code class="docutils literal notranslate"><span class="pre">postprocess()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.CaptionGPUActor.preprocess"><code class="docutils literal notranslate"><span class="pre">preprocess()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.CaptionGPUActor.process"><code class="docutils literal notranslate"><span class="pre">process()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.caption.caption_images"><code class="docutils literal notranslate"><span class="pre">caption_images()</span></code></a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>
