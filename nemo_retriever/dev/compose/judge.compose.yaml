@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+services:
+  judge:
+    # Nemotron-Super-49B-v1.5 NIM, used as the LLM-as-judge for
+    # `retriever skill-eval` when the run config points at localhost.
+    image: ${JUDGE_IMAGE:-nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5}:${JUDGE_TAG:-2.0.5}
+    shm_size: 16gb
+    ports:
+      - "${JUDGE_HTTP_PORT:-8000}:8000"
+    expose:
+      - "8000"
+    environment:
+      - NIM_HTTP_API_PORT=8000
+      - NGC_API_KEY=${NIM_NGC_API_KEY:-${NGC_API_KEY:?NGC_API_KEY or NIM_NGC_API_KEY must be set}}
+    command: ["--tool-call-parser", "llama3_json", "--enable-auto-tool-choice"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_ID:-0}"]
+              capabilities: [gpu]
+    runtime: nvidia

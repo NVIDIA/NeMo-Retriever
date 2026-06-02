@@ -18,7 +18,7 @@ from typing import Any, Optional
 import typer
 import yaml
 
-from nemo_retriever.harness.artifacts import create_session_dir
+from nemo_retriever.harness.artifacts import create_session_dir, last_commit
 from nemo_retriever.harness.config import REPO_ROOT
 from nemo_retriever.skill_eval.dataset import DatasetEntry, load_config, load_eval_manifest
 from nemo_retriever.skill_eval.report import overall_recall, write_summary
@@ -69,8 +69,8 @@ def _preflight_judge_endpoint(api_base: str, timeout: float = 5.0) -> None:
 
     Cloud endpoints aren't probed (no guaranteed public health route, and a
     bad cloud config isn't actionable from the runner). A local unreachable
-    endpoint nearly always means the user forgot to start the judge container,
-    so we surface the ``docker compose up judge`` hint up front instead of
+    endpoint nearly always means the user forgot to start the local judge,
+    so we surface that hint up front instead of
     burning trials on doomed judge calls.
     """
     from urllib.parse import urlparse
@@ -87,8 +87,8 @@ def _preflight_judge_endpoint(api_base: str, timeout: float = 5.0) -> None:
     except Exception as exc:
         raise typer.BadParameter(
             f"Judge endpoint {api_base} is unreachable ({exc}). "
-            "If you're using the local-NIM judge, start it first:\n"
-            "  docker compose up judge"
+            "If you're using the bundled local judge helper, start it from the repository root:\n"
+            "  docker compose -f nemo_retriever/dev/compose/judge.compose.yaml up -d judge"
         )
 
 
@@ -416,6 +416,9 @@ def run_command(
     resolved_cfg["agent_model"] = model
     resolved_cfg["conditions"] = selected
     resolved_cfg["query_parallelism"] = query_parallelism
+    # Capture the commit the evaluation runs with so it survives into the
+    # session summary even if the summary is regenerated later from another HEAD.
+    resolved_cfg["run_commit"] = last_commit()
     (session_dir / "config.yaml").write_text(yaml.safe_dump(resolved_cfg, default_flow_style=False), encoding="utf-8")
 
     # Results are keyed (agent, condition, domain) so reports can compare agent runs.

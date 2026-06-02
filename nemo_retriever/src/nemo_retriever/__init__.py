@@ -29,6 +29,7 @@ __all__ = [
     "GraphIngestionError",
     "ingestor",
     "retriever",
+    "RetrieverServiceCompatibilityError",
 ]
 
 retriever = _retriever_cls()
@@ -55,4 +56,8 @@ def __getattr__(name: str):
         from .graph_ingestor import GraphIngestionError
 
         return GraphIngestionError
+    if name == "RetrieverServiceCompatibilityError":
+        from .service.client import RetrieverServiceCompatibilityError
+
+        return RetrieverServiceCompatibilityError
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

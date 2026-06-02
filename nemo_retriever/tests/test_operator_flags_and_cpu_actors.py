@@ -286,6 +286,25 @@ class TestTableStructureCPUActor:
         pd.testing.assert_frame_equal(result, expected)
 
 
+class TestInfographicDetectionCPUActor:
+    def test_uses_default_invoke_url(self, monkeypatch):
+        from nemo_retriever.infographic.infographic_detection import InfographicDetectionCPUActor
+
+        monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+        monkeypatch.delenv("NGC_API_KEY", raising=False)
+        actor = InfographicDetectionCPUActor()
+        assert actor._model is None
+        assert "nemotron-graphic-elements-v1" in actor.detect_kwargs["invoke_url"]
+
+    def test_resolves_api_key_for_default_endpoint(self, monkeypatch):
+        from nemo_retriever.infographic.infographic_detection import InfographicDetectionCPUActor
+
+        monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+        monkeypatch.delenv("NGC_API_KEY", raising=False)
+        actor = InfographicDetectionCPUActor()
+        assert actor.detect_kwargs["api_key"] == "nvapi-test"
+
+
 class TestOCRCPUActor:
     def test_inherits_cpu_operator(self):
         from nemo_retriever.ocr.cpu_ocr import OCRCPUActor

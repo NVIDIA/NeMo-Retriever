@@ -149,10 +149,15 @@ def write_session_summary(
     *,
     session_type: str,
     config_path: str,
+    run_commit: str | None = None,
 ) -> Path:
     payload = {
         "session_type": session_type,
         "timestamp": now_timestr(),
+        # ``run_commit`` is the commit the evaluation actually executed with
+        # (captured at run start); ``latest_commit`` is HEAD at summary-write
+        # time, which can differ when a summary is regenerated later.
+        "run_commit": run_commit or last_commit(),
         "latest_commit": last_commit(),
         "config_path": config_path,
         "all_passed": all(bool(item.get("success")) for item in run_results),

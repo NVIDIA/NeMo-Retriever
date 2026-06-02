@@ -28,7 +28,18 @@ from dataclasses import dataclass, field
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.errors import ParseError, TokenError
 from sqlglot.optimizer.qualify import qualify
+
+
+class SQLSyntaxError(ValueError):
+    """Raised when ``sqlglot`` cannot parse the SQL for the given dialect.
+
+    Distinguishes pure syntax/tokenization failures from later resolution
+    issues (e.g. unknown tables, schema mismatches), so callers can classify
+    validation outcomes precisely instead of treating an unparseable query
+    the same as a parseable query that references no known tables.
+    """
 
 
 @dataclass
@@ -506,8 +517,8 @@ def extract_tables_and_columns(
     """
     try:
         statement = sqlglot.parse_one(sql, dialect=dialect)
-    except Exception:
-        return ExtractionResult()
+    except (ParseError, TokenError) as err:
+        raise SQLSyntaxError(str(err)) from err
 
     ast_node_count = sum(1 for _ in statement.walk())
 

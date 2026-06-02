@@ -64,15 +64,24 @@ from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.model import is_vl_rerank_model
 from nemo_retriever.graph.gpu_operator import GPUOperator
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.utils.remote_auth import resolve_remote_api_key
 
 
 logger = logging.getLogger(__name__)
 
 _render_warned = False
 _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
+_DEFAULT_RERANK_INVOKE_URL = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
+_DEFAULT_VL_RERANK_INVOKE_URL = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
 _DEFAULT_MAX_LENGTH = 512
 _DEFAULT_BATCH_SIZE = 32
 _SCORE_COLUMN = "rerank_score"
+
+
+def _default_rerank_invoke_url(model_name: str | None) -> str:
+    if is_vl_rerank_model(model_name):
+        return _DEFAULT_VL_RERANK_INVOKE_URL
+    return _DEFAULT_RERANK_INVOKE_URL
 
 
 # ---------------------------------------------------------------------------
@@ -418,12 +427,17 @@ class NemotronRerankCPUActor(AbstractOperator, CPUOperator):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._kwargs = dict(kwargs)
-        rerank_invoke_url = str(self._kwargs.get("rerank_invoke_url") or "").strip()
-        if not rerank_invoke_url:
+        configured_url = str(self._kwargs.get("rerank_invoke_url") or "").strip()
+        rerank_invoke_url = configured_url or _default_rerank_invoke_url(
+            str(self._kwargs.get("model_name") or _DEFAULT_MODEL)
+        )
+        api_key = resolve_remote_api_key(str(self._kwargs.get("api_key") or ""))
+        if api_key:
+            self._kwargs["api_key"] = api_key
+        elif not configured_url:
             raise ValueError(
-                "NemotronRerankCPUActor requires an explicit `rerank_invoke_url` (no default endpoint). "
-                "For local GPU reranking, omit the URL and the ArchetypeOperator will dispatch to "
-                "NemotronRerankGPUActor."
+                "NemotronRerankCPUActor defaulted to the hosted rerank endpoint but no API key is configured. "
+                "Set NVIDIA_API_KEY/NGC_API_KEY or pass rerank_invoke_url for a local endpoint."
             )
         self._kwargs["rerank_invoke_url"] = rerank_invoke_url
         self._model = None

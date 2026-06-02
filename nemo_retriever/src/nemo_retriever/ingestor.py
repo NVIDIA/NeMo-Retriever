@@ -123,8 +123,11 @@ class ingestor:
         params: IngestExecuteParams | None = None,
         **kwargs: Any,
     ) -> Union[List[Any], Tuple[Any, ...]]:
-        """
-        Execute the configured ingestion pipeline (placeholder).
+        """Execute the configured ingestion pipeline (placeholder).
+
+        In ``run_mode='service'``, ``return_results`` (default ``True``)
+        controls whether completed rows are fetched into
+        ``ServiceIngestResult.dataframe``.
         """
         _ = _merge_params(params, kwargs)
         self._not_implemented("ingest")

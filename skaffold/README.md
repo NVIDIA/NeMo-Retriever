@@ -1,8 +1,0 @@
-# Skaffold - NeMo Retriever Library Development Team Only
-
-
-Skaffold is intended to support the NeMo Retriever Library development team with Kubernetes development and testing. It is not meant to be used in production deployments nor for local testing.
-
-We offer Kubernetes support through Helm and you can find those instructions at [Helm Documentation](../nemo_retriever/helm/README.md).
-
-**Docker Compose** (unsupported, local development only) is documented in [`nemo_retriever/docker.md`](../nemo_retriever/docker.md).
