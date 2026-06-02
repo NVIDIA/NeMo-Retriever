@@ -105,4 +105,3 @@ def test_reset_tables_props_sets_type():
     props = schema.tables_df.iloc[0]["props"]
     assert props["type"] == "base table"
     assert props["name"] == "orders"
-
