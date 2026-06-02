@@ -71,7 +71,7 @@ When `vdb_op="lancedb"` (or `vdb=LanceDB(...)` is passed explicitly), `_construc
 `LanceDB.run` (in `lancedb.py`) orchestrates:
 
 1. **`create_index`** — connects with `lancedb.connect(self.uri)`, transforms ingestion batches into Arrow rows (`vector`, `text`, `metadata`, `source`), and **`db.create_table(...)`** with schema and `on_bad_vectors` policy.
-2. **`write_to_index`** — builds the **vector index** (e.g. IVF/HNSW) and optionally an **FTS** index when `hybrid=True`.
+2. **`write_to_index`** — builds the **vector index** (e.g. IVF/HNSW) and optionally an **FTS/BM25** index over the ingested `text` column when `hybrid=True`.
 
 Common constructor arguments include:
 
@@ -82,7 +82,7 @@ Common constructor arguments include:
 | `overwrite`     | Table create mode vs append |
 | `vector_dim`    | Expected embedding dimension (default 2048) |
 | `index_type` / `metric` / `num_partitions` / `num_sub_vectors` | Vector index tuning |
-| `hybrid`        | Also build FTS on `text` |
+| `hybrid`        | Also build the LanceDB FTS/BM25 index on ingested `text` |
 | `on_bad_vectors`| `drop`, `fill`, `null`, or `error` |
 
 ---
