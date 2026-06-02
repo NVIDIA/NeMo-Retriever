@@ -15,7 +15,7 @@ from nemo_retriever.ingest_manifest import (
     format_branch_summary,
     plan_extraction_branches,
 )
-from nemo_retriever.ingestor import create_ingestor
+from nemo_retriever.ingestor import Ingestor, create_ingestor
 from nemo_retriever.ocr.config import OCRLang, OCRVersion
 from nemo_retriever.params import (
     ASRParams,
@@ -23,9 +23,11 @@ from nemo_retriever.params import (
     AudioVisualFuseParams,
     BatchTuningParams,
     CaptionParams,
+    DedupParams,
     EmbedParams,
     ExtractParams,
     HtmlChunkParams,
+    StoreParams,
     TextChunkParams,
     VdbUploadParams,
     VideoFrameParams,
@@ -68,6 +70,8 @@ _SUPPORTED_INPUT_TYPES: tuple[IngestInputTypeValue, ...] = (
 _AUDIO_SPLIT_INTERVAL = 500000
 _VIDEO_FRAME_FPS = 0.5
 _VIDEO_TEXT_DEDUP_MAX_DROPPED_FRAMES = 2
+_DEFAULT_TEXT_CHUNK_MAX_TOKENS = 1024
+_DEFAULT_TEXT_CHUNK_OVERLAP_TOKENS = 150
 DEFAULT_LANCEDB_URI = "lancedb"
 DEFAULT_TABLE_NAME = "nemo-retriever"
 _DRY_RUN_SECRET_FIELD_PATTERNS = ("api_key", "password", "secret", "credential", "bearer")
@@ -145,6 +149,7 @@ class ResolvedIngestPlan:
     video_frame_params: VideoFrameParams | None
     video_text_dedup_params: VideoFrameTextDedupParams | None
     av_fuse_params: AudioVisualFuseParams | None
+    split_config: dict[str, Any] | None
     caption_params: CaptionParams | None
     embed_params: EmbedParams | None
     vdb_params: VdbUploadParams
@@ -190,9 +195,46 @@ class ResolvedIngestPlan:
             "video_frames": _params_to_dry_run_dict(self.video_frame_params),
             "video_frame_text_dedup": _params_to_dry_run_dict(self.video_text_dedup_params),
             "audio_visual_fuse": _params_to_dry_run_dict(self.av_fuse_params),
+            "split_config": _params_to_dry_run_dict(self.split_config),
             "caption": _params_to_dry_run_dict(self.caption_params),
             "embed": _params_to_dry_run_dict(self.embed_params),
             "vdb_upload": _params_to_dry_run_dict(self.vdb_params),
+        }
+
+
+@dataclass(frozen=True)
+class IngestExecutionResult:
+    """Structured result from executing a resolved root ingest plan."""
+
+    plan: ResolvedIngestPlan
+    result: object
+    n_rows: int | None
+    initial_n_rows: int | None
+    metadata: dict[str, Any]
+
+    @property
+    def documents(self) -> list[str]:
+        return list(self.plan.documents)
+
+    @property
+    def lancedb_uri(self) -> str:
+        return self.plan.lancedb_uri
+
+    @property
+    def table_name(self) -> str:
+        return self.plan.table_name
+
+    @property
+    def lancedb_target(self) -> str:
+        return f"{self.lancedb_uri}/{self.table_name}"
+
+    def to_summary_dict(self) -> dict[str, Any]:
+        return {
+            "documents": self.documents,
+            "lancedb_uri": self.lancedb_uri,
+            "result": self.result,
+            "table_name": self.table_name,
+            "n_rows": self.n_rows,
         }
 
 
@@ -217,6 +259,8 @@ def _is_dry_run_secret_field(key: Any) -> bool:
 
 def _strip_secret_values(value: Any) -> Any:
     """Redact secrets from dry-run reporting only."""
+    if hasattr(value, "model_dump"):
+        return _strip_secret_values(value.model_dump(mode="json"))
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for key, nested in value.items():
@@ -340,6 +384,7 @@ def _build_caption_params(
     *,
     caption: bool,
     caption_invoke_url: str | None,
+    caption_api_key: str | None,
     caption_model_name: str | None,
     caption_context_text_max_chars: int | None,
     caption_infographics: bool | None,
@@ -362,6 +407,7 @@ def _build_caption_params(
         key: value
         for key, value in {
             "endpoint_url": caption_invoke_url,
+            "api_key": caption_api_key,
             "model_name": caption_model_name,
             "context_text_max_chars": caption_context_text_max_chars,
             "caption_infographics": caption_infographics,
@@ -371,10 +417,30 @@ def _build_caption_params(
     return CaptionParams(**caption_kwargs)
 
 
+def _build_dedup_params(
+    *,
+    dedup: bool,
+    dedup_iou_threshold: float | None,
+) -> DedupParams | None:
+    if not dedup:
+        if dedup_iou_threshold is not None:
+            raise ValueError("Dedup options require --dedup: dedup_iou_threshold.")
+        return None
+    dedup_kwargs = {}
+    if dedup_iou_threshold is not None:
+        dedup_kwargs["iou_threshold"] = dedup_iou_threshold
+    return DedupParams(**dedup_kwargs)
+
+
 def _build_embed_kwargs(
     embed_invoke_url: str | None,
     embed_model_name: str | None,
     local_ingest_embed_backend: LocalIngestEmbedBackendValue | None = None,
+    embed_api_key: str | None = None,
+    embed_modality: str | None = None,
+    text_elements_modality: str | None = None,
+    structured_elements_modality: str | None = None,
+    embed_granularity: str | None = None,
     embed_workers: int | None = None,
     embed_batch_size: int | None = None,
     embed_cpus_per_actor: float | None = None,
@@ -389,6 +455,16 @@ def _build_embed_kwargs(
         embed_kwargs["embed_model_name"] = embed_model_name
     if local_ingest_embed_backend is not None:
         embed_kwargs["local_ingest_embed_backend"] = local_ingest_embed_backend
+    if embed_api_key is not None:
+        embed_kwargs["api_key"] = embed_api_key
+    if embed_modality is not None:
+        embed_kwargs["embed_modality"] = embed_modality
+    if text_elements_modality is not None:
+        embed_kwargs["text_elements_modality"] = text_elements_modality
+    if structured_elements_modality is not None:
+        embed_kwargs["structured_elements_modality"] = structured_elements_modality
+    if embed_granularity is not None:
+        embed_kwargs["embed_granularity"] = embed_granularity
     embed_tuning = _build_embed_batch_tuning(
         embed_workers=embed_workers,
         embed_batch_size=embed_batch_size,
@@ -402,6 +478,7 @@ def _build_embed_kwargs(
 
 def _build_extract_batch_tuning(
     *,
+    pdf_split_batch_size: int | None,
     pdf_extract_workers: int | None,
     pdf_extract_batch_size: int | None,
     pdf_extract_cpus_per_task: float | None,
@@ -417,10 +494,14 @@ def _build_extract_batch_tuning(
     table_structure_batch_size: int | None,
     table_structure_cpus_per_actor: float | None,
     table_structure_gpus_per_actor: float | None,
+    nemotron_parse_workers: int | None,
+    nemotron_parse_batch_size: int | None,
+    nemotron_parse_gpus_per_actor: float | None,
 ) -> BatchTuningParams | None:
     tuning_kwargs = {
         key: value
         for key, value in {
+            "pdf_split_batch_size": pdf_split_batch_size,
             "pdf_extract_workers": pdf_extract_workers,
             "pdf_extract_batch_size": pdf_extract_batch_size,
             # BatchTuningParams names this per-Ray-task reservation num_cpus.
@@ -437,6 +518,9 @@ def _build_extract_batch_tuning(
             "table_structure_batch_size": table_structure_batch_size,
             "table_structure_cpus_per_actor": table_structure_cpus_per_actor,
             "gpu_table_structure": table_structure_gpus_per_actor,
+            "nemotron_parse_workers": nemotron_parse_workers,
+            "nemotron_parse_batch_size": nemotron_parse_batch_size,
+            "gpu_nemotron_parse": nemotron_parse_gpus_per_actor,
         }.items()
         if value is not None
     }
@@ -464,6 +548,50 @@ def _build_embed_batch_tuning(
 
 
 _LOCAL_VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+
+
+def _build_text_chunk_kwargs(
+    *,
+    text_chunk: bool,
+    text_chunk_max_tokens: int | None,
+    text_chunk_overlap_tokens: int | None,
+) -> tuple[bool, dict[str, int]]:
+    enabled = bool(text_chunk) or text_chunk_max_tokens is not None or text_chunk_overlap_tokens is not None
+    if not enabled:
+        return False, {}
+    return True, {
+        "max_tokens": (
+            int(text_chunk_max_tokens) if text_chunk_max_tokens is not None else _DEFAULT_TEXT_CHUNK_MAX_TOKENS
+        ),
+        "overlap_tokens": (
+            int(text_chunk_overlap_tokens)
+            if text_chunk_overlap_tokens is not None
+            else _DEFAULT_TEXT_CHUNK_OVERLAP_TOKENS
+        ),
+    }
+
+
+def _split_config_for_families(
+    families: set[str],
+    text_chunk_kwargs: dict[str, int],
+) -> dict[str, Any] | None:
+    if not text_chunk_kwargs:
+        return None
+
+    chunk_dict = TextChunkParams(**text_chunk_kwargs).model_dump()
+    split_config: dict[str, Any] = {}
+    if families & {"pdf", "doc"}:
+        split_config["pdf"] = dict(chunk_dict)
+    # Txt/html chunking is already passed through text_params/html_params.
+    # Keep split_config for families that do not have dedicated params here.
+    if "image" in families:
+        split_config["image"] = dict(chunk_dict)
+    if "audio" in families:
+        split_config["audio"] = dict(chunk_dict)
+    if "video" in families:
+        split_config["video"] = dict(chunk_dict)
+        split_config["audio"] = dict(chunk_dict)
+    return split_config or None
 
 
 def _build_rerank_kwargs(
@@ -515,6 +643,8 @@ def resolve_ingest_plan(
     extract_infographics: bool | None = None,
     extract_page_as_image: bool | None = None,
     use_page_elements: bool | None = None,
+    use_graphic_elements: bool | None = None,
+    use_table_structure: bool | None = None,
     segment_audio: bool | None = None,
     audio_split_type: AudioSplitTypeValue = "size",
     audio_split_interval: int | None = None,
@@ -527,6 +657,7 @@ def resolve_ingest_plan(
     video_av_fuse: bool | None = None,
     caption: bool = False,
     caption_invoke_url: str | None = None,
+    caption_api_key: str | None = None,
     caption_model_name: str | None = None,
     caption_context_text_max_chars: int | None = None,
     caption_infographics: bool | None = None,
@@ -542,9 +673,19 @@ def resolve_ingest_plan(
     graphic_elements_invoke_url: str | None = None,
     table_structure_invoke_url: str | None = None,
     table_output_format: TableOutputFormatValue | None = None,
+    extract_api_key: str | None = None,
     embed_invoke_url: str | None = None,
     embed_model_name: str | None = None,
     local_ingest_embed_backend: LocalIngestEmbedBackendValue | None = None,
+    embed_api_key: str | None = None,
+    embed_modality: str | None = None,
+    text_elements_modality: str | None = None,
+    structured_elements_modality: str | None = None,
+    embed_granularity: str | None = None,
+    text_chunk: bool = False,
+    text_chunk_max_tokens: int | None = None,
+    text_chunk_overlap_tokens: int | None = None,
+    pdf_split_batch_size: int | None = None,
     pdf_extract_workers: int | None = None,
     pdf_extract_batch_size: int | None = None,
     pdf_extract_cpus_per_task: float | None = None,
@@ -560,6 +701,9 @@ def resolve_ingest_plan(
     table_structure_batch_size: int | None = None,
     table_structure_cpus_per_actor: float | None = None,
     table_structure_gpus_per_actor: float | None = None,
+    nemotron_parse_workers: int | None = None,
+    nemotron_parse_batch_size: int | None = None,
+    nemotron_parse_gpus_per_actor: float | None = None,
     embed_workers: int | None = None,
     embed_batch_size: int | None = None,
     embed_cpus_per_actor: float | None = None,
@@ -595,6 +739,8 @@ def resolve_ingest_plan(
                 "extract_infographics": extract_infographics,
                 "extract_page_as_image": extract_page_as_image,
                 "use_page_elements": use_page_elements,
+                "use_graphic_elements": use_graphic_elements,
+                "use_table_structure": use_table_structure,
                 "page_elements_invoke_url": page_elements_invoke_url,
                 "ocr_invoke_url": ocr_invoke_url,
                 "ocr_version": ocr_version,
@@ -602,6 +748,7 @@ def resolve_ingest_plan(
                 "graphic_elements_invoke_url": graphic_elements_invoke_url,
                 "table_structure_invoke_url": table_structure_invoke_url,
                 "table_output_format": table_output_format,
+                "api_key": extract_api_key,
             }.items()
             if value is not None
         }
@@ -610,6 +757,7 @@ def resolve_ingest_plan(
         extract_kwargs["use_table_structure"] = True
 
     extract_tuning = _build_extract_batch_tuning(
+        pdf_split_batch_size=pdf_split_batch_size,
         pdf_extract_workers=pdf_extract_workers,
         pdf_extract_batch_size=pdf_extract_batch_size,
         pdf_extract_cpus_per_task=pdf_extract_cpus_per_task,
@@ -625,6 +773,9 @@ def resolve_ingest_plan(
         table_structure_batch_size=table_structure_batch_size,
         table_structure_cpus_per_actor=table_structure_cpus_per_actor,
         table_structure_gpus_per_actor=table_structure_gpus_per_actor,
+        nemotron_parse_workers=nemotron_parse_workers,
+        nemotron_parse_batch_size=nemotron_parse_batch_size,
+        nemotron_parse_gpus_per_actor=nemotron_parse_gpus_per_actor,
     )
     if extract_tuning is not None:
         extract_kwargs["batch_tuning"] = extract_tuning
@@ -633,6 +784,11 @@ def resolve_ingest_plan(
         embed_invoke_url,
         embed_model_name,
         local_ingest_embed_backend=local_ingest_embed_backend,
+        embed_api_key=embed_api_key,
+        embed_modality=embed_modality,
+        text_elements_modality=text_elements_modality,
+        structured_elements_modality=structured_elements_modality,
+        embed_granularity=embed_granularity,
         embed_workers=embed_workers,
         embed_batch_size=embed_batch_size,
         embed_cpus_per_actor=embed_cpus_per_actor,
@@ -646,14 +802,29 @@ def resolve_ingest_plan(
     caption_params = _build_caption_params(
         caption=caption,
         caption_invoke_url=caption_invoke_url,
+        caption_api_key=caption_api_key,
         caption_model_name=caption_model_name,
         caption_context_text_max_chars=caption_context_text_max_chars,
         caption_infographics=caption_infographics,
     )
 
     families = _branch_families(branches)
-    text_params = TextChunkParams() if "txt" in families else None
-    html_params = HtmlChunkParams() if "html" in families else None
+    text_chunk_enabled, text_chunk_kwargs = _build_text_chunk_kwargs(
+        text_chunk=text_chunk,
+        text_chunk_max_tokens=text_chunk_max_tokens,
+        text_chunk_overlap_tokens=text_chunk_overlap_tokens,
+    )
+    text_params = (
+        (TextChunkParams(**text_chunk_kwargs) if text_chunk_enabled else TextChunkParams())
+        if "txt" in families
+        else None
+    )
+    html_params = (
+        (HtmlChunkParams(**text_chunk_kwargs) if text_chunk_enabled else HtmlChunkParams())
+        if "html" in families
+        else None
+    )
+    split_config = _split_config_for_families(families, text_chunk_kwargs) if text_chunk_enabled else None
     (
         audio_chunk_params,
         asr_params,
@@ -693,11 +864,116 @@ def resolve_ingest_plan(
         video_frame_params=video_frame_params,
         video_text_dedup_params=video_text_dedup_params,
         av_fuse_params=av_fuse_params,
+        split_config=split_config,
         caption_params=caption_params,
         embed_params=embed_params,
         vdb_params=vdb_params,
         lancedb_uri=lancedb_uri,
         table_name=table_name,
+    )
+
+
+_USE_PLAN_PARAMS = object()
+
+
+def build_ingest_pipeline(
+    plan: ResolvedIngestPlan,
+    *,
+    create_kwargs: dict[str, Any] | None = None,
+    split_config: Any = _USE_PLAN_PARAMS,
+    dedup_params: DedupParams | None = None,
+    caption_params: Any = _USE_PLAN_PARAMS,
+    store_params: StoreParams | None = None,
+    vdb_params: Any = _USE_PLAN_PARAMS,
+) -> Ingestor:
+    """Build the SDK ingest chain from a resolved plan without executing it.
+
+    This is the shared implementation used by root ``retriever ingest`` and
+    compatibility wrappers that need to preserve additional development-only
+    stages around the same manifest-routed extract/embed path.
+    """
+
+    extract_kwargs = plan.extract_call_kwargs()
+    resolved_split_config = plan.split_config if split_config is _USE_PLAN_PARAMS else split_config
+    if resolved_split_config is not None:
+        extract_kwargs["split_config"] = resolved_split_config
+
+    resolved_create_kwargs = dict(plan.create_kwargs)
+    if create_kwargs:
+        resolved_create_kwargs.update(create_kwargs)
+    ingestor = create_ingestor(**resolved_create_kwargs).files(plan.documents)
+    ingestor = ingestor.extract(plan.extract_params, **extract_kwargs)
+    if dedup_params is not None:
+        ingestor = ingestor.dedup(dedup_params)
+
+    resolved_caption_params = plan.caption_params if caption_params is _USE_PLAN_PARAMS else caption_params
+    if resolved_caption_params is not None:
+        ingestor = ingestor.caption(resolved_caption_params)
+
+    ingestor = ingestor.embed(plan.embed_params) if plan.embed_params is not None else ingestor.embed()
+    if store_params is not None:
+        ingestor = ingestor.store(store_params)
+
+    resolved_vdb_params = plan.vdb_params if vdb_params is _USE_PLAN_PARAMS else vdb_params
+    if resolved_vdb_params is not None:
+        ingestor = ingestor.vdb_upload(resolved_vdb_params)
+    return ingestor
+
+
+def execute_ingest_plan(
+    plan: ResolvedIngestPlan,
+    *,
+    overwrite: bool = True,
+    verify_rows: bool = True,
+    raise_on_empty: bool = True,
+    create_kwargs: dict[str, Any] | None = None,
+    split_config: Any = _USE_PLAN_PARAMS,
+    dedup_params: DedupParams | None = None,
+    caption_params: Any = _USE_PLAN_PARAMS,
+    store_params: StoreParams | None = None,
+    vdb_params: Any = _USE_PLAN_PARAMS,
+) -> IngestExecutionResult:
+    """Execute a resolved ingest plan and return structured execution data.
+
+    Root ``retriever ingest`` uses row verification as its public success bar.
+    Development wrappers can disable verification while preserving the exact
+    shared plan/build/ingest path and layering their own reporting afterward.
+    """
+
+    initial_n_rows = None
+    if verify_rows and not overwrite:
+        initial_n_rows = _count_lancedb_rows(plan.lancedb_uri, plan.table_name)
+
+    result = build_ingest_pipeline(
+        plan,
+        create_kwargs=create_kwargs,
+        split_config=split_config,
+        dedup_params=dedup_params,
+        caption_params=caption_params,
+        store_params=store_params,
+        vdb_params=vdb_params,
+    ).ingest()
+
+    n_rows = _count_lancedb_rows(plan.lancedb_uri, plan.table_name) if verify_rows else None
+    if verify_rows and raise_on_empty:
+        _raise_for_empty_ingest(
+            documents=plan.documents,
+            lancedb_uri=plan.lancedb_uri,
+            table_name=plan.table_name,
+            n_rows=n_rows,
+            initial_n_rows=initial_n_rows,
+        )
+
+    return IngestExecutionResult(
+        plan=plan,
+        result=result,
+        n_rows=n_rows,
+        initial_n_rows=initial_n_rows,
+        metadata={
+            "lancedb_target": f"{plan.lancedb_uri}/{plan.table_name}",
+            "profile": plan.profile,
+            "branch_summary": format_branch_summary(plan.branches),
+        },
     )
 
 
@@ -717,6 +993,8 @@ def ingest_documents(
     extract_infographics: bool | None = None,
     extract_page_as_image: bool | None = None,
     use_page_elements: bool | None = None,
+    use_graphic_elements: bool | None = None,
+    use_table_structure: bool | None = None,
     segment_audio: bool | None = None,
     audio_split_type: AudioSplitTypeValue = "size",
     audio_split_interval: int | None = None,
@@ -729,9 +1007,13 @@ def ingest_documents(
     video_av_fuse: bool | None = None,
     caption: bool = False,
     caption_invoke_url: str | None = None,
+    caption_api_key: str | None = None,
     caption_model_name: str | None = None,
     caption_context_text_max_chars: int | None = None,
     caption_infographics: bool | None = None,
+    dedup: bool = False,
+    dedup_iou_threshold: float | None = None,
+    store_images_uri: str | None = None,
     ray_address: str | None = None,
     ray_log_to_driver: bool | None = None,
     lancedb_uri: str = DEFAULT_LANCEDB_URI,
@@ -744,9 +1026,19 @@ def ingest_documents(
     graphic_elements_invoke_url: str | None = None,
     table_structure_invoke_url: str | None = None,
     table_output_format: TableOutputFormatValue | None = None,
+    extract_api_key: str | None = None,
     embed_invoke_url: str | None = None,
     embed_model_name: str | None = None,
     local_ingest_embed_backend: LocalIngestEmbedBackendValue | None = None,
+    embed_api_key: str | None = None,
+    embed_modality: str | None = None,
+    text_elements_modality: str | None = None,
+    structured_elements_modality: str | None = None,
+    embed_granularity: str | None = None,
+    text_chunk: bool = False,
+    text_chunk_max_tokens: int | None = None,
+    text_chunk_overlap_tokens: int | None = None,
+    pdf_split_batch_size: int | None = None,
     pdf_extract_workers: int | None = None,
     pdf_extract_batch_size: int | None = None,
     pdf_extract_cpus_per_task: float | None = None,
@@ -762,6 +1054,9 @@ def ingest_documents(
     table_structure_batch_size: int | None = None,
     table_structure_cpus_per_actor: float | None = None,
     table_structure_gpus_per_actor: float | None = None,
+    nemotron_parse_workers: int | None = None,
+    nemotron_parse_batch_size: int | None = None,
+    nemotron_parse_gpus_per_actor: float | None = None,
     embed_workers: int | None = None,
     embed_batch_size: int | None = None,
     embed_cpus_per_actor: float | None = None,
@@ -798,6 +1093,8 @@ def ingest_documents(
         extract_infographics=extract_infographics,
         extract_page_as_image=extract_page_as_image,
         use_page_elements=use_page_elements,
+        use_graphic_elements=use_graphic_elements,
+        use_table_structure=use_table_structure,
         segment_audio=segment_audio,
         audio_split_type=audio_split_type,
         audio_split_interval=audio_split_interval,
@@ -810,6 +1107,7 @@ def ingest_documents(
         video_av_fuse=video_av_fuse,
         caption=caption,
         caption_invoke_url=caption_invoke_url,
+        caption_api_key=caption_api_key,
         caption_model_name=caption_model_name,
         caption_context_text_max_chars=caption_context_text_max_chars,
         caption_infographics=caption_infographics,
@@ -825,9 +1123,19 @@ def ingest_documents(
         graphic_elements_invoke_url=graphic_elements_invoke_url,
         table_structure_invoke_url=table_structure_invoke_url,
         table_output_format=table_output_format,
+        extract_api_key=extract_api_key,
         embed_invoke_url=embed_invoke_url,
         embed_model_name=embed_model_name,
         local_ingest_embed_backend=local_ingest_embed_backend,
+        embed_api_key=embed_api_key,
+        embed_modality=embed_modality,
+        text_elements_modality=text_elements_modality,
+        structured_elements_modality=structured_elements_modality,
+        embed_granularity=embed_granularity,
+        text_chunk=text_chunk,
+        text_chunk_max_tokens=text_chunk_max_tokens,
+        text_chunk_overlap_tokens=text_chunk_overlap_tokens,
+        pdf_split_batch_size=pdf_split_batch_size,
         pdf_extract_workers=pdf_extract_workers,
         pdf_extract_batch_size=pdf_extract_batch_size,
         pdf_extract_cpus_per_task=pdf_extract_cpus_per_task,
@@ -843,36 +1151,28 @@ def ingest_documents(
         table_structure_batch_size=table_structure_batch_size,
         table_structure_cpus_per_actor=table_structure_cpus_per_actor,
         table_structure_gpus_per_actor=table_structure_gpus_per_actor,
+        nemotron_parse_workers=nemotron_parse_workers,
+        nemotron_parse_batch_size=nemotron_parse_batch_size,
+        nemotron_parse_gpus_per_actor=nemotron_parse_gpus_per_actor,
         embed_workers=embed_workers,
         embed_batch_size=embed_batch_size,
         embed_cpus_per_actor=embed_cpus_per_actor,
         embed_gpus_per_actor=embed_gpus_per_actor,
     )
+    dedup_params = _build_dedup_params(dedup=dedup, dedup_iou_threshold=dedup_iou_threshold)
+    store_params = StoreParams(storage_uri=store_images_uri) if store_images_uri is not None else None
     if dry_run:
-        return plan.dry_run_data()
+        dry_run_data = plan.dry_run_data()
+        dry_run_data["dedup"] = _params_to_dry_run_dict(dedup_params)
+        dry_run_data["store"] = _params_to_dry_run_dict(store_params)
+        return dry_run_data
 
-    initial_n_rows = None if overwrite else _count_lancedb_rows(plan.lancedb_uri, plan.table_name)
-    ingestor = create_ingestor(**plan.create_kwargs).files(plan.documents)
-    ingestor = ingestor.extract(plan.extract_params, **plan.extract_call_kwargs())
-    if plan.caption_params is not None:
-        ingestor = ingestor.caption(plan.caption_params)
-    ingestor = ingestor.embed(plan.embed_params) if plan.embed_params is not None else ingestor.embed()
-    result = ingestor.vdb_upload(plan.vdb_params).ingest()
-    n_rows = _count_lancedb_rows(plan.lancedb_uri, plan.table_name)
-    _raise_for_empty_ingest(
-        documents=plan.documents,
-        lancedb_uri=plan.lancedb_uri,
-        table_name=plan.table_name,
-        n_rows=n_rows,
-        initial_n_rows=initial_n_rows,
-    )
-    return {
-        "documents": plan.documents,
-        "lancedb_uri": plan.lancedb_uri,
-        "result": result,
-        "table_name": plan.table_name,
-        "n_rows": n_rows,
-    }
+    return execute_ingest_plan(
+        plan,
+        overwrite=overwrite,
+        dedup_params=dedup_params,
+        store_params=store_params,
+    ).to_summary_dict()
 
 
 def _raise_for_empty_ingest(
