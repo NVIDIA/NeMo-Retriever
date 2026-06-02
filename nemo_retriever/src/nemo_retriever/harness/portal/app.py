@@ -3914,39 +3914,45 @@ async def get_cluster_pods(cluster_id: int):
             containers = []
             for cs in (pod.status.container_statuses or []):
                 state = "unknown"
-                if cs.state.running:
-                    state = "running"
-                elif cs.state.waiting:
-                    state = f"waiting ({cs.state.waiting.reason or 'unknown'})"
-                elif cs.state.terminated:
-                    state = f"terminated ({cs.state.terminated.reason or 'unknown'})"
+                if cs.state:
+                    if cs.state.running:
+                        state = "running"
+                    elif cs.state.waiting:
+                        state = f"waiting ({cs.state.waiting.reason or 'unknown'})"
+                    elif cs.state.terminated:
+                        state = f"terminated ({cs.state.terminated.reason or 'unknown'})"
                 containers.append({
                     "name": cs.name,
-                    "image": cs.image,
+                    "image": cs.image or "",
                     "state": state,
-                    "ready": cs.ready,
-                    "restart_count": cs.restart_count,
+                    "ready": bool(cs.ready),
+                    "restart_count": cs.restart_count or 0,
                 })
             spec_containers = pod.spec.containers or []
             resources = {}
             if spec_containers:
                 res = spec_containers[0].resources
                 if res:
+                    requests = res.requests
+                    limits = res.limits
                     resources = {
-                        "requests": dict(res.requests or {}),
-                        "limits": dict(res.limits or {}),
+                        "requests": {k: str(v) for k, v in (requests or {}).items()},
+                        "limits": {k: str(v) for k, v in (limits or {}).items()},
                     }
 
             start_time = None
             if pod.status.start_time:
-                start_time = pod.status.start_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+                try:
+                    start_time = pod.status.start_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+                except (AttributeError, TypeError):
+                    start_time = str(pod.status.start_time)
 
-            labels = dict(pod.metadata.labels or {})
+            labels = {k: str(v) for k, v in (pod.metadata.labels or {}).items()}
             results.append({
                 "name": pod.metadata.name,
                 "namespace": pod.metadata.namespace,
-                "phase": pod.status.phase,
-                "node": pod.spec.node_name,
+                "phase": pod.status.phase or "Unknown",
+                "node": pod.spec.node_name or "",
                 "start_time": start_time,
                 "labels": labels,
                 "containers": containers,
@@ -3959,12 +3965,14 @@ async def get_cluster_pods(cluster_id: int):
 
     try:
         pods = await asyncio.to_thread(_fetch_pods, cluster)
+        return {"pods": pods, "namespace": cluster.get("namespace", "default"), "cluster_name": cluster["name"]}
     except ImportError as exc:
         raise HTTPException(status_code=500, detail=f"Missing dependency: {exc}")
+    except HTTPException:
+        raise
     except Exception as exc:
+        logger.exception("Failed to fetch pods for cluster %s", cluster_id)
         raise HTTPException(status_code=502, detail=f"Failed to query cluster: {exc}")
-
-    return {"pods": pods, "namespace": cluster.get("namespace", "default"), "cluster_name": cluster["name"]}
 
 
 @app.get("/api/clusters/{cluster_id}/config")
@@ -3983,9 +3991,15 @@ async def get_cluster_config(cluster_id: int):
         configmaps = v1.list_namespaced_config_map(namespace=namespace)
         results = []
         for cm in configmaps.items:
-            labels = dict(cm.metadata.labels or {})
+            labels = {k: str(v) for k, v in (cm.metadata.labels or {}).items()}
             is_helm = "app.kubernetes.io/managed-by" in labels or "helm.sh/chart" in labels
-            data = dict(cm.data or {})
+            data = {k: str(v) for k, v in (cm.data or {}).items()}
+            created_at = None
+            if cm.metadata.creation_timestamp:
+                try:
+                    created_at = cm.metadata.creation_timestamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+                except (AttributeError, TypeError):
+                    created_at = str(cm.metadata.creation_timestamp)
             results.append({
                 "name": cm.metadata.name,
                 "labels": labels,
@@ -3994,18 +4008,20 @@ async def get_cluster_config(cluster_id: int):
                 "app": labels.get("app.kubernetes.io/name") or labels.get("app") or "",
                 "data_keys": list(data.keys()),
                 "data": data,
-                "created_at": cm.metadata.creation_timestamp.strftime("%Y-%m-%dT%H:%M:%SZ") if cm.metadata.creation_timestamp else None,
+                "created_at": created_at,
             })
         return results
 
     try:
         configs = await asyncio.to_thread(_fetch_config, cluster)
+        return {"configmaps": configs, "namespace": cluster.get("namespace", "default"), "cluster_name": cluster["name"]}
     except ImportError as exc:
         raise HTTPException(status_code=500, detail=f"Missing dependency: {exc}")
+    except HTTPException:
+        raise
     except Exception as exc:
+        logger.exception("Failed to fetch config for cluster %s", cluster_id)
         raise HTTPException(status_code=502, detail=f"Failed to query cluster: {exc}")
-
-    return {"configmaps": configs, "namespace": cluster.get("namespace", "default"), "cluster_name": cluster["name"]}
 
 
 # ---------------------------------------------------------------------------
