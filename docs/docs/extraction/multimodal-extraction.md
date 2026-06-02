@@ -49,7 +49,7 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
 
-Chart-labeled PDF regions are **not** routed through the Omni caption stage; they remain on the layout-and-OCR path. For scope and validation guidance, see [Image captioning](prerequisites-support-matrix.md#image-captioning-2605).
+Chart-labeled PDF regions are **not** routed through the Omni caption stage; they remain on the layout-and-OCR path. For caption scope and validation, see [Image captioning](#image-captioning).
 
 For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning) and set `caption_infographics=True` when you need VLM captions on infographic regions.
 
@@ -63,7 +63,7 @@ For natural-language infographic descriptions, optionally enable [image captioni
 
 Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
-OCR artifacts depend on how you deploy. **Helm / NIM:** the production chart uses **Nemotron OCR v1** (`nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0`). **Local Hugging Face inference:** the default engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). For Kubernetes defaults and the Helm-vs-local split, see [OCR artifacts (Helm vs local Hugging Face)](prerequisites-support-matrix.md#nemotron-ocr-v2-language-mode) in the support matrix.
+When you run extraction locally with Hugging Face weights, the default OCR engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). For Kubernetes deployment, see [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration) in the Helm chart README.
 
 **Related**
 
@@ -77,11 +77,22 @@ Image captioning generates natural-language descriptions for unstructured image 
 
 **Captioning is optional** — enable it in your ingest configuration (for example, the `caption` API or pipeline flag) when you need natural-language descriptions of image content. Reasoning traces are disabled by default for captioning.
 
+!!! important "PDF chart regions are not captioned by Omni"
+
+    When **nemotron-page-elements-v3** classifies a PDF region as **chart**, that region is processed through layout detection and OCR—not the Omni caption stage. Enabling the caption NIM and the `caption` pipeline stage does **not** send chart-labeled figures to `/v1/chat/completions`.
+
+    The caption stage covers:
+
+    - Unstructured content in the `images` column (standalone image files and page-element regions **not** classified as table, chart, or infographic)
+    - Optional infographic regions when you set `caption_infographics=True` on `CaptionParams` (the VLM caption is stored in `caption`, separate from OCR `text`)
+
+    To validate caption traffic during ingest, inspect metadata such as `page_elements_v3_counts_by_label`. If the figure is labeled `chart`, expect no Omni chat-completions requests for that region even when captioning is enabled.
+
 **Related**
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
-- [Image captioning](prerequisites-support-matrix.md#image-captioning-2605)
+- [Image captioning — NIM and hardware](prerequisites-support-matrix.md#image-captioning-2605)
 
 ## Metadata and content schema { #metadata-and-content-schema }
 
