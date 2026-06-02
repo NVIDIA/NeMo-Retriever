@@ -32,6 +32,7 @@ import duckdb
 import pandas as pd
 from typing import Optional
 
+from nemo_retriever.tabular_data.ingestion.model.reserved_words import TableTypes
 from nemo_retriever.tabular_data.sql_database import SQLDatabase
 
 logger = logging.getLogger(__name__)
@@ -92,11 +93,13 @@ class DuckDB(SQLDatabase):
 
     def get_tables(self) -> pd.DataFrame:
         """Return all tables from information_schema as a DataFrame."""
+        table_type_case = TableTypes.sql_case("table_type")
         return self.execute(
-            """
+            f"""
             SELECT
                 table_schema,
-                table_name
+                table_name,
+                {table_type_case} AS table_type
             FROM information_schema.tables
             ORDER BY table_schema, table_name
         """

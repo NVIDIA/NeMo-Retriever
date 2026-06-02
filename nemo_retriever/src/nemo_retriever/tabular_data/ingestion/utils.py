@@ -7,6 +7,8 @@ from datetime import timezone
 
 import pandas as pd
 
+from nemo_retriever.tabular_data.ingestion.model.reserved_words import TableTypes
+
 
 def flat_list_recursive(nested_list):
     output = []
@@ -57,6 +59,19 @@ def chunks(lst, n):
         yield lst[i : i + n]
 
 
+def _table_type_node_props(row: pd.Series) -> dict[str, str]:
+    """Neo4j ``Table`` prop ``type`` from a normalized tables row."""
+    if "table_type" not in row.index:
+        return {}
+    value = row["table_type"]
+    if value is None or pd.isna(value):
+        return {}
+    canonical = TableTypes.normalize(value)
+    if canonical is None:
+        return {}
+    return {"type": canonical}
+
+
 def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
     """Normalize and type a tables DataFrame. Expects a DataFrame only."""
     types = {
@@ -65,13 +80,17 @@ def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
         "created": "string",
         "description": "string",
     }
-    df = df.copy() if df is not None and not df.empty else pd.DataFrame(columns=list(types.keys()))
+    base_columns = list(types.keys())
+    df = df.copy() if df is not None and not df.empty else pd.DataFrame(columns=base_columns)
     if df.empty:
         return df
 
-    for key in types.keys():
+    for key in base_columns:
         if key not in df.columns:
             df[key] = pd.NA
+
+    if "table_type" in df.columns:
+        df["table_type"] = df["table_type"].map(TableTypes.normalize).astype("string")
 
     df = df.astype(dtype=types)
 

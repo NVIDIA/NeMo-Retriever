@@ -94,10 +94,12 @@ def get_schema_tables(db_name, schema_name):
                 (s:{Labels.SCHEMA}{{name:$schema_name}})-[:{Edges.CONTAINS}]->
                 (t:{Labels.TABLE})
                 WITH d.name as database, s.name as table_schema, t.name as table_name, t.id as t_id,
-                tostring(t.created) as created, t.description as description
+                tostring(t.created) as created, t.description as description,
+                t.type as table_type
                 RETURN collect({{
                     database: database, table_schema: table_schema, table_name: table_name,
-                    id:t_id, created: created, description: description
+                    id:t_id, created: created, description: description,
+                    table_type: table_type
                 }}) as tables
                 """
     res = get_neo4j_conn().query_read(
@@ -293,6 +295,7 @@ def merge_schema_nodes(nodes, created):
                             yield node as v1
                             set v1.created = coalesce(v1.created, $created)
                             set v1.description = coalesce(v1.description, node.props.description)
+                            set v1.type = coalesce(node.props.type, v1.type)
                         """
     get_neo4j_conn().query_write(
         query=merge_nodes_query,

@@ -76,7 +76,13 @@ class SQLDatabase(ABC):
     def get_tables(self) -> pd.DataFrame:
         """Return all tables.
 
-        Expected columns: ``table_schema``, ``table_name``.
+        Required columns: ``table_schema``, ``table_name``.
+
+        Optional column: ``table_type`` — persisted on Neo4j ``Table`` nodes as
+        ``type`` (used by text-to-SQL retrieval as ``table_type``). Canonical values
+        are defined in :class:`~nemo_retriever.tabular_data.ingestion.model.reserved_words.TableTypes`
+        (``view``, ``materialized view``, ``base table``). Connectors that do not
+        provide it leave ``type`` unset on existing nodes.
         """
 
     @abstractmethod

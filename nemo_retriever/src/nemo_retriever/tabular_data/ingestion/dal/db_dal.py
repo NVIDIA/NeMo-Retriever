@@ -250,12 +250,14 @@ def update_properties_in_graph_batch(items):
     # Bulk upsert nodes by id+label, updating all props while preserving any existing description.
     query = """
             UNWIND $items as item
-            WITH item, item.props.description as new_description,
-            apoc.map.removeKeys(item.props, ["description"]) as item_props_no_description
-            CALL apoc.merge.node.eager([item.label], {id: item.id}, {}, item_props_no_description)
+            WITH item,
+                 item.props.description as new_description,
+                 item.props.type as new_type,
+                 apoc.map.removeKeys(item.props, ["description", "type"]) as item_props_rest
+            CALL apoc.merge.node.eager([item.label], {id: item.id}, {}, item_props_rest)
             YIELD node
-            // keep existing description unless it is null
             SET node.description = coalesce(node.description, new_description)
+            SET node.type = coalesce(new_type, node.type)
             """
     get_neo4j_conn().query_write(
         query=query,

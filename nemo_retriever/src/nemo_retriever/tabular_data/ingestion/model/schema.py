@@ -8,6 +8,7 @@ from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
 import pandas as pd
 import numpy as np
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
+from nemo_retriever.tabular_data.ingestion.utils import _table_type_node_props
 
 pd.options.mode.chained_assignment = None
 
@@ -86,6 +87,7 @@ class Schema:
                 "created": None if pd.isna(x["created"]) else x["created"],
                 "description": None if pd.isna(x["description"]) else x["description"],
                 "id": x.id,
+                **_table_type_node_props(x),
             },
             axis=1,
         )
