@@ -22,10 +22,10 @@ def resolve_connector_from_tables(
     tables: Iterable[dict],
     connectors: list[SQLDatabase],
 ) -> SQLDatabase | None:
-    """Return the first connector whose ``database_name`` matches a relevant table's ``db_name``.
+    """Return the first connector whose ``database_name`` matches a relevant table's ``database_name``.
 
     Falls back to ``connectors[0]`` when no table provides a usable
-    ``db_name`` or when no connector matches.
+    ``database_name`` or when no connector matches.
     """
     if not connectors:
         return None
@@ -37,7 +37,7 @@ def resolve_connector_from_tables(
     for table in tables or []:
         if not isinstance(table, dict):
             continue
-        connector = db_to_connector.get(table.get("db_name"))
+        connector = db_to_connector.get(table.get("database_name"))
         if connector is not None:
             return connector
 

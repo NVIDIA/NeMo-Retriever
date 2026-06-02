@@ -70,12 +70,12 @@ def format_tables_for_prompt(tables: list[dict]) -> str:
         table_description = table.get("description", "")
 
         # Database and schema info
-        db_name = table.get("db_name", "")
+        database_name = table.get("database_name", "")
         schema_name = table.get("schema_name", "")
 
         # Build table header
-        if db_name and schema_name:
-            full_name = f"{db_name}.{schema_name}.{table_name}"
+        if database_name and schema_name:
+            full_name = f"{database_name}.{schema_name}.{table_name}"
         else:
             full_name = table_name
 

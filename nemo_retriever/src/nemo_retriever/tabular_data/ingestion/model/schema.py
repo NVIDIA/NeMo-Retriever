@@ -117,7 +117,7 @@ class Schema:
     def get_db_node(self):
         return self.db_node
 
-    def get_db_name(self):
+    def get_database_name(self):
         return self.db_node.get_name()
 
     def get_table_nodes(self):
@@ -404,7 +404,7 @@ class Schema:
             self.schema_name = schema_name
             props = {"name": schema_name}
             match_props = {
-                "db_name": self.get_db_name(),
+                "database_name": self.get_database_name(),
                 "name": schema_name,
             }
             self.schema_node = Neo4jNode(

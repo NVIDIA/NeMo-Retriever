@@ -30,7 +30,7 @@ def _run_sql(sql: str, connector: SQLDatabase | None) -> QueryResponse:
     """Execute SQL against the supplied ``connector``.
 
     Caller is responsible for picking the right connector for ``sql``
-    (e.g. by matching ``relevant_tables[*].db_name`` against
+    (e.g. by matching ``relevant_tables[*].database_name`` against
     ``connector.database_name``).
     """
     if connector is None:

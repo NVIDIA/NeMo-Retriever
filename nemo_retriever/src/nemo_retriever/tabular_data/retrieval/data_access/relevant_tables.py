@@ -32,15 +32,15 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_table_text(text: str) -> dict:
-    """Parse db_name, schema_name, table_name, and columns from the table-row text."""
+    """Parse database_name, schema_name, table_name, and columns from the table-row text."""
     parsed: dict = {}
     try:
         if not isinstance(text, str):
             return parsed
 
-        db_match = re.search(r"db_name:\s*([^,]+)", text)
+        db_match = re.search(r"database_name:\s*([^,]+)", text)
         if db_match:
-            parsed["db_name"] = db_match.group(1).strip()
+            parsed["database_name"] = db_match.group(1).strip()
 
         schema_match = re.search(r"schema_name:\s*([^,]+)", text)
         if schema_match:
@@ -93,8 +93,9 @@ def _normalize_table_to_relevant_shape(table: dict) -> dict:
         "table_info": text,
         **parsed,
     }
-    if table.get("db_name") and not entry.get("db_name"):
-        entry["db_name"] = table["db_name"]
+    database_name = table.get("database_name")
+    if database_name and not entry.get("database_name"):
+        entry["database_name"] = str(database_name).strip()
     if table.get("schema_name") and not entry.get("schema_name"):
         entry["schema_name"] = table["schema_name"]
     if table.get("columns") and not entry.get("columns"):
@@ -236,6 +237,8 @@ def get_relevant_tables(
                 "id": tid,
                 "text": text,
                 "pk": row.get("pk"),
+                "database_name": row.get("database_name"),
+                "schema_name": row.get("schema_name"),
             }
         )
         relevant_tables_list.append(entry)
