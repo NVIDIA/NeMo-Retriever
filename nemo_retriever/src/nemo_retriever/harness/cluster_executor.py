@@ -73,7 +73,8 @@ def _get_k8s_client(cluster: dict[str, Any]) -> tuple[Any, str]:
     else:
         from kubernetes import config as k8s_config
 
-        k8s_config.load_kube_config(context=cluster.get("kubeconfig_context"))
+        context = cluster.get("kubeconfig_context") or None
+        k8s_config.load_kube_config(context=context)
         api_client = k8s_client.ApiClient()
 
     return api_client, namespace
