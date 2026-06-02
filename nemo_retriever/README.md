@@ -10,8 +10,9 @@ You’ll set up a CUDA 13–compatible environment, install the library and its 
 
 ## Deployment at a glance
 
-- **Supported (Kubernetes / Helm):** deploy the retriever **service** and optional in-cluster **NIM** workloads with the **[`nemo_retriever/helm` chart](helm/README.md)**. Published **Helm** install and upgrade flows for the full extraction stack are documented in the **[NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)** (use together with the chart README for your release).
-- **Unsupported (Docker Compose):** looking for local **Docker Compose** workflows? See **[`docker.md`](docker.md)** — **unsupported developer tooling** for experimentation only, **not** a supported NIM deployment path.
+For Kubernetes deployments, use the **[`nemo_retriever/helm` chart](helm/README.md)** to deploy the retriever **service** and optional in-cluster **NIM** workloads. Published Helm install and upgrade flows for the full extraction stack are documented in the **[NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)**; use those docs together with the chart README for your release.
+
+For standalone service-image builds and local container runs, see **[`docker.md`](docker.md)**.
 
 ## Prerequisites
 
@@ -592,14 +593,10 @@ This means defaults are deterministic but easy to override when you need fixed b
 |---|---|---|
 | `override_cpu_count`, `override_gpu_count` | function args | Highest-priority CPU/GPU override |
 
-## NIM containers and Docker Compose (unsupported)
+## NIM containers
 
-Looking for local **Docker Compose** workflows (including multi-GPU NIM
-stacks)? See **[`docker.md`](docker.md)** — **unsupported developer tooling**
-only.
-
-For **supported** deployment of NeMo Retriever / **NIM** containers, use
-**Helm**: **[`helm/README.md`](helm/README.md)** and the **NeMo Retriever Library**
+For deployment of NeMo Retriever / **NIM** containers, use **Helm**:
+**[`helm/README.md`](helm/README.md)** and the **NeMo Retriever Library**
 documentation linked from that guide and the
 [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/).
 
