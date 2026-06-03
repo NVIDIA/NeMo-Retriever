@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, cast
 
 import pandas as pd
 
@@ -16,8 +16,10 @@ from nemo_retriever.retriever_graph_utils import (
     filter_retrieval_kwargs,
     rerank_long_dataframe_to_hits,
 )
+from nemo_retriever.vdb.lancedb_schema import normalize_content_type
 from nemo_retriever.vdb.operators import RetrieveVdbOperator
 from nemo_retriever.vdb.records import RetrievalHit
+from nemo_retriever.vdb.sidecar_metadata import parse_hit_content_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,110 @@ if TYPE_CHECKING:
         LLMClient,
         RetrievalResult,
     )
+
+
+def _normalize_content_type_allowlist(content_types: str | Sequence[str] | None) -> set[str] | None:
+    """Normalize query-time ``content_types`` filters to stored hit metadata values.
+
+    ``Retriever.query`` and ``Retriever.queries`` accept user-facing values such
+    as ``"text,table"`` and aliases such as ``"images"``. Retrieved hit metadata
+    uses canonical content types, so normalize the allowlist once before shaping
+    query results.
+    """
+    if content_types is None:
+        return None
+    raw_values: list[str]
+    if isinstance(content_types, str):
+        raw_values = content_types.split(",")
+    else:
+        raw_values = []
+        for value in content_types:
+            raw_values.extend(str(value).split(","))
+
+    normalized = {content_type for value in raw_values if (content_type := normalize_content_type(value)) is not None}
+    if not normalized:
+        raise ValueError("content_types must include at least one non-empty content type.")
+    return normalized
+
+
+def _hit_content_type(hit: dict[str, Any]) -> str | None:
+    metadata = parse_hit_content_metadata(hit)
+    for value in (
+        metadata.get("type"),
+        metadata.get("_content_type"),
+        hit.get("content_type"),
+        hit.get("_content_type"),
+    ):
+        normalized = normalize_content_type(value)
+        if normalized is not None:
+            return normalized
+    return None
+
+
+def _coerce_int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _hit_page_key(hit: dict[str, Any]) -> tuple[str, int] | None:
+    metadata = parse_hit_content_metadata(hit)
+    page_number = _coerce_int_or_none(hit.get("page_number"))
+    if page_number is None:
+        page_number = _coerce_int_or_none(metadata.get("page_number"))
+    if page_number is None:
+        return None
+
+    for value in (hit.get("pdf_basename"), metadata.get("pdf_basename")):
+        if isinstance(value, str) and value.strip():
+            return (value.strip(), page_number)
+
+    raw_doc = (
+        hit.get("source_id")
+        or hit.get("source")
+        or hit.get("path")
+        or metadata.get("source_id")
+        or metadata.get("source_name")
+    )
+    if not isinstance(raw_doc, str) or not raw_doc.strip():
+        return None
+    return (raw_doc.strip(), page_number)
+
+
+def _shape_query_hits(
+    hits: Sequence[dict[str, Any]],
+    *,
+    top_k: int,
+    page_dedup: bool = False,
+    content_types: str | Sequence[str] | None = None,
+) -> list[RetrievalHit]:
+    """Apply query-time filtering, page deduplication, and final truncation.
+
+    When ``content_types`` is set, hits without a recognizable content type are
+    excluded because they cannot be matched against the allowlist.
+    """
+    allowed_types = _normalize_content_type_allowlist(content_types)
+    shaped: list[RetrievalHit] = []
+    seen_pages: set[tuple[str, int]] = set()
+
+    for hit in hits:
+        if allowed_types is not None:
+            hit_type = _hit_content_type(hit)
+            if hit_type not in allowed_types:
+                continue
+        if page_dedup:
+            page_key = _hit_page_key(hit)
+            if page_key is not None:
+                if page_key in seen_pages:
+                    continue
+                seen_pages.add(page_key)
+        shaped.append(cast(RetrievalHit, dict(hit)))
+        if len(shaped) >= top_k:
+            break
+    return shaped
 
 
 def _coerce_vdb_init(user: dict[str, Any]) -> dict[str, Any]:
@@ -179,6 +285,9 @@ class Retriever:
         text_col = str(embed_params.text_column)
         df = pd.DataFrame({text_col: query_texts})
 
+        # Hybrid retrieval relies on these ordered query strings staying aligned
+        # with the embedded rows produced from ``df``. If this query graph grows
+        # distributed/shuffled stages, carry row-local query text or IDs instead.
         graph = self._get_graph(embed_extra=embed_extra)
         if not callable(getattr(graph, "resolve_for_local_execution", None)):
             raise TypeError("graph must provide resolve_for_local_execution() (e.g. pipeline_graph.Graph)")
@@ -216,34 +325,90 @@ class Retriever:
         query: str,
         *,
         top_k: Optional[int] = None,
+        candidate_k: Optional[int] = None,
+        page_dedup: bool = False,
+        content_types: str | Sequence[str] | None = None,
         vdb_kwargs: Optional[dict[str, Any]] = None,
         embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> list[RetrievalHit]:
-        return self.queries([query], top_k=top_k, vdb_kwargs=vdb_kwargs, embed_kwargs=embed_kwargs)[0]
+        """Run one retrieval query and return shaped hits.
+
+        ``top_k`` is the final number of hits to return. ``candidate_k`` is the
+        wider pre-filter/pre-dedup candidate pool and must be greater than or
+        equal to ``top_k``. Increase it when page deduplication or content-type
+        filtering would otherwise reduce the final hit count. ``page_dedup``
+        keeps the first hit per document page. ``content_types`` accepts a
+        comma-separated string or sequence of content types to keep, such as
+        ``"text,table"``, and normalizes values to the canonical content types
+        stored in hit metadata. Hits with missing or unknown content types are
+        excluded while this filter is active. Page deduplication and
+        content-type filtering are applied after vector retrieval, preserving
+        retriever ranking order.
+        """
+        return self.queries(
+            [query],
+            top_k=top_k,
+            candidate_k=candidate_k,
+            page_dedup=page_dedup,
+            content_types=content_types,
+            vdb_kwargs=vdb_kwargs,
+            embed_kwargs=embed_kwargs,
+        )[0]
 
     def queries(
         self,
         queries: Sequence[str],
         *,
         top_k: Optional[int] = None,
+        candidate_k: Optional[int] = None,
+        page_dedup: bool = False,
+        content_types: str | Sequence[str] | None = None,
         vdb_kwargs: Optional[dict[str, Any]] = None,
         embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> list[list[RetrievalHit]]:
+        """Run retrieval for multiple query strings and return shaped hits.
+
+        ``top_k`` is the final number of hits to return. ``candidate_k`` is the
+        wider pre-filter/pre-dedup candidate pool and must be greater than or
+        equal to ``top_k``. Increase it when page deduplication or content-type
+        filtering would otherwise reduce the final hit count. ``page_dedup``
+        keeps the first hit per document page. ``content_types`` accepts a
+        comma-separated string or sequence of content types to keep, such as
+        ``"text,table"``, and normalizes values to the canonical content types
+        stored in hit metadata. Hits with missing or unknown content types are
+        excluded while this filter is active. Page deduplication and
+        content-type filtering are applied after vector retrieval, preserving
+        retriever ranking order.
+        """
         query_texts = [str(q) for q in queries]
         if not query_texts:
             return []
 
         effective_top_k = int(top_k) if top_k is not None else int(self.top_k)
+        candidate_top_k = int(candidate_k) if candidate_k is not None else effective_top_k
+        if candidate_top_k < effective_top_k:
+            raise ValueError(
+                f"candidate_k ({candidate_top_k}) must be greater than or equal to top_k ({effective_top_k})."
+            )
         refine = self._refine_factor()
-        retrieval_top_k = effective_top_k * refine if self.rerank else effective_top_k
+        retrieval_top_k = candidate_top_k * refine if self.rerank else candidate_top_k
 
-        return self._execute_queries_graph(
+        raw_hits = self._execute_queries_graph(
             query_texts,
-            effective_top_k=effective_top_k,
+            effective_top_k=candidate_top_k,
             retrieval_top_k=retrieval_top_k,
             vdb_call_kwargs=vdb_kwargs,
             embed_extra=embed_kwargs,
         )
+        return [
+            _shape_query_hits(
+                hits,
+                top_k=effective_top_k,
+                page_dedup=page_dedup,
+                content_types=content_types,
+            )
+            for hits in raw_hits
+        ]
 
     def retrieve(
         self,

@@ -69,8 +69,8 @@ def _preflight_judge_endpoint(api_base: str, timeout: float = 5.0) -> None:
 
     Cloud endpoints aren't probed (no guaranteed public health route, and a
     bad cloud config isn't actionable from the runner). A local unreachable
-    endpoint nearly always means the user forgot to start the judge container,
-    so we surface the ``docker compose up judge`` hint up front instead of
+    endpoint nearly always means the user forgot to start the local judge,
+    so we surface that hint up front instead of
     burning trials on doomed judge calls.
     """
     from urllib.parse import urlparse
@@ -87,8 +87,8 @@ def _preflight_judge_endpoint(api_base: str, timeout: float = 5.0) -> None:
     except Exception as exc:
         raise typer.BadParameter(
             f"Judge endpoint {api_base} is unreachable ({exc}). "
-            "If you're using the local-NIM judge, start it first:\n"
-            "  docker compose up judge"
+            "If you're using the bundled local judge helper, start it from the repository root:\n"
+            "  docker compose -f nemo_retriever/dev/compose/judge.compose.yaml up -d judge"
         )
 
 

@@ -1,8 +1,8 @@
 # Neo4j Setup Guide
 
-> **Warning — unsupported Docker Compose (developer tooling).** The **Docker Compose** commands in this guide run **Neo4j locally** for development only. This is **not** a supported production deployment path. For **supported** NeMo Retriever / NIM deployment, use **[Helm](../../../../helm/README.md)** and the **[NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)**. For the canonical overview of Compose in this repo, see **[`docker.md`](../../../../docker.md)**.
+> **Warning — local Docker developer tooling.** The Compose commands in this guide run **Neo4j locally** for development only. This is **not** a supported production deployment path. For NeMo Retriever / NIM deployment, use **[Helm](../../../../helm/README.md)** and the **[NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)**.
 
-This guide walks you through running Neo4j locally via Docker and using the relational_db Neo4j connection from `nemo_retriever.relational_db.neo4j_connection`.
+This guide walks you through running Neo4j locally with the feature-owned Compose helper and using the relational_db Neo4j connection from `nemo_retriever.relational_db.neo4j_connection`.
 
 ---
 
@@ -42,7 +42,7 @@ NEO4J_PASSWORD=test
 > **Note:** `.env` is gitignored — never commit it. `.env.example` is committed as a template.
 
 > **Docker vs host:** Use `bolt://localhost:7687` when running Python on your host machine.
-> Use `bolt://neo4j:7687` (Docker service name) when running inside the Docker network.
+> Use a container DNS name such as `bolt://neo4j:7687` only when your client runs in the same Docker network.
 
 ---
 
@@ -60,19 +60,19 @@ uv pip install "neo4j>=5.0"
 
 ## 4 — Start Neo4j
 
-Docker Compose reads credentials from `.env` automatically:
+Start Neo4j with the local development Compose helper:
 
 ```bash
-docker compose --profile graph up -d neo4j
+docker compose -f nemo_retriever/dev/compose/neo4j.compose.yaml up -d neo4j
 ```
 
-Wait ~30 seconds for the container to become healthy, then verify:
+Wait ~30 seconds for the container to start accepting connections, then verify:
 
 ```bash
-docker compose ps neo4j
+docker compose -f nemo_retriever/dev/compose/neo4j.compose.yaml ps neo4j
 ```
 
-You should see `healthy` in the status column.
+You should see the `neo4j` container running.
 
 ### Access points
 
@@ -109,21 +109,21 @@ conn.verify_connectivity()
 
 ```bash
 # Start Neo4j
-docker compose --profile graph up -d neo4j
+docker compose -f nemo_retriever/dev/compose/neo4j.compose.yaml up -d neo4j
 
 # Stop Neo4j (data is preserved in the neo4j_data volume)
-docker compose --profile graph down neo4j
+docker compose -f nemo_retriever/dev/compose/neo4j.compose.yaml down
 
 # Wipe all data and start fresh
-docker compose --profile graph down neo4j -v
+docker compose -f nemo_retriever/dev/compose/neo4j.compose.yaml down -v
 ```
 
 ---
 
 ## Troubleshooting
 
-**`docker compose ps neo4j` shows `unhealthy`**  
-Give it more time (up to 60s on first run). Check logs: `docker compose logs neo4j`
+**`docker compose -f nemo_retriever/dev/compose/neo4j.compose.yaml ps neo4j` does not show a running container**
+Give it more time (up to 60s on first run). Check logs: `docker compose -f nemo_retriever/dev/compose/neo4j.compose.yaml logs neo4j`
 
 **`ServiceUnavailable: Failed to establish connection`**  
 Ensure the container is running and port 7687 is not blocked.
@@ -135,17 +135,4 @@ Ensure the container is running and port 7687 is not blocked.
 Neo4j native vector indexes require **Neo4j 5.11+**. The Docker image used (`neo4j:5.26`) satisfies this.
 
 **Password mismatch**  
-Recreate the container after changing `.env`: `docker compose --profile graph down neo4j -v && docker compose --profile graph up -d neo4j`
-
-
-
-# RUN WITH APOC!
-
-docker run \
-  --name neo4j \
-  -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/liav_is_my_king \
-  -e NEO4JLABS_PLUGINS='["apoc"]' \
-  -e NEO4J_dbms_security_procedures_unrestricted='apoc.*' \
-  -e NEO4J_dbms_security_procedures_allowlist='apoc.*' \
-  neo4j:5.26
+Recreate the container after changing `.env`: `docker compose -f nemo_retriever/dev/compose/neo4j.compose.yaml down -v && docker compose -f nemo_retriever/dev/compose/neo4j.compose.yaml up -d neo4j`.

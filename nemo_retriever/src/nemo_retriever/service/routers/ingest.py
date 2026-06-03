@@ -71,6 +71,7 @@ _GATEWAY_DOC_ID_HEADER = "X-Gateway-Document-Id"
 _GATEWAY_CALLBACK_HEADER = "X-Gateway-Callback-Url"
 _GATEWAY_PIPELINE_SPEC_HEADER = "X-Gateway-Pipeline-Spec"
 _GATEWAY_JOB_ID_HEADER = "X-Gateway-Job-Id"
+_GATEWAY_RETAIN_RESULTS_HEADER = "X-Gateway-Retain-Results"
 _PAGE_THRESHOLD_FOR_BATCH = 5
 
 # SSE keepalive cadence; tests monkey-patch this to a short value so
@@ -120,6 +121,33 @@ def _is_worker(request: Request) -> bool:
     re-validate via ``_require_job``).
     """
     return _mode(request) in ("realtime", "batch")
+
+
+def _retain_results_from_request(request: Request) -> bool:
+    val = request.headers.get(_GATEWAY_RETAIN_RESULTS_HEADER, "").strip().lower()
+    return val in ("1", "true", "yes")
+
+
+def _job_retain_results(job_id: str | None) -> bool:
+    if not job_id:
+        return False
+    tracker = get_job_tracker()
+    if tracker is None:
+        return False
+    return tracker.should_retain_results(job_id)
+
+
+def _work_item_retain_results(request: Request, *, job_id: str | None) -> bool:
+    """Whether the worker pool should cache row payloads for this upload."""
+    if request.headers.get(_GATEWAY_DOC_ID_HEADER):
+        return _retain_results_from_request(request)
+    return _job_retain_results(job_id)
+
+
+def _gateway_retain_results_headers(job_id: str) -> dict[str, str]:
+    if _job_retain_results(job_id):
+        return {_GATEWAY_RETAIN_RESULTS_HEADER: "true"}
+    return {}
 
 
 def _record_prometheus(
@@ -474,6 +502,7 @@ async def create_job(request: Request, body: JobCreateRequest) -> JobCreatedResp
             expected_documents=body.expected_documents,
             label=body.label,
             metadata=body.metadata,
+            retain_results=body.retain_results,
         )
     except JobTrackerError as exc:
         raise HTTPException(status_code=getattr(exc, "status_code", 500), detail=str(exc)) from exc
@@ -704,6 +733,7 @@ async def submit_document_to_job(
             _GATEWAY_DOC_ID_HEADER: document_id,
             _GATEWAY_JOB_ID_HEADER: job_id,
             _GATEWAY_CALLBACK_HEADER: callback_url,
+            **_gateway_retain_results_headers(job_id),
         }
         if validated_spec is not None:
             extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
@@ -763,6 +793,7 @@ async def submit_document_to_job(
             callback_url=gw_callback_url,
             job_id=gw_job_id,
             pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
+            retain_results=_work_item_retain_results(request, job_id=gw_job_id),
         ),
     )
 
@@ -831,6 +862,7 @@ async def submit_page_to_job(
                 _GATEWAY_DOC_ID_HEADER: page_id,
                 _GATEWAY_JOB_ID_HEADER: job_id,
                 _GATEWAY_CALLBACK_HEADER: callback_url,
+                **_gateway_retain_results_headers(job_id),
             },
         )
 
@@ -892,6 +924,7 @@ async def submit_page_to_job(
                 filename=file.filename,
                 callback_url=gw_callback_url,
                 job_id=gw_job_id,
+                retain_results=_work_item_retain_results(request, job_id=gw_job_id),
             ),
         )
 
@@ -963,6 +996,7 @@ async def submit_whole_document_to_job(
             _GATEWAY_DOC_ID_HEADER: document_id,
             _GATEWAY_JOB_ID_HEADER: job_id,
             _GATEWAY_CALLBACK_HEADER: callback_url,
+            **_gateway_retain_results_headers(job_id),
         }
         if validated_spec is not None:
             extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
@@ -1023,6 +1057,7 @@ async def submit_whole_document_to_job(
                 callback_url=gw_callback_url,
                 job_id=gw_job_id,
                 pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
+                retain_results=_work_item_retain_results(request, job_id=gw_job_id),
             ),
         )
 

@@ -6,7 +6,7 @@
     },
     {
       "path": ".github/PULL_REQUEST_TEMPLATE.md",
-      "description": "PR checklist: contributing guidelines, test coverage, documentation, docker-compose/Helm parity."
+      "description": "PR checklist: contributing guidelines, test coverage, and documentation."
     },
     {
       "path": ".pre-commit-config.yaml",

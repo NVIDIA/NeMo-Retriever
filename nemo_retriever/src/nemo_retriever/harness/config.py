@@ -73,7 +73,7 @@ class HarnessConfig:
     dataset_dir: str
     dataset_label: str
     preset: str
-    run_mode: str = "batch"
+    run_mode: str = "inprocess"
 
     query_csv: str | None = None
     input_type: str = "pdf"

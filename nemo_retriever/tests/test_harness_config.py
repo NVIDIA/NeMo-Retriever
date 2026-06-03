@@ -211,14 +211,14 @@ def test_load_harness_config_supports_managed_helm_fields(tmp_path: Path, monkey
                 "  run_mode: service",
                 "  manage_service: true",
                 "  keep_up: true",
-                "  helm_chart: nim-nvstaging/nemo-retriever",
-                "  helm_chart_version: 26.05-RC6",
+                "  helm_chart: nemo-microservices/nemo-retriever",
+                "  helm_chart_version: 26.5.0",
                 "  helm_release: nrl-smoke",
                 "  helm_namespace: nrl-smoke-ns",
                 "  helm_values_file: managed-values.yaml",
                 "  helm_set:",
-                "    service.image.repository: nvcr.io/nvstaging/nim/nrl-service",
-                "    service.image.tag: 26.05-RC6",
+                "    service.image.repository: nvcr.io/nvidia/nemo-microservices/nrl-service",
+                "    service.image.tag: 26.5.0",
                 "  helm_timeout: 900",
                 "  readiness_timeout: 1200",
                 "  helm_service_local_port: 17670",
@@ -243,13 +243,13 @@ def test_load_harness_config_supports_managed_helm_fields(tmp_path: Path, monkey
 
     assert cfg.manage_service is True
     assert cfg.keep_up is True
-    assert cfg.helm_chart == "nim-nvstaging/nemo-retriever"
-    assert cfg.helm_chart_version == "26.05-RC6"
+    assert cfg.helm_chart == "nemo-microservices/nemo-retriever"
+    assert cfg.helm_chart_version == "26.5.0"
     assert cfg.helm_release == "env-release"
     assert cfg.helm_namespace == "nrl-smoke-ns"
     assert cfg.helm_values_file == str(values_file.resolve())
-    assert cfg.helm_set["service.image.repository"] == "nvcr.io/nvstaging/nim/nrl-service"
-    assert cfg.helm_set["service.image.tag"] == "26.05-RC6"
+    assert cfg.helm_set["service.image.repository"] == "nvcr.io/nvidia/nemo-microservices/nrl-service"
+    assert cfg.helm_set["service.image.tag"] == "26.5.0"
     assert cfg.helm_timeout == 900
     assert cfg.readiness_timeout == 1200
     assert cfg.helm_service_local_port == 17670
@@ -272,12 +272,14 @@ def test_managed_helm_nrl_2605_example_config_is_parseable_and_secret_free(
     assert "password:" not in source
     assert "ngcImagePullSecret.password" not in source
     assert "ngcApiSecret.password" not in source
+    assert "26.05-RC" not in source
+    assert "nvstaging" not in source
     assert "x-nrl-chart-version: &nrl_chart_version" in source
-    assert "x-nrl-service-image-tag: &nrl_service_image_tag" in source
-    assert "x-a100-mig-1g-resource: &a100_mig_1g_resource" in source
-    assert "x-a100-mig-2g-resource: &a100_mig_2g_resource" in source
     assert "helm_chart_version: *nrl_chart_version" in source
-    assert "service.image.tag: *nrl_service_image_tag" in source
+    assert "service_max_concurrency:" not in source
+    assert "serviceConfig.pipeline." not in source
+    assert "nvidia.com/mig-" not in source
+    assert "nimOperator.page_elements.resources" not in source
 
     original_exists = Path.exists
 
@@ -299,22 +301,25 @@ def test_managed_helm_nrl_2605_example_config_is_parseable_and_secret_free(
     assert cfg.kubectl_bin == "microk8s kubectl"
     assert cfg.helm_sudo is True
     assert cfg.kubectl_sudo is True
-    assert cfg.helm_chart == "nim-nvstaging/nemo-retriever"
-    assert cfg.helm_chart_version == "26.05-RC6"
+    assert cfg.helm_chart == "nemo-microservices/nemo-retriever"
+    assert cfg.helm_chart_version == "26.5.0"
     assert cfg.helm_values_file == str(
         (harness_config.NEMO_RETRIEVER_ROOT / "harness" / "helm-profiles" / "core.yaml").resolve()
     )
-    assert cfg.helm_set["service.image.repository"] == "nvcr.io/nvstaging/nim/nrl-service"
-    assert cfg.helm_set["service.image.tag"] == "26.05-RC6"
-    assert cfg.helm_set["service.image.pullPolicy"] == "Always"
+    assert "service.image.repository" not in cfg.helm_set
+    assert "service.image.tag" not in cfg.helm_set
+    assert "service.image.pullPolicy" not in cfg.helm_set
     assert cfg.helm_set["ngcImagePullSecret.create"] is False
     assert cfg.helm_set["ngcImagePullSecret.name"] == "ngc-secret"
     assert cfg.helm_set["ngcApiSecret.create"] is False
     assert cfg.helm_set["ngcApiSecret.name"] == "ngc-api"
-    assert cfg.helm_set["nimOperator.page_elements.resources"] == {"limits": {"nvidia.com/mig-1g.10gb": 1}}
-    assert cfg.helm_set["nimOperator.table_structure.resources"] == {"limits": {"nvidia.com/mig-1g.10gb": 1}}
-    assert cfg.helm_set["nimOperator.ocr.resources"] == {"limits": {"nvidia.com/mig-2g.20gb": 1}}
-    assert cfg.helm_set["nimOperator.vlm_embed.resources"] == {"limits": {"nvidia.com/mig-2g.20gb": 1}}
+    assert cfg.service_max_concurrency == 8
+    assert "serviceConfig.pipeline.realtimeWorkers" not in cfg.helm_set
+    assert "serviceConfig.pipeline.batchWorkers" not in cfg.helm_set
+    assert "nimOperator.page_elements.resources" not in cfg.helm_set
+    assert "nimOperator.table_structure.resources" not in cfg.helm_set
+    assert "nimOperator.ocr.resources" not in cfg.helm_set
+    assert "nimOperator.vlm_embed.resources" not in cfg.helm_set
     assert "nimOperator.rerankqa.enabled" not in cfg.helm_set
 
 

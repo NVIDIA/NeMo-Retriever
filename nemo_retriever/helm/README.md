@@ -6,8 +6,6 @@ streams uploads through a set of NVIDIA NIM microservices
 (page-elements, table-structure, OCR, VLM embed by default) and exposes
 result + status APIs over HTTP / SSE.
 
-**Unsupported developer path:** ad-hoc **Docker Compose** workflows (not
-chart-managed) are documented separately in [`../docker.md`](../docker.md).
 Use **Helm** (this chart and/or the **additional Library charts** documented in the
 [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/))
 for supported NIM and service deployment.
@@ -1031,9 +1029,7 @@ helm install retriever ./nemo_retriever/helm -n nemo-retriever \
   --set ngcApiSecret.create=false \
   --set nims.enabled=false \
   --set persistence.enabled=false \
-  --set retrieverResults.enabled=false \
-  --set service.image.repository=nvcr.io/nvstaging/nim/nrl-service \
-  --set service.image.tag=26.05-RC4
+  --set retrieverResults.enabled=false
 ```
 
 Verify pods:
