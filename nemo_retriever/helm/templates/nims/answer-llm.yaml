@@ -1,5 +1,5 @@
-{{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.llama_3_3_nemotron_super_49b_v1_5.enabled true) -}}
-{{- $cfg := .Values.nimOperator.llama_3_3_nemotron_super_49b_v1_5 -}}
+{{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.answer_llm.enabled true) -}}
+{{- $cfg := .Values.nimOperator.answer_llm -}}
 {{- $name := $cfg.nimServiceName -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
@@ -12,7 +12,7 @@ spec:
       modelPuller: "{{ $cfg.image.repository }}:{{ $cfg.image.tag }}"
       pullSecret: "{{ index $cfg.image.pullSecrets 0 }}"
       authSecret: {{ $cfg.authSecret }}
-      {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "llama_3_3_nemotron_super_49b_v1_5") | nindent 6 }}
+      {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "answer_llm") | nindent 6 }}
   storage:
     pvc:
       create: {{ $cfg.storage.pvc.create }}

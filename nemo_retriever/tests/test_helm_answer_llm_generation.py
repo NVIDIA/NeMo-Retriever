@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Helm wiring for Super-49B answer generation."""
+"""Helm wiring for operator-managed answer-generation LLM NIMs."""
 
 from __future__ import annotations
 
@@ -17,12 +17,18 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _VALUES_YAML = _REPO_ROOT / "nemo_retriever/helm/values.yaml"
 _CHART_DIR = _REPO_ROOT / "nemo_retriever/helm"
 
-_SUPER49B_KEY = "  llama_3_3_nemotron_super_49b_v1_5:"
-_SUPER49B_SERVICE = "llama-3-3-nemotron-super-49b-v1-5"
+_ANSWER_LLM_KEY = "  answer_llm:"
+_ANSWER_LLM_SERVICE = "answer-llm"
 _SUPER49B_REPOSITORY = "nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
 _SUPER49B_TAG = "2.0.5"
 _SUPER49B_MODEL = "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
 _SUPER49B_PROFILE = "1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"
+_NANO_SERVICE = "nemotron-3-nano"
+_NANO_REPOSITORY = "nvcr.io/nim/nvidia/nemotron-3-nano"
+_NANO_TAG = "1.7.0-variant"
+_NANO_MODEL = "openai/nvidia/nemotron-3-nano-30b-a3b"
+_NANO_SERVED_MODEL = "nvidia/nemotron-3-nano-30b-a3b"
+_NANO_A100_PROFILE = "5f89f01a0af587fd8bae50c611b1f358f92effdb9fb29362e1af0a986e5561c3"
 
 
 def _read_required_file(path: Path) -> str:
@@ -59,33 +65,37 @@ def _assert_helm_ok(self: TestCase, proc: subprocess.CompletedProcess[str]) -> N
     )
 
 
-class HelmSuper49BAnswerGenerationTests(TestCase):
-    def test_values_define_super49b_as_optional_answer_nim(self) -> None:
+class HelmAnswerLLMGenerationTests(TestCase):
+    def test_values_define_generic_answer_llm_with_super49b_defaults(self) -> None:
         values = _read_required_file(_VALUES_YAML)
 
-        self.assertIn(_SUPER49B_KEY, values)
-        block = values[values.index(_SUPER49B_KEY) : values.index(_SUPER49B_KEY) + 1200]
+        self.assertIn(_ANSWER_LLM_KEY, values)
+        block = values[values.index(_ANSWER_LLM_KEY) : values.index(_ANSWER_LLM_KEY) + 2200]
         self.assertIn("enabled: false", block)
+        self.assertIn(f"nimServiceName: {_ANSWER_LLM_SERVICE}", block)
         self.assertIn(f"repository: {_SUPER49B_REPOSITORY}", block)
         self.assertIn(f'tag: "{_SUPER49B_TAG}"', block)
+        self.assertIn(f'model: "{_SUPER49B_MODEL}"', block)
         self.assertIn("nvidia.com/gpu: 2", block)
         self.assertIn('size: "250Gi"', block)
         self.assertIn(_SUPER49B_PROFILE, block)
+        self.assertIn('ragSystemPromptPrefix: "/no_think"', block)
 
-    def test_default_render_omits_super49b_and_disables_llm_answering(self) -> None:
+    def test_default_render_omits_answer_llm_and_disables_llm_answering(self) -> None:
         proc = _helm_template()
         _assert_helm_ok(self, proc)
 
-        self.assertNotIn(f"name: {_SUPER49B_SERVICE}", proc.stdout)
+        self.assertNotIn(f"name: {_ANSWER_LLM_SERVICE}", proc.stdout)
         self.assertIn("llm:", proc.stdout)
         self.assertIn("enabled: false", proc.stdout)
         self.assertIn("api_base: null", proc.stdout)
+        self.assertNotIn("NEMO_RETRIEVER_LLM_API_KEY", proc.stdout)
 
-    def test_super49b_opt_in_renders_nim_and_autowires_llm_config(self) -> None:
-        proc = _helm_template(extra_args=("--set", "nimOperator.llama_3_3_nemotron_super_49b_v1_5.enabled=true"))
+    def test_answer_llm_opt_in_renders_default_super49b_nim_and_autowires_llm_config(self) -> None:
+        proc = _helm_template(extra_args=("--set", "nimOperator.answer_llm.enabled=true"))
         _assert_helm_ok(self, proc)
 
-        self.assertIn(f"name: {_SUPER49B_SERVICE}", proc.stdout)
+        self.assertIn(f"name: {_ANSWER_LLM_SERVICE}", proc.stdout)
         self.assertIn(f"repository: {_SUPER49B_REPOSITORY}", proc.stdout)
         self.assertIn(f"tag: {_SUPER49B_TAG}", proc.stdout)
         self.assertIn("nvidia.com/gpu: 2", proc.stdout)
@@ -95,9 +105,61 @@ class HelmSuper49BAnswerGenerationTests(TestCase):
         self.assertIn("--disable-custom-all-reduce", proc.stdout)
         self.assertIn("NCCL_IB_DISABLE", proc.stdout)
         self.assertIn("NCCL_P2P_DISABLE", proc.stdout)
-        self.assertIn('api_base: "http://llama-3-3-nemotron-super-49b-v1-5:8000/v1"', proc.stdout)
+        self.assertIn(f'api_base: "http://{_ANSWER_LLM_SERVICE}:8000/v1"', proc.stdout)
         self.assertIn(f'model: "{_SUPER49B_MODEL}"', proc.stdout)
         self.assertIn('rag_system_prompt_prefix: "/no_think"', proc.stdout)
+        self.assertIn("enabled: true", proc.stdout)
+        self.assertIn("NEMO_RETRIEVER_LLM_API_KEY", proc.stdout)
+        self.assertIn('name: "ngc-api"', proc.stdout)
+        self.assertIn('key: "NGC_API_KEY"', proc.stdout)
+
+    def test_answer_llm_can_swap_to_nano_image_model_and_profile(self) -> None:
+        proc = _helm_template(
+            extra_args=(
+                "--set",
+                "nimOperator.answer_llm.enabled=true",
+                "--set",
+                f"nimOperator.answer_llm.nimServiceName={_NANO_SERVICE}",
+                "--set",
+                f"nimOperator.answer_llm.image.repository={_NANO_REPOSITORY}",
+                "--set",
+                f"nimOperator.answer_llm.image.tag={_NANO_TAG}",
+                "--set",
+                f"nimOperator.answer_llm.model={_NANO_MODEL}",
+                "--set",
+                "nimOperator.answer_llm.ragSystemPromptPrefix=",
+                "--set-json",
+                f'nimOperator.answer_llm.modelProfile={{"profiles":["{_NANO_A100_PROFILE}"]}}',
+                "--set-json",
+                'nimOperator.answer_llm.resources={"limits":{"nvidia.com/gpu":1},"requests":{"nvidia.com/gpu":1}}',
+                "--set",
+                "nimOperator.answer_llm.env[0].name=NIM_HTTP_API_PORT",
+                "--set-string",
+                "nimOperator.answer_llm.env[0].value=8000",
+                "--set",
+                "nimOperator.answer_llm.env[1].name=NIM_SERVED_MODEL_NAME",
+                "--set-string",
+                f"nimOperator.answer_llm.env[1].value={_NANO_SERVED_MODEL}",
+                "--set",
+                "nimOperator.answer_llm.env[2].name=NIM_TENSOR_PARALLEL_SIZE",
+                "--set-string",
+                "nimOperator.answer_llm.env[2].value=1",
+            )
+        )
+        _assert_helm_ok(self, proc)
+
+        self.assertIn(f"name: {_NANO_SERVICE}", proc.stdout)
+        self.assertIn(f"repository: {_NANO_REPOSITORY}", proc.stdout)
+        self.assertIn(f"tag: {_NANO_TAG}", proc.stdout)
+        self.assertIn("NIM_SERVED_MODEL_NAME", proc.stdout)
+        self.assertIn(_NANO_SERVED_MODEL, proc.stdout)
+        self.assertIn("NIM_TENSOR_PARALLEL_SIZE", proc.stdout)
+        self.assertIn(_NANO_A100_PROFILE, proc.stdout)
+        self.assertIn("nvidia.com/gpu: 1", proc.stdout)
+        self.assertNotIn(_SUPER49B_PROFILE, proc.stdout)
+        self.assertIn(f'api_base: "http://{_NANO_SERVICE}:8000/v1"', proc.stdout)
+        self.assertIn(f'model: "{_NANO_MODEL}"', proc.stdout)
+        self.assertIn("rag_system_prompt_prefix: null", proc.stdout)
         self.assertIn("enabled: true", proc.stdout)
 
     def test_explicit_llm_api_base_wins_without_operator_nim(self) -> None:
@@ -113,7 +175,7 @@ class HelmSuper49BAnswerGenerationTests(TestCase):
         )
         _assert_helm_ok(self, proc)
 
-        self.assertNotIn(f"name: {_SUPER49B_SERVICE}", proc.stdout)
+        self.assertNotIn(f"name: {_ANSWER_LLM_SERVICE}", proc.stdout)
         self.assertIn('api_base: "http://external-llm:8000/v1"', proc.stdout)
         self.assertIn('model: "openai/custom-answerer"', proc.stdout)
         self.assertIn("rag_system_prompt_prefix: null", proc.stdout)

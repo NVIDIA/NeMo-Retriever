@@ -59,8 +59,8 @@ Services:
 {{- if .Values.nimOperator.vlm_embed.enabled }}
    - {{ .Values.nimOperator.vlm_embed.nimServiceName }} → http://{{ .Values.nimOperator.vlm_embed.nimServiceName }}:{{ .Values.nimOperator.vlm_embed.expose.service.port }}/v1/embeddings
 {{- end }}
-{{- if .Values.nimOperator.llama_3_3_nemotron_super_49b_v1_5.enabled }}
-   - {{ .Values.nimOperator.llama_3_3_nemotron_super_49b_v1_5.nimServiceName }} → http://{{ .Values.nimOperator.llama_3_3_nemotron_super_49b_v1_5.nimServiceName }}:{{ .Values.nimOperator.llama_3_3_nemotron_super_49b_v1_5.expose.service.port }}/v1/chat/completions
+{{- if .Values.nimOperator.answer_llm.enabled }}
+   - {{ .Values.nimOperator.answer_llm.nimServiceName }} → http://{{ .Values.nimOperator.answer_llm.nimServiceName }}:{{ .Values.nimOperator.answer_llm.expose.service.port }}/v1/chat/completions
      (auto-wired into the retriever service config as `llm.api_base` for `/v1/answer`)
 {{- end }}
 {{- if .Values.nimOperator.rerankqa.enabled }}

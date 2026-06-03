@@ -490,19 +490,25 @@ serviceConfig:
     # Required for audio/video ingestion in service mode (without torch).
     audioGrpcEndpoint: ""
 
-  # Remote LLM endpoint used by POST /v1/answer. When the Super-49B
-  # NIM is enabled under nimOperator.llama_3_3_nemotron_super_49b_v1_5
-  # (and the NIM Operator CRDs exist), the chart auto-wires apiBase to
-  # the in-cluster OpenAI-compatible /v1 endpoint and flips answering on.
+  # Remote LLM endpoint used by POST /v1/answer. When the generic
+  # `nimOperator.answer_llm.enabled` block is enabled (and the NIM
+  # Operator CRDs exist), the chart auto-wires apiBase to that
+  # in-cluster OpenAI-compatible /v1 endpoint and flips answering on.
   # Explicit apiBase/model values below always win, which lets operators
   # point /v1/answer at an external OpenAI-compatible endpoint instead.
   llm:
     enabled: false
-    model: "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    # Optional explicit LiteLLM/OpenAI model id. Leave empty to inherit
+    # `nimOperator.answer_llm.model` when the operator-managed answer LLM
+    # is enabled; set this when using an external LLM endpoint.
+    model: ""
     apiBase: ""
     # Optional Secret reference for external LLM credentials. The Secret is
     # mounted as NEMO_RETRIEVER_LLM_API_KEY and read by the service CLI, so
-    # the key is not rendered into the retriever-service ConfigMap.
+    # the key is not rendered into the retriever-service ConfigMap. When this
+    # is empty and nimOperator.answer_llm is enabled, the service mounts that
+    # NIM's authSecret instead because LiteLLM/OpenAI-compatible clients
+    # require a credential value even for local NIM endpoints.
     apiKeySecret:
       name: ""
       key: api_key
@@ -516,7 +522,7 @@ serviceConfig:
     ragSystemPrompt: ""
     # Optional prefix prepended to the RAG system prompt. Leave empty
     # for external LLMs; the chart auto-wires /no_think when it
-    # resolves the in-cluster Super-49B NIM endpoint.
+    # resolves the operator-managed answer LLM endpoint.
     ragSystemPromptPrefix: ""
 
   # Pipeline worker pools.  Workers are abstract dispatchers — sizing
@@ -834,8 +840,8 @@ nimOperator:
   #     - nemotron_parse                           (Parse v1.2, ≈ 3.5 GiB GPU)
   #     - nemotron_3_nano_omni_30b_a3b_reasoning   (Omni 30B caption NIM,
   #                                                 ≈ 62 GiB BF16 weights)
-  #     - llama_3_3_nemotron_super_49b_v1_5        (Super-49B answer LLM,
-  #                                                 2-GPU tensor-parallel NIM)
+  #     - answer_llm                               (OpenAI-compatible answer LLM,
+  #                                                 Super-49B defaults)
   #     - audio                                    (Parakeet ASR)
   #
   # Two flags gate every NIM, so each one is opt-in along two independent
@@ -1029,22 +1035,29 @@ nimOperator:
       #   value: throughput
 
   # ---------------------------------------------------------------------------
-  # Optional / advanced NIMs. Enabled by default alongside the core four;
-  # the retriever-service does not auto-wire these into its config, so
-  # integrate them manually via your own pipeline configuration. Set
-  # `nimOperator.<key>.enabled: false` to skip one without disabling the
-  # whole sub-stack.
+  # Optional / advanced NIMs. Disabled by default unless noted below;
+  # opt in to the ones your pipeline or service endpoints actually use.
   # ---------------------------------------------------------------------------
 
-  # Llama 3.3 Nemotron Super 49B v1.5. Optional answer-generation LLM.
+  # Generic OpenAI-compatible answer-generation LLM NIM.
   #
-  # Disabled by default because it is much larger than the core extraction
-  # NIMs. The default resources request two GPUs and only auto-wire
-  # /v1/answer after explicit opt-in.
-  llama_3_3_nemotron_super_49b_v1_5:
+  # Disabled by default because answer LLMs are larger than the core
+  # extraction NIMs. The default image/model is Super-49B and requests
+  # two GPUs. Override `image.repository`, `image.tag`, `model`,
+  # `nimServiceName`, `resources`, `modelProfile`, and `env` to swap in
+  # another compatible LLM NIM such as Nemotron 3 Nano.
+  answer_llm:
     enabled: false
     # NIMService / NIMCache resource name and in-cluster Service DNS label.
-    nimServiceName: llama-3-3-nemotron-super-49b-v1-5
+    nimServiceName: answer-llm
+    # LiteLLM/OpenAI model id rendered into retriever-service.yaml when
+    # this operator-managed LLM is enabled and serviceConfig.llm.model is
+    # left empty.
+    model: "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    # Prompt prefix to apply when this operator-managed LLM auto-wires
+    # /v1/answer. Super-49B uses /no_think by default; override to ""
+    # for models that should receive the plain RAG system prompt.
+    ragSystemPromptPrefix: "/no_think"
     image:
       repository: nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
       tag: "2.0.5"
@@ -1055,8 +1068,8 @@ nimOperator:
     # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
     # above for the shape; non-empty REPLACES the chart-wide default.
     # Cache only the default BF16 2-GPU profile used by the Super-49B
-    # service resources. Override this when deploying a different profile
-    # or GPU topology.
+    # default resources. Override this when deploying a different model,
+    # profile, or GPU topology.
     modelProfile:
       profiles:
         - "1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"
@@ -1067,9 +1080,9 @@ nimOperator:
         size: "250Gi"
         volumeAccessMode: ReadWriteOnce
     replicas: 1
-    # Super-49B uses a 2-GPU tensor-parallel profile by default. This
+    # The Super-49B default uses a 2-GPU tensor-parallel profile. This
     # non-empty resources block intentionally replaces
-    # nimOperator.nimServiceGpuLimit.
+    # nimOperator.nimServiceGpuLimit. Override for smaller LLM NIMs.
     resources:
       limits:
         nvidia.com/gpu: 2
