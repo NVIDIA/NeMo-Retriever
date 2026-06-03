@@ -7,4 +7,4 @@ NeMo Retriever Library focuses on document ingestion, embeddings, vector stores,
 **Related**
 
 - [Semantic retrieval](vdbs.md#semantic-retrieval)
-- Framework examples: [LangChain, LlamaIndex, Haystack](integrations-langchain-llamaindex-haystack.md)
+- Framework examples: [Jupyter Notebooks](notebooks/index.md)
