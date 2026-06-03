@@ -61,20 +61,13 @@ def _build_rag_prompt(
     query: str,
     chunks: list[str],
     *,
-    rag_system_prompt: Optional[str] = None,
-    rag_system_prompt_prefix: Optional[str] = None,
+    formatted_rag_system_prompt: str,
 ) -> list[dict]:
     """Build the OpenAI-style messages list for a RAG prompt."""
     context = "\n\n---\n\n".join(chunks) if chunks else "(no context retrieved)"
     user_content = _RAG_USER_TEMPLATE.format(context=context, query=query)
     return [
-        {
-            "role": "system",
-            "content": _format_rag_system_prompt(
-                rag_system_prompt=rag_system_prompt,
-                rag_system_prompt_prefix=rag_system_prompt_prefix,
-            ),
-        },
+        {"role": "system", "content": formatted_rag_system_prompt},
         {"role": "user", "content": user_content},
     ]
 
@@ -139,7 +132,7 @@ class LiteLLMClient:
         # ``max_tokens=1024`` for captioning/summarization workloads; RAG
         # answers routinely exceed that, so the client overrides it.
         self.sampling = sampling if sampling is not None else LLMInferenceParams(temperature=0.0, max_tokens=4096)
-        self._rag_system_prompt = _format_rag_system_prompt(
+        self._formatted_rag_system_prompt = _format_rag_system_prompt(
             rag_system_prompt=transport.rag_system_prompt,
             rag_system_prompt_prefix=transport.rag_system_prompt_prefix,
         )
@@ -245,7 +238,11 @@ class LiteLLMClient:
         reasoning_enabled: Optional[bool] = None,
     ) -> GenerationResult:
         """Generate an answer for the given query using retrieved chunks as context."""
-        messages = _build_rag_prompt(query, chunks, rag_system_prompt=self._rag_system_prompt)
+        messages = _build_rag_prompt(
+            query,
+            chunks,
+            formatted_rag_system_prompt=self._formatted_rag_system_prompt,
+        )
         request_extra_params: dict[str, Any] | None = None
         effective_reasoning_enabled = (
             self.transport.reasoning_enabled if reasoning_enabled is None else reasoning_enabled

@@ -11,7 +11,7 @@ spec:
     ngc:
       modelPuller: "{{ $cfg.image.repository }}:{{ $cfg.image.tag }}"
       pullSecret: "{{ index $cfg.image.pullSecrets 0 }}"
-      authSecret: {{ $cfg.authSecret }}
+      authSecret: {{ $cfg.authSecret | quote }}
       {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "answer_llm") | nindent 6 }}
   storage:
     pvc:
@@ -31,7 +31,7 @@ spec:
     pullPolicy: {{ $cfg.image.pullPolicy }}
     pullSecrets:
 {{ toYaml $cfg.image.pullSecrets | indent 6 }}
-  authSecret: {{ $cfg.authSecret }}
+  authSecret: {{ $cfg.authSecret | quote }}
   storage:
     nimCache:
       name: {{ $name }}
