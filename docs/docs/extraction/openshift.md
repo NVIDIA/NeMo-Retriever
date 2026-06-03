@@ -27,7 +27,7 @@ On clusters with **PSA `enforce=restricted`**, missing container `securityContex
 | `FailedCreate`: UID/GID **1000** not in namespace range | Hardcoded `service.podSecurityContext` UID/GID/fsGroup | Omit `runAsUser`, `runAsGroup`, and `fsGroup`; keep only `runAsNonRoot: true` |
 | PSA warning: `allowPrivilegeEscalation`, capabilities, `seccompProfile` | Empty `service.securityContext` | Set restricted baseline on `service.securityContext` (see sample below) |
 | `PermissionError` on `/var/lib/nemo-retriever/retriever-service.log` when `persistence.enabled=false` | Default log path is image-owned; random UID cannot write without a PVC | Point `serviceConfig.logging.file` at `/tmp/...` (chart mounts `emptyDir` at `/tmp`) |
-| `CreateContainerConfigError`: non-numeric image `USER nemo` on **vectordb** | Vectordb container has no `securityContext` block for SCC to annotate | Disable vectordb for smoke tests, or patch the vectordb Deployment after install (below) |
+| `CreateContainerConfigError`: non-numeric image `USER nemo` on **vectordb** | Vectordb container has no `securityContext` block for SCC to annotate | Set `serviceConfig.vectordb.enabled=false` for a minimal service-only install, or patch the vectordb Deployment after install (below) |
 | PSA warnings on **otel-collector** | Otel Deployment has no `securityContext` in the chart | `topology.otel.enabled=false` unless you patch that Deployment |
 | Audio/video fails or pod never gets `ffmpeg` | `service.installFfmpeg=true` runs sudo at startup; **restricted-v2** blocks privilege escalation (`no-new-privileges`) | Prebuild a service image with `ffmpeg`/`ffprobe` baked in (see [Audio and video on restricted OpenShift](#audio-and-video-ffmpeg-on-restricted-openshift)); leave `service.installFfmpeg=false` |
 | `ImagePullBackOff` for a service image in the **internal OpenShift registry** | Chart `imagePullSecrets` lists only `ngc-secret`; the namespace ServiceAccount `dockercfg` secret is not merged automatically | Add the SA pull secret under `imagePullSecrets` (see [Internal registry pull secrets](#internal-registry-pull-secrets)) |
@@ -60,7 +60,7 @@ serviceConfig:
     # Writable without persistence PVC (chart always mounts emptyDir at /tmp).
     file: /tmp/retriever-service.log
   vectordb:
-    # Set false for minimal service-only validation; see vectordb patch below if enabled.
+    # Set false for a minimal service-only install; see vectordb patch below if you enable it.
     enabled: false
 
 topology:
@@ -149,9 +149,9 @@ nimOperator:
 
 Paths vary with GPU Operator version and node image. Inspect a healthy GPU workload on the same cluster (`oc exec` into a CUDA sample pod) or the failing NIM pod's filesystem before pinning production values.
 
-### Omni caption manual smoke testing { #omni-caption-manual-smoke-testing }
+### Call the Omni NIM directly { #omni-caption-manual-smoke-testing }
 
-The retriever service caption profile already sends `chat_template_kwargs.enable_thinking=false` to the Omni NIM during ingest. When you call the Omni NIM **directly** at `/v1/chat/completions` (for example with `curl` against the in-cluster `NIMService`), include the same flag so the caption text lands in `message.content` instead of reasoning-only fields:
+The retriever service caption profile already sends `chat_template_kwargs.enable_thinking=false` to the Omni NIM during ingest. To confirm the in-cluster Omni NIM returns caption text in `message.content`, call `/v1/chat/completions` directly (for example with `curl` against the `NIMService`) and include the same flag:
 
 ```json
 {
@@ -163,9 +163,9 @@ The retriever service caption profile already sends `chat_template_kwargs.enable
 
 For pipeline scope (PDF chart regions are not captioned), see [Image captioning](prerequisites-support-matrix.md#image-captioning-2605) and [Image captioning](multimodal-extraction.md#image-captioning) in the extraction docs.
 
-### Example install (service-only validation)
+### Example install (service only, no in-cluster NIMs)
 
-Minimal validation with external NIMs disabled, no persistence, and no results PVC:
+Use this flow when you want only the retriever service pod: disable the in-cluster NIM Operator stack (`nims.enabled=false`), skip the persistence PVC, and skip the results PVC. Pre-create NGC pull/API secrets, then install with the restricted OpenShift values file:
 
 ```bash
 oc new-project nemo-retriever
@@ -198,9 +198,9 @@ oc describe pod -l app.kubernetes.io/name=nemo-retriever -n nemo-retriever
 
 You should see SCC-assigned numeric `runAsUser` on containers that declare a `securityContext` block, and no PSA warnings once overrides are applied.
 
-### Example install with NIM Operator (full pipeline)
+### Example install with NIM Operator (in-cluster NIMs)
 
-After NIM Operator and GPU Operator are installed, reuse `openshift-restricted.yaml` and pre-created NGC secrets. Point `service.image` at a **ffmpeg-enabled** build when validating [audio and video](#audio-and-video-ffmpeg-on-restricted-openshift). Add [optional NIM `LD_LIBRARY_PATH`](#optional-nim-runtime-environment) overrides if ASR or Omni pods crash on missing libraries.
+After you install the NIM Operator and GPU Operator, reuse `openshift-restricted.yaml` and the NGC secrets from the service-only example. Point `service.image` at a **ffmpeg-enabled** build when you use [audio and video](#audio-and-video-ffmpeg-on-restricted-openshift). Add [optional NIM `LD_LIBRARY_PATH`](#optional-nim-runtime-environment) overrides if ASR or Omni pods crash on missing libraries.
 
 ```bash
 helm install retriever ./nemo_retriever/helm -n nemo-retriever \
