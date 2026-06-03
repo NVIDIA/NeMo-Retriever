@@ -211,6 +211,15 @@ helm install retriever ./nemo_retriever/helm -n nemo-retriever \
   --set service.image.tag=<TAG>
 ```
 
+After install, confirm workloads reach Ready before you run ingest:
+
+```bash
+oc get pods -n nemo-retriever
+oc get nimservice -n nemo-retriever
+```
+
+When you enable optional NIMs, wait for Parakeet ASR and Omni caption pods to become Ready before you run [audio and video](audio-video.md) or caption extraction. If ASR or Omni pods crash with missing `.so` errors, apply the [LD_LIBRARY_PATH overrides](#optional-nim-runtime-environment) above and upgrade the release.
+
 ### Enabling the vectordb Deployment on OpenShift
 
 `serviceConfig.vectordb.enabled=true` renders a **vectordb** container from the same image (`USER nemo`, non-numeric). The chart does not yet expose a `securityContext` value for that container. After `helm install`, patch the Deployment so OpenShift can inject a numeric UID into the container spec:
