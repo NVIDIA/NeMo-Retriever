@@ -47,6 +47,25 @@ _BASELINE_DENY = {
 _RETRIEVER_SHIM = "#!/usr/bin/env bash\necho 'retriever: command not found (baseline profile)' >&2\nexit 127\n"
 
 
+def mount_corpus_refs(workdir: Path, corpus_refs: list[str], data_root: Path) -> int:
+    """Symlink each corpus_ref (a relative path like ``test-data/financebench/pdfs``)
+    into ``workdir`` at the SAME relative path, pointing at ``data_root/<ref>``, so a
+    prompt's literal ``test-data/...`` paths resolve. Returns the number mounted."""
+    n = 0
+    for ref in corpus_refs:
+        ref = ref.strip().lstrip("/")
+        src = (data_root / ref).resolve()
+        if not src.exists():
+            continue
+        dst = workdir / ref
+        if dst.exists() or dst.is_symlink():
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.symlink_to(src)
+        n += 1
+    return n
+
+
 def has_index(lancedb_dir: Path) -> bool:
     """True if a LanceDB table exists, regardless of table name (agents may name
     it nv-ingest, nemo-retriever, etc.)."""

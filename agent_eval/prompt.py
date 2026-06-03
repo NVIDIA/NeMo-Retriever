@@ -80,6 +80,21 @@ def render_setup_prompt() -> str:
     return _SETUP_TEMPLATE
 
 
+_FUNCTIONAL_SUFFIX = (
+    "\n\nThe corpus paths above are mounted in your current working directory at the same "
+    "relative paths. Use the available retrieval tooling. Report the result of the task in "
+    "your final message (include citations to source files where the task asks for them)."
+)
+
+
+def render_functional_prompt(prompt: str) -> str:
+    """Functional tests are self-contained (the prompt states the task and names its
+    corpus path). We append a short note that paths are mounted locally; we do NOT
+    impose the selected_chunks/output.json schema — grading reads the final message and
+    workdir artifacts."""
+    return (prompt or "").strip() + _FUNCTIONAL_SUFFIX
+
+
 def rewrite_paths(text: str, extra_rewrites: list[tuple[str, str]] | None = None) -> str:
     out = text
     for pat, repl in _DEFAULT_REWRITES:

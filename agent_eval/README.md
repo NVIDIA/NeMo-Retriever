@@ -1,10 +1,20 @@
 # agent_eval
 
 An agent-agnostic harness to evaluate how well a coding agent (**claude** or **codex**)
-answers questions over a document corpus — **with** the nemo-retriever skill vs. a
-**baseline** that has no retriever — and to score the results (recall@k + LLM judge).
+uses the nemo-retriever skill over a document corpus. It has **two evaluation tracks**:
 
-Three stages, three scripts:
+1. **Recall eval** (this section) — Q&A over a corpus, **with** the skill vs. a **baseline**
+   with no retriever, scored on **recall@k + LLM judge**.
+2. **Functional eval** ([jump ↓](#functional-tests-behavioral-passfail-eval)) — the domain-less
+   `functional_corpus_variants` behavioral prompts (ingest a folder, multi-hop Q&A, counts),
+   graded **pass/fail**.
+
+Every script is built to be **re-runnable in a different environment**: the inputs (manifest,
+corpus, skill, retriever CLI, judge endpoint) are all CLI flags, and the agent-running scripts
+carry no `nemo_retriever` import so they copy to a clean box. Each section below lists exactly
+which paths to repoint.
+
+Three stages, three scripts (recall track):
 
 ```
 extract_queries.py   manifest.json         ->  queries.json          (answer-free)
@@ -221,3 +231,226 @@ python3 build_report.py /tmp/skill/agenteval_claude_skill_*   /tmp/skill/agentev
 - **codex `retr_succeeded_clean` is low by design** — codex's ~1s exec-yield backgrounds
   `retriever query`, so it rarely captures a clean exit even though the engine returns
   hits (see `retr_succeeded_engine`).
+
+---
+
+# Functional tests (behavioral pass/fail eval)
+
+The recall pipeline above grades **recall@k**. A second track — the domain-less
+`functional_corpus_variants` prompts — are **behavioral** tests (ingest a folder, answer a
+multi-hop question, run a count) with **no gold pages**, graded **pass/fail**.
+
+**Reproducibility is the point of this section:** four standalone scripts take you from a
+manifest to a claude-vs-codex pass-rate report, and to recreate the experiment in a **different
+environment** you only repoint a handful of paths (see *Prerequisites*).
+
+```
+extract_functional.py  manifest.json            ->  functional_queries.json  (answer-free)
+run_functional.py      functional_queries.json  ->  <save-root>/<run_id>/    (per-query artifacts)
+eval_functional.py     run dir + manifest       ->  functional_eval.json     (pass/fail verdicts)
+functional_report.py   eval json(s)             ->  functional_report.md     (overall + by-type + per-agent)
+```
+
+Same dependency split as the recall track: **`run_functional.py` is standalone** (no
+`nemo_retriever` import — copy `agent_eval/` to a clean box), **`eval_functional.py` may import
+`nemo_retriever`** (reuses `LLMJudge` transport + `lancedb` row counts).
+
+### Prerequisites (what a new environment needs, and how to repoint it)
+
+| need | used by | repoint via (default) |
+|---|---|---|
+| The eval **manifest** (with `functional_corpus_variants` entries) | extract, eval | `--manifest` |
+| The **corpus tree** the prompts reference at literal `test-data/...` paths | run | `--corpus-data-root` (`/raid/retriever-sdg-v3`) |
+| The **nemo-retriever skill** directory | run | `--skill-src` (`…/skills/nemo-retriever`) |
+| The **`retriever` CLI** venv + embed model | run | `--retriever-bin` (`…/.venv/bin/retriever`), `--embed-model` |
+| **GPU(s)** for ingest/embed | run | `--gpu-list` / `--gpus` |
+| **Judge** API key + endpoint | eval | `$NVIDIA_API_KEY`, `--judge-api-base` |
+| `claude` and/or `codex` CLI on `PATH` | run | `--agent` |
+
+### How tasks map to graders
+
+Each prompt carries a `functional_type` (routing) and the manifest's `ground_truth_kind`:
+
+| functional_type | grader |
+|---|---|
+| `retrieval_answer` | LLM **PASS/FAIL rubric** vs `validation_signal` + `expected_output_shape` |
+| `ingest` (`action_contract`) | **programmatic gate** — a LanceDB table with rows>0 built in the workdir — AND a rubric check that the output is an ingest confirmation (not a Q&A answer) |
+| `ingest_plus_answer` | both — the rows>0 gate AND the answer rubric |
+| `stateful_orchestration` | **excluded** (multi-turn + mid-ingest SIGKILL; separate driver, not yet built) |
+
+**Rubric design (this is why the numbers reproduce).** The manifest's `validation_signal`s
+often reference signals the agent's *final message structurally cannot show* — tracer logs, job
+IDs, backend endpoints, mid-run streaming progress. The rubrics deliberately **ignore** those
+and grade only on *observable* output + the *programmatically-verified* artifact facts (rows>0).
+Without this, ~80 ingest/ingest_plus tests false-FAIL. Full rationale + the artifact-vs-real
+failure taxonomy is in `functional_findings.md`; the prompt→use-case mapping is in
+`functional_uc_mapping.md`.
+
+---
+
+## F1. `extract_functional.py` — manifest → functional queries
+
+Pulls the domain-less `functional_corpus_variants` prompts into an **answer-free**
+`functional_queries.json` (`{query_id, prompt, functional_type, corpus_refs}`); pass/fail
+criteria stay in the manifest (recovered later by `eval_functional.py`). `corpus_refs` are the
+`test-data/...` directories parsed from each prompt (the runner mounts them); a **bare
+`test-data` mention mounts the whole tree**. Excludes the 6 stateful tests by default.
+
+```bash
+python3 extract_functional.py \
+  --manifest /raid/retriever-sdg-v3/runs/agent_corpus_level_batch_4/agent_corpus_level_manifest.json \
+  --out      /raid/retriever-sdg-v3/runs/agent_corpus_level_batch_4/functional_queries.json
+```
+
+| arg | default | meaning |
+|---|---|---|
+| `--manifest` | *(required)* | Eval manifest JSON. |
+| `--out` | `functional_queries.json` | Answer-free queries output. |
+| `--include-stateful` | off | Include the 6 `stateful_orchestration` tests (driver not built). |
+| `--limit` | none | Cap query count (smoke). |
+
+→ 203 queries (119 `retrieval_answer` / 60 `ingest` / 24 `ingest_plus_answer`; 6 stateful excluded).
+
+---
+
+## F2. `run_functional.py` — run an agent (skill profile)
+
+Per query: mounts each `corpus_ref` at its **literal** relative path (`test-data/...`), copies
+the skill in, runs one agent turn, captures artifacts. `retrieval_answer` queries reuse **one
+shared prebuilt index per corpus-group** (built once via subprocess `retriever ingest`);
+`ingest`/`ingest_plus_answer` build the index **in-turn** (that's the graded action). Skill
+profile only; GPU-pinned like the recall runner.
+
+```bash
+# claude on GPUs 0-3, codex on 4-7 (disjoint halves), all 203:
+python3 run_functional.py --queries functional_queries.json \
+  --agent claude --model claude-opus-4-7 --gpu-list 0,1,2,3 --parallelism 4 \
+  --save-root /raid/agent_eval_func --timeout 3600 &
+python3 run_functional.py --queries functional_queries.json \
+  --agent codex  --model gpt-5.5      --gpu-list 4,5,6,7 --parallelism 4 \
+  --save-root /raid/agent_eval_func --timeout 3600 &
+wait
+```
+
+| arg | default | meaning |
+|---|---|---|
+| `--queries` | *(required)* | The `functional_queries.json` from F1. |
+| `--agent` | `claude` | `claude` or `codex`. |
+| `--model` | `claude-opus-4-7` | Model id (e.g. `gpt-5.5` for codex). |
+| `--corpus-data-root` | `/raid/retriever-sdg-v3` | Root the `test-data/...` `corpus_refs` resolve under. **Repoint per environment.** |
+| `--skill-src` | `…/skills/nemo-retriever` | Skill dir copied into each workdir. |
+| `--retriever-bin` | `…/.venv/bin/retriever` | `retriever` CLI for shared-index builds. |
+| `--embed-model` | `nvidia/llama-nemotron-embed-1b-v2` | Embed model for ingest. |
+| `--save-root` | `./agent_eval_functional` | Where `<run_id>/` is written. |
+| `--parallelism` | `4` | Concurrent query turns (≈ GPUs). |
+| `--gpus` / `--gpu-list` | `0` / none | Round-robin GPU pinning; `--gpu-list 0,1,2,3` lets two runs use disjoint halves. |
+| `--timeout` | `2400` | Per-turn seconds. **Raise to ≥3600** — financebench `ingest`/`ingest_plus` re-ingest 368 PDFs in-turn. |
+| `--budget-usd` | `5.0` | Per-turn budget (Claude). |
+| `--types` | all | CSV filter on `functional_type` (e.g. `ingest`). |
+| `--limit` | none | Cap query count (smoke). |
+| `--dry-run` | off | Mount corpora + print the agent command; no GPU/agent calls. |
+
+**Output** — `<save-root>/<run_id>/` (`run_id = agenteval_func_<agent>_<UTC-ts>`):
+`run_config.json`, `run_metas.json`, `_index/<corpus-group>/` (shared indexes), and per query
+`<query_id>/` → `prompt.txt`, `response.txt`, `meta.json`
+(`status`/`tokens`/`cost`/`lancedb_built`/`lancedb_tables`), `agent_log.jsonl`, `trace.md`.
+
+> **Cost/time:** `ingest`/`ingest_plus` over financebench (368 PDFs) ingest in-turn (~30 min
+> each) and may hit the timeout; those land as **non-results** (`run_timeout`), not logic fails.
+
+---
+
+## F3. `eval_functional.py` — grade pass/fail
+
+Re-reads manifest criteria and grades each query by `ground_truth_kind` (table above). Judge
+calls run **concurrently** (~45 s each — sequential is hours for ~200) and verdicts write
+**incrementally**, so a killed run resumes from the cache.
+
+```bash
+python3 eval_functional.py \
+  --run-dir /raid/agent_eval_func/agenteval_func_claude_<ts> \
+  --manifest /raid/retriever-sdg-v3/runs/.../agent_corpus_level_manifest.json \
+  --judge-concurrency 6
+```
+
+| arg | default | meaning |
+|---|---|---|
+| `--run-dir` | *(required)* | A `agenteval_func_*` run dir from F2. |
+| `--manifest` | *(required)* | Manifest holding the pass/fail criteria. |
+| `--out` | `<run-dir>/functional_eval.json` | Verdicts output. |
+| `--min-rows` | `1` | rows>0 gate threshold for ingest tests. |
+| `--judge` / `--no-judge` | on if `$NVIDIA_API_KEY` set | Enable/disable the LLM rubric. |
+| `--judge-model` | `nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5` | Judge model. |
+| `--judge-api-base` | `https://integrate.api.nvidia.com/v1` | Judge endpoint. |
+| `--judge-api-key-env` | `NVIDIA_API_KEY` | Env var holding the judge key. |
+| `--judge-concurrency` | `8` | Concurrent judge calls. |
+| `--judge-timeout` / `--judge-retries` | `90` / `2` | Per-call timeout + retries (flaky endpoints). |
+| `--regrade` | none | CSV of `query_id` substrings to drop from the cache and re-grade, e.g. `':e04:'` after a rubric change. |
+
+**Output:** `functional_eval.json` = `{summary {overall, by_functional_type, status_counts},
+per_query:[{query_id, passed, gate_pass, lancedb_rows, judge_verdict, reason, status}]}`.
+Verdicts cache; re-runs reuse unchanged ones (use `--regrade` to force a subset).
+
+---
+
+## F4. `functional_report.py` — merge into a report
+
+Merges one-or-more per-agent `functional_eval.json` into `functional_report.md`: overall
+pass-rate, a `functional_type × agent` matrix, and per-agent failing-ID tables — **separating
+non-results** (`run_timeout`/`judge_error`) from genuine logic FAILs so a setup outage isn't
+read as a low pass-rate.
+
+```bash
+python3 functional_report.py \
+  --eval claude=/raid/agent_eval_func/agenteval_func_claude_<ts>/functional_eval.json \
+  --eval codex=/raid/agent_eval_func/agenteval_func_codex_<ts>/functional_eval.json \
+  --out  /raid/agent_eval_func/functional_report.md
+```
+
+| arg | default | meaning |
+|---|---|---|
+| `--eval` | *(required, 1+)* | `label=path/to/functional_eval.json` (repeatable, one per agent/run). |
+| `--out` | `functional_report.md` | Merged report path. |
+
+---
+
+## End-to-end functional example
+
+```bash
+M=/raid/retriever-sdg-v3/runs/agent_corpus_level_batch_4/agent_corpus_level_manifest.json
+Q=/raid/retriever-sdg-v3/runs/agent_corpus_level_batch_4/functional_queries.json
+SR=/raid/agent_eval_func
+
+# 1. queries (answer-free)
+python3 extract_functional.py --manifest $M --out $Q
+
+# 2. runs — claude (GPUs 0-3) + codex (4-7), all 203, in parallel
+python3 run_functional.py --queries $Q --agent claude --model claude-opus-4-7 \
+  --gpu-list 0,1,2,3 --parallelism 4 --save-root $SR --timeout 3600 &
+python3 run_functional.py --queries $Q --agent codex  --model gpt-5.5 \
+  --gpu-list 4,5,6,7 --parallelism 4 --save-root $SR --timeout 3600 &
+wait
+
+# 3. grade each run (concurrent judge), then merge
+CL=$(ls -d $SR/agenteval_func_claude_*/ | tail -1)
+CX=$(ls -d $SR/agenteval_func_codex_*/  | tail -1)
+python3 eval_functional.py --run-dir $CL --manifest $M --judge-concurrency 6
+python3 eval_functional.py --run-dir $CX --manifest $M --judge-concurrency 6
+python3 functional_report.py --eval claude=$CL/functional_eval.json \
+  --eval codex=$CX/functional_eval.json --out $SR/functional_report.md
+```
+
+## Functional notes / gotchas
+- **Skill profile only** — these tests assume the retriever ingest/query pipeline (no baseline).
+- **Financebench in-turn ingest is the bottleneck** — `ingest`/`ingest_plus` over its 368 PDFs
+  ingest *inside the turn* (~30 min); raise `--timeout` or pre-build a shared index. Timeouts
+  report as `run_timeout` non-results, not logic fails.
+- **Judge throughput** — sequential grading of ~200 prompts at ~45 s/call is hours; always pass
+  `--judge-concurrency 6–8`. Incremental writes make grading resumable (re-run reuses the cache).
+- **Rubrics ignore unobservable internal signals** (tracer/job/endpoint/streaming) and trust the
+  rows>0 gate for ingestion — by design (see `functional_findings.md`); use `--regrade` to
+  re-grade a subset after any rubric edit.
+- **`i12` ("the full corpus at `test-data`") mounts all ~1.7 GB** (every modality incl. the
+  large vidorev3 corpora) — the heaviest query; expect it to time out without a prebuilt index.
+- **Porting to a new environment:** repoint `--manifest`, `--corpus-data-root`, `--skill-src`,
+  `--retriever-bin`, and set `$NVIDIA_API_KEY`. Nothing else is hard-coded.
