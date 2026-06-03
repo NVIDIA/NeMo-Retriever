@@ -154,6 +154,7 @@ async def _lifespan(app: FastAPI):
     _init_mcp_server()
     scheduler = _scheduler_module()
     scheduler.start_scheduler()
+    _sync_backup_schedule_job()
     global _runner_health_task
     _runner_health_task = asyncio.create_task(_runner_health_check_loop())
     yield
@@ -4068,10 +4069,7 @@ async def create_database_backup(req: DatabaseBackupRequest):
     stats = history._collect_db_stats()
 
     if req.storage_type == "local":
-        allowed_root = Path(src).resolve().parent
         dest_dir = Path(req.destination).resolve()
-        if not str(dest_dir).startswith(str(allowed_root)):
-            raise HTTPException(status_code=400, detail="Backup destination must be within the portal data directory")
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_file = dest_dir / filename
         conn = sqlite3.connect(src, timeout=30.0)
@@ -4209,6 +4207,142 @@ async def delete_database_backup(backup_id: int, delete_file: bool = Query(False
     if not deleted:
         raise HTTPException(status_code=404, detail="Backup not found")
     return {"deleted": True, "id": backup_id}
+
+
+# ---------------------------------------------------------------------------
+# Scheduled Database Backups
+# ---------------------------------------------------------------------------
+
+_BACKUP_SCHEDULE_SETTINGS = ("backup_schedule_enabled", "backup_schedule_cron", "backup_schedule_destination", "backup_schedule_retention")
+
+
+class BackupScheduleRequest(BaseModel):
+    enabled: bool = False
+    cron_expression: str = "0 2 * * *"
+    destination: str = ""
+    retention_count: int = 7
+
+
+@app.get("/api/database/backup-schedule")
+async def get_backup_schedule():
+    """Return the current scheduled backup configuration."""
+    return {
+        "enabled": history.get_portal_setting("backup_schedule_enabled") == "true",
+        "cron_expression": history.get_portal_setting("backup_schedule_cron") or "0 2 * * *",
+        "destination": history.get_portal_setting("backup_schedule_destination") or "",
+        "retention_count": int(history.get_portal_setting("backup_schedule_retention") or "7"),
+    }
+
+
+@app.put("/api/database/backup-schedule")
+async def update_backup_schedule(req: BackupScheduleRequest):
+    """Update the scheduled backup configuration."""
+    if req.enabled and not req.destination.strip():
+        raise HTTPException(status_code=400, detail="Destination directory is required when schedule is enabled")
+
+    if req.enabled:
+        try:
+            CronTrigger.from_crontab(req.cron_expression)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid cron expression: {exc}")
+
+    history.set_portal_setting("backup_schedule_enabled", "true" if req.enabled else "false")
+    history.set_portal_setting("backup_schedule_cron", req.cron_expression)
+    history.set_portal_setting("backup_schedule_destination", req.destination.strip())
+    history.set_portal_setting("backup_schedule_retention", str(req.retention_count))
+
+    _sync_backup_schedule_job()
+
+    return {
+        "enabled": req.enabled,
+        "cron_expression": req.cron_expression,
+        "destination": req.destination.strip(),
+        "retention_count": req.retention_count,
+    }
+
+
+def _sync_backup_schedule_job() -> None:
+    """Add, update, or remove the scheduled backup job from APScheduler."""
+    from nemo_retriever.harness.scheduler import _scheduler
+
+    if _scheduler is None:
+        return
+
+    job_id = "__scheduled_db_backup__"
+    enabled = history.get_portal_setting("backup_schedule_enabled") == "true"
+    cron_expr = history.get_portal_setting("backup_schedule_cron") or "0 2 * * *"
+
+    if not enabled:
+        try:
+            _scheduler.remove_job(job_id)
+        except Exception:
+            pass
+        return
+
+    try:
+        trigger = CronTrigger.from_crontab(cron_expr)
+        _scheduler.add_job(
+            _perform_scheduled_backup,
+            trigger=trigger,
+            id=job_id,
+            replace_existing=True,
+        )
+        logger.info("Scheduled backup job updated: cron=%s", cron_expr)
+    except Exception as exc:
+        logger.error("Failed to configure scheduled backup: %s", exc)
+
+
+def _perform_scheduled_backup() -> None:
+    """Execute a scheduled database backup (runs in APScheduler thread)."""
+    destination = history.get_portal_setting("backup_schedule_destination") or ""
+    if not destination:
+        logger.warning("Scheduled backup skipped — no destination configured")
+        return
+
+    retention_count = int(history.get_portal_setting("backup_schedule_retention") or "7")
+
+    src = history._db_path()
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"{ts}_scheduled.db"
+
+    dest_dir = Path(destination).resolve()
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_file = dest_dir / filename
+
+    try:
+        conn = sqlite3.connect(src, timeout=30.0)
+        try:
+            conn.execute(f"VACUUM INTO '{dest_file}'")
+        finally:
+            conn.close()
+
+        size = dest_file.stat().st_size
+        stats = history._collect_db_stats()
+        history.create_backup_record(
+            label="scheduled",
+            storage_type="local",
+            path=str(dest_file.resolve()),
+            size_bytes=size,
+            db_stats=stats,
+        )
+        logger.info("Scheduled backup created: %s (%d bytes)", dest_file, size)
+    except Exception as exc:
+        logger.error("Scheduled backup failed: %s", exc)
+        return
+
+    if retention_count > 0:
+        _prune_old_scheduled_backups(dest_dir, retention_count)
+
+
+def _prune_old_scheduled_backups(dest_dir: Path, keep: int) -> None:
+    """Remove old scheduled backup files beyond the retention count."""
+    scheduled_files = sorted(dest_dir.glob("*_scheduled.db"), reverse=True)
+    for old_file in scheduled_files[keep:]:
+        try:
+            old_file.unlink()
+            logger.info("Pruned old scheduled backup: %s", old_file.name)
+        except Exception as exc:
+            logger.warning("Failed to prune backup %s: %s", old_file, exc)
 
 
 @app.get("/api/database/export-json")
