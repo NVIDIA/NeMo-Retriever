@@ -33,8 +33,7 @@ your cluster blocks startup package installation (for example air-gapped
 environments or **OpenShift restricted-v2**), use a custom service image that
 already contains `ffmpeg` and `ffprobe`, then set `service.image.repository`
 and `service.image.tag`. For OpenShift overrides, see
-[OpenShift deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#openshift-deployment)
-in the Helm chart README.
+[OpenShift deployment](openshift.md).
 
 ### I want examples and notebooks
 
