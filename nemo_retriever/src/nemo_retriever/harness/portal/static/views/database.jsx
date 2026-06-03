@@ -377,6 +377,9 @@ function DatabaseView() {
         )}
       </div>
 
+      {/* Scheduled Backups */}
+      <DatabaseBackupScheduleCard />
+
       {/* Export */}
       <div className="card" style={{ padding: "24px", marginBottom: "20px" }}>
         <div className="section-title" style={{ marginBottom: "6px" }}>Export</div>
@@ -460,5 +463,173 @@ function DatabaseView() {
         </div>
       )}
     </>
+  );
+}
+
+
+function DatabaseBackupScheduleCard() {
+  const [schedule, setSchedule] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [enabled, setEnabled] = useState(false);
+  const [cron, setCron] = useState("0 2 * * *");
+  const [destination, setDestination] = useState("");
+  const [retention, setRetention] = useState(7);
+
+  useEffect(() => {
+    fetch("/api/database/backup-schedule")
+      .then(r => r.json())
+      .then(data => {
+        setSchedule(data);
+        setEnabled(data.enabled);
+        setCron(data.cron_expression || "0 2 * * *");
+        setDestination(data.destination || "");
+        setRetention(data.retention_count || 7);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/database/backup-schedule", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled,
+          cron_expression: cron,
+          destination: destination,
+          retention_count: retention,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setSchedule(data);
+      setSuccess("Schedule saved successfully");
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function describeCron(expr) {
+    if (!expr) return "";
+    const parts = expr.trim().split(/\s+/);
+    if (parts.length !== 5) return expr;
+    const [min, hour, dom, mon, dow] = parts;
+    const days = { "0": "Sun", "1": "Mon", "2": "Tue", "3": "Wed", "4": "Thu", "5": "Fri", "6": "Sat", "7": "Sun" };
+    let desc = "";
+    if (dom === "*" && mon === "*" && dow === "*") {
+      desc = `Daily at ${hour.padStart(2,"0")}:${min.padStart(2,"0")} UTC`;
+    } else if (dom === "*" && mon === "*" && dow !== "*") {
+      const dayNames = dow.split(",").map(d => days[d] || d).join(", ");
+      desc = `${dayNames} at ${hour.padStart(2,"0")}:${min.padStart(2,"0")} UTC`;
+    } else {
+      desc = `${expr} (cron)`;
+    }
+    return desc;
+  }
+
+  const presets = [
+    { label: "Nightly 2 AM", value: "0 2 * * *" },
+    { label: "Nightly 12 AM", value: "0 0 * * *" },
+    { label: "Every 6 hours", value: "0 */6 * * *" },
+    { label: "Weekly (Sun 3 AM)", value: "0 3 * * 0" },
+  ];
+
+  const labelStyle = { display: "block", fontSize: "11px", fontWeight: 600, color: "var(--nv-text-dim)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" };
+
+  if (loading) return null;
+
+  return (
+    <div className="card" style={{ padding: "24px", marginBottom: "20px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+        <div className="section-title">Scheduled Backups</div>
+        {schedule && schedule.enabled && (
+          <span style={{ fontSize: "11px", fontWeight: 600, padding: "3px 10px", borderRadius: "4px", background: "rgba(118,185,0,0.12)", color: "var(--nv-green)", textTransform: "uppercase" }}>Active</span>
+        )}
+      </div>
+      <div style={{ fontSize: "12px", color: "var(--nv-text-dim)", lineHeight: "1.6", marginBottom: "20px" }}>
+        Configure automatic database backups on a cron schedule. Old backups beyond the retention count are automatically pruned.
+      </div>
+
+      <div style={{
+        padding: "16px", borderRadius: "10px", marginBottom: "16px",
+        background: "rgba(255,255,255,0.015)", border: "1px solid var(--nv-border)",
+      }}>
+        {/* Enable toggle */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
+          <label className="toggle" style={{ flexShrink: 0 }}>
+            <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+            <span className="toggle-slider"></span>
+          </label>
+          <div>
+            <div style={{ fontSize: "13px", fontWeight: 600, color: "#fff" }}>Enable Scheduled Backups</div>
+            <div style={{ fontSize: "11px", color: "var(--nv-text-dim)", marginTop: "2px" }}>
+              {enabled ? describeCron(cron) : "Disabled — no automatic backups"}
+            </div>
+          </div>
+        </div>
+
+        {/* Schedule config */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "14px", opacity: enabled ? 1 : 0.5, pointerEvents: enabled ? "auto" : "none" }}>
+          <div>
+            <label style={labelStyle}>Cron Expression</label>
+            <input className="input" style={{ width: "100%" }} value={cron}
+              onChange={e => setCron(e.target.value)}
+              placeholder="0 2 * * *" />
+            <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "6px" }}>
+              {presets.map(p => (
+                <button key={p.value} type="button" className="btn btn-sm"
+                  onClick={() => setCron(p.value)}
+                  style={{
+                    fontSize: "10px", padding: "2px 6px",
+                    background: cron === p.value ? "rgba(118,185,0,0.12)" : "transparent",
+                    color: cron === p.value ? "var(--nv-green)" : "var(--nv-text-dim)",
+                    border: `1px solid ${cron === p.value ? "rgba(118,185,0,0.3)" : "var(--nv-border)"}`,
+                  }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>Retention (keep latest N backups)</label>
+            <input className="input" type="number" min="1" max="365" style={{ width: "100%" }}
+              value={retention}
+              onChange={e => setRetention(parseInt(e.target.value, 10) || 7)} />
+            <div style={{ fontSize: "11px", color: "var(--nv-text-dim)", marginTop: "4px" }}>
+              Older scheduled backups will be automatically deleted.
+            </div>
+          </div>
+        </div>
+        <div style={{ marginBottom: "14px", opacity: enabled ? 1 : 0.5, pointerEvents: enabled ? "auto" : "none" }}>
+          <label style={labelStyle}>Backup Destination Directory</label>
+          <input className="input" style={{ width: "100%" }} value={destination}
+            onChange={e => setDestination(e.target.value)}
+            placeholder="/path/to/backup/directory" />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}
+            style={{ justifyContent: "center" }}>
+            {saving ? <><span className="spinner" style={{ marginRight: "6px" }}></span>Saving…</> : "Save Schedule"}
+          </button>
+          {success && <span style={{ fontSize: "12px", color: "var(--nv-green)", fontWeight: 600 }}>{success}</span>}
+          {error && <span style={{ fontSize: "12px", color: "#ff5050" }}>{error}</span>}
+        </div>
+      </div>
+    </div>
   );
 }
