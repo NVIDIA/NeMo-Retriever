@@ -411,6 +411,36 @@ class TestBackCompatCallSites:
         assert len(generation_ops) == 1
         assert generation_ops[0]._client.transport.reasoning_enabled is True
 
+    def test_pipeline_builder_generate_defaults_reasoning_disabled_for_legacy_client(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from nemo_retriever.evaluation.generation import QAGenerationOperator
+        from nemo_retriever.retriever import RetrieverPipelineBuilder
+
+        retriever = MagicMock()
+        retriever.top_k = 5
+        builder = RetrieverPipelineBuilder(retriever, top_k=5)
+        llm = SimpleNamespace(
+            transport=SimpleNamespace(
+                model="m",
+                api_base=None,
+                api_key=None,
+                extra_params={},
+                num_retries=3,
+                timeout=120.0,
+                rag_system_prompt=None,
+                rag_system_prompt_prefix=None,
+            ),
+            sampling=SimpleNamespace(temperature=0.0, top_p=None, max_tokens=128),
+        )
+
+        builder.generate(llm)
+
+        generation_ops = [s for s in builder._steps if isinstance(s, QAGenerationOperator)]
+        assert len(generation_ops) == 1
+        assert generation_ops[0]._client.transport.reasoning_enabled is False
+
     def test_judging_operator_constructs_cleanly(self):
         from nemo_retriever.evaluation.judging import JudgingOperator
 
