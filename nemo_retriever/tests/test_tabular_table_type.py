@@ -24,10 +24,10 @@ def test_normalize_tables_keeps_table_type():
 
     assert "table_type" in result.columns
     assert result["table_type"].iloc[0] == "base table"
-    assert str(result["table_type"].dtype) == "string"
+    assert str(result["table_type"].dtype) == "category"
 
 
-def test_normalize_tables_omits_table_type_when_absent():
+def test_normalize_tables_adds_table_type_when_absent():
     raw = pd.DataFrame(
         {
             "table_schema": ["public"],
@@ -36,7 +36,9 @@ def test_normalize_tables_omits_table_type_when_absent():
     )
     result = normalize_tables(raw)
 
-    assert "table_type" not in result.columns
+    assert "table_type" in result.columns
+    assert result["table_type"].iloc[0] == TableTypes.BASE_TABLE
+    assert str(result["table_type"].dtype) == "category"
 
 
 def test_normalize_tables_maps_materialized_view():
@@ -83,5 +85,136 @@ def test_reset_tables_props_sets_type():
     )
 
     props = schema.tables_df.iloc[0]["props"]
+    assert props["table_type"] == "base table"
     assert props["type"] == "base table"
     assert props["name"] == "orders"
+
+
+def test_reset_tables_props_defaults_type_when_table_type_absent():
+    tables_df = pd.DataFrame(
+        {
+            "table_schema": ["public"],
+            "table_name": ["orders"],
+            "created": [pd.NA],
+            "description": [pd.NA],
+            "id": ["table-uuid-1"],
+        }
+    )
+    columns_df = pd.DataFrame(
+        {
+            "table_schema": ["public"],
+            "table_name": ["orders"],
+            "column_name": ["id"],
+            "ordinal_position": [1],
+            "data_type": ["INTEGER"],
+            "is_nullable": ["NO"],
+            "description": [pd.NA],
+            "id": ["col-uuid-1"],
+        }
+    )
+    db_node = Neo4jNode(name="mydb", label="Database", props={"name": "mydb"})
+    schema = Schema(
+        db_node=db_node,
+        schema_tables_df=tables_df,
+        schema_columns_df=columns_df,
+        is_creation_mode=True,
+    )
+
+    props = schema.tables_df.iloc[0]["props"]
+    assert props["table_type"] == TableTypes.BASE_TABLE
+    assert props["type"] == TableTypes.BASE_TABLE
+
+
+def test_create_table_node_does_not_set_type():
+    db_node = Neo4jNode(name="mydb", label="Database", props={"name": "mydb"})
+    schema = Schema(
+        db_node=db_node,
+        schema_tables_df=pd.DataFrame(
+            columns=["table_schema", "table_name", "created", "description", "id"]
+        ),
+        schema_columns_df=pd.DataFrame(
+            columns=[
+                "table_schema",
+                "table_name",
+                "column_name",
+                "ordinal_position",
+                "data_type",
+                "is_nullable",
+                "description",
+                "id",
+            ]
+        ),
+        is_creation_mode=False,
+    )
+    schema.create_schema_node("public")
+    schema.create_table_node("orders", id="table-uuid-1")
+
+    props = schema.get_table_node("orders").get_properties()
+    assert "type" not in props
+    assert "table_type" not in props
+
+
+def test_create_table_node_sets_table_type():
+    db_node = Neo4jNode(name="mydb", label="Database", props={"name": "mydb"})
+    schema = Schema(
+        db_node=db_node,
+        schema_tables_df=pd.DataFrame(
+            columns=["table_schema", "table_name", "created", "description", "id"]
+        ),
+        schema_columns_df=pd.DataFrame(
+            columns=[
+                "table_schema",
+                "table_name",
+                "column_name",
+                "ordinal_position",
+                "data_type",
+                "is_nullable",
+                "description",
+                "id",
+            ]
+        ),
+        is_creation_mode=False,
+    )
+    schema.create_schema_node("public")
+    schema.create_table_node("orders", id="table-uuid-1", table_type="VIEW")
+
+    props = schema.get_table_node("orders").get_properties()
+    assert props["table_type"] == "view"
+    assert props["type"] == "view"
+
+
+def test_get_table_node_passes_table_type_from_dataframe():
+    tables_df = pd.DataFrame(
+        {
+            "table_schema": ["public"],
+            "table_name": ["orders"],
+            "created": [pd.NA],
+            "description": [pd.NA],
+            "table_type": ["materialized view"],
+            "id": ["table-uuid-1"],
+        }
+    )
+    columns_df = pd.DataFrame(
+        {
+            "table_schema": ["public"],
+            "table_name": ["orders"],
+            "column_name": ["id"],
+            "ordinal_position": [1],
+            "data_type": ["INTEGER"],
+            "is_nullable": ["NO"],
+            "description": [pd.NA],
+            "id": ["col-uuid-1"],
+        }
+    )
+    db_node = Neo4jNode(name="mydb", label="Database", props={"name": "mydb"})
+    schema = Schema(
+        db_node=db_node,
+        schema_tables_df=tables_df,
+        schema_columns_df=columns_df,
+        is_creation_mode=True,
+    )
+    schema.create_schema_node("public")
+
+    props = schema.get_table_node("orders").get_properties()
+    assert props["table_type"] == TableTypes.MATERIALIZED_VIEW
+    assert props["type"] == TableTypes.MATERIALIZED_VIEW

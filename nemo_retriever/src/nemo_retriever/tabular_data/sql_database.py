@@ -82,7 +82,7 @@ class SQLDatabase(ABC):
         ``type`` (used by text-to-SQL retrieval as ``table_type``). Canonical values
         are defined in :class:`~nemo_retriever.tabular_data.ingestion.model.reserved_words.TableTypes`
         (``view``, ``materialized view``, ``base table``). Connectors that do not
-        provide it leave ``type`` unset on existing nodes.
+        provide it default to ``base table`` during ingestion.
         """
 
     @abstractmethod

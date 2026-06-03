@@ -7,6 +7,8 @@ from datetime import timezone
 
 import pandas as pd
 
+from nemo_retriever.tabular_data.ingestion.model.reserved_words import TableTypes
+
 
 def flat_list_recursive(nested_list):
     output = []
@@ -62,6 +64,7 @@ def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
     types = {
         "table_schema": "category",
         "table_name": "string",
+        "table_type": "category",
         "created": "string",
         "description": "string",
     }
@@ -74,9 +77,7 @@ def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
         if key not in df.columns:
             df[key] = pd.NA
 
-    if "table_type" in df.columns:
-        df["table_type"] = df["table_type"].astype("string")
-
+    df["table_type"] = df["table_type"].fillna(TableTypes.BASE_TABLE)
     df = df.astype(dtype=types)
 
     if "created" in df:

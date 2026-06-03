@@ -7,7 +7,7 @@ import uuid
 from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
 import pandas as pd
 import numpy as np
-from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
+from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels, TableTypes
 
 pd.options.mode.chained_assignment = None
 
@@ -42,6 +42,11 @@ class Schema:
             self.columns_df = self.columns_df.loc[self.columns_df["table_name"].isin(table_names)]
 
             self.tables_df["table_name_lower"] = self.tables_df["table_name"].apply(lambda x: x.lower())
+            if "table_type" not in self.tables_df.columns:
+                self.tables_df["table_type"] = TableTypes.BASE_TABLE
+            self.tables_df["table_type"] = (
+                self.tables_df["table_type"].fillna(TableTypes.BASE_TABLE).apply(lambda x: str(x).lower())
+            )
             if "id" not in self.tables_df.columns:
                 self.tables_df["id"] = None
             mask = self.tables_df["id"].isna()
@@ -80,20 +85,17 @@ class Schema:
                 self.reset_columns_props()
 
     def reset_tables_props(self):
-        def _table_props(x: pd.Series) -> dict:
-            props = {
+        self.tables_df["props"] = self.tables_df.apply(
+            lambda x: {
                 "name": x["table_name"].strip('"'),
+                "table_type": x["table_type"].lower(),
+                "type": x["table_type"].lower(),
                 "created": None if pd.isna(x["created"]) else x["created"],
                 "description": None if pd.isna(x["description"]) else x["description"],
                 "id": x.id,
-            }
-            if "table_type" in x.index:
-                table_type = x.table_type
-                if table_type is not None and not pd.isna(table_type):
-                    props["type"] = str(table_type)
-            return props
-
-        self.tables_df["props"] = self.tables_df.apply(_table_props, axis=1)
+            },
+            axis=1,
+        )
         self.tables_df["match_props"] = self.tables_df.apply(
             lambda x: {"id": x.id},
             axis=1,
@@ -331,6 +333,7 @@ class Schema:
         self,
         table_name,
         id=None,
+        table_type=None,
         created=None,
         description=None,
     ):
@@ -339,6 +342,7 @@ class Schema:
         match_props = {"id": id}
         props = self.update_table_props_by_arguments(
             props,
+            table_type,
             created,
             description,
         )
@@ -393,9 +397,15 @@ class Schema:
                 if "description" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["description"])
                 else table_df.iloc[0]["description"]
             )
+            table_type = (
+                None
+                if "table_type" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["table_type"])
+                else table_df.iloc[0]["table_type"]
+            )
             self.create_table_node(
                 table_df.iloc[0]["table_name"],
                 id,
+                table_type,
                 created,
                 description,
             )
@@ -456,9 +466,13 @@ class Schema:
     def update_table_props_by_arguments(
         self,
         props,
+        table_type,
         created,
         description,
     ):
+        if table_type:
+            props.update({"table_type": table_type.lower()})
+            props.update({"type": table_type.lower()})
         if created:
             props.update({"created": created})
         if description:
