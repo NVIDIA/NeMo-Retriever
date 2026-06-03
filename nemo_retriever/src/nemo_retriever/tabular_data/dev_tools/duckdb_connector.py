@@ -93,13 +93,19 @@ class DuckDB(SQLDatabase):
 
     def get_tables(self) -> pd.DataFrame:
         """Return all tables from information_schema as a DataFrame."""
-        table_type_case = TableTypes.sql_case("table_type")
+        view = TableTypes.VIEW
+        matview = TableTypes.MATERIALIZED_VIEW
+        base = TableTypes.BASE_TABLE
         return self.execute(
             f"""
             SELECT
                 table_schema,
                 table_name,
-                {table_type_case} AS table_type
+                CASE lower(trim(table_type))
+                    WHEN '{view}' THEN '{view}'
+                    WHEN '{matview}' THEN '{matview}'
+                    WHEN '{base}' THEN '{base}'
+                END AS table_type
             FROM information_schema.tables
             ORDER BY table_schema, table_name
         """

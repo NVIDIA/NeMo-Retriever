@@ -7,9 +7,6 @@ from datetime import timezone
 
 import pandas as pd
 
-from nemo_retriever.tabular_data.ingestion.model.reserved_words import TableTypes
-
-
 def flat_list_recursive(nested_list):
     output = []
     for i in nested_list:
@@ -66,10 +63,7 @@ def _table_type_node_props(row: pd.Series) -> dict[str, str]:
     value = row["table_type"]
     if value is None or pd.isna(value):
         return {}
-    canonical = TableTypes.normalize(value)
-    if canonical is None:
-        return {}
-    return {"type": canonical}
+    return {"type": str(value)}
 
 
 def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
@@ -90,7 +84,7 @@ def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
             df[key] = pd.NA
 
     if "table_type" in df.columns:
-        df["table_type"] = df["table_type"].map(TableTypes.normalize).astype("string")
+        df["table_type"] = df["table_type"].astype("string")
 
     df = df.astype(dtype=types)
 

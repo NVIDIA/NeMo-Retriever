@@ -42,12 +42,6 @@ def test_normalize_tables_omits_table_type_when_absent():
     assert "table_type" not in result.columns
 
 
-def test_table_types_normalize_materialized_view():
-    assert TableTypes.normalize("MATERIALIZED VIEW") == TableTypes.MATERIALIZED_VIEW
-    assert TableTypes.normalize("m") == TableTypes.MATERIALIZED_VIEW
-    assert TableTypes.normalize("unknown_kind") == TableTypes.BASE_TABLE
-
-
 def test_normalize_tables_maps_materialized_view():
     raw = pd.DataFrame(
         {

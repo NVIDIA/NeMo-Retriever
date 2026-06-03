@@ -64,32 +64,28 @@ class PostgresDatabase(SQLDatabase):
     # ------------------------------------------------------------------
 
     def get_tables(self) -> pd.DataFrame:
-        matview = TableTypes.MATERIALIZED_VIEW
+        # Filter tables that are part of partitioned tables.
+        # relkind distinguishes materialized views (m) from ordinary tables (r).
         view = TableTypes.VIEW
+        matview = TableTypes.MATERIALIZED_VIEW
         base = TableTypes.BASE_TABLE
         return self.execute(
             f"""
             SELECT
                 t.table_schema AS table_schema,
                 t.table_name   AS table_name,
-                CASE
-                    WHEN lower(t.table_type) = 'view' THEN '{view}'
+                CASE c.relkind
+                    WHEN 'v' THEN '{view}'
+                    WHEN 'm' THEN '{matview}'
                     ELSE '{base}'
                 END AS table_type
             FROM information_schema.tables t
+            JOIN pg_namespace n ON n.nspname = t.table_schema
+            JOIN pg_class c ON c.relname = t.table_name AND c.relnamespace = n.oid
             WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema')
-              AND t.table_type IN ('BASE TABLE', 'VIEW')
-
-            UNION ALL
-
-            SELECT
-                mv.schemaname  AS table_schema,
-                mv.matviewname AS table_name,
-                '{matview}'    AS table_type
-            FROM pg_catalog.pg_matviews mv
-            WHERE mv.schemaname NOT IN ('pg_catalog', 'information_schema')
-
-            ORDER BY table_schema, table_name
+              AND c.relispartition = false
+              AND c.relkind IN ('r', 'v', 'm', 'f')
+            ORDER BY t.table_schema, t.table_name
         """
         )
 
