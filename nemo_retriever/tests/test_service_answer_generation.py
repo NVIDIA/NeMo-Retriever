@@ -106,7 +106,7 @@ def test_answer_retrieves_from_vectordb_and_generates_with_configured_llm(
     with patch("nemo_retriever.llm.clients.LiteLLMClient.from_kwargs", return_value=fake_llm) as from_kwargs:
         resp = app_with_answer_config.post(
             "/v1/answer",
-            json={"query": "What generates answers?", "top_k": 2, "include_chunks": True},
+            json={"query": "What generates answers?", "top_k": 2, "include_chunks": True, "include_metadata": True},
         )
 
     assert resp.status_code == 200, resp.text
@@ -142,7 +142,7 @@ def test_answer_retrieves_from_vectordb_and_generates_with_configured_llm(
     )
 
 
-def test_answer_can_return_metadata_without_chunks(
+def test_answer_response_fields_respect_chunk_and_metadata_flags(
     app_with_answer_config: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -198,6 +198,14 @@ def test_answer_can_return_metadata_without_chunks(
     assert body["chunks"] is None
     assert body["metadata"] == [{"source": "doc.pdf", "page_number": 3}]
     assert seen["chunks"] == ["citation context"]
+
+    resp = app_with_answer_config.post("/v1/answer", json={"query": "q", "include_chunks": True})
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["chunk_count"] == 1
+    assert body["chunks"] == ["citation context"]
+    assert body["metadata"] is None
 
 
 def test_answer_returns_404_when_llm_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

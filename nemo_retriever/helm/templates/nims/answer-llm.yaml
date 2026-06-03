@@ -10,7 +10,7 @@ spec:
   source:
     ngc:
       modelPuller: "{{ $cfg.image.repository }}:{{ $cfg.image.tag }}"
-      pullSecret: "{{ index $cfg.image.pullSecrets 0 }}"
+      pullSecret: {{ if $cfg.image.pullSecrets }}{{ index $cfg.image.pullSecrets 0 | quote }}{{ else }}{{ fail "nimOperator.answer_llm.image.pullSecrets must not be empty" }}{{ end }}
       authSecret: {{ $cfg.authSecret | quote }}
       {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "answer_llm") | nindent 6 }}
   storage:

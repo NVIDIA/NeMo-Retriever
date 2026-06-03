@@ -115,6 +115,22 @@ class HelmAnswerLLMGenerationTests(TestCase):
         self.assertIn('name: "ngc-api"', proc.stdout)
         self.assertIn('key: "NGC_API_KEY"', proc.stdout)
 
+    def test_answer_llm_rejects_empty_pull_secrets(self) -> None:
+        proc = _helm_template(
+            extra_args=(
+                "--set",
+                "nimOperator.answer_llm.enabled=true",
+                "--set-json",
+                "nimOperator.answer_llm.image.pullSecrets=[]",
+            )
+        )
+
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn(
+            "nimOperator.answer_llm.image.pullSecrets must not be empty",
+            proc.stdout + proc.stderr,
+        )
+
     def test_answer_llm_can_swap_to_nano_image_model_and_profile(self) -> None:
         proc = _helm_template(
             extra_args=(

@@ -1466,7 +1466,7 @@ async def answer(req: AnswerRequest, request: Request) -> Response | AnswerRespo
         latency_s=gen.latency_s,
         chunk_count=len(chunks),
         chunks=chunks if req.include_chunks else None,
-        metadata=metadata if req.include_chunks or req.include_metadata else None,
+        metadata=metadata if req.include_metadata else None,
     )
 
 
