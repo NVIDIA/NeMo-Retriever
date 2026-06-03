@@ -387,6 +387,30 @@ class TestBackCompatCallSites:
         assert op._client.sampling.temperature == 0.0
         assert op._client.sampling.max_tokens == 128
 
+    def test_qa_generation_operator_forwards_reasoning_enabled(self):
+        from nemo_retriever.evaluation.generation import QAGenerationOperator
+
+        op = QAGenerationOperator(model="m", reasoning_enabled=True)
+        assert op._client.transport.reasoning_enabled is True
+
+    def test_pipeline_builder_generate_forwards_reasoning_enabled(self):
+        from unittest.mock import MagicMock
+
+        from nemo_retriever.evaluation.generation import QAGenerationOperator
+        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.retriever import RetrieverPipelineBuilder
+
+        retriever = MagicMock()
+        retriever.top_k = 5
+        builder = RetrieverPipelineBuilder(retriever, top_k=5)
+
+        llm = LiteLLMClient.from_kwargs(model="m", reasoning_enabled=True)
+        builder.generate(llm)
+
+        generation_ops = [s for s in builder._steps if isinstance(s, QAGenerationOperator)]
+        assert len(generation_ops) == 1
+        assert generation_ops[0]._client.transport.reasoning_enabled is True
+
     def test_judging_operator_constructs_cleanly(self):
         from nemo_retriever.evaluation.judging import JudgingOperator
 

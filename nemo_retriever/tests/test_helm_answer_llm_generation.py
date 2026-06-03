@@ -196,6 +196,34 @@ class HelmAnswerLLMGenerationTests(TestCase):
         self.assertIn("reasoning_enabled: true", proc.stdout)
         self.assertIn("rag_system_prompt_prefix: null", proc.stdout)
 
+    def test_answer_llm_filters_reserved_ngc_api_key_from_custom_env(self) -> None:
+        proc = _helm_template(
+            extra_args=(
+                "--set",
+                "nimOperator.answer_llm.enabled=true",
+                "--set",
+                "nimOperator.answer_llm.env[0].name=NGC_API_KEY",
+                "--set-string",
+                "nimOperator.answer_llm.env[0].value=ignored-user-secret",
+                "--set",
+                "nimOperator.answer_llm.env[1].name=OTHER_ENV",
+                "--set-string",
+                "nimOperator.answer_llm.env[1].value=kept",
+            )
+        )
+        _assert_helm_ok(self, proc)
+
+        answer_llm_service_start = proc.stdout.index(f"kind: NIMService\nmetadata:\n  name: {_ANSWER_LLM_SERVICE}")
+        next_manifest_start = proc.stdout.find("\n---", answer_llm_service_start + 1)
+        answer_llm_service = proc.stdout[
+            answer_llm_service_start : next_manifest_start if next_manifest_start != -1 else len(proc.stdout)
+        ]
+
+        self.assertNotIn("ignored-user-secret", answer_llm_service)
+        self.assertIn("OTHER_ENV", answer_llm_service)
+        self.assertIn("value: kept", answer_llm_service)
+        self.assertEqual(answer_llm_service.count("- name: NGC_API_KEY"), 1)
+
     def test_llm_api_key_secret_renders_env_not_configmap_value(self) -> None:
         proc = _helm_template(
             extra_args=(

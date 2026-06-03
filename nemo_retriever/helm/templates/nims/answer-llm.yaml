@@ -44,7 +44,11 @@ spec:
   expose:
 {{ toYaml $cfg.expose | indent 4 }}
   env:
-{{ toYaml $cfg.env | indent 4 }}
+{{- range $envVar := $cfg.env }}
+{{- if ne (toString $envVar.name) "NGC_API_KEY" }}
+{{ toYaml (list $envVar) | indent 4 }}
+{{- end }}
+{{- end }}
     - name: NGC_API_KEY
       valueFrom:
         secretKeyRef:

@@ -44,6 +44,7 @@ class QAGenerationOperator(EvalOperator):
         max_workers: int = 8,
         rag_system_prompt: Optional[str] = None,
         rag_system_prompt_prefix: Optional[str] = None,
+        reasoning_enabled: bool = False,
     ) -> None:
         super().__init__(
             model=model,
@@ -58,6 +59,7 @@ class QAGenerationOperator(EvalOperator):
             max_workers=max_workers,
             rag_system_prompt=rag_system_prompt,
             rag_system_prompt_prefix=rag_system_prompt_prefix,
+            reasoning_enabled=reasoning_enabled,
         )
         self._client = LiteLLMClient.from_kwargs(
             model=model,
@@ -71,6 +73,7 @@ class QAGenerationOperator(EvalOperator):
             timeout=timeout,
             rag_system_prompt=rag_system_prompt,
             rag_system_prompt_prefix=rag_system_prompt_prefix,
+            reasoning_enabled=reasoning_enabled,
         )
         self._max_workers = max_workers
 
