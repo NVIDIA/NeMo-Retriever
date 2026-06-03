@@ -7,6 +7,7 @@ from datetime import timezone
 
 import pandas as pd
 
+
 def flat_list_recursive(nested_list):
     output = []
     for i in nested_list:
