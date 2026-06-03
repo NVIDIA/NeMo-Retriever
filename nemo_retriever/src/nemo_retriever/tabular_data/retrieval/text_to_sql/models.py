@@ -102,7 +102,7 @@ class SQLGenerationModel(StrictModel):
             "User-facing summary in plain English (2-4 sentences): describe what "
             "is being calculated, which tables and columns are used, any filters "
             "or time windows applied, and the grouping/ordering. Refer to tables "
-            "and columns by their human-readable names."
+            "and columns by their human-readable names. "
             "Do NOT include SQL and code fences "
             "identifiers like 'schema.table', reasoning, self-corrections, "
             "formatting notes, or internal thoughts."
