@@ -148,11 +148,11 @@ class TestLiteLLMClientConstruction:
         client = LiteLLMClient.from_kwargs(model="m")
         assert client.sampling.top_p is None
 
-    def test_from_kwargs_defaults_reasoning_disabled_for_rag_answers(self):
+    def test_from_kwargs_preserves_provider_reasoning_by_default(self):
         from nemo_retriever.llm.clients import LiteLLMClient
 
         client = LiteLLMClient.from_kwargs(model="m")
-        assert client.transport.reasoning_enabled is False
+        assert client.transport.reasoning_enabled is True
 
 
 class TestLiteLLMCompleteCallKwargs:
@@ -240,6 +240,7 @@ class TestLiteLLMRAGPrompt:
         client = LiteLLMClient.from_kwargs(
             model="m",
             extra_params={"chat_template_kwargs": {"reasoning_budget": 32}},
+            reasoning_enabled=False,
         )
         result = client.generate(query="q", chunks=["ctx"])
 
@@ -411,7 +412,7 @@ class TestBackCompatCallSites:
         assert len(generation_ops) == 1
         assert generation_ops[0]._client.transport.reasoning_enabled is True
 
-    def test_pipeline_builder_generate_defaults_reasoning_disabled_for_legacy_client(self):
+    def test_pipeline_builder_generate_defaults_reasoning_enabled_for_legacy_client(self):
         from types import SimpleNamespace
         from unittest.mock import MagicMock
 
@@ -439,7 +440,7 @@ class TestBackCompatCallSites:
 
         generation_ops = [s for s in builder._steps if isinstance(s, QAGenerationOperator)]
         assert len(generation_ops) == 1
-        assert generation_ops[0]._client.transport.reasoning_enabled is False
+        assert generation_ops[0]._client.transport.reasoning_enabled is True
 
     def test_judging_operator_constructs_cleanly(self):
         from nemo_retriever.evaluation.judging import JudgingOperator

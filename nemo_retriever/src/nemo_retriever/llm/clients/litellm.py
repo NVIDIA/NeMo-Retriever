@@ -157,7 +157,7 @@ class LiteLLMClient:
         timeout: float = 120.0,
         rag_system_prompt: Optional[str] = None,
         rag_system_prompt_prefix: Optional[str] = None,
-        reasoning_enabled: bool = False,
+        reasoning_enabled: bool = True,
     ) -> "LiteLLMClient":
         """Flat-kwarg constructor for zero-churn migration from the old signature.
 

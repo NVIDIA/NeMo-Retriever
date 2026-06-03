@@ -624,7 +624,7 @@ class RetrieverPipelineBuilder:
                 timeout=transport.timeout,
                 rag_system_prompt=transport.rag_system_prompt,
                 rag_system_prompt_prefix=transport.rag_system_prompt_prefix,
-                reasoning_enabled=getattr(transport, "reasoning_enabled", False),
+                reasoning_enabled=getattr(transport, "reasoning_enabled", True),
             )
         else:
             operator = QAGenerationOperator(model=model, **kwargs)

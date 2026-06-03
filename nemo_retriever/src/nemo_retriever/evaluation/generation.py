@@ -44,7 +44,7 @@ class QAGenerationOperator(EvalOperator):
         max_workers: int = 8,
         rag_system_prompt: Optional[str] = None,
         rag_system_prompt_prefix: Optional[str] = None,
-        reasoning_enabled: bool = False,
+        reasoning_enabled: bool = True,
     ) -> None:
         super().__init__(
             model=model,

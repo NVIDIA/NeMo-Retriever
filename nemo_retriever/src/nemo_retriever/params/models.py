@@ -601,7 +601,7 @@ class LLMRemoteClientParams(_ParamsModel):
     extra_params: dict[str, Any] = Field(default_factory=dict)
     rag_system_prompt: Optional[str] = None
     rag_system_prompt_prefix: Optional[str] = None
-    reasoning_enabled: bool = False
+    reasoning_enabled: bool = True
 
     @field_validator("num_retries")
     @classmethod
