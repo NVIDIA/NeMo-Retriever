@@ -56,16 +56,6 @@ def chunks(lst, n):
         yield lst[i : i + n]
 
 
-def _table_type_node_props(row: pd.Series) -> dict[str, str]:
-    """Neo4j ``Table`` prop ``type`` from a normalized tables row."""
-    if "table_type" not in row.index:
-        return {}
-    value = row["table_type"]
-    if value is None or pd.isna(value):
-        return {}
-    return {"type": str(value)}
-
-
 def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
     """Normalize and type a tables DataFrame. Expects a DataFrame only."""
     types = {

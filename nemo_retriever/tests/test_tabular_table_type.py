@@ -9,10 +9,7 @@ import pandas as pd
 from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
 from nemo_retriever.tabular_data.ingestion.model.schema import Schema
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import TableTypes
-from nemo_retriever.tabular_data.ingestion.utils import (
-    _table_type_node_props,
-    normalize_tables,
-)
+from nemo_retriever.tabular_data.ingestion.utils import normalize_tables
 
 
 def test_normalize_tables_keeps_table_type():
@@ -52,17 +49,6 @@ def test_normalize_tables_maps_materialized_view():
     )
     result = normalize_tables(raw)
     assert result["table_type"].iloc[0] == TableTypes.MATERIALIZED_VIEW
-
-
-def test_table_type_node_props():
-    row_with_type = pd.Series({"table_type": "view"})
-    assert _table_type_node_props(row_with_type) == {"type": "view"}
-
-    row_without_type = pd.Series({"table_name": "t"})
-    assert _table_type_node_props(row_without_type) == {}
-
-    row_na = pd.Series({"table_type": pd.NA})
-    assert _table_type_node_props(row_na) == {}
 
 
 def test_reset_tables_props_sets_type():

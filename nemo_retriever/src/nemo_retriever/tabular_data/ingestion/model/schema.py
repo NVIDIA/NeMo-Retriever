@@ -8,7 +8,6 @@ from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
 import pandas as pd
 import numpy as np
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Labels
-from nemo_retriever.tabular_data.ingestion.utils import _table_type_node_props
 
 pd.options.mode.chained_assignment = None
 
@@ -81,16 +80,20 @@ class Schema:
                 self.reset_columns_props()
 
     def reset_tables_props(self):
-        self.tables_df["props"] = self.tables_df.apply(
-            lambda x: {
+        def _table_props(x: pd.Series) -> dict:
+            props = {
                 "name": x["table_name"].strip('"'),
                 "created": None if pd.isna(x["created"]) else x["created"],
                 "description": None if pd.isna(x["description"]) else x["description"],
                 "id": x.id,
-                **_table_type_node_props(x),
-            },
-            axis=1,
-        )
+            }
+            if "table_type" in x.index:
+                table_type = x.table_type
+                if table_type is not None and not pd.isna(table_type):
+                    props["type"] = str(table_type)
+            return props
+
+        self.tables_df["props"] = self.tables_df.apply(_table_props, axis=1)
         self.tables_df["match_props"] = self.tables_df.apply(
             lambda x: {"id": x.id},
             axis=1,
