@@ -19,6 +19,10 @@ from nemo_retriever.params.models import IMAGE_MODALITIES
 from nemo_retriever.text_embed.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
 
 
+def _is_local_embed(endpoint: Optional[str], model: Any) -> bool:
+    return endpoint is None and model is not None
+
+
 def _embed_group(
     group_df: pd.DataFrame,
     *,
@@ -184,6 +188,8 @@ def embed_text_main_text_embed(
             logger.debug("torch.cuda.empty_cache() failed during error cleanup: %s", _cache_exc)
         logger.error("Embedding failed: %s: %s", type(exc).__name__, exc, exc_info=True)
         report_error("embed", exc)
+        if _is_local_embed(endpoint, model):
+            raise
         out_df = batch_df.copy()
         out_df[output_column] = [{"embedding": [], "error": str(exc)}] * len(out_df)
         out_df[embedding_dim_column] = 0
