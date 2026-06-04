@@ -129,9 +129,7 @@ def test_create_table_node_does_not_set_type():
     db_node = Neo4jNode(name="mydb", label="Database", props={"name": "mydb"})
     schema = Schema(
         db_node=db_node,
-        schema_tables_df=pd.DataFrame(
-            columns=["table_schema", "table_name", "created", "description", "id"]
-        ),
+        schema_tables_df=pd.DataFrame(columns=["table_schema", "table_name", "created", "description", "id"]),
         schema_columns_df=pd.DataFrame(
             columns=[
                 "table_schema",
@@ -158,9 +156,7 @@ def test_create_table_node_sets_table_type():
     db_node = Neo4jNode(name="mydb", label="Database", props={"name": "mydb"})
     schema = Schema(
         db_node=db_node,
-        schema_tables_df=pd.DataFrame(
-            columns=["table_schema", "table_name", "created", "description", "id"]
-        ),
+        schema_tables_df=pd.DataFrame(columns=["table_schema", "table_name", "created", "description", "id"]),
         schema_columns_df=pd.DataFrame(
             columns=[
                 "table_schema",
