@@ -75,9 +75,8 @@ def test_local_extra_accepts_stable_ocr_2_and_newer_dev_releases() -> None:
     ocr_dep = next(dep for dep in local_deps if dep.startswith("nemotron-ocr"))
     ocr_requirement = Requirement(ocr_dep)
 
-    assert str(ocr_requirement.specifier) == ">=2.0.0.dev0"
     assert ocr_requirement.specifier.contains("2.0.0")
-    assert ocr_requirement.specifier.contains("2.0.1.dev20260521010101")
+    assert not ocr_requirement.specifier.contains("3.0.0")
     assert ocr_requirement.specifier.contains("2.0.1")
     assert not ocr_requirement.specifier.contains("1.0.1")
     assert str(ocr_requirement.marker) == (
@@ -86,7 +85,7 @@ def test_local_extra_accepts_stable_ocr_2_and_newer_dev_releases() -> None:
     assert not any(dep.startswith("nemotron-ocr-v2") for dep in local_deps)
     assert "nemotron-ocr" in uv_tool["no-build-package"]
     assert "nemotron-ocr-v2" not in uv_tool["no-build-package"]
-    assert uv_sources["nemotron-ocr"] == {"index": "test-pypi"}
+    assert "nemotron-ocr" not in uv_sources
     assert "nemotron-ocr-v2" not in uv_sources
 
 

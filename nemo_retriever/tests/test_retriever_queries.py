@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.retriever import Retriever, _shape_query_hits
 
 
 def _make_hits(n: int, base_score: float = 0.5) -> list[dict[str, Any]]:
@@ -100,8 +100,28 @@ class TestQueriesGraphExecution:
         expected = _make_hits(2)
         with patch.object(retriever, "queries", return_value=[expected]) as mock_q:
             result = retriever.query("find", top_k=4, vdb_kwargs={"uri": "x"})
-        mock_q.assert_called_once_with(["find"], top_k=4, vdb_kwargs={"uri": "x"}, embed_kwargs=None)
+        mock_q.assert_called_once_with(
+            ["find"],
+            top_k=4,
+            candidate_k=None,
+            page_dedup=False,
+            content_types=None,
+            vdb_kwargs={"uri": "x"},
+            embed_kwargs=None,
+        )
         assert result is expected
+
+    def test_candidate_k_widens_retrieval_before_final_truncation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        hits = [[{"text": f"hit {i}", "page_number": i} for i in range(5)]]
+        resolved = _install_mock_graph(monkeypatch, hits)
+        out = _make_retriever(top_k=2).queries(["q"], candidate_k=5)
+
+        assert [hit["text"] for hit in out[0]] == ["hit 0", "hit 1"]
+        assert resolved.execute.call_args.kwargs["top_k"] == 5
+
+    def test_candidate_k_must_cover_top_k(self) -> None:
+        with pytest.raises(ValueError, match=r"candidate_k \(2\).*top_k \(5\)"):
+            _make_retriever(top_k=5).queries(["q"], candidate_k=2)
 
 
 class TestRetrieverDefaults:
@@ -115,6 +135,106 @@ class TestRetrieverDefaults:
         from nemo_retriever.retriever import retriever
 
         assert retriever is Retriever
+
+
+class TestQueryHitShaping:
+    def test_page_dedup_preserves_first_page_hit(self) -> None:
+        hits = [
+            {"text": "first p1", "pdf_basename": "handbook", "page_number": 1},
+            {"text": "second p1", "pdf_basename": "handbook", "page_number": 1},
+            {"text": "first p2", "pdf_basename": "handbook", "page_number": 2},
+        ]
+
+        out = _shape_query_hits(hits, top_k=10, page_dedup=True)
+
+        assert [h["text"] for h in out] == ["first p1", "first p2"]
+
+    def test_page_dedup_does_not_strip_dotted_basename(self) -> None:
+        hits = [
+            {"text": "v1", "pdf_basename": "report.v1", "page_number": 1},
+            {"text": "v2", "pdf_basename": "report.v2", "page_number": 1},
+        ]
+
+        out = _shape_query_hits(hits, top_k=10, page_dedup=True)
+
+        assert [h["text"] for h in out] == ["v1", "v2"]
+
+    def test_page_dedup_fallback_keeps_distinct_source_paths(self) -> None:
+        hits = [
+            {"text": "dir a", "source_id": "/dir_a/report.pdf", "page_number": 1},
+            {"text": "dir b", "source_id": "/dir_b/report.pdf", "page_number": 1},
+        ]
+
+        out = _shape_query_hits(hits, top_k=10, page_dedup=True)
+
+        assert [h["text"] for h in out] == ["dir a", "dir b"]
+
+    def test_filters_content_types_from_dict_and_json_metadata(self) -> None:
+        hits = [
+            {"text": "text row", "metadata": {"type": "text"}, "page_number": 1},
+            {"text": "table row", "metadata": '{"type": "table"}', "page_number": 2},
+            {"text": "chart row", "metadata": {"type": "chart"}, "page_number": 3},
+        ]
+
+        out = _shape_query_hits(hits, top_k=10, content_types="text,table")
+
+        assert [h["text"] for h in out] == ["text row", "table row"]
+
+    def test_content_type_filter_accepts_emitted_images_alias(self) -> None:
+        hits = [
+            {"text": "image row", "metadata": {"type": "images"}, "page_number": 1},
+            {"text": "table row", "metadata": {"type": "table"}, "page_number": 2},
+            {"text": "chart row", "metadata": {"type": "chart"}, "page_number": 3},
+        ]
+
+        out = _shape_query_hits(hits, top_k=10, content_types="image")
+
+        assert [h["text"] for h in out] == ["image row"]
+
+    def test_uses_top_level_content_type_fallback(self) -> None:
+        hits = [
+            {"text": "top-level table", "metadata": "{}", "content_type": "table", "page_number": 1},
+            {"text": "top-level chart", "metadata": "{}", "content_type": "chart", "page_number": 2},
+        ]
+
+        out = _shape_query_hits(hits, top_k=10, content_types="table")
+
+        assert [h["text"] for h in out] == ["top-level table"]
+
+    def test_uses_metadata_content_type_fallback(self) -> None:
+        hits = [
+            {"text": "metadata table", "metadata": {"_content_type": "table"}, "page_number": 1},
+            {"text": "metadata image", "metadata": {"_content_type": "image"}, "page_number": 2},
+        ]
+
+        out = _shape_query_hits(hits, top_k=10, content_types="table")
+
+        assert [h["text"] for h in out] == ["metadata table"]
+
+    def test_does_not_backfill_excluded_content_types(self) -> None:
+        hits = [
+            {"text": "text row", "metadata": {"type": "text"}, "page_number": 1},
+            {"text": "chart row 1", "metadata": {"type": "chart"}, "page_number": 2},
+            {"text": "chart row 2", "metadata": {"type": "chart"}, "page_number": 3},
+        ]
+
+        out = _shape_query_hits(hits, top_k=3, content_types="text")
+
+        assert [h["text"] for h in out] == ["text row"]
+
+    def test_content_type_filter_excludes_untyped_hits(self) -> None:
+        hits = [
+            {"text": "legacy row", "metadata": {}, "page_number": 1},
+            {"text": "text row", "metadata": {"type": "text"}, "page_number": 2},
+        ]
+
+        out = _shape_query_hits(hits, top_k=10, content_types="text")
+
+        assert [h["text"] for h in out] == ["text row"]
+
+    def test_empty_content_type_allowlist_uses_python_api_name(self) -> None:
+        with pytest.raises(ValueError, match="content_types must include"):
+            _shape_query_hits([], top_k=3, content_types=[])
 
 
 class TestRunModeServiceRequiresHttpEmbed:

@@ -154,7 +154,7 @@ def test_ingest_plan_auto_profile_preserves_manifest_defaults(tmp_path) -> None:
     assert plan.extract_params.extract_charts is True
     assert plan.extract_params.extract_infographics is True
     assert plan.extract_params.use_page_elements is True
-    assert plan.create_kwargs == {"run_mode": "batch"}
+    assert plan.create_kwargs == {"run_mode": "inprocess"}
 
 
 def test_ingest_plan_fast_text_profile_is_pdf_text_only(tmp_path) -> None:

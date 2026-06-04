@@ -106,6 +106,42 @@ retriever query "What is in this document?" \
   --reranker-invoke-url https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking
 ```
 
+### Query result controls
+
+`retriever query` returns compact JSON hits with `source`, `page_number`, and `text`.
+By default it retrieves and returns `--top-k` rows. Use these controls when you
+need a wider candidate pool or a narrower result shape:
+
+```bash
+# Retrieve 30 candidates, then return the best 10.
+retriever query "where is the warranty limitation discussed?" \
+  --candidate-k 30
+
+# Keep only the first hit from each document page.
+retriever query "which pages discuss operating costs?" \
+  --top-k 5 \
+  --candidate-k 30 \
+  --page-dedup
+
+# Search a wider pool, then keep only table rows.
+retriever query "annual revenue by region" \
+  --top-k 5 \
+  --candidate-k 40 \
+  --content-types table
+```
+
+`--top-k` is the final number of hits returned. `--candidate-k` is the wider
+candidate pool retrieved before page deduplication, content-type filtering, and
+final truncation. It must be greater than or equal to `--top-k`, and should
+usually be larger when page deduplication or content-type filtering might
+otherwise remove too many of the top retrieved rows. Page deduplication and
+content-type filtering are applied after vector retrieval, preserving the
+retriever's ranking order and truncating the final output to `--top-k`.
+`--content-types` accepts comma-separated content types such as `text`, `table`,
+`chart`, `image`, and `infographic`. `images` is accepted as an alias for
+captioned image rows emitted by ingest. Hits with missing or unknown content
+types are excluded while `--content-types` is active.
+
 `NVIDIA_API_KEY` is required only when those URLs point at hosted
 build.nvidia.com endpoints. `NGC_API_KEY` is used separately when pulling or
 running self-hosted NIM containers.
