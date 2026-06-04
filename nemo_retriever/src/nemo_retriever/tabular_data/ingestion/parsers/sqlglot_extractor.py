@@ -499,7 +499,8 @@ def extract_tables_and_columns(
         Raw SQL string.
     dialects:
         sqlglot dialects to try in order (e.g. ``["postgres", "duckdb"]``).
-        Defaults to ``["sqlite"]`` when omitted.
+        At least one dialect must be supplied; an empty list raises
+        :class:`SQLSyntaxError` for any input.
     all_schemas:
         ``{schema_name: Schema}`` dict from Neo4j.  Pass ``{}`` (default) to
         skip schema-assisted resolution and rely solely on ``qualify()``.

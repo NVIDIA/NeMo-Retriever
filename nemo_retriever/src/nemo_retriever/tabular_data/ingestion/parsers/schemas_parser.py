@@ -13,18 +13,18 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def parse_df(tables_df, columns_df, database_name: str, db_node=None):
+def parse_df(tables_df, columns_df, database_name: str, database_node=None):
     """
     Every schema manager assumes a single database in the input file
     :param tables_df: DataFrame with columns: table_schema, table_name
     :param columns_df: DataFrame with columns: table_schema, table_name, column_name, ...
     :param database_name: name of the database, taken from the connector
-    :param db_node: optional existing Neo4j database node
+    :param database_node: optional existing Neo4j database node
     Assumption: the file contains schemas of a single database
     :return:
     """
-    if not db_node:
-        db_node = Neo4jNode(
+    if not database_node:
+        database_node = Neo4jNode(
             name=database_name,
             label=Labels.DB,
             props={"name": database_name, "pulled": datetime.now(timezone.utc)},
@@ -41,9 +41,9 @@ def parse_df(tables_df, columns_df, database_name: str, db_node=None):
         schema_tables_df = tables_df.loc[tables_df["table_schema"] == schema_name]
         schema_columns_df = columns_df.loc[columns_df["table_schema"] == schema_name]
         logger.info(f"Started parsing schema {schema_name}.")
-        schema = Schema(db_node, schema_tables_df, schema_columns_df)
+        schema = Schema(database_node, schema_tables_df, schema_columns_df)
         schema.create_schema_node(schema_name)
         schemas.update({schema.get_schema_name().lower(): schema})
         logger.info(f"Finished parsing schema {schema.get_schema_name()}.")
 
-    return schemas, db_node
+    return schemas, database_node
