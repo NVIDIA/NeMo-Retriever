@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Prompt rendering + output parsing for agent_eval.
 
 The task prompt is identical across profiles (clean A/B): it states the task,

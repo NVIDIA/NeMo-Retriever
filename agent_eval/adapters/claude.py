@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Claude Code CLI adapter for agent_eval.
 
 Single-turn, non-interactive: ``claude --print --output-format json``. Each query

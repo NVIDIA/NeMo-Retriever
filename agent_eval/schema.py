@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Shared data contracts for the agent_eval harness.
 
 Pure stdlib — this module (and the runner that uses it) must NOT import

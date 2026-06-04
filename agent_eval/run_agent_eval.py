@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Script B: run an agent over an answer-free queries.json and save artifacts.
 
 Standalone — imports only stdlib + the local agent_eval modules. The agent CLIs
@@ -24,6 +27,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import os
 import shutil
@@ -286,11 +290,21 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--corpus-root",
         type=Path,
-        default=Path("/raid/data/vidore_v3"),
-        help="Domain corpora live at <corpus-root>/<domain>/*.pdf",
+        default=Path(os.environ["AGENT_EVAL_CORPUS_ROOT"]) if "AGENT_EVAL_CORPUS_ROOT" in os.environ else None,
+        help="Domain corpora live at <corpus-root>/<domain>/*.pdf (or set AGENT_EVAL_CORPUS_ROOT)",
     )
-    ap.add_argument("--skill-src", type=Path, default=Path("/raid/nemo_retriever/skills/nemo-retriever"))
-    ap.add_argument("--retriever-bin", type=Path, default=Path("/raid/nemo_retriever/.venv/bin/retriever"))
+    ap.add_argument(
+        "--skill-src",
+        type=Path,
+        default=Path(os.environ["AGENT_EVAL_SKILL_SRC"]) if "AGENT_EVAL_SKILL_SRC" in os.environ else None,
+        help="Path to the nemo-retriever skill source (or set AGENT_EVAL_SKILL_SRC)",
+    )
+    ap.add_argument(
+        "--retriever-bin",
+        type=Path,
+        default=Path(os.environ["AGENT_EVAL_RETRIEVER_BIN"]) if "AGENT_EVAL_RETRIEVER_BIN" in os.environ else None,
+        help="Path to the retriever binary (or set AGENT_EVAL_RETRIEVER_BIN)",
+    )
     ap.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-1b-v2")
     ap.add_argument(
         "--prebuilt-index",
@@ -519,8 +533,6 @@ def main(argv: list[str] | None = None) -> int:
                 )
 
     (run_dir / "run_metas.json").write_text(json.dumps([asdict(m) for m in metas], indent=2))
-    from collections import Counter
-
     print(f"\nDone. status: {dict(Counter(m.status for m in metas))}\n  -> {run_dir}")
     return 0
 

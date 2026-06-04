@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Script C: build a report from agent_eval run artifact(s).
 
 Re-reads the original manifest for gold (relevant_pages / answer / scoring_mode),

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Agent adapter interface — agnostic over claude/codex.
 
 Pure stdlib. An adapter knows how to: build the CLI command for a single-turn
