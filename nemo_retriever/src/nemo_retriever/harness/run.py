@@ -251,15 +251,17 @@ def _service_failure_key(failure: Any) -> str:
 
 def _filename_page_counts(paths: list[Path], page_counts: list[int | None]) -> dict[str, int]:
     filename_to_pages: dict[str, int] = {}
+    seen_filenames: set[str] = set()
     ambiguous_filenames: set[str] = set()
     for path, page_count in zip(paths, page_counts):
-        if page_count is None:
-            continue
         filename = path.name
-        if filename in filename_to_pages:
+        if filename in seen_filenames:
             ambiguous_filenames.add(filename)
+            filename_to_pages.pop(filename, None)
             continue
-        filename_to_pages[filename] = page_count
+        seen_filenames.add(filename)
+        if page_count is not None:
+            filename_to_pages[filename] = page_count
     for filename in ambiguous_filenames:
         filename_to_pages.pop(filename, None)
     return filename_to_pages
