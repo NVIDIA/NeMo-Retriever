@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for persisting table_type through tabular ingestion normalization."""
+"""Tests for persisting type through tabular ingestion normalization."""
 
 import pandas as pd
 
@@ -12,22 +12,22 @@ from nemo_retriever.tabular_data.ingestion.model.reserved_words import TableType
 from nemo_retriever.tabular_data.ingestion.utils import normalize_tables
 
 
-def test_normalize_tables_keeps_table_type():
+def test_normalize_tables_keeps_type():
     raw = pd.DataFrame(
         {
             "table_schema": ["public"],
             "table_name": ["orders"],
-            "table_type": ["base table"],
+            "type": ["base table"],
         }
     )
     result = normalize_tables(raw)
 
-    assert "table_type" in result.columns
-    assert result["table_type"].iloc[0] == "base table"
-    assert str(result["table_type"].dtype) == "category"
+    assert "type" in result.columns
+    assert result["type"].iloc[0] == "base table"
+    assert str(result["type"].dtype) == "category"
 
 
-def test_normalize_tables_adds_table_type_when_absent():
+def test_normalize_tables_adds_type_when_absent():
     raw = pd.DataFrame(
         {
             "table_schema": ["public"],
@@ -36,9 +36,23 @@ def test_normalize_tables_adds_table_type_when_absent():
     )
     result = normalize_tables(raw)
 
-    assert "table_type" in result.columns
-    assert result["table_type"].iloc[0] == TableTypes.BASE_TABLE
-    assert str(result["table_type"].dtype) == "category"
+    assert "type" in result.columns
+    assert result["type"].iloc[0] == TableTypes.BASE_TABLE
+    assert str(result["type"].dtype) == "category"
+
+
+def test_normalize_tables_accepts_legacy_table_type_column():
+    raw = pd.DataFrame(
+        {
+            "table_schema": ["public", "public"],
+            "table_name": ["orders", "orders_v"],
+            "table_type": ["base table", "view"],
+        }
+    )
+    result = normalize_tables(raw)
+
+    assert "table_type" not in result.columns
+    assert result["type"].tolist() == ["base table", "view"]
 
 
 def test_normalize_tables_maps_materialized_view():
@@ -46,11 +60,11 @@ def test_normalize_tables_maps_materialized_view():
         {
             "table_schema": ["public"],
             "table_name": ["mv_orders"],
-            "table_type": ["materialized view"],
+            "type": ["materialized view"],
         }
     )
     result = normalize_tables(raw)
-    assert result["table_type"].iloc[0] == TableTypes.MATERIALIZED_VIEW
+    assert result["type"].iloc[0] == TableTypes.MATERIALIZED_VIEW
 
 
 def test_reset_tables_props_sets_type():
@@ -60,7 +74,7 @@ def test_reset_tables_props_sets_type():
             "table_name": ["orders"],
             "created": [pd.NA],
             "description": [pd.NA],
-            "table_type": ["base table"],
+            "type": ["base table"],
             "id": ["table-uuid-1"],
         }
     )
@@ -85,12 +99,11 @@ def test_reset_tables_props_sets_type():
     )
 
     props = schema.tables_df.iloc[0]["props"]
-    assert props["table_type"] == "base table"
     assert props["type"] == "base table"
     assert props["name"] == "orders"
 
 
-def test_reset_tables_props_defaults_type_when_table_type_absent():
+def test_reset_tables_props_defaults_type_when_absent():
     tables_df = pd.DataFrame(
         {
             "table_schema": ["public"],
@@ -121,7 +134,6 @@ def test_reset_tables_props_defaults_type_when_table_type_absent():
     )
 
     props = schema.tables_df.iloc[0]["props"]
-    assert props["table_type"] == TableTypes.BASE_TABLE
     assert props["type"] == TableTypes.BASE_TABLE
 
 
@@ -149,10 +161,9 @@ def test_create_table_node_does_not_set_type():
 
     props = schema.get_table_node("orders").get_properties()
     assert "type" not in props
-    assert "table_type" not in props
 
 
-def test_create_table_node_sets_table_type():
+def test_create_table_node_sets_type():
     db_node = Neo4jNode(name="mydb", label="Database", props={"name": "mydb"})
     schema = Schema(
         db_node=db_node,
@@ -172,21 +183,20 @@ def test_create_table_node_sets_table_type():
         is_creation_mode=False,
     )
     schema.create_schema_node("public")
-    schema.create_table_node("orders", id="table-uuid-1", table_type="VIEW")
+    schema.create_table_node("orders", id="table-uuid-1", type="VIEW")
 
     props = schema.get_table_node("orders").get_properties()
-    assert props["table_type"] == "view"
     assert props["type"] == "view"
 
 
-def test_get_table_node_passes_table_type_from_dataframe():
+def test_get_table_node_passes_type_from_dataframe():
     tables_df = pd.DataFrame(
         {
             "table_schema": ["public"],
             "table_name": ["orders"],
             "created": [pd.NA],
             "description": [pd.NA],
-            "table_type": ["materialized view"],
+            "type": ["materialized view"],
             "id": ["table-uuid-1"],
         }
     )
@@ -212,5 +222,4 @@ def test_get_table_node_passes_table_type_from_dataframe():
     schema.create_schema_node("public")
 
     props = schema.get_table_node("orders").get_properties()
-    assert props["table_type"] == TableTypes.MATERIALIZED_VIEW
     assert props["type"] == TableTypes.MATERIALIZED_VIEW

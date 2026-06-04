@@ -22,7 +22,7 @@ class Labels:
 
 
 class TableTypes:
-    """Canonical ``table_type`` / Neo4j ``Table.type`` values (Postgres-style)."""
+    """Canonical ``type`` on Neo4j ``Table`` nodes (Postgres ``information_schema`` style)."""
 
     VIEW = "view"
     MATERIALIZED_VIEW = "materialized view"

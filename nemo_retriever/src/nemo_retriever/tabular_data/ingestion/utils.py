@@ -64,7 +64,7 @@ def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
     types = {
         "table_schema": "category",
         "table_name": "string",
-        "table_type": "category",
+        "type": "category",
         "created": "string",
         "description": "string",
     }
@@ -77,7 +77,7 @@ def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
         if key not in df.columns:
             df[key] = pd.NA
 
-    df["table_type"] = df["table_type"].fillna(TableTypes.BASE_TABLE)
+    df["type"] = df["type"].fillna(TableTypes.BASE_TABLE)
     df = df.astype(dtype=types)
 
     if "created" in df:
