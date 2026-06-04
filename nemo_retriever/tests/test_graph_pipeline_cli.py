@@ -531,6 +531,8 @@ def test_graph_pipeline_cli_accepts_harness_runtime_metric_flags(tmp_path, monke
             str(runtime_dir),
             "--runtime-metrics-prefix",
             "sample-run",
+            "--vdb-kwargs-json",
+            '{"uri":"./kb","table_name":"docs","hybrid":true,"refine_factor":50}',
             "--no-recall-details",
         ],
     )
@@ -541,6 +543,15 @@ def test_graph_pipeline_cli_accepts_harness_runtime_metric_flags(tmp_path, monke
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["recall_details"] is False
     assert payload["evaluation_mode"] == "beir"
+    assert payload["vdb_op"] == "lancedb"
+    assert payload["vdb"]["op"] == "lancedb"
+    assert payload["vdb"]["target"] == {"uri": "./kb", "table_name": "docs"}
+    assert payload["vdb"]["retrieval"]["mode"] == "hybrid"
+    assert payload["vdb"]["retrieval"]["signals"] == ["dense_vector", "lexical_text"]
+    assert payload["vdb"]["retrieval"]["uses_query_texts"] is True
+    assert payload["vdb"]["retrieval"]["refine_factor"] == 50
+    assert payload["vdb"]["config"]["hybrid"] is True
+    assert payload["vdb"]["config"]["overwrite"] is True
 
 
 def test_graph_pipeline_cli_service_mode_rejects_ingest_flag(tmp_path) -> None:

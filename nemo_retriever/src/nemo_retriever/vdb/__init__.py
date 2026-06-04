@@ -8,6 +8,7 @@ from nemo_retriever.vdb.adt_vdb import VDB
 from nemo_retriever.vdb.factory import get_vdb_op_cls
 from nemo_retriever.vdb.operators import IngestVdbOperator, PutVdbOperator, RetrieveVdbOperator
 from nemo_retriever.vdb.records import RetrievalHit, normalize_retrieval_results, to_client_vdb_records
+from nemo_retriever.vdb.runtime import describe_vdb_runtime
 from nemo_retriever.vdb.sidecar_metadata import (
     apply_sidecar_metadata_to_client_batches,
     build_sidecar_lookup,
@@ -27,6 +28,7 @@ __all__ = [
     "RetrieveVdbOperator",
     "normalize_retrieval_results",
     "to_client_vdb_records",
+    "describe_vdb_runtime",
     "apply_sidecar_metadata_to_client_batches",
     "build_sidecar_lookup",
     "filter_hits_by_content_metadata",

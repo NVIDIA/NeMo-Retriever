@@ -76,6 +76,7 @@ from nemo_retriever.params import (
 from nemo_retriever.params.models import BatchTuningParams
 from nemo_retriever.utils.input_files import resolve_input_patterns
 from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+from nemo_retriever.vdb.runtime import describe_vdb_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -1523,6 +1524,8 @@ def run(
                 "meta_join_key": meta_join_key,
             }
 
+        vdb_runtime_summary = describe_vdb_runtime(resolved_vdb_op, resolved_vdb_kwargs)
+
         remote_api_key = resolve_remote_api_key(api_key)
         extract_remote_api_key = remote_api_key
         embed_remote_api_key = remote_api_key
@@ -1898,6 +1901,7 @@ def run(
                     "evaluation_count": None,
                     "recall_details": bool(recall_details),
                     "vdb_op": str(resolved_vdb_op),
+                    "vdb": vdb_runtime_summary,
                     "qa_sweep_exit_code": qa_code,
                 },
             )
@@ -1980,6 +1984,7 @@ def run(
                     "evaluation_metrics": {},
                     "recall_details": bool(recall_details),
                     "vdb_op": str(resolved_vdb_op),
+                    "vdb": vdb_runtime_summary,
                 },
             )
             if run_mode == "batch":
@@ -2013,6 +2018,7 @@ def run(
                 "evaluation_count": evaluation_query_count,
                 "recall_details": bool(recall_details),
                 "vdb_op": str(resolved_vdb_op),
+                "vdb": vdb_runtime_summary,
             },
         )
 
