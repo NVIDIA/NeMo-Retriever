@@ -134,6 +134,60 @@ class IngestVdbOperator(AbstractOperator):
         return data
 
 
+class PutVdbOperator(IngestVdbOperator):
+    """Replace existing rows of a VDB table in place on a stable row key.
+
+    Unlike :class:`IngestVdbOperator` (which orchestrates create_index +
+    write_to_index, optionally overwriting the whole table), this operator
+    calls ``vdb.put(records, ...)`` so that only rows whose ``key`` is in
+    ``records`` are touched. Existing rows that match by ``key`` are
+    replaced; rows in ``records`` whose ``key`` is not already present in
+    the table raise :class:`KeyError` (``put`` never inserts new rows),
+    and rows in the table that are not referenced are left untouched.
+
+    The underlying VDB implementation must override
+    :meth:`~nemo_retriever.vdb.adt_vdb.VDB.put` with a real
+    stable-key in-place replace; currently this is implemented by
+    :class:`~nemo_retriever.vdb.lancedb.LanceDB`. ``VDB.put`` itself
+    raises :class:`NotImplementedError`, so backends that have not
+    overridden it are detected at construction time and fail fast rather
+    than silently no-oping at runtime.
+    """
+
+    def __init__(
+        self,
+        *,
+        vdb: VDB | None = None,
+        vdb_op: str | None = None,
+        vdb_kwargs: dict[str, Any] | None = None,
+        key: str = "id",
+        table_name: str | None = None,
+    ) -> None:
+        super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=vdb_kwargs)
+        # ``put`` is part of the abstract VDB contract, but the base
+        # class provides a NotImplementedError stub for backends that
+        # cannot support stable-key puts. Treat a not-overridden stub
+        # as "unsupported" so misuse surfaces here instead of at the
+        # first write.
+        if getattr(type(self._vdb), "put", None) is VDB.put:
+            raise NotImplementedError(f"VDB backend {type(self._vdb).__name__!r} does not implement put(); ")
+        self._key = key
+        self._table_name = table_name
+
+    def process(self, data: Any, **kwargs: Any) -> Any:
+        records = to_client_vdb_records(data)
+        if self._sidecar_spec is not None and self._sidecar_lookup is not None:
+            records = apply_sidecar_metadata_to_client_batches(
+                records,
+                lookup=self._sidecar_lookup,
+                meta_fields=self._sidecar_spec["meta_fields"],
+                join_key=self._sidecar_spec["meta_join_key"],
+            )
+        if records and any(batch for batch in records):
+            self._vdb.put(records, table_name=self._table_name, key=self._key)
+        return data
+
+
 class RetrieveVdbOperator(AbstractOperator):
     """Retrieve hits from an nv-ingest-client VDB using precomputed query vectors."""
 
@@ -147,6 +201,7 @@ class RetrieveVdbOperator(AbstractOperator):
     ) -> None:
         merged = dict(vdb_kwargs or {})
         clean_kwargs, _sidecar = split_sidecar_from_vdb_kwargs(merged)
+        clean_kwargs.pop("query_texts", None)
         super().__init__(vdb=vdb, vdb_op=vdb_op, vdb_kwargs=clean_kwargs, explode_for_rerank=explode_for_rerank)
         self._vdb_kwargs = clean_kwargs
         self._retrieval_vdb_kwargs = clean_kwargs
@@ -162,6 +217,12 @@ class RetrieveVdbOperator(AbstractOperator):
         from nemo_retriever.retriever_graph_utils import filter_retrieval_kwargs
 
         retrieval_kwargs = {**self._retrieval_vdb_kwargs, **filter_retrieval_kwargs(kwargs)}
+        if "hybrid" in retrieval_kwargs:
+            effective_hybrid = bool(retrieval_kwargs["hybrid"])
+        else:
+            effective_hybrid = bool(getattr(self._vdb, "hybrid", False))
+        if effective_hybrid and "query_texts" in kwargs:
+            retrieval_kwargs["query_texts"] = kwargs["query_texts"]
         return normalize_retrieval_results(self._vdb.retrieval(data, **retrieval_kwargs))
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:

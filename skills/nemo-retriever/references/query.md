@@ -1,7 +1,5 @@
 # Query turn — the WHOLE workflow
 
-**General-use vs eval-harness.** If the user prompt doesn't mention a judge, benchmark, output schema, or `./output.json` — skip every `Write ./output.json` / `final_answer` / `ranked_retrieved` step below. Just run the `retriever query` call and answer in chat. The 2-Bash-call budget, the no-narration rule, and the chart/image hedging discipline all still apply.
-
 
 ```bash
 timeout 2000 <RETRIEVER_VENV>/bin/retriever query "<the user's question>" --top-k 10 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --query-embed-backend hf --reranker-backend hf --rerank \
@@ -31,7 +29,7 @@ It scans the LanceDB table the retriever already built — no PDF re-extraction.
 
 Don't reach for `pdftotext`, `pdftohtml`, or `pdfgrep` — they're system tools that aren't guaranteed installed on the user's machine. The retriever venv bundles pdfium and `lancedb`; `grep_corpus.py` and `retriever pdf stage page-elements --method pdfium` cover the same use cases without that dependency.
 
-## Write `./output.json` directly from the hits
+## Compose your reply from the hits
 
 - `final_answer`: synthesize from the top hits' `text`. Include the exact number / name / date / row / column the question asks for, plus the source PDF and 0-indexed page. One paragraph. No restating the question, no hedging caveats. If the chunks talk *around* the fact but don't state it, run ONE `<RETRIEVER_VENV>/bin/retriever pdf stage page-elements ./pdfs --method pdfium --json-output-dir /tmp/pdf_text --compact-json` and `Read` `/tmp/pdf_text/<top_pdf>.pdf.pdf_extraction.json` for the rank-1 page (or rank-2 if rank-1 is metadata) — that almost always surfaces the exact figure. Then synthesize. **If after both calls the asked-for fact still isn't in the evidence, write `final_answer` that says so explicitly** — e.g. "The retrieved pages do not state [X] for [entity]; the closest content is [Y]." Do NOT invent, extrapolate, or generate plausible-sounding content from adjacent material. A confidently-wrong answer scores worse than an honest "not in the retrieved pages".
 - `ranked_retrieved`: one entry per hit in the order `retriever query` returned: `{"doc_id": "<pdf_basename without .pdf>", "page_number": <int>, "rank": <i+1>}`. Up to 10. Duplicate `(doc, page)` is fine. **Indexing:** the retriever's `page_number` is 1-indexed. If the task's output schema says 0-indexed (e.g. "first page is page 0"), emit `hit.page_number - 1`; if the task says 1-indexed or doesn't specify, emit `hit.page_number` as-is.
@@ -52,8 +50,7 @@ If a question asks for an exact percentage or a directional claim **and the evid
 3. If prose doesn't mention it, **quote the chart transcription verbatim with an explicit hedge in `final_answer`**: "The chart on page N indicates [verbatim phrase] (chart-derived, not verified against prose)." Do NOT restate the chart's number as a confident fact.
 
 When both a chart hit and a text hit cover the same fact, always prefer the text hit's number.
-
-After writing `./output.json`, STOP. No print, no summary, no further tool calls.
+After your reply, STOP. No print, no summary, no further tool calls.
 
 ## Non-semantic operations (use these, don't fall back to native tools)
 

@@ -51,11 +51,11 @@ Rows that use subcommands other than `ingest`, `query`, or `pipeline` are
 
 | Topic | Location | Replaces example(s) in |
 |-------|----------|------------------------|
-| Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/); **Docker Compose** (unsupported): [`docker.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/HEAD/nemo_retriever/docker.md) |
+| Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) |
 | CLI reference | [below](#cli-reference) | Prior `cli-reference` pages under `docs/docs/extraction/` |
 | Client usage walk-through | [below](#client-usage-walk-through) | `client/client_examples/examples/cli_client_usage.ipynb` |
 | PDF pre-splitting | [API guide](../../../docs/docs/extraction/nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest); [Large PDF page batches](#large-pdf-page-batches) below | Prior extraction docs |
-| Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `tools/harness/README.md` |
+| Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `nemo_retriever/harness/HANDOFF.md` |
 
 <!-- --8<-- [start:quickstart] -->
 
@@ -64,10 +64,7 @@ Rows that use subcommands other than `ingest`, `query`, or `pipeline` are
 
 ## Quick start
 
-Local **Docker Compose** workflows are **unsupported developer tooling** only — see
-[`docker.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/HEAD/nemo_retriever/docker.md) (GitHub `HEAD` = default branch; pin to your release tag when not on `main`).
-
-For **supported** deployment of NeMo Retriever / **NIM** containers, use
+For deployment of NeMo Retriever / **NIM** containers, use
 [nemo_retriever/helm](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm)
 and the [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)
 Helm install guides.
@@ -108,6 +105,42 @@ retriever query "What is in this document?" \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
   --reranker-invoke-url https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking
 ```
+
+### Query result controls
+
+`retriever query` returns compact JSON hits with `source`, `page_number`, and `text`.
+By default it retrieves and returns `--top-k` rows. Use these controls when you
+need a wider candidate pool or a narrower result shape:
+
+```bash
+# Retrieve 30 candidates, then return the best 10.
+retriever query "where is the warranty limitation discussed?" \
+  --candidate-k 30
+
+# Keep only the first hit from each document page.
+retriever query "which pages discuss operating costs?" \
+  --top-k 5 \
+  --candidate-k 30 \
+  --page-dedup
+
+# Search a wider pool, then keep only table rows.
+retriever query "annual revenue by region" \
+  --top-k 5 \
+  --candidate-k 40 \
+  --content-types table
+```
+
+`--top-k` is the final number of hits returned. `--candidate-k` is the wider
+candidate pool retrieved before page deduplication, content-type filtering, and
+final truncation. It must be greater than or equal to `--top-k`, and should
+usually be larger when page deduplication or content-type filtering might
+otherwise remove too many of the top retrieved rows. Page deduplication and
+content-type filtering are applied after vector retrieval, preserving the
+retriever's ranking order and truncating the final output to `--top-k`.
+`--content-types` accepts comma-separated content types such as `text`, `table`,
+`chart`, `image`, and `infographic`. `images` is accepted as an alias for
+captioned image rows emitted by ingest. Hits with missing or unknown content
+types are excluded while `--content-types` is active.
 
 `NVIDIA_API_KEY` is required only when those URLs point at hosted
 build.nvidia.com endpoints. `NGC_API_KEY` is used separately when pulling or

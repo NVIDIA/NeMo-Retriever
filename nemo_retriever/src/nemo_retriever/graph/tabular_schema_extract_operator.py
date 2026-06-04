@@ -24,9 +24,15 @@ class TabularSchemaExtractOp(AbstractOperator, CPUOperator):
        connector stored in *tabular_params*.
     2. Write the extracted entities as graph nodes and relationships into Neo4j.
 
-    The operator produces an empty DataFrame as output so it can be chained
-    with downstream operators (e.g. :class:`TabularFetchEmbeddingsOp`) via
-    ``>>``.  All meaningful state lives in Neo4j after this step.
+    The operator returns ``(tables_df, columns_df)`` — concatenated across
+    every ingested :class:`Schema` — carrying the post-ingest UUIDs written
+    to Neo4j. The per-row ``table_schema`` column keeps schemas
+    distinguishable. Downstream operators (notably
+    :class:`TabularFetchEmbeddingsOp`) can build embedding text directly
+    from this pair without a Neo4j round-trip.
+
+    Returns ``(empty_df, empty_df)`` when there is nothing to ingest, so
+    the chain still flows.
     """
 
     def __init__(
@@ -43,15 +49,26 @@ class TabularSchemaExtractOp(AbstractOperator, CPUOperator):
             return data
         return self._tabular_params
 
-    def process(self, data: TabularExtractParams | None, **kwargs: Any) -> pd.DataFrame:
+    def process(self, data: TabularExtractParams | None, **kwargs: Any) -> tuple[pd.DataFrame, pd.DataFrame]:
         from nemo_retriever.tabular_data.ingestion.extract_data import (
             extract_tabular_db_data,
             store_relational_db_in_neo4j,
         )
 
+        empty = (pd.DataFrame(), pd.DataFrame())
+        if data is None or data.connector is None:
+            return empty
+
         schema_data = extract_tabular_db_data(params=data)
-        store_relational_db_in_neo4j(data=schema_data, dialect=data.connector.dialect)
-        return pd.DataFrame()
+        schemas = store_relational_db_in_neo4j(data=schema_data, dialect=data.connector.dialect) or {}
+        if not schemas:
+            return empty
+
+        tables = [s.tables_df for s in schemas.values() if s.tables_df is not None]
+        columns = [s.columns_df for s in schemas.values() if s.columns_df is not None]
+        tables_df = pd.concat(tables, ignore_index=True) if tables else pd.DataFrame()
+        columns_df = pd.concat(columns, ignore_index=True) if columns else pd.DataFrame()
+        return tables_df, columns_df
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:
         return data

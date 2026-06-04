@@ -9,12 +9,16 @@ This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the s
 - Skill: `nemo-retriever`
 - Evaluation date: 2026-05-29
 - NVSkills-Eval profile: `external`
-- Overall verdict: FAIL
-- Tier 3 live agent evaluation: not available in this report
+- Environment: `local`
+- Dataset: 4 evaluation tasks
+- Attempts per task: 2
+- Pass threshold: 50%
+- Overall verdict: PASS
 
 ## Agents Used
 
-- Tier 3 agent details were not available in this report.
+- `claude-code`
+- `codex`
 
 ## Metrics Used
 
@@ -28,19 +32,39 @@ Reported benchmark dimensions:
 
 Underlying evaluation signals used in this run:
 
-- No Tier 3 evaluation signal details were available in this report.
+- `security` (Security): checks for unsafe operations, secret leakage, and unauthorized access.
+- `skill_execution` (Skill Execution): verifies that the agent loaded the expected skill and workflow.
+- `skill_efficiency` (Efficiency): checks routing quality, decoy avoidance, and redundant tool usage.
+- `accuracy` (Accuracy): grades final-answer correctness against the reference answer.
+- `goal_accuracy` (Goal Accuracy): checks whether the overall user task completed successfully.
+- `behavior_check` (Behavior Check): verifies expected behavior steps, including safety expectations.
+- `token_efficiency` (Token Efficiency): compares token usage with and without the skill.
 
 ## Test Tasks
 
-Tier 3 evaluation task details were not available in this report.
+The benchmark dataset contained 4 evaluation tasks:
+
+- Positive tasks: 3 tasks where the skill was expected to activate.
+- Negative tasks: 1 tasks where no skill was expected.
+- Unlabeled tasks: 0 tasks where positive/negative intent could not be inferred.
+
+Task composition is derived from the evaluation dataset when possible. Entries with `expected_skill` set are treated as positive skill-activation cases, while entries with `expected_skill: null` are treated as negative activation cases.
 
 ## Results
 
-Tier 3 dimension rollup was not available in this report.
+| Dimension | Num | `claude-code` | `codex` |
+|---|---:|---:|---:|
+| Security | 8 | 100% (+14%) | 88% (+0%) |
+| Correctness | 8 | 77% (+4%) | 69% (-0%) |
+| Discoverability | 8 | 95% (-0%) | 68% (+5%) |
+| Effectiveness | 8 | 45% (-3%) | 47% (-2%) |
+| Efficiency | 8 | 85% (+1%) | 62% (+0%) |
+
+Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 
 ## Tier 1: Static Validation Summary
 
-Tier 1 validation passed with observations. NVSkills-Eval ran 9 checks and found 20 total findings.
+Tier 1 validation passed with observations. NVSkills-Eval ran 9 checks and found 19 total findings.
 
 Top findings:
 
@@ -52,14 +76,13 @@ Top findings:
 
 ## Tier 2: Deduplication Summary
 
-Tier 2 validation reported findings. NVSkills-Eval ran 2 checks and found 1 total findings.
+Tier 2 validation passed. NVSkills-Eval ran 2 checks and found 0 total findings.
 
-Top findings:
+Notable observations:
 
-- HIGH DUPLICATE/duplicate: Duplicate content found across references/cli/query.md and references/pitfalls.md:
-  "## Common failure modes" in references/cli/query.md (lines 78-90)
-  vs "## Failure modes (expected, not errors)" in references/pitfalls.md (lines 18-26) (`references/cli/query.md:78`)
+- Context Deduplication: Collected 9 file(s)
+- Inter-Skill Deduplication: Parsed skill 'nemo-retriever': 432 char description
 
 ## Publication Recommendation
 
-The skill should be reviewed before NVSkills-Eval publication. Skill owners should address the findings above and rerun NVSkills-Eval to refresh this benchmark.
+The skill is suitable to proceed toward NVSkills-Eval publication based on this benchmark. Skill owners should keep this file with the skill and refresh it when the evaluation dataset, skill behavior, or target agents materially change.

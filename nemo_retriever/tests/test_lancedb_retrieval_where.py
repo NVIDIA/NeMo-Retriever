@@ -17,7 +17,7 @@ lancedb = pytest.importorskip("lancedb")
 from nemo_retriever.vdb.lancedb import LanceDB
 
 
-def _tiny_table(uri: str) -> None:
+def _tiny_table(uri: str, *, create_fts_index: bool = False) -> None:
     schema = pa.schema(
         [
             pa.field("vector", pa.list_(pa.float32(), 2)),
@@ -41,7 +41,9 @@ def _tiny_table(uri: str) -> None:
         },
     ]
     db = lancedb.connect(uri)
-    db.create_table("t", rows, schema=schema, mode="overwrite")
+    table = db.create_table("t", rows, schema=schema, mode="overwrite")
+    if create_fts_index:
+        table.create_fts_index("text", replace=True)
 
 
 def test_retrieval_where_filters_rows() -> None:
@@ -101,3 +103,141 @@ def test_retrieval_search_kwargs_must_be_dict() -> None:
     op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False)
     with pytest.raises(TypeError, match="search_kwargs"):
         op.retrieval([[1.0, 0.0]], top_k=5, table_path=d, table_name="t", search_kwargs="bad")
+
+
+def test_hybrid_retrieval_uses_query_texts() -> None:
+    d = tempfile.mkdtemp()
+    _tiny_table(d, create_fts_index=True)
+    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False)
+
+    results = op.retrieval(
+        [[1.0, 0.0]],
+        top_k=2,
+        table_path=d,
+        table_name="t",
+        hybrid=True,
+        query_texts=["alpha"],
+    )
+
+    assert results[0]
+    assert results[0][0]["text"] == "alpha"
+
+
+def test_hybrid_ingestion_builds_searchable_fts_index_from_record_text() -> None:
+    """`LanceDB.run(..., hybrid=True)` builds the BM25/FTS side of hybrid search."""
+    d = tempfile.mkdtemp()
+    records = [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "embedding": [1.0, 0.0],
+                    "content": "quarterly alpha revenue outlook",
+                    "content_metadata": {"id": "alpha", "page_number": 1},
+                    "source_metadata": {"source_id": "alpha.pdf"},
+                },
+            },
+            {
+                "document_type": "text",
+                "metadata": {
+                    "embedding": [0.0, 1.0],
+                    "content": "beta safety compliance manual",
+                    "content_metadata": {"id": "beta", "page_number": 2},
+                    "source_metadata": {"source_id": "beta.pdf"},
+                },
+            },
+        ]
+    ]
+    op = LanceDB(
+        uri=d,
+        table_name="t",
+        vector_dim=2,
+        hybrid=True,
+        num_partitions=1,
+        num_sub_vectors=1,
+    )
+
+    op.run(records)
+
+    table = lancedb.connect(d).open_table("t")
+    assert table.count_rows() == 2
+    index_names = {index.name.lower() for index in table.list_indices()}
+    assert any("text" in name or "fts" in name for name in index_names)
+
+    fts_results = table.search("safety compliance", fts_columns="text").limit(1).to_list()
+    assert fts_results
+    assert fts_results[0]["text"] == "beta safety compliance manual"
+    assert "_score" in fts_results[0]
+
+    results = op.retrieval(
+        [[0.0, 1.0]],
+        top_k=1,
+        table_path=d,
+        table_name="t",
+        hybrid=True,
+        query_texts=["safety compliance"],
+    )
+
+    assert results[0]
+    assert results[0][0]["text"] == "beta safety compliance manual"
+
+
+def test_hybrid_retrieval_requires_query_texts() -> None:
+    d = tempfile.mkdtemp()
+    _tiny_table(d, create_fts_index=True)
+    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False)
+
+    with pytest.raises(ValueError, match="requires query_texts"):
+        op.retrieval([[1.0, 0.0]], top_k=2, table_path=d, table_name="t", hybrid=True)
+
+
+def test_hybrid_retrieval_requires_query_texts_aligned_with_vectors() -> None:
+    d = tempfile.mkdtemp()
+    _tiny_table(d, create_fts_index=True)
+    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False)
+
+    with pytest.raises(ValueError, match="length to match vectors length"):
+        op.retrieval(
+            [[1.0, 0.0]],
+            top_k=2,
+            table_path=d,
+            table_name="t",
+            hybrid=True,
+            query_texts=["alpha", "beta"],
+        )
+
+
+def test_hybrid_retrieval_where_filters_rows() -> None:
+    d = tempfile.mkdtemp()
+    _tiny_table(d, create_fts_index=True)
+    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False)
+
+    filtered = op.retrieval(
+        [[1.0, 0.0]],
+        top_k=10,
+        table_path=d,
+        table_name="t",
+        hybrid=True,
+        query_texts=["beta"],
+        where="text = 'beta'",
+    )
+
+    assert len(filtered[0]) == 1
+    assert filtered[0][0]["text"] == "beta"
+
+
+def test_hybrid_retrieval_rejects_non_hybrid_query_type() -> None:
+    d = tempfile.mkdtemp()
+    _tiny_table(d, create_fts_index=True)
+    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False)
+
+    with pytest.raises(ValueError, match="query_type"):
+        op.retrieval(
+            [[1.0, 0.0]],
+            top_k=2,
+            table_path=d,
+            table_name="t",
+            hybrid=True,
+            query_texts=["alpha"],
+            search_kwargs={"query_type": "vector"},
+        )

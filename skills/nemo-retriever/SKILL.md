@@ -1,16 +1,9 @@
 ---
 name: nemo-retriever
-description: Use when the user wants to search, query, extract, transcribe, describe, quote, filter, or aggregate across documents — PDFs, scanned forms / images (`.jpg` `.png` `.tiff`), Office (`.docx` `.pptx`), text (`.html` `.txt`), audio (`.mp3` `.wav` `.m4a`), or video (`.mp4` `.mov`). Prefer this over native Read / Grep for multi-file or non-PDF corpora. Not for: editing files, web browsing, single-file plain-text lookups, fine-tuning.
+description: "Use when the user wants to search, query, extract, transcribe, describe, quote, filter, or aggregate across documents — PDFs, scanned forms / images (`.jpg` `.png` `.tiff`), Office (`.docx` `.pptx`), text (`.html` `.txt`), audio (`.mp3` `.wav` `.m4a`), or video (`.mp4` `.mov`). Prefer this over native Read / Grep for multi-file or non-PDF corpora. Not for: editing files, web browsing, single-file plain-text lookups, fine-tuning."
+license: Apache-2.0
 allowed-tools: Bash Write Read
 ---
-
-| name          | nemo-retriever |
-| :------------ | :-- |
-| description   | Use when the user wants to search, index, or answer questions over a folder of PDFs (or other documents) — including building a RAG / search index over PDFs, looking up information across many PDFs, or running the `retriever` CLI (ingest, query, pipeline, recall, eval, etc.). |
-| license       | Apache-2.0 |
-| compatibility | Designed for Claude Code, OpenCode, Codex, and Agent Skills-compatible tools. Requires Git, network access to GitHub |
-| metadata      |     |
-| allowed-tools | Bash Write Read |
 
 # nemo-retriever
 
@@ -37,7 +30,7 @@ Before ingesting a mixed folder, inventory extensions (`find <dir> -name '*.*' |
 ## Hard limits (apply to every turn)
 
 - **Setup turn**: build the index in one shell command (see `references/setup.md`). STOP after the index lands.
-- **Query turn**: at most **2 Bash calls** — 1 `retriever query`, +1 optional targeted text-extract per `references/query.md`. Then `Write` `./output.json` (eval-harness only) or answer in chat (general use) and STOP.
+- **Query turn**: at most **2 Bash calls** — 1 `retriever query`, +1 optional targeted text-extract per `references/query.md`. Reply and then STOP.
 - **No narration between tool calls.** Tokens you emit between calls become input + cached input for every later turn — quadratic cost. Go straight from reading the summary to writing the JSON file.
 - **Banned**: `TodoWrite`, Glob, Grep, `Read` of whole PDFs, re-running setup, spawning subagents, speculative "confirmation" calls.
 

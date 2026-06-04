@@ -10,7 +10,9 @@ both halves of the pipeline:
   ingestion of Nemo Retriever Library (NRL) record batches.
 - `retrieval` — nearest-neighbor search over **precomputed query vectors**.
   Query strings are embedded upstream (see `nemo_retriever.Retriever`);
-  the VDB only sees vectors.
+  the VDB search boundary receives vectors as the primary input. Backends
+  that combine dense and lexical evidence may also receive aligned
+  `query_texts` as execution-only retrieval context.
 
 Methods accept `**kwargs` so backend-specific options (e.g. LanceDB's
 `where` predicate for metadata filtering, refinement factors,
@@ -22,6 +24,7 @@ metadata-filtering section and its reference notebook.
 """
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 
 class VDB(ABC):
@@ -101,9 +104,11 @@ class VDB(ABC):
 
         Despite the parameter name `queries` (kept for backward
         compatibility), this method receives a list of embedding vectors,
-        one per query — *not* raw text. Query text is embedded upstream,
-        typically inside `nemo_retriever.Retriever`, before this method
-        is called.
+        one per query. Query text is embedded upstream, typically inside
+        `nemo_retriever.Retriever`, before this method is called. Backends
+        that need the raw query string for retrieval-time lexical matching
+        may additionally consume `query_texts` from `kwargs`; those strings
+        must be aligned one-to-one with the input vectors.
 
         Implementations search the index, apply any post-filtering, and
         return a list of hit lists aligned with the input (one inner list
@@ -119,6 +124,10 @@ class VDB(ABC):
           serialized JSON, e.g.
           `metadata LIKE '%"meta_a":"alpha"%'`.
           The `_filter` alias is accepted in addition to `where`.
+        - query_texts: raw query strings aligned with the input vectors.
+          Dense retrieval backends should not require this. LanceDB hybrid
+          search requires it because the backend combines the precomputed
+          dense vector with a full-text query at search time.
         - refine_factor / nprobes / search_kwargs: ANN tuning passed
           through to the backend.
 
@@ -127,11 +136,94 @@ class VDB(ABC):
         for the full filter cookbook (sidecar merge, server-side vs
         client-side filtering, escaping).
 
-        Hybrid search with precomputed vectors is not implemented by the
-        reference `LanceDB` backend; passing `hybrid=True` raises
-        `NotImplementedError` on that path.
+        `query_texts` is execution-only context. Operators should avoid
+        persisting it in backend constructor kwargs and pass it only for
+        retrieval calls whose effective mode needs raw text.
         """
         pass
+
+    def put(self, records: list, **kwargs: Any) -> dict[str, Any]:
+        """Replace a batch of existing rows in the target table/index.
+
+        Note: this method is intentionally **not** decorated with
+        :func:`abc.abstractmethod`. Marking it abstract would cause
+        Python's ABC machinery to refuse instantiation of any concrete
+        :class:`VDB` subclass that does not override ``put`` — which
+        would in turn make the early-detection guard in
+        :class:`~nemo_retriever.vdb.operators.PutVdbOperator` (which
+        compares ``type(self._vdb).put is VDB.put``) permanently
+        unreachable, since instantiation would already have failed.
+        The default body below raises :class:`NotImplementedError` so
+        backends that have not implemented stable-key puts fail fast
+        and visibly at the first ``put`` call (and are caught by the
+        operator-level guard at construction time).
+
+        ``put`` exists as a separate entry point from
+        :meth:`write_to_index` because it has fundamentally different
+        semantics. Where ``write_to_index`` is an *append* (or full
+        ingest) operation, ``put`` is a **strict in-place replace**:
+
+        * Rows whose key value already exists in the target table are
+          **updated in place** — all stored columns (including the dense
+          vector) are replaced with the values from ``records``.
+        * Rows whose key value does not exist in the target table
+          MUST raise :class:`KeyError`. ``put`` MUST NOT insert new
+          rows; ingestion of new rows belongs in
+          :meth:`write_to_index` / :meth:`run`.
+        * Rows whose key value is empty or ``None`` MUST raise
+          :class:`KeyError` — a put has no stable identity to target
+          without a key.
+        * Rows that already exist in the target but are *not* referenced
+          by ``records`` are **left untouched**. ``put`` MUST NOT
+          delete rows.
+
+        This contract makes ``put`` suitable for in-place metadata
+        patches where the caller knows the exact set of existing rows
+        it wants to change and would rather fail loudly than silently
+        no-op or duplicate data.
+
+        Implementations are expected to:
+
+        * Validate / transform records the same way :meth:`write_to_index`
+          does (e.g. enforce the embedding dimension, apply the
+          ``on_bad_vectors`` policy), so that a put row is
+          indistinguishable from one written via the full-ingest path.
+        * Raise :class:`FileNotFoundError` (or an equivalent) when the
+          target table does not yet exist. ``put`` MUST NOT create
+          tables on the fly.
+        * Avoid building heavy secondary structures (e.g. IVF/HNSW
+          vector indexes, FTS indexes) on the put path: incremental
+          batches are typically too small to train such indexes
+          meaningfully. Defer index builds to the next full
+          :meth:`write_to_index` / :meth:`create_index` call.
+
+        Parameters:
+        - records (list): NV-Ingest-shaped batches (typically a list of
+            lists of record dicts) to put into the target. The shape
+            mirrors what :meth:`write_to_index` accepts.
+        - table_name (str, optional): override the operator's configured
+            target table/index name for this call. When ``None``, the
+            implementation should use its default target.
+        - key (str, optional): name of the column used as the stable
+            put key. Defaults to ``"id"``. Rows missing this column
+            (or with an empty value) MUST raise :class:`KeyError`.
+
+        Returns:
+        - implementation-specific result describing what happened
+            (typical fields include the number of rows put).
+            Concrete implementations should document the exact return
+            shape.
+
+        Backends that genuinely cannot support stable-key puts should
+        override this method and raise :class:`NotImplementedError`
+        explicitly so that :class:`PutVdbOperator` (and any other
+        caller) fails fast with a clear message instead of silently
+        no-oping or duplicating rows.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement put(); "
+            "in-place stable-key puts are not supported by this VDB backend."
+        )
 
     @abstractmethod
     def run(self, records):

@@ -228,9 +228,8 @@ class RayDataExecutor(AbstractExecutor):
 
         Returns
         -------
-        pandas.DataFrame
-            The materialized result after executing the Ray Data pipeline
-            (``ds.to_pandas()``).
+        ray.data.Dataset
+            The lazy Ray dataset with all graph stages appended.
         """
         import ray
         import ray.data as rd

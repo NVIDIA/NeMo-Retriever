@@ -7,11 +7,13 @@ import logging
 import os
 import time
 
+from collections.abc import Iterable, Sequence
 from datetime import timedelta
 from typing import Any, Final, FrozenSet
 
 import lancedb
 import pyarrow as pa
+import pyarrow.compute as pc
 
 from nemo_retriever.vdb.adt_vdb import VDB
 
@@ -119,6 +121,7 @@ def _lancedb_arrow_schema(vector_dim: int) -> pa.Schema:
             pa.field("text", pa.string()),
             pa.field("metadata", pa.string()),
             pa.field("source", pa.string()),
+            pa.field("id", pa.string()),
         ]
     )
 
@@ -275,12 +278,18 @@ def _create_lancedb_results(
                 logger.debug(f"No text found for entity: {source_name} page: {pg_num} type: {doc_type}")
                 continue
 
+            row_id = content_meta.get("id") if isinstance(content_meta, dict) else None
+            if row_id is None and isinstance(metadata, dict):
+                row_id = metadata.get("id")
+            row_id_str = str(row_id) if row_id is not None else ""
+
             lancedb_rows.append(
                 {
                     "vector": embedding,
                     "text": text,
                     "metadata": _json_str(content_meta),
                     "source": _json_str(metadata.get("source_metadata", {})),
+                    "id": row_id_str,
                 }
             )
             accepted += 1
@@ -529,7 +538,96 @@ class LanceDB(VDB):
             logger.info("Skipping LanceDB index creation for table %r because build_index=False.", self.table_name)
         return records
 
-    def retrieval(self, vectors, **kwargs):
+    def put(
+        self,
+        records,
+        table_name: str | None = None,
+        key: str = "id",
+    ) -> dict[str, int]:
+        """Replace existing rows of a LanceDB table in place, keyed by ``key``.
+
+        Strict update-only semantics:
+
+        * Rows matching an existing row by ``key`` are **updated in place**
+          (all columns, including ``vector``, are replaced).
+        * Rows whose ``key`` value is missing/empty raise :class:`KeyError`
+          — a put operation has no stable identity to target without a key.
+        * Rows whose ``key`` value does not match any row currently in the
+          table raise :class:`KeyError` — ``put`` never inserts new rows.
+        * Rows already in the table that are *not* referenced are **left
+          untouched** — ``put`` never deletes.
+
+        If the target table does not exist, :class:`FileNotFoundError` is
+        raised; ``put`` will not create tables on the fly.
+
+        Vector / FTS indexes are intentionally **not** rebuilt here:
+        incremental puts typically carry only a handful of rows. Indexes
+        will be (re)built by the next full :meth:`run` /
+        :meth:`write_to_index` call.
+
+        Returns the row counts dict from :func:`_create_lancedb_results`
+        plus: ``put``.
+        """
+        target_name = table_name or self.table_name
+        connect_start = time.perf_counter()
+        db = lancedb.connect(uri=self.uri)
+        _record_timing("lancedb.connect", time.perf_counter() - connect_start)
+
+        if self.validate_vector_length and self.on_bad_vectors != "error":
+            expected_dim: int | None = self.vector_dim
+        else:
+            expected_dim = None
+
+        rows, counts = _create_lancedb_results(records or [], expected_dim=expected_dim)
+        counts["put"] = 0
+
+        if not rows:
+            logger.info("LanceDB.put: nothing to put into table %r.", target_name)
+            return counts
+
+        rows_missing_key = [r for r in rows if not r.get(key)]
+        if rows_missing_key:
+            raise KeyError(
+                f"LanceDB.put: {len(rows_missing_key)} row(s) have an empty {key!r} value; "
+                "put() requires a stable id for every row."
+            )
+
+        try:
+            table = db.open_table(target_name)
+        except (ValueError, FileNotFoundError) as exc:
+            if isinstance(exc, ValueError) and not _is_missing_lancedb_table_error(exc):
+                raise
+            raise FileNotFoundError(
+                f"LanceDB.put: table {target_name!r} not found at uri={self.uri!r}; "
+                "put() only updates existing rows and will not create tables."
+            ) from exc
+
+        input_ids = [r[key] for r in rows]
+        unique_input_ids = list(dict.fromkeys(input_ids))
+
+        filter_expr = pc.field(key).isin(pa.array(unique_input_ids, type=pa.string()))
+        existing_arrow = table.to_lance().to_table(columns=[key], filter=filter_expr)
+        existing_ids = set(existing_arrow.column(key).to_pylist())
+
+        missing_ids = [i for i in unique_input_ids if i not in existing_ids]
+        if missing_ids:
+            raise KeyError(
+                f"LanceDB.put: row(s) with {key}={missing_ids!r} not found in table "
+                f"{target_name!r}; put() only updates existing rows."
+            )
+
+        put_start = time.perf_counter()
+        table.merge_insert(key).when_matched_update_all().execute(rows)
+        _record_timing(
+            "lancedb.put",
+            time.perf_counter() - put_start,
+            {"rows": len(rows), "table": target_name},
+        )
+
+        counts["put"] = len(rows)
+        return counts
+
+    def retrieval(self, vectors: Iterable[Sequence[float]], **kwargs: Any) -> list[list[dict[str, Any]]]:
         """Search LanceDB with precomputed query vectors.
 
         Keyword arguments
@@ -546,10 +644,12 @@ class LanceDB(VDB):
             ``table.search`` (e.g. ``query_type``, ``fts_columns``). Do not
             pass ``vector_column_name`` here; use the top-level
             ``vector_column_name`` retrieval argument instead.
+        query_texts:
+            Raw query strings aligned with ``vectors``. Required for
+            ``hybrid=True`` and ignored for dense-only retrieval.
         """
         hybrid = kwargs.pop("hybrid", self.hybrid)
-        if hybrid:
-            raise NotImplementedError("LanceDB hybrid retrieval with precomputed vectors is not implemented yet.")
+        query_texts = kwargs.pop("query_texts", None)
         table_path = kwargs.pop("table_path", self.uri)
         table_name = kwargs.pop("table_name", self.table_name)
 
@@ -567,6 +667,23 @@ class LanceDB(VDB):
         else:
             search_kwargs = dict(search_kwargs_raw)
 
+        if hybrid:
+            if query_texts is None:
+                raise ValueError(
+                    "LanceDB hybrid retrieval requires query_texts. Pass query_texts=your_queries "
+                    "alongside vectors when calling retrieval() with hybrid=True."
+                )
+            query_type = search_kwargs.get("query_type")
+            if query_type is not None:
+                query_type_value = getattr(query_type, "value", query_type)
+                if str(query_type_value).lower() != "hybrid":
+                    raise ValueError(
+                        "LanceDB hybrid retrieval requires search_kwargs['query_type']='hybrid'; "
+                        f"got {query_type!r}."
+                    )
+            search_kwargs["query_type"] = "hybrid"
+            search_kwargs.setdefault("fts_columns", "text")
+
         where_clause = kwargs.pop("where", None)
         _filter_fallback = kwargs.pop("_filter", None)
         if where_clause is None:
@@ -576,9 +693,28 @@ class LanceDB(VDB):
 
         table = lancedb.connect(uri=table_path).open_table(table_name)
 
+        if hybrid:
+            vectors_for_search = list(vectors)
+            query_texts_list = [query_texts] if isinstance(query_texts, str) else list(query_texts)
+            if len(query_texts_list) != len(vectors_for_search):
+                raise ValueError(
+                    "LanceDB hybrid retrieval requires query_texts length to match vectors length; "
+                    f"got query_texts={len(query_texts_list)} vectors={len(vectors_for_search)}."
+                )
+        else:
+            vectors_for_search = vectors
+            query_texts_list = []
+
         search_results = []
-        for vector in vectors:
-            query = table.search([vector], vector_column_name=vector_column_name, **search_kwargs)
+        for idx, vector in enumerate(vectors_for_search):
+            if hybrid:
+                query = (
+                    table.search(vector_column_name=vector_column_name, **search_kwargs)
+                    .vector(vector)
+                    .text(str(query_texts_list[idx]))
+                )
+            else:
+                query = table.search([vector], vector_column_name=vector_column_name, **search_kwargs)
             if where_clause is not None:
                 query = query.where(where_clause)
             query = query.limit(top_k).refine_factor(refine_factor).nprobes(n_probe)
