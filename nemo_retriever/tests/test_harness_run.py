@@ -951,6 +951,59 @@ def test_run_service_mode_uses_finalized_service_ingest_result_contract(monkeypa
     assert payloads["result"]["service_job_id"] == "job-1"
 
 
+def test_run_service_mode_counts_pdf_pages_not_completed_documents(monkeypatch, tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    input_file = dataset_dir / "doc.pdf"
+    input_file.write_bytes(b"%PDF-1.4\n")
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        run_mode="service",
+        service_url="http://localhost:17670",
+    )
+
+    class FakeResult(list):
+        def __init__(self) -> None:
+            super().__init__([{"document_id": "doc-1", "status": "completed"}])
+            self.job_id = "job-1"
+            self.document_ids = ["doc-1"]
+            self.failures = []
+            self.elapsed_s = 2.0
+            self.job_status = "completed"
+
+    class FakeServiceIngestor:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def ingest(self) -> FakeResult:
+            return FakeResult()
+
+    import nemo_retriever.service_ingestor as service_ingestor
+
+    monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
+    monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: [input_file])
+    monkeypatch.setattr(harness_run, "_safe_pdf_page_count", lambda path: 7 if path == input_file else None)
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+    monkeypatch.setattr(harness_run, "_collect_run_metadata", lambda: {"host": "builder-01"})
+    monkeypatch.setattr(harness_run, "write_json", lambda _path, _payload: None)
+
+    result = harness_run._run_service_mode(cfg, artifact_dir, run_id="r1")
+
+    assert result["metrics"]["files"] == 1
+    assert result["metrics"]["pages"] == 7
+    assert result["metrics"]["pages_processed"] == 7
+    assert result["metrics"]["pages_failed"] == 0
+    assert result["metrics"]["pages_per_sec_ingest"] == 3.5
+    assert result["summary_metrics"]["pages"] == 7
+    assert result["summary_metrics"]["pages_per_sec_ingest"] == 3.5
+
+
 def test_run_service_mode_evaluates_beir_recall_against_service(monkeypatch, tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()

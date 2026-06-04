@@ -1191,9 +1191,26 @@ def _run_service_mode(
     elapsed = float(getattr(result_obj, "elapsed_s", 0.0))
     failures = list(getattr(result_obj, "failures", []))
     document_ids = list(getattr(result_obj, "document_ids", []))
-    pages_processed = len(result_obj)
     pages_failed = len(failures)
-    total_pages = pages_processed + pages_failed
+    counted_input_pages: int | None = None
+    if cfg.input_type == "pdf":
+        total_counted_pages = 0
+        counted_any_pdf = False
+        for path in input_files:
+            page_count = _safe_pdf_page_count(path)
+            if page_count is None:
+                continue
+            counted_any_pdf = True
+            total_counted_pages += page_count
+        if counted_any_pdf:
+            counted_input_pages = total_counted_pages
+
+    if counted_input_pages is not None:
+        total_pages = counted_input_pages
+        pages_processed = max(total_pages - pages_failed, 0)
+    else:
+        pages_processed = len(result_obj)
+        total_pages = pages_processed + pages_failed
 
     pps = round(total_pages / elapsed, 2) if elapsed and elapsed > 0 else None
 
