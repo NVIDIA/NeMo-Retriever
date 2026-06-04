@@ -1,0 +1,21 @@
+nemo\_retriever.dedup package
+=============================
+
+Submodules
+----------
+
+nemo\_retriever.dedup.dedup module
+----------------------------------
+
+.. automodule:: nemo_retriever.dedup.dedup
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.dedup
+   :members:
+   :show-inheritance:
+   :undoc-members:

@@ -1,0 +1,1244 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.skill_eval.runner &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/skill_eval/runner';</script>
+
+    <link rel="icon" href="../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nemo-retriever/modules.html">nemo_retriever</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.html">nemo_retriever package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.adapters.html">nemo_retriever.adapters package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.adapters.cli.html">nemo_retriever.adapters.cli package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.api.html">nemo_retriever.api package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.application.html">nemo_retriever.application package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.application.pipeline.html">nemo_retriever.application.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.audio.html">nemo_retriever.audio package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.caption.html">nemo_retriever.caption package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.chart.html">nemo_retriever.chart package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.dedup.html">nemo_retriever.dedup package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.evaluation.html">nemo_retriever.evaluation package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.graph.html">nemo_retriever.graph package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.harness.html">nemo_retriever.harness package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.harness.portal.html">nemo_retriever.harness.portal package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.html.html">nemo_retriever.html package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.image.html">nemo_retriever.image package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.infographic.html">nemo_retriever.infographic package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.io.html">nemo_retriever.io package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.llm.html">nemo_retriever.llm package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.llm.clients.html">nemo_retriever.llm.clients package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.local.html">nemo_retriever.local package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.local.stages.html">nemo_retriever.local.stages package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.model.html">nemo_retriever.model package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.model.local.html">nemo_retriever.model.local package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.nim.html">nemo_retriever.nim package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.ocr.html">nemo_retriever.ocr package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.operators.html">nemo_retriever.operators package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.page_elements.html">nemo_retriever.page_elements package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.params.html">nemo_retriever.params package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.parse.html">nemo_retriever.parse package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.pdf.html">nemo_retriever.pdf package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.pipeline.html">nemo_retriever.pipeline package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.recall.html">nemo_retriever.recall package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.rerank.html">nemo_retriever.rerank package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.html">nemo_retriever.service package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.models.html">nemo_retriever.service.models package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.routers.html">nemo_retriever.service.routers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.services.html">nemo_retriever.service.services package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.utils.html">nemo_retriever.service.utils package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.html">nemo_retriever.skill_eval package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.configs.html">nemo_retriever.skill_eval.configs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.prompts.html">nemo_retriever.skill_eval.prompts package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.table.html">nemo_retriever.table package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.html">nemo_retriever.tabular_data package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.html">nemo_retriever.tabular_data.ingestion package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.neo4j.html">nemo_retriever.tabular_data.neo4j package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.retrieval.html">nemo_retriever.tabular_data.retrieval package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.text_embed.html">nemo_retriever.text_embed package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.txt.html">nemo_retriever.txt package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.html">nemo_retriever.utils package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.benchmark.html">nemo_retriever.utils.benchmark package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.compare.html">nemo_retriever.utils.compare package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.convert.html">nemo_retriever.utils.convert package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.image.html">nemo_retriever.utils.image package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.pipeline.html">nemo_retriever.utils.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.vdb.html">nemo_retriever.vdb package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.video.html">nemo_retriever.video package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.skill_eval.runner</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.skill_eval.runner</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="sd">&quot;&quot;&quot;Per-trial runner: build sandboxed workdir, spawn `claude -p`, parse outputs.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">stat</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">uuid</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">asdict</span><span class="p">,</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">importlib.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">files</span> <span class="k">as</span> <span class="n">pkg_files</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.skill_eval.dataset</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatasetEntry</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="n">CONDITIONS</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;c1_base&quot;</span><span class="p">,</span> <span class="s2">&quot;c2_retriever&quot;</span><span class="p">,</span> <span class="s2">&quot;c3_retriever_skill&quot;</span><span class="p">)</span>
+
+
+<span class="nd">@functools</span><span class="o">.</span><span class="n">lru_cache</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_load_prompt_template</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">Path</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">pkg_files</span><span class="p">(</span><span class="s2">&quot;nemo_retriever.skill_eval&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">joinpath</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;prompts/</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)))</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="TrialResult">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.skill_eval.html#nemo_retriever.skill_eval.runner.TrialResult">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">TrialResult</span><span class="p">:</span>
+    <span class="n">trial_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">entry_id</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">query_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">status</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">extraction_method</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">duration_ms</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">duration_api_ms</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">num_turns</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">total_cost_usd</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">session_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">input_tokens</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">output_tokens</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">cache_read_input_tokens</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">cache_creation_input_tokens</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">ephemeral_5m_input_tokens</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">ephemeral_1h_input_tokens</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">final_answer</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">ranked_retrieved</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+    <span class="n">retriever_first_use_turn</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">retriever_used_ever</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">skill_fired</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">is_setup</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">domain</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">judge_score</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">judge_reasoning</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">judge_error</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_remap_pdf_paths</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">prefixes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Rewrite caller-supplied path prefixes in *text* to ``./pdfs/``.</span>
+
+<span class="sd">    Some agent-eval manifests&#39; paraphrased prompts hard-code paths from the</span>
+<span class="sd">    dataset source tree. Each trial workdir symlinks the domain&#39;s PDFs to</span>
+<span class="sd">    ``./pdfs/``, so the agent only needs the basename — rewriting the prefix</span>
+<span class="sd">    lets the natural-language reference resolve to a real file.</span>
+
+<span class="sd">    Prefixes are configured per-run via the ``testdata_prefixes`` config key</span>
+<span class="sd">    (no dataset paths are hardcoded in this module).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">prefix</span> <span class="ow">in</span> <span class="n">prefixes</span><span class="p">:</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">prefix</span><span class="p">,</span> <span class="s2">&quot;./pdfs&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">text</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_render_prompt</span><span class="p">(</span><span class="n">entry</span><span class="p">:</span> <span class="n">DatasetEntry</span><span class="p">,</span> <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">testdata_prefixes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">())</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">tpl_name</span> <span class="o">=</span> <span class="s2">&quot;trial_user_slash.j2&quot;</span> <span class="k">if</span> <span class="n">condition</span> <span class="o">==</span> <span class="s2">&quot;c3_retriever_skill&quot;</span> <span class="k">else</span> <span class="s2">&quot;trial_user_nl.j2&quot;</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">_load_prompt_template</span><span class="p">(</span><span class="n">tpl_name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">text</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+        <span class="s2">&quot;{{ paraphrased_prompt }}&quot;</span><span class="p">,</span> <span class="n">_remap_pdf_paths</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">paraphrased_prompt</span><span class="p">,</span> <span class="n">testdata_prefixes</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;{{ original_query }}&quot;</span><span class="p">,</span> <span class="n">entry</span><span class="o">.</span><span class="n">original_query</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_render_setup_prompt</span><span class="p">(</span><span class="n">condition</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">domain_label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;PDFs&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">tpl_name</span> <span class="o">=</span> <span class="s2">&quot;setup_slash.j2&quot;</span> <span class="k">if</span> <span class="n">condition</span> <span class="o">==</span> <span class="s2">&quot;c3_retriever_skill&quot;</span> <span class="k">else</span> <span class="s2">&quot;setup_nl.j2&quot;</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">_load_prompt_template</span><span class="p">(</span><span class="n">tpl_name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">text</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;{{ domain_label }}&quot;</span><span class="p">,</span> <span class="n">domain_label</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_pdf_symlinks</span><span class="p">(</span><span class="n">pdf_source</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">dest</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">dest</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">pdf</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">pdf_source</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*.pdf&quot;</span><span class="p">)):</span>
+        <span class="n">target</span> <span class="o">=</span> <span class="n">dest</span> <span class="o">/</span> <span class="n">pdf</span><span class="o">.</span><span class="n">name</span>
+        <span class="k">if</span> <span class="n">target</span><span class="o">.</span><span class="n">is_symlink</span><span class="p">()</span> <span class="ow">or</span> <span class="n">target</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">continue</span>
+        <span class="n">target</span><span class="o">.</span><span class="n">symlink_to</span><span class="p">(</span><span class="n">pdf</span><span class="o">.</span><span class="n">resolve</span><span class="p">())</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_write_shim</span><span class="p">(</span><span class="n">shim_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">shim_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">shim</span> <span class="o">=</span> <span class="n">shim_dir</span> <span class="o">/</span> <span class="n">name</span>
+    <span class="n">shim</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span>
+        <span class="s2">&quot;#!/usr/bin/env bash</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="sa">f</span><span class="s2">&quot;echo &#39;skill_eval shim: </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> not available in this trial&#39; &gt;&amp;2</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="s2">&quot;exit 127</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">shim</span><span class="o">.</span><span class="n">chmod</span><span class="p">(</span><span class="n">shim</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_mode</span> <span class="o">|</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_IEXEC</span> <span class="o">|</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_IXGRP</span> <span class="o">|</span> <span class="n">stat</span><span class="o">.</span><span class="n">S_IXOTH</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_copy_skill</span><span class="p">(</span><span class="n">skill_source</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">dest</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">dest</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">dest</span> <span class="o">/</span> <span class="s2">&quot;SKILL.md&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">return</span>
+    <span class="n">shutil</span><span class="o">.</span><span class="n">copy2</span><span class="p">(</span><span class="n">skill_source</span> <span class="o">/</span> <span class="s2">&quot;SKILL.md&quot;</span><span class="p">,</span> <span class="n">dest</span> <span class="o">/</span> <span class="s2">&quot;SKILL.md&quot;</span><span class="p">)</span>
+    <span class="n">ref_src</span> <span class="o">=</span> <span class="n">skill_source</span> <span class="o">/</span> <span class="s2">&quot;references&quot;</span>
+    <span class="k">if</span> <span class="n">ref_src</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
+        <span class="n">shutil</span><span class="o">.</span><span class="n">copytree</span><span class="p">(</span><span class="n">ref_src</span><span class="p">,</span> <span class="n">dest</span> <span class="o">/</span> <span class="s2">&quot;references&quot;</span><span class="p">,</span> <span class="n">dirs_exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+
+<span class="c1"># Bash patterns that route the agent into the nemo_retriever library, regardless</span>
+<span class="c1"># of whether it tries the CLI, a Python module invocation, or a direct full-path</span>
+<span class="c1"># call into the project&#39;s venv. Used in c1&#39;s project-level settings.json. The</span>
+<span class="c1"># patterns are intentionally written as substring globs (Claude Code semantics)</span>
+<span class="c1"># so they catch the command line as the agent assembled it.</span>
+<span class="n">_C1_BASH_DENY_PATTERNS</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">&quot;Bash(retriever:*)&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Bash(*nemo_retriever*)&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Bash(*nemo-retriever*)&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Bash(python*-m*nemo_retriever*)&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Bash(uv*run*retriever*)&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Bash(*/bin/retriever*)&quot;</span><span class="p">,</span>
+    <span class="c1"># Hide the HuggingFace model cache so the agent can&#39;t enumerate the</span>
+    <span class="c1"># NVIDIA stack that c2/c3 populated. HF env vars (HF_HOME etc.) are</span>
+    <span class="c1"># redirected in _env_for; these deny patterns close the `ls`/`find`</span>
+    <span class="c1"># side channel that bypasses env-var resolution.</span>
+    <span class="s2">&quot;Bash(*huggingface*)&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Bash(*.cache/huggingface*)&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_c1_settings_json</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Project-level settings for the c1_base trial.</span>
+
+<span class="sd">    `--permission-mode bypassPermissions` auto-approves tool calls that aren&#39;t</span>
+<span class="sd">    explicitly denied; the deny patterns below catch every reasonable path</span>
+<span class="sd">    into the nemo_retriever library so the agent has to fall back on CPU-only</span>
+<span class="sd">    primitives (Read, Grep, pdftotext, etc.).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;permissions&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;deny&quot;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">_C1_BASH_DENY_PATTERNS</span><span class="p">)}},</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_condition_workdir</span><span class="p">(</span>
+    <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">root</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">pdf_source</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">skill_source</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">domain</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build one workdir per condition. Shared across all turns in the session.</span>
+
+<span class="sd">    Workdir contents:</span>
+<span class="sd">      - pdfs/ symlink farm into the source PDF folder</span>
+<span class="sd">      - .claude/ sandbox (settings + per-condition skill copy)</span>
+<span class="sd">      - .bin/retriever shim (c1 only) so retriever is unavailable on PATH</span>
+
+<span class="sd">    The agent itself creates any retrieval artifacts (e.g., ./lancedb/) inside the</span>
+<span class="sd">    workdir on the setup turn.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">domain_seg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;_</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">domain</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">workdir</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">condition</span><span class="si">}{</span><span class="n">domain_seg</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">()</span><span class="o">.</span><span class="n">hex</span><span class="p">[:</span><span class="mi">8</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="n">workdir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">_build_pdf_symlinks</span><span class="p">(</span><span class="n">pdf_source</span><span class="p">,</span> <span class="n">workdir</span> <span class="o">/</span> <span class="s2">&quot;pdfs&quot;</span><span class="p">)</span>
+    <span class="p">(</span><span class="n">workdir</span> <span class="o">/</span> <span class="s2">&quot;.claude&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="c1"># c1 gets explicit Bash deny rules; c2/c3 keep the empty settings.json.</span>
+    <span class="n">settings_text</span> <span class="o">=</span> <span class="n">_c1_settings_json</span><span class="p">()</span> <span class="k">if</span> <span class="n">condition</span> <span class="o">==</span> <span class="s2">&quot;c1_base&quot;</span> <span class="k">else</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="se">\n</span><span class="s2">&quot;</span>
+    <span class="p">(</span><span class="n">workdir</span> <span class="o">/</span> <span class="s2">&quot;.claude&quot;</span> <span class="o">/</span> <span class="s2">&quot;settings.json&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">settings_text</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+    <span class="c1"># c2 and c3 both have retriever installed AND the nemo-retriever skill loaded.</span>
+    <span class="c1"># The c2/c3 distinction is purely the prompt style (NL vs explicit slash command).</span>
+    <span class="k">if</span> <span class="n">condition</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;c2_retriever&quot;</span><span class="p">,</span> <span class="s2">&quot;c3_retriever_skill&quot;</span><span class="p">):</span>
+        <span class="n">_copy_skill</span><span class="p">(</span><span class="n">skill_source</span><span class="p">,</span> <span class="n">workdir</span> <span class="o">/</span> <span class="s2">&quot;.claude&quot;</span> <span class="o">/</span> <span class="s2">&quot;skills&quot;</span> <span class="o">/</span> <span class="s2">&quot;nemo-retriever&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">condition</span> <span class="o">==</span> <span class="s2">&quot;c1_base&quot;</span><span class="p">:</span>
+        <span class="n">_write_shim</span><span class="p">(</span><span class="n">workdir</span> <span class="o">/</span> <span class="s2">&quot;.bin&quot;</span><span class="p">,</span> <span class="s2">&quot;retriever&quot;</span><span class="p">)</span>
+        <span class="c1"># Empty HuggingFace cache redirect; env vars are wired up in _env_for.</span>
+        <span class="p">(</span><span class="n">workdir</span> <span class="o">/</span> <span class="s2">&quot;.hf_empty&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">workdir</span>
+
+
+<div class="viewcode-block" id="cleanup_condition_workdir">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.skill_eval.html#nemo_retriever.skill_eval.runner.cleanup_condition_workdir">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">cleanup_condition_workdir</span><span class="p">(</span><span class="n">workdir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Remove a condition&#39;s scratch workdir (PDFs symlinks, .claude/, agent-built</span>
+<span class="sd">    artifacts like .venv/, lancedb/, scratch scripts). Called after a session</span>
+<span class="sd">    completes and its results have been persisted to the artifact dir.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">workdir</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">return</span>
+    <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">workdir</span><span class="p">,</span> <span class="n">ignore_errors</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;cleaned up workdir </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">workdir</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_env_for</span><span class="p">(</span><span class="n">condition</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">workdir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+    <span class="n">env</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">condition</span> <span class="o">==</span> <span class="s2">&quot;c1_base&quot;</span><span class="p">:</span>
+        <span class="n">env</span><span class="p">[</span><span class="s2">&quot;PATH&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">workdir</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="s1">&#39;.bin&#39;</span><span class="si">}{</span><span class="n">os</span><span class="o">.</span><span class="n">pathsep</span><span class="si">}{</span><span class="n">env</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;PATH&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="c1"># Point HuggingFace cache env vars at an empty workdir-local dir so</span>
+        <span class="c1"># any HF Python tooling the agent invokes sees no cached models.</span>
+        <span class="c1"># Direct filesystem reads (e.g. `ls ~/.cache/huggingface/`) are</span>
+        <span class="c1"># blocked separately by the Bash deny rules in settings.json.</span>
+        <span class="n">hf_empty</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">workdir</span> <span class="o">/</span> <span class="s2">&quot;.hf_empty&quot;</span><span class="p">)</span>
+        <span class="n">env</span><span class="p">[</span><span class="s2">&quot;HF_HOME&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">hf_empty</span>
+        <span class="n">env</span><span class="p">[</span><span class="s2">&quot;HF_HUB_CACHE&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">hf_empty</span>
+        <span class="n">env</span><span class="p">[</span><span class="s2">&quot;TRANSFORMERS_CACHE&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">hf_empty</span>
+    <span class="k">return</span> <span class="n">env</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_command</span><span class="p">(</span>
+    <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">model</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">budget_usd</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">session_uuid</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">workdir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">resume</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build the `claude -p` command. First turn uses --session-id; subsequent turns use --resume.</span>
+
+<span class="sd">    We deliberately do NOT pass --no-session-persistence because multi-turn requires</span>
+<span class="sd">    the session to persist between subprocess invocations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;claude&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--print&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--output-format&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;json&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--model&quot;</span><span class="p">,</span>
+        <span class="n">model</span><span class="p">,</span>
+        <span class="s2">&quot;--add-dir&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">workdir</span><span class="p">),</span>
+        <span class="s2">&quot;--permission-mode&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;bypassPermissions&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--max-budget-usd&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">budget_usd</span><span class="p">),</span>
+        <span class="s2">&quot;--setting-sources&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;project&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+    <span class="c1"># c2/c3 run fully un-gated. c1 omits --allow-dangerously-skip-permissions</span>
+    <span class="c1"># so the project-level settings.json deny rules are actually consulted by</span>
+    <span class="c1"># Claude Code instead of being short-circuited.</span>
+    <span class="k">if</span> <span class="n">condition</span> <span class="o">!=</span> <span class="s2">&quot;c1_base&quot;</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;--allow-dangerously-skip-permissions&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">resume</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s2">&quot;--resume&quot;</span><span class="p">,</span> <span class="n">session_uuid</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s2">&quot;--session-id&quot;</span><span class="p">,</span> <span class="n">session_uuid</span><span class="p">])</span>
+    <span class="c1"># Only c1 disables skills entirely. c2 has the skill loaded but uses NL prompt</span>
+    <span class="c1"># (relying on description-based auto-discovery); c3 explicitly invokes via slash.</span>
+    <span class="k">if</span> <span class="n">condition</span> <span class="o">==</span> <span class="s2">&quot;c1_base&quot;</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;--disable-slash-commands&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cmd</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_parse_envelope</span><span class="p">(</span><span class="n">raw</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">raw</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{}</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="n">raw</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()):</span>
+            <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">line</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">:</span>
+                <span class="k">continue</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;could not parse claude envelope (first 200 chars): </span><span class="si">%r</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">raw</span><span class="p">[:</span><span class="mi">200</span><span class="p">])</span>
+        <span class="k">return</span> <span class="p">{}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_populate_tokens</span><span class="p">(</span><span class="n">result</span><span class="p">:</span> <span class="n">TrialResult</span><span class="p">,</span> <span class="n">envelope</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">usage</span> <span class="o">=</span> <span class="n">envelope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;usage&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">input_tokens</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;input_tokens&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">output_tokens</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;output_tokens&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">cache_read_input_tokens</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;cache_read_input_tokens&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">cache_creation_input_tokens</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;cache_creation_input_tokens&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">cache_detail</span> <span class="o">=</span> <span class="n">usage</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;cache_creation&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">ephemeral_5m_input_tokens</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">cache_detail</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ephemeral_5m_input_tokens&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">ephemeral_1h_input_tokens</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">cache_detail</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ephemeral_1h_input_tokens&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_parse_output_json</span><span class="p">(</span><span class="n">workdir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+    <span class="n">out_path</span> <span class="o">=</span> <span class="n">workdir</span> <span class="o">/</span> <span class="s2">&quot;output.json&quot;</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">out_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="p">[],</span> <span class="s2">&quot;missing&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;output.json not written&quot;</span><span class="p">]</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">out_path</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
+    <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="p">[],</span> <span class="s2">&quot;invalid_json&quot;</span><span class="p">,</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;invalid JSON: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="p">[],</span> <span class="s2">&quot;invalid_json&quot;</span><span class="p">,</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;top-level must be an object, got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">required</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;final_answer&quot;</span><span class="p">,</span> <span class="s2">&quot;ranked_retrieved&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">required</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">payload</span><span class="p">:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;missing required key &#39;</span><span class="si">{</span><span class="n">required</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+    <span class="n">ranked</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ranked_retrieved&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ranked</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;ranked_retrieved must be a list, got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">ranked</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">ranked</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">cleaned</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">ranked</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="n">doc_id</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;doc_id&quot;</span><span class="p">)</span>
+        <span class="n">page</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;page_number&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">doc_id</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">page</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">cleaned</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;doc_id&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">doc_id</span><span class="p">),</span> <span class="s2">&quot;page_number&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">page</span><span class="p">),</span> <span class="s2">&quot;rank&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;rank&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">i</span><span class="p">)})</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;final_answer&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">),</span> <span class="n">cleaned</span><span class="p">,</span> <span class="p">(</span><span class="s2">&quot;ok&quot;</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">errors</span> <span class="k">else</span> <span class="s2">&quot;schema_warning&quot;</span><span class="p">),</span> <span class="n">errors</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_extract_model_id</span><span class="p">(</span><span class="n">envelope</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">fallback</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">model_usage</span> <span class="o">=</span> <span class="n">envelope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;modelUsage&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model_usage</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="n">model_usage</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">model_usage</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">envelope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;model&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">fallback</span><span class="p">)</span>
+
+
+<span class="n">_PIPELINE_SEP</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;(?:;|&amp;&amp;|\|\||\||\n|\$\(|`)&quot;</span><span class="p">)</span>
+<span class="n">_ENV_ASSIGN</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^[A-Za-z_][A-Za-z0-9_]*=&quot;</span><span class="p">)</span>
+<span class="n">_WRAPPER_CMDS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;sudo&quot;</span><span class="p">,</span> <span class="s2">&quot;time&quot;</span><span class="p">,</span> <span class="s2">&quot;nice&quot;</span><span class="p">,</span> <span class="s2">&quot;nohup&quot;</span><span class="p">,</span> <span class="s2">&quot;exec&quot;</span><span class="p">,</span> <span class="s2">&quot;env&quot;</span><span class="p">,</span> <span class="s2">&quot;command&quot;</span><span class="p">,</span> <span class="s2">&quot;builtin&quot;</span><span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_retriever_in_command</span><span class="p">(</span><span class="n">cmd</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Does this shell command line invoke the retriever CLI as a command?</span>
+
+<span class="sd">    Matches when the **executable** in any pipeline segment is the retriever</span>
+<span class="sd">    CLI — ``retriever``, ``./retriever``, ``/abs/path/retriever``, ``uv run</span>
+<span class="sd">    retriever``, or ``python -m nemo_retriever``. Deliberately does *not*</span>
+<span class="sd">    match cases where ``retriever`` appears only as a path argument (e.g.</span>
+<span class="sd">    ``cat .bin/retriever``, ``ls /path/retriever/``, ``echo &quot;use retriever&quot;``).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">cmd</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">for</span> <span class="n">segment</span> <span class="ow">in</span> <span class="n">_PIPELINE_SEP</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">cmd</span><span class="p">):</span>
+        <span class="n">seg</span> <span class="o">=</span> <span class="n">segment</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="c1"># Strip leading env-var assignments and command wrappers (sudo, time, ...).</span>
+        <span class="k">while</span> <span class="n">seg</span><span class="p">:</span>
+            <span class="n">first</span> <span class="o">=</span> <span class="n">seg</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">first</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">head</span> <span class="o">=</span> <span class="n">first</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">rest</span> <span class="o">=</span> <span class="n">first</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">first</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+            <span class="k">if</span> <span class="n">_ENV_ASSIGN</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">head</span><span class="p">):</span>
+                <span class="n">seg</span> <span class="o">=</span> <span class="n">rest</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">head</span> <span class="ow">in</span> <span class="n">_WRAPPER_CMDS</span><span class="p">:</span>
+                <span class="n">seg</span> <span class="o">=</span> <span class="n">rest</span>
+                <span class="k">continue</span>
+            <span class="k">break</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">seg</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">head</span> <span class="o">=</span> <span class="n">seg</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">head</span> <span class="o">==</span> <span class="s2">&quot;retriever&quot;</span> <span class="ow">or</span> <span class="n">head</span> <span class="o">==</span> <span class="s2">&quot;./retriever&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="n">head</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;/retriever&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;/&quot;</span> <span class="ow">in</span> <span class="n">head</span><span class="p">[:</span> <span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="s2">&quot;/retriever&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]:</span>
+            <span class="c1"># An absolute or relative path whose final component is `retriever`,</span>
+            <span class="c1"># e.g. /home/.../venv/bin/retriever. Reject pure ``/retriever`` which</span>
+            <span class="c1"># is implausible as a real binary path. Also reject ``.bin/retriever``</span>
+            <span class="c1"># paths: c1_base&#39;s workdir setup installs a deny-shim with that exact</span>
+            <span class="c1"># name (see ``_write_shim``); invoking the shim is the *opposite* of</span>
+            <span class="c1"># using the real retriever CLI.</span>
+            <span class="k">if</span> <span class="s2">&quot;/.bin/retriever&quot;</span> <span class="ow">in</span> <span class="n">head</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="c1"># ``uv run retriever ...`` and ``python -m nemo_retriever ...`` —</span>
+        <span class="c1"># check the first two tokens of the segment.</span>
+        <span class="n">tokens</span> <span class="o">=</span> <span class="n">seg</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">3</span> <span class="ow">and</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;uv&quot;</span> <span class="ow">and</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;run&quot;</span> <span class="ow">and</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;retriever&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">tokens</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">3</span>
+            <span class="ow">and</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;python&quot;</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;-m&quot;</span>
+            <span class="ow">and</span> <span class="n">tokens</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;nemo_retriever&quot;</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="kc">False</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_claude_session_log_path</span><span class="p">(</span><span class="n">workdir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">session_uuid</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Claude Code persists per-session transcripts at</span>
+<span class="sd">    ``~/.claude/projects/&lt;slug&gt;/&lt;session_id&gt;.jsonl`` where ``&lt;slug&gt;`` is the</span>
+<span class="sd">    project dir with ``/`` and ``_`` both replaced by ``-`` (and a leading ``-``</span>
+<span class="sd">    preserved for the filesystem root).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">slug</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">workdir</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">,</span> <span class="s2">&quot;-&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_&quot;</span><span class="p">,</span> <span class="s2">&quot;-&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">slug</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">):</span>
+        <span class="n">slug</span> <span class="o">=</span> <span class="s2">&quot;-&quot;</span> <span class="o">+</span> <span class="n">slug</span>
+    <span class="k">return</span> <span class="n">Path</span><span class="o">.</span><span class="n">home</span><span class="p">()</span> <span class="o">/</span> <span class="s2">&quot;.claude&quot;</span> <span class="o">/</span> <span class="s2">&quot;projects&quot;</span> <span class="o">/</span> <span class="n">slug</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">session_uuid</span><span class="si">}</span><span class="s2">.jsonl&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_scan_transcript_for_signals</span><span class="p">(</span>
+    <span class="n">envelope</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+    <span class="n">workdir</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">session_uuid</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Detect whether the agent invoked the ``retriever`` CLI.</span>
+
+<span class="sd">    Primary signal: scan the Claude Code session jsonl for tool-use entries that</span>
+<span class="sd">    spawn a shell command containing ``retriever``. This catches every actual</span>
+<span class="sd">    invocation, regardless of whether the agent quoted it in its final reply.</span>
+
+<span class="sd">    Fallback signal: if the session log isn&#39;t accessible (older runs, missing</span>
+<span class="sd">    file), look for ``retriever`` in the envelope&#39;s ``result`` text — the legacy</span>
+<span class="sd">    proxy. This undercounts but never overcounts.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Primary: tool-call trace.</span>
+    <span class="k">if</span> <span class="n">workdir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">session_uuid</span><span class="p">:</span>
+        <span class="n">log_path</span> <span class="o">=</span> <span class="n">_claude_session_log_path</span><span class="p">(</span><span class="n">workdir</span><span class="p">,</span> <span class="n">session_uuid</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">log_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">with</span> <span class="n">log_path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f</span><span class="p">:</span>
+                        <span class="n">line</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="n">line</span><span class="p">:</span>
+                            <span class="k">continue</span>
+                        <span class="k">try</span><span class="p">:</span>
+                            <span class="n">ev</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+                        <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">:</span>
+                            <span class="k">continue</span>
+                        <span class="n">msg</span> <span class="o">=</span> <span class="n">ev</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;message&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+                        <span class="n">content</span> <span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+                            <span class="k">continue</span>
+                        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">content</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                                <span class="k">continue</span>
+                            <span class="k">if</span> <span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;type&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;tool_use&quot;</span><span class="p">:</span>
+                                <span class="k">continue</span>
+                            <span class="k">if</span> <span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;Bash&quot;</span><span class="p">:</span>
+                                <span class="k">continue</span>
+                            <span class="n">cmd</span> <span class="o">=</span> <span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;input&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;command&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+                            <span class="k">if</span> <span class="n">_retriever_in_command</span><span class="p">(</span><span class="n">cmd</span><span class="p">):</span>
+                                <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">True</span>
+                <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span>
+            <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+                <span class="k">pass</span>  <span class="c1"># fall through to fallback</span>
+
+    <span class="c1"># Fallback: scan the assistant&#39;s final text.</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">envelope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;result&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="n">used</span> <span class="o">=</span> <span class="s2">&quot;retriever &quot;</span> <span class="ow">in</span> <span class="n">text</span> <span class="ow">or</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">retriever</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">text</span>
+    <span class="k">return</span> <span class="p">(</span><span class="mi">1</span> <span class="k">if</span> <span class="n">used</span> <span class="k">else</span> <span class="kc">None</span><span class="p">),</span> <span class="n">used</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_run_one_turn</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">prompt</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">trial_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">entry_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">query_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">domain</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">is_setup</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">turn_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">workdir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">session_uuid</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">cmd</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">env</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+    <span class="n">timeout_s</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">model</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrialResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Execute one turn. Query turns (is_setup=False) expect the agent to write</span>
+<span class="sd">    ./output.json; the setup turn does not.&quot;&quot;&quot;</span>
+    <span class="n">out_path</span> <span class="o">=</span> <span class="n">workdir</span> <span class="o">/</span> <span class="s2">&quot;output.json&quot;</span>
+    <span class="k">if</span> <span class="n">out_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="n">out_path</span><span class="o">.</span><span class="n">unlink</span><span class="p">()</span>
+
+    <span class="n">domain_tag</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">domain</span><span class="si">}</span><span class="s2">] &quot;</span> <span class="k">if</span> <span class="n">domain</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">label</span> <span class="o">=</span> <span class="s2">&quot;setup&quot;</span> <span class="k">if</span> <span class="n">is_setup</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;entry_id=</span><span class="si">{</span><span class="n">entry_id</span><span class="si">}</span><span class="s2">, query_id=</span><span class="si">{</span><span class="n">query_id</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;turn </span><span class="si">%d</span><span class="s2"> for </span><span class="si">%s</span><span class="s2"> </span><span class="si">%s</span><span class="s2">(</span><span class="si">%s</span><span class="s2">)&quot;</span><span class="p">,</span> <span class="n">turn_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">condition</span><span class="p">,</span> <span class="n">domain_tag</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span>
+    <span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">proc</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+            <span class="n">cmd</span><span class="p">,</span>
+            <span class="nb">input</span><span class="o">=</span><span class="n">prompt</span><span class="p">,</span>
+            <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">timeout</span><span class="o">=</span><span class="n">timeout_s</span><span class="p">,</span>
+            <span class="n">cwd</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">workdir</span><span class="p">),</span>
+            <span class="n">env</span><span class="o">=</span><span class="n">env</span><span class="p">,</span>
+            <span class="n">check</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">TimeoutExpired</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">TrialResult</span><span class="p">(</span>
+            <span class="n">trial_id</span><span class="o">=</span><span class="n">trial_id</span><span class="p">,</span>
+            <span class="n">condition</span><span class="o">=</span><span class="n">condition</span><span class="p">,</span>
+            <span class="n">entry_id</span><span class="o">=</span><span class="n">entry_id</span><span class="p">,</span>
+            <span class="n">query_id</span><span class="o">=</span><span class="n">query_id</span><span class="p">,</span>
+            <span class="n">status</span><span class="o">=</span><span class="s2">&quot;timeout&quot;</span><span class="p">,</span>
+            <span class="n">extraction_method</span><span class="o">=</span><span class="s2">&quot;none&quot;</span><span class="p">,</span>
+            <span class="n">duration_ms</span><span class="o">=</span><span class="nb">int</span><span class="p">((</span><span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span><span class="p">)</span> <span class="o">*</span> <span class="mi">1000</span><span class="p">),</span>
+            <span class="n">duration_api_ms</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+            <span class="n">num_turns</span><span class="o">=</span><span class="n">turn_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+            <span class="n">total_cost_usd</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+            <span class="n">model_id</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+            <span class="n">session_id</span><span class="o">=</span><span class="n">session_uuid</span><span class="p">,</span>
+            <span class="n">errors</span><span class="o">=</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;turn exceeded </span><span class="si">{</span><span class="n">timeout_s</span><span class="si">}</span><span class="s2">s wall timeout&quot;</span><span class="p">],</span>
+            <span class="n">is_setup</span><span class="o">=</span><span class="n">is_setup</span><span class="p">,</span>
+            <span class="n">domain</span><span class="o">=</span><span class="n">domain</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="n">envelope</span> <span class="o">=</span> <span class="n">_parse_envelope</span><span class="p">(</span><span class="n">proc</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
+    <span class="n">stderr</span> <span class="o">=</span> <span class="n">proc</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">TrialResult</span><span class="p">(</span>
+        <span class="n">trial_id</span><span class="o">=</span><span class="n">trial_id</span><span class="p">,</span>
+        <span class="n">condition</span><span class="o">=</span><span class="n">condition</span><span class="p">,</span>
+        <span class="n">entry_id</span><span class="o">=</span><span class="n">entry_id</span><span class="p">,</span>
+        <span class="n">query_id</span><span class="o">=</span><span class="n">query_id</span><span class="p">,</span>
+        <span class="n">status</span><span class="o">=</span><span class="s2">&quot;ok&quot;</span> <span class="k">if</span> <span class="n">proc</span><span class="o">.</span><span class="n">returncode</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">envelope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;is_error&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;error&quot;</span><span class="p">,</span>
+        <span class="n">extraction_method</span><span class="o">=</span><span class="s2">&quot;n/a&quot;</span> <span class="k">if</span> <span class="n">is_setup</span> <span class="k">else</span> <span class="s2">&quot;output_json&quot;</span><span class="p">,</span>
+        <span class="n">duration_ms</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">envelope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;duration_ms&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span><span class="p">)</span> <span class="o">*</span> <span class="mi">1000</span><span class="p">),</span>
+        <span class="n">duration_api_ms</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">envelope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;duration_api_ms&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">),</span>
+        <span class="n">num_turns</span><span class="o">=</span><span class="n">turn_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">total_cost_usd</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">envelope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;total_cost_usd&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">),</span>
+        <span class="n">model_id</span><span class="o">=</span><span class="n">_extract_model_id</span><span class="p">(</span><span class="n">envelope</span><span class="p">,</span> <span class="n">fallback</span><span class="o">=</span><span class="n">model</span><span class="p">),</span>
+        <span class="n">session_id</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">envelope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;session_id&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">session_uuid</span><span class="p">),</span>
+        <span class="n">is_setup</span><span class="o">=</span><span class="n">is_setup</span><span class="p">,</span>
+        <span class="n">domain</span><span class="o">=</span><span class="n">domain</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">_populate_tokens</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">envelope</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">proc</span><span class="o">.</span><span class="n">returncode</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;non-zero exit </span><span class="si">{</span><span class="n">proc</span><span class="o">.</span><span class="n">returncode</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">envelope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;is_error&quot;</span><span class="p">):</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;envelope is_error: </span><span class="si">{</span><span class="n">envelope</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;subtype&#39;</span><span class="p">)</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s1">&#39;?&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">stderr</span><span class="p">:</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;stderr: </span><span class="si">{</span><span class="n">stderr</span><span class="p">[:</span><span class="mi">500</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_setup</span><span class="p">:</span>
+        <span class="n">answer</span><span class="p">,</span> <span class="n">ranked</span><span class="p">,</span> <span class="n">extract_status</span><span class="p">,</span> <span class="n">extract_errors</span> <span class="o">=</span> <span class="n">_parse_output_json</span><span class="p">(</span><span class="n">workdir</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">extract_status</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;missing&quot;</span><span class="p">,</span> <span class="s2">&quot;invalid_json&quot;</span><span class="p">):</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">extraction_method</span> <span class="o">=</span> <span class="n">extract_status</span>
+            <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="s2">&quot;ok&quot;</span><span class="p">:</span>
+                <span class="n">result</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="s2">&quot;extraction_failed&quot;</span>
+        <span class="k">elif</span> <span class="n">extract_status</span> <span class="o">==</span> <span class="s2">&quot;schema_warning&quot;</span><span class="p">:</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">extraction_method</span> <span class="o">=</span> <span class="s2">&quot;schema_warning&quot;</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">final_answer</span> <span class="o">=</span> <span class="n">answer</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">ranked_retrieved</span> <span class="o">=</span> <span class="n">ranked</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">extract_errors</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">out_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">out_path</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">workdir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;output_e</span><span class="si">{</span><span class="n">entry_id</span><span class="si">}</span><span class="s2">.json&quot;</span><span class="p">)</span>
+
+    <span class="n">first_use</span><span class="p">,</span> <span class="n">used</span> <span class="o">=</span> <span class="n">_scan_transcript_for_signals</span><span class="p">(</span><span class="n">envelope</span><span class="p">,</span> <span class="n">workdir</span><span class="o">=</span><span class="n">workdir</span><span class="p">,</span> <span class="n">session_uuid</span><span class="o">=</span><span class="n">session_uuid</span><span class="p">)</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">retriever_first_use_turn</span> <span class="o">=</span> <span class="n">first_use</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">retriever_used_ever</span> <span class="o">=</span> <span class="n">used</span>
+    <span class="c1"># c1 has the skill unavailable; leave skill_fired=None to distinguish from &quot;loaded but didn&#39;t fire&quot;.</span>
+    <span class="k">if</span> <span class="n">condition</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;c2_retriever&quot;</span><span class="p">,</span> <span class="s2">&quot;c3_retriever_skill&quot;</span><span class="p">):</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">skill_fired</span> <span class="o">=</span> <span class="n">used</span> <span class="ow">and</span> <span class="p">(</span><span class="n">first_use</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">and</span> <span class="n">first_use</span> <span class="o">&lt;=</span> <span class="mi">2</span>
+    <span class="k">return</span> <span class="n">result</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_apply_judge</span><span class="p">(</span><span class="n">judge</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">entry</span><span class="p">:</span> <span class="n">DatasetEntry</span><span class="p">,</span> <span class="n">result</span><span class="p">:</span> <span class="n">TrialResult</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Score ``result.final_answer`` against ``entry.ground_truth_answer``.</span>
+
+<span class="sd">    Mutates the result in place. Skips silently when the judge is unset, the</span>
+<span class="sd">    ground-truth answer is empty, or the trial didn&#39;t produce a final answer.</span>
+<span class="sd">    Errors are recorded on the result rather than raised so a flaky judge</span>
+<span class="sd">    endpoint never breaks an in-flight session.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">judge</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">entry</span><span class="o">.</span><span class="n">ground_truth_answer</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">result</span><span class="o">.</span><span class="n">final_answer</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">verdict</span> <span class="o">=</span> <span class="n">judge</span><span class="o">.</span><span class="n">judge</span><span class="p">(</span>
+            <span class="n">query</span><span class="o">=</span><span class="n">entry</span><span class="o">.</span><span class="n">original_query</span><span class="p">,</span>
+            <span class="n">reference</span><span class="o">=</span><span class="n">entry</span><span class="o">.</span><span class="n">ground_truth_answer</span><span class="p">,</span>
+            <span class="n">candidate</span><span class="o">=</span><span class="n">result</span><span class="o">.</span><span class="n">final_answer</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>  <span class="c1"># defensive — LLMJudge already catches, but be safe.</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">judge_error</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;judge_invocation_error: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;LLMJudge raised for entry_id=</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">entry_id</span><span class="p">,</span> <span class="n">exc</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">judge_score</span> <span class="o">=</span> <span class="n">verdict</span><span class="o">.</span><span class="n">score</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">judge_reasoning</span> <span class="o">=</span> <span class="n">verdict</span><span class="o">.</span><span class="n">reasoning</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">verdict</span><span class="o">.</span><span class="n">error</span><span class="p">:</span>
+        <span class="n">result</span><span class="o">.</span><span class="n">judge_error</span> <span class="o">=</span> <span class="n">verdict</span><span class="o">.</span><span class="n">error</span>
+
+
+<div class="viewcode-block" id="run_condition">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.skill_eval.html#nemo_retriever.skill_eval.runner.run_condition">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">run_condition</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">condition</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">entries</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">DatasetEntry</span><span class="p">],</span>
+    <span class="n">workdir_root</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">pdf_source</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">skill_source</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">model</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">budget_usd</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">timeout_s</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">domain</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+    <span class="n">domain_label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;PDFs&quot;</span><span class="p">,</span>
+    <span class="n">judge</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">testdata_prefixes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">TrialResult</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run one Claude Code session covering setup + all `entries` for `condition`.</span>
+
+<span class="sd">    Turn 1 creates the session via --session-id; subsequent turns resume it. The</span>
+<span class="sd">    first TrialResult has is_setup=True; the rest are query results, one per entry.</span>
+<span class="sd">    All ``entries`` are expected to share the same ``domain`` (the caller groups</span>
+<span class="sd">    by domain so each session sees a single PDF corpus).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">condition</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">CONDITIONS</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;unknown condition: </span><span class="si">{</span><span class="n">condition</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">workdir</span> <span class="o">=</span> <span class="n">_build_condition_workdir</span><span class="p">(</span><span class="n">condition</span><span class="p">,</span> <span class="n">workdir_root</span><span class="p">,</span> <span class="n">pdf_source</span><span class="p">,</span> <span class="n">skill_source</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="n">domain</span><span class="p">)</span>
+    <span class="n">session_uuid</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">())</span>
+    <span class="n">env</span> <span class="o">=</span> <span class="n">_env_for</span><span class="p">(</span><span class="n">condition</span><span class="p">,</span> <span class="n">workdir</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;starting session for </span><span class="si">%s</span><span class="s2">/</span><span class="si">%s</span><span class="s2">: workdir=</span><span class="si">%s</span><span class="s2"> session_id=</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">condition</span><span class="p">,</span>
+        <span class="n">domain</span> <span class="ow">or</span> <span class="s2">&quot;default&quot;</span><span class="p">,</span>
+        <span class="n">workdir</span><span class="p">,</span>
+        <span class="n">session_uuid</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">results</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">TrialResult</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">setup_trial_id</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">condition</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">domain</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s1">&#39;default&#39;</span><span class="si">}</span><span class="s2">_setup_t1&quot;</span>
+    <span class="n">setup_cmd</span> <span class="o">=</span> <span class="n">_build_command</span><span class="p">(</span><span class="n">condition</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">budget_usd</span><span class="p">,</span> <span class="n">session_uuid</span><span class="p">,</span> <span class="n">workdir</span><span class="p">,</span> <span class="n">resume</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">setup_result</span> <span class="o">=</span> <span class="n">_run_one_turn</span><span class="p">(</span>
+        <span class="n">condition</span><span class="o">=</span><span class="n">condition</span><span class="p">,</span>
+        <span class="n">prompt</span><span class="o">=</span><span class="n">_render_setup_prompt</span><span class="p">(</span><span class="n">condition</span><span class="p">,</span> <span class="n">domain_label</span><span class="p">),</span>
+        <span class="n">trial_id</span><span class="o">=</span><span class="n">setup_trial_id</span><span class="p">,</span>
+        <span class="n">entry_id</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">query_id</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="n">domain</span><span class="o">=</span><span class="n">domain</span><span class="p">,</span>
+        <span class="n">is_setup</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">turn_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">workdir</span><span class="o">=</span><span class="n">workdir</span><span class="p">,</span>
+        <span class="n">session_uuid</span><span class="o">=</span><span class="n">session_uuid</span><span class="p">,</span>
+        <span class="n">cmd</span><span class="o">=</span><span class="n">setup_cmd</span><span class="p">,</span>
+        <span class="n">env</span><span class="o">=</span><span class="n">env</span><span class="p">,</span>
+        <span class="n">timeout_s</span><span class="o">=</span><span class="n">timeout_s</span><span class="p">,</span>
+        <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">setup_result</span><span class="p">)</span>
+
+    <span class="n">resume_cmd</span> <span class="o">=</span> <span class="n">_build_command</span><span class="p">(</span><span class="n">condition</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">budget_usd</span><span class="p">,</span> <span class="n">session_uuid</span><span class="p">,</span> <span class="n">workdir</span><span class="p">,</span> <span class="n">resume</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">entry</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">entries</span><span class="p">):</span>
+        <span class="n">turn_idx</span> <span class="o">=</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">_run_one_turn</span><span class="p">(</span>
+            <span class="n">condition</span><span class="o">=</span><span class="n">condition</span><span class="p">,</span>
+            <span class="n">prompt</span><span class="o">=</span><span class="n">_render_prompt</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="n">condition</span><span class="p">,</span> <span class="n">testdata_prefixes</span><span class="p">),</span>
+            <span class="n">trial_id</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">condition</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">domain</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s1">&#39;default&#39;</span><span class="si">}</span><span class="s2">_e</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">entry_id</span><span class="si">}</span><span class="s2">_t</span><span class="si">{</span><span class="n">turn_idx</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">entry_id</span><span class="o">=</span><span class="n">entry</span><span class="o">.</span><span class="n">entry_id</span><span class="p">,</span>
+            <span class="n">query_id</span><span class="o">=</span><span class="n">entry</span><span class="o">.</span><span class="n">query_id</span><span class="p">,</span>
+            <span class="n">domain</span><span class="o">=</span><span class="n">domain</span><span class="p">,</span>
+            <span class="n">is_setup</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">turn_idx</span><span class="o">=</span><span class="n">turn_idx</span><span class="p">,</span>
+            <span class="n">workdir</span><span class="o">=</span><span class="n">workdir</span><span class="p">,</span>
+            <span class="n">session_uuid</span><span class="o">=</span><span class="n">session_uuid</span><span class="p">,</span>
+            <span class="n">cmd</span><span class="o">=</span><span class="n">resume_cmd</span><span class="p">,</span>
+            <span class="n">env</span><span class="o">=</span><span class="n">env</span><span class="p">,</span>
+            <span class="n">timeout_s</span><span class="o">=</span><span class="n">timeout_s</span><span class="p">,</span>
+            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">_apply_judge</span><span class="p">(</span><span class="n">judge</span><span class="p">,</span> <span class="n">entry</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+        <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">workdir</span><span class="p">,</span> <span class="n">results</span></div>
+
+
+
+<div class="viewcode-block" id="save_trial">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.skill_eval.html#nemo_retriever.skill_eval.runner.save_trial">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_trial</span><span class="p">(</span><span class="n">result</span><span class="p">:</span> <span class="n">TrialResult</span><span class="p">,</span> <span class="n">session_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+    <span class="n">parts</span> <span class="o">=</span> <span class="p">[</span><span class="n">session_dir</span><span class="p">,</span> <span class="s2">&quot;trials&quot;</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">condition</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">domain</span><span class="p">:</span>
+        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">domain</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="o">*</span><span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">parts</span><span class="p">])</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">trial_id</span><span class="si">}</span><span class="s2">.json&quot;</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">asdict</span><span class="p">(</span><span class="n">result</span><span class="p">),</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

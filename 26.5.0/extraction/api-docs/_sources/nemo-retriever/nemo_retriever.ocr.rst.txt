@@ -1,0 +1,69 @@
+nemo\_retriever.ocr package
+===========================
+
+Submodules
+----------
+
+nemo\_retriever.ocr.config module
+---------------------------------
+
+.. automodule:: nemo_retriever.ocr.config
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.ocr.cpu\_ocr module
+-----------------------------------
+
+.. automodule:: nemo_retriever.ocr.cpu_ocr
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.ocr.cpu\_parse module
+-------------------------------------
+
+.. automodule:: nemo_retriever.ocr.cpu_parse
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.ocr.gpu\_ocr module
+-----------------------------------
+
+.. automodule:: nemo_retriever.ocr.gpu_ocr
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.ocr.gpu\_parse module
+-------------------------------------
+
+.. automodule:: nemo_retriever.ocr.gpu_parse
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.ocr.ocr module
+------------------------------
+
+.. automodule:: nemo_retriever.ocr.ocr
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.ocr.shared module
+---------------------------------
+
+.. automodule:: nemo_retriever.ocr.shared
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.ocr
+   :members:
+   :show-inheritance:
+   :undoc-members:

@@ -1,0 +1,69 @@
+nemo\_retriever.table package
+=============================
+
+Submodules
+----------
+
+nemo\_retriever.table.commands module
+-------------------------------------
+
+.. automodule:: nemo_retriever.table.commands
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.table.config module
+-----------------------------------
+
+.. automodule:: nemo_retriever.table.config
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.table.cpu\_actor module
+---------------------------------------
+
+.. automodule:: nemo_retriever.table.cpu_actor
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.table.gpu\_actor module
+---------------------------------------
+
+.. automodule:: nemo_retriever.table.gpu_actor
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.table.processor module
+--------------------------------------
+
+.. automodule:: nemo_retriever.table.processor
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.table.shared module
+-----------------------------------
+
+.. automodule:: nemo_retriever.table.shared
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.table.table\_detection module
+---------------------------------------------
+
+.. automodule:: nemo_retriever.table.table_detection
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.table
+   :members:
+   :show-inheritance:
+   :undoc-members:

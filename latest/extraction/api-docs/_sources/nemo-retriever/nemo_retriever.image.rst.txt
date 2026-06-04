@@ -1,0 +1,29 @@
+nemo\_retriever.image package
+=============================
+
+Submodules
+----------
+
+nemo\_retriever.image.load module
+---------------------------------
+
+.. automodule:: nemo_retriever.image.load
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.image.ray\_data module
+--------------------------------------
+
+.. automodule:: nemo_retriever.image.ray_data
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.image
+   :members:
+   :show-inheritance:
+   :undoc-members:

@@ -1,0 +1,37 @@
+nemo\_retriever.llm package
+===========================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   nemo_retriever.llm.clients
+
+Submodules
+----------
+
+nemo\_retriever.llm.text\_utils module
+--------------------------------------
+
+.. automodule:: nemo_retriever.llm.text_utils
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.llm.types module
+--------------------------------
+
+.. automodule:: nemo_retriever.llm.types
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.llm
+   :members:
+   :show-inheritance:
+   :undoc-members:

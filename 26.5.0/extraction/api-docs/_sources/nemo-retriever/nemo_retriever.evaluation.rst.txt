@@ -1,0 +1,117 @@
+nemo\_retriever.evaluation package
+==================================
+
+Submodules
+----------
+
+nemo\_retriever.evaluation.cli module
+-------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.cli
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.evaluation.config module
+----------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.config
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.evaluation.eval\_operator module
+------------------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.eval_operator
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.evaluation.generation module
+--------------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.generation
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.evaluation.ground\_truth module
+-----------------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.ground_truth
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.evaluation.judging module
+-----------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.judging
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.evaluation.live\_retrieval module
+-------------------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.live_retrieval
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.evaluation.orchestrator module
+----------------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.orchestrator
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.evaluation.retrieval\_loader module
+---------------------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.retrieval_loader
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.evaluation.retrievers module
+--------------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.retrievers
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.evaluation.runner module
+----------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.runner
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.evaluation.scoring module
+-----------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.scoring
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.evaluation.scoring\_operator module
+---------------------------------------------------
+
+.. automodule:: nemo_retriever.evaluation.scoring_operator
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.evaluation
+   :members:
+   :show-inheritance:
+   :undoc-members:

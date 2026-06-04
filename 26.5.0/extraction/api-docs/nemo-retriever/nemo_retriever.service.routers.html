@@ -1,0 +1,1267 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>nemo_retriever.service.routers package &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'nemo-retriever/nemo_retriever.service.routers';</script>
+
+    <link rel="icon" href="../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="nemo_retriever.service.services package" href="nemo_retriever.service.services.html" />
+    <link rel="prev" title="nemo_retriever.service.models package" href="nemo_retriever.service.models.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="modules.html">nemo_retriever</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 current active has-children"><a class="reference internal" href="nemo_retriever.html">nemo_retriever package</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.adapters.html">nemo_retriever.adapters package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.adapters.cli.html">nemo_retriever.adapters.cli package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.api.html">nemo_retriever.api package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.application.html">nemo_retriever.application package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.application.pipeline.html">nemo_retriever.application.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.audio.html">nemo_retriever.audio package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.caption.html">nemo_retriever.caption package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.chart.html">nemo_retriever.chart package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.dedup.html">nemo_retriever.dedup package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.evaluation.html">nemo_retriever.evaluation package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.graph.html">nemo_retriever.graph package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.harness.html">nemo_retriever.harness package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.harness.portal.html">nemo_retriever.harness.portal package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.html.html">nemo_retriever.html package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.image.html">nemo_retriever.image package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.infographic.html">nemo_retriever.infographic package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.io.html">nemo_retriever.io package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.llm.html">nemo_retriever.llm package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.llm.clients.html">nemo_retriever.llm.clients package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.local.html">nemo_retriever.local package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.local.stages.html">nemo_retriever.local.stages package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.model.html">nemo_retriever.model package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.model.local.html">nemo_retriever.model.local package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.nim.html">nemo_retriever.nim package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.ocr.html">nemo_retriever.ocr package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.operators.html">nemo_retriever.operators package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.page_elements.html">nemo_retriever.page_elements package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.params.html">nemo_retriever.params package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.parse.html">nemo_retriever.parse package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.pdf.html">nemo_retriever.pdf package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.pipeline.html">nemo_retriever.pipeline package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.recall.html">nemo_retriever.recall package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.rerank.html">nemo_retriever.rerank package</a></li>
+<li class="toctree-l3 current active has-children"><a class="reference internal" href="nemo_retriever.service.html">nemo_retriever.service package</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.service.models.html">nemo_retriever.service.models package</a></li>
+<li class="toctree-l4 current active"><a class="current reference internal" href="#">nemo_retriever.service.routers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.service.services.html">nemo_retriever.service.services package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.service.utils.html">nemo_retriever.service.utils package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.skill_eval.html">nemo_retriever.skill_eval package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.skill_eval.configs.html">nemo_retriever.skill_eval.configs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.skill_eval.prompts.html">nemo_retriever.skill_eval.prompts package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.table.html">nemo_retriever.table package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.tabular_data.html">nemo_retriever.tabular_data package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.tabular_data.ingestion.html">nemo_retriever.tabular_data.ingestion package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.tabular_data.neo4j.html">nemo_retriever.tabular_data.neo4j package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.tabular_data.retrieval.html">nemo_retriever.tabular_data.retrieval package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.text_embed.html">nemo_retriever.text_embed package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.txt.html">nemo_retriever.txt package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="nemo_retriever.utils.html">nemo_retriever.utils package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.utils.benchmark.html">nemo_retriever.utils.benchmark package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.utils.compare.html">nemo_retriever.utils.compare package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.utils.convert.html">nemo_retriever.utils.convert package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.utils.image.html">nemo_retriever.utils.image package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nemo_retriever.utils.pipeline.html">nemo_retriever.utils.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.vdb.html">nemo_retriever.vdb package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="nemo_retriever.video.html">nemo_retriever.video package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="modules.html" class="nav-link">nemo_retriever</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="nemo_retriever.html" class="nav-link">nemo_retriever package</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="nemo_retriever.service.html" class="nav-link">nemo_retriever.service package</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.service.routers package</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="nemo-retriever-service-routers-package">
+<h1>nemo_retriever.service.routers package<a class="headerlink" href="#nemo-retriever-service-routers-package" title="Link to this heading">#</a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">#</a></h2>
+</section>
+<section id="module-nemo_retriever.service.routers.admin">
+<span id="nemo-retriever-service-routers-admin-module"></span><h2>nemo_retriever.service.routers.admin module<a class="headerlink" href="#module-nemo_retriever.service.routers.admin" title="Link to this heading">#</a></h2>
+<p>Admin endpoints exposed by worker pods (realtime / batch / standalone).</p>
+<p>These are NOT part of the public ingest contract — they exist so the
+gateway’s dashboard overview can fan out and ask each worker pod
+“what’s your live queue depth?” without going through Prometheus.
+Available without auth so the cluster’s internal Service DNS can reach
+them; the routes are not advertised on the OpenAPI schema.</p>
+<p>The same data is published as Prometheus metrics
+(<code class="xref py py-func docutils literal notranslate"><span class="pre">nemo_retriever_pool_queue_depth*()</span></code>) — this endpoint is the
+human-readable, JSON-shaped sibling for use cases that can’t or
+don’t want to go through Prometheus.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.admin.pool_stats">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.admin.</span></span><span class="sig-name descname"><span class="pre">pool_stats</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/admin.html#pool_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.admin.pool_stats" title="Link to this definition">#</a></dt>
+<dd><p>Return live worker-pool state for the current pod.</p>
+<p>Response shape:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+  <span class="s2">&quot;mode&quot;</span><span class="p">:</span> <span class="s2">&quot;realtime&quot;</span> <span class="o">|</span> <span class="s2">&quot;batch&quot;</span> <span class="o">|</span> <span class="s2">&quot;standalone&quot;</span> <span class="o">|</span> <span class="s2">&quot;gateway&quot;</span><span class="p">,</span>
+  <span class="s2">&quot;pools&quot;</span><span class="p">:</span> <span class="p">{</span>
+    <span class="s2">&quot;realtime&quot;</span><span class="p">:</span> <span class="p">{</span>
+      <span class="s2">&quot;queue_depth&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+      <span class="s2">&quot;queue_depth_ratio&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+      <span class="s2">&quot;max_queue_size&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+      <span class="s2">&quot;num_workers&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+      <span class="s2">&quot;processed&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+      <span class="s2">&quot;is_running&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="o">...</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Gateway pods have no local pool and return <code class="docutils literal notranslate"><span class="pre">{&quot;mode&quot;:</span> <span class="pre">&quot;gateway&quot;,</span>
+<span class="pre">&quot;pools&quot;:</span> <span class="pre">{}}</span></code> — the caller is expected to fan out to the worker
+Services themselves for live numbers.</p>
+</dd></dl>
+
+</section>
+<section id="module-nemo_retriever.service.routers.dashboard">
+<span id="nemo-retriever-service-routers-dashboard-module"></span><h2>nemo_retriever.service.routers.dashboard module<a class="headerlink" href="#module-nemo_retriever.service.routers.dashboard" title="Link to this heading">#</a></h2>
+<p>Dashboard UI router — gateway-only.</p>
+<p>Serves the SPA shell and provides REST/SSE API endpoints consumed by the
+React frontend for the Overview, Job Tracker, and VDB Explorer views.</p>
+<dl class="py class pydantic_model">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.dashboard.VdbQueryRequest">
+<em class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.dashboard.</span></span><span class="sig-name descname"><span class="pre">VdbQueryRequest</span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/dashboard.html#VdbQueryRequest"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.dashboard.VdbQueryRequest" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></p>
+<p><details  class="autodoc_pydantic_collapsable_json">
+<summary>Show JSON schema</summary><div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">   </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;VdbQueryRequest&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Query&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;top_k&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">&quot;default&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;maximum&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;minimum&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Top K&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;integer&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">   </span><span class="p">},</span>
+<span class="w">   </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;query&quot;</span>
+<span class="w">   </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</details></p><dl class="field-list simple">
+<dt class="field-odd">Fields<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><a class="reference internal" href="#nemo_retriever.service.routers.dashboard.VdbQueryRequest.query" title="nemo_retriever.service.routers.dashboard.VdbQueryRequest.query"><code class="xref py py-obj docutils literal notranslate"><span class="pre">query</span> <span class="pre">(str)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#nemo_retriever.service.routers.dashboard.VdbQueryRequest.top_k" title="nemo_retriever.service.routers.dashboard.VdbQueryRequest.top_k"><code class="xref py py-obj docutils literal notranslate"><span class="pre">top_k</span> <span class="pre">(int)</span></code></a></p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.dashboard.VdbQueryRequest.query">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">query</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"> <span class="pre">[Required]</span></em><a class="headerlink" href="#nemo_retriever.service.routers.dashboard.VdbQueryRequest.query" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.dashboard.VdbQueryRequest.top_k">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">top_k</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">10</span></em><a class="headerlink" href="#nemo_retriever.service.routers.dashboard.VdbQueryRequest.top_k" title="Link to this definition">#</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Constraints<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ge</strong> = 1</p></li>
+<li><p><strong>le</strong> = 1000</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.dashboard.index">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.dashboard.</span></span><span class="sig-name descname"><span class="pre">index</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/dashboard.html#index"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.dashboard.index" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.dashboard.jobs_detail">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.dashboard.</span></span><span class="sig-name descname"><span class="pre">jobs_detail</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/dashboard.html#jobs_detail"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.dashboard.jobs_detail" title="Link to this definition">#</a></dt>
+<dd><p>Single-job aggregate view for the detail page.</p>
+<p>Returns the compact aggregate projection together with up to 500
+document records — enough to render the per-doc table immediately
+on page load. The full list is paginated separately at
+<a class="reference internal" href="#nemo_retriever.service.routers.dashboard.jobs_documents" title="nemo_retriever.service.routers.dashboard.jobs_documents"><code class="xref py py-func docutils literal notranslate"><span class="pre">jobs_documents()</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.dashboard.jobs_documents">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.dashboard.</span></span><span class="sig-name descname"><span class="pre">jobs_documents</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">status</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">limit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">100</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/dashboard.html#jobs_documents"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.dashboard.jobs_documents" title="Link to this definition">#</a></dt>
+<dd><p>Paginated documents for one job — backs the detail-page table.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.dashboard.jobs_list">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.dashboard.</span></span><span class="sig-name descname"><span class="pre">jobs_list</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">status</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">limit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">50</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sort</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'created_desc'</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/dashboard.html#jobs_list"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.dashboard.jobs_list" title="Link to this definition">#</a></dt>
+<dd><p>Paginated list of job aggregates, newest first by default.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>status</strong> – Optional aggregate-status filter (<code class="docutils literal notranslate"><span class="pre">pending</span></code>, <code class="docutils literal notranslate"><span class="pre">running</span></code>,
+<code class="docutils literal notranslate"><span class="pre">completed</span></code>, <code class="docutils literal notranslate"><span class="pre">failed</span></code>, <code class="docutils literal notranslate"><span class="pre">partial_success</span></code>).</p></li>
+<li><p><strong>offset</strong> – Zero-based page start (&gt;= 0).</p></li>
+<li><p><strong>limit</strong> – Page size, 1..500.</p></li>
+<li><p><strong>sort</strong> – <code class="docutils literal notranslate"><span class="pre">created_desc</span></code> (default), <code class="docutils literal notranslate"><span class="pre">created_asc</span></code>,
+<code class="docutils literal notranslate"><span class="pre">finalized_desc</span></code>, <code class="docutils literal notranslate"><span class="pre">finalized_asc</span></code>.</p></li>
+<li><p><strong>``{jobs</strong> (<em>Returns</em>) – </p></li>
+<li><p><strong>total</strong></p></li>
+<li><p><strong>total_filtered</strong></p></li>
+<li><p><strong>offset</strong></p></li>
+<li><p><strong>limit</strong></p></li>
+<li><p><strong>with</strong> (<em>sort}``</em>)</p></li>
+</ul>
+</dd>
+</dl>
+<p>:param a compact projection per job (see <code class="xref py py-func docutils literal notranslate"><span class="pre">_serialize_job()</span></code>).:</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.dashboard.jobs_snapshot">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.dashboard.</span></span><span class="sig-name descname"><span class="pre">jobs_snapshot</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/dashboard.html#jobs_snapshot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.dashboard.jobs_snapshot" title="Link to this definition">#</a></dt>
+<dd><p>REST fallback for the SSE stream.</p>
+<p>Returns both <code class="docutils literal notranslate"><span class="pre">jobs</span></code> (the J2+ aggregate view) and <code class="docutils literal notranslate"><span class="pre">documents</span></code>
+(per-doc rows for the legacy table). The SPA prefers <code class="docutils literal notranslate"><span class="pre">jobs</span></code> and
+falls back to <code class="docutils literal notranslate"><span class="pre">documents</span></code> for older builds.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.dashboard.jobs_sse">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.dashboard.</span></span><span class="sig-name descname"><span class="pre">jobs_sse</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">StreamingResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/dashboard.html#jobs_sse"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.dashboard.jobs_sse" title="Link to this definition">#</a></dt>
+<dd><p>SSE stream of job-tracker events with periodic summary heartbeats.</p>
+<p>Subscribes to the global event bus (no <code class="docutils literal notranslate"><span class="pre">job_id</span></code> filter) so the
+dashboard sees both per-document events and the J5 job lifecycle
+events for every job. The initial <code class="docutils literal notranslate"><span class="pre">snapshot</span></code> payload bundles both
+layers (<code class="docutils literal notranslate"><span class="pre">documents</span></code> for back-compat with the legacy doc-grid view
+and <code class="docutils literal notranslate"><span class="pre">jobs</span></code> for the new job-aggregate view) so the SPA can render
+immediately without an extra REST hop.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.dashboard.overview">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.dashboard.</span></span><span class="sig-name descname"><span class="pre">overview</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/dashboard.html#overview"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.dashboard.overview" title="Link to this definition">#</a></dt>
+<dd><p>Aggregate cluster status for the overview panel.</p>
+<p>On gateway pods, this fans out to each worker Service to collect
+live pool stats (queue depth, queue ratio, processed counts) so
+the dashboard can surface scaling pressure without forcing the
+operator to open Grafana. On standalone pods the local pool is
+read in-process via <code class="xref py py-func docutils literal notranslate"><span class="pre">get_pipeline_pool()</span></code>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.dashboard.vdb_query">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.dashboard.</span></span><span class="sig-name descname"><span class="pre">vdb_query</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">req</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#nemo_retriever.service.routers.dashboard.VdbQueryRequest" title="nemo_retriever.service.routers.dashboard.VdbQueryRequest"><span class="pre">VdbQueryRequest</span></a></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/dashboard.html#vdb_query"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.dashboard.vdb_query" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.dashboard.vdb_tables">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.dashboard.</span></span><span class="sig-name descname"><span class="pre">vdb_tables</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/dashboard.html#vdb_tables"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.dashboard.vdb_tables" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</section>
+<section id="module-nemo_retriever.service.routers.ingest">
+<span id="nemo-retriever-service-routers-ingest-module"></span><h2>nemo_retriever.service.routers.ingest module<a class="headerlink" href="#module-nemo_retriever.service.routers.ingest" title="Link to this heading">#</a></h2>
+<p>Ingest endpoints: general, per-page, and whole-document upload.</p>
+<p>Each endpoint is mode-aware:</p>
+<ul class="simple">
+<li><p><strong>gateway</strong> — record <code class="xref py py-class docutils literal notranslate"><span class="pre">IngestMetrics</span></code> (the single authoritative store),
+then proxy the raw HTTP request to the correct backend worker pod.</p></li>
+<li><p><strong>standalone</strong> — record <code class="xref py py-class docutils literal notranslate"><span class="pre">IngestMetrics</span></code> <em>and</em> enqueue locally.</p></li>
+<li><p><strong>realtime / batch</strong> — enqueue work to the local pipeline pool only.
+<code class="docutils literal notranslate"><span class="pre">IngestMetrics</span></code> is not initialised in worker modes, so <code class="docutils literal notranslate"><span class="pre">get_metrics()</span></code>
+returns <code class="docutils literal notranslate"><span class="pre">None</span></code> and no per-item tracking occurs.</p></li>
+</ul>
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.create_job">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">create_job</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">body</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="nemo_retriever.service.models.html#nemo_retriever.service.models.requests.JobCreateRequest" title="nemo_retriever.service.models.requests.JobCreateRequest"><span class="pre">JobCreateRequest</span></a></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="nemo_retriever.service.models.html#nemo_retriever.service.models.responses.JobCreatedResponse" title="nemo_retriever.service.models.responses.JobCreatedResponse"><span class="pre">JobCreatedResponse</span></a></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#create_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.create_job" title="Link to this definition">#</a></dt>
+<dd><p>Open a job that will receive <code class="docutils literal notranslate"><span class="pre">expected_documents</span></code> uploads.</p>
+<p>The server returns an opaque <code class="docutils literal notranslate"><span class="pre">job_id</span></code> the client uses for every
+subsequent <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/ingest/job/{job_id}/document</span></code> (or <code class="docutils literal notranslate"><span class="pre">/page</span></code>)
+call. The job is in-memory only; gateway pod restarts erase it
+(this is intentional — see the J1 design notes).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.delete_sidecar">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">delete_sidecar</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">sidecar_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Response</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#delete_sidecar"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.delete_sidecar" title="Link to this definition">#</a></dt>
+<dd><p>Explicit deletion lets callers free server memory before the TTL elapses.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.get_job">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">get_job</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">include_documents</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="nemo_retriever.service.models.html#nemo_retriever.service.models.responses.JobAggregateResponse" title="nemo_retriever.service.models.responses.JobAggregateResponse"><span class="pre">JobAggregateResponse</span></a></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#get_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.get_job" title="Link to this definition">#</a></dt>
+<dd><p>Return the live aggregate snapshot.</p>
+<p>Pass <code class="docutils literal notranslate"><span class="pre">?include_documents=true</span></code> to also return the per-document
+records (capped to the first 10k entries to keep payloads bounded).</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.get_job_document">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">get_job_document</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">document_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Response</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#get_job_document"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.get_job_document" title="Link to this definition">#</a></dt>
+<dd><p>Single-document detail nested under the owning job.</p>
+<p>Returns HTTP 200 when the document is terminal (consumes
+<code class="docutils literal notranslate"><span class="pre">result_data</span></code> so memory is freed for the caller) and HTTP 202
+while still pending/processing. A 404 is returned if either the
+job is unknown or the document does not belong to this job — the
+latter prevents leaking document existence across tenants.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.get_job_documents">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">get_job_documents</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">status</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">offset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">limit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">100</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="nemo_retriever.service.models.html#nemo_retriever.service.models.responses.JobDocumentsPage" title="nemo_retriever.service.models.responses.JobDocumentsPage"><span class="pre">JobDocumentsPage</span></a></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#get_job_documents"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.get_job_documents" title="Link to this definition">#</a></dt>
+<dd><p>Return per-document records for <em>job_id</em>, paginated.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>status</strong> – Optional filter — one of <code class="docutils literal notranslate"><span class="pre">pending</span></code>, <code class="docutils literal notranslate"><span class="pre">processing</span></code>,
+<code class="docutils literal notranslate"><span class="pre">completed</span></code>, <code class="docutils literal notranslate"><span class="pre">failed</span></code>. The default returns every document.</p></li>
+<li><p><strong>offset</strong> – Zero-based page start (must be <code class="docutils literal notranslate"><span class="pre">&gt;=</span> <span class="pre">0</span></code>).</p></li>
+<li><p><strong>limit</strong> – Page size; capped at 1000.</p></li>
+<li><p><strong>count</strong> (<em>The aggregate total is the absolute document</em>)</p></li>
+<li><p><strong>and</strong></p></li>
+<li><p><strong>items</strong> (<em>total_filtered is what the status filter selected;</em>)</p></li>
+<li><p><strong>page.</strong> (<em>is the slice for the requested</em>)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.ingest_document_status">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">ingest_document_status</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">document_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#ingest_document_status"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.ingest_document_status" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.ingest_job_events">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">ingest_job_events</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">StreamingResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#ingest_job_events"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.ingest_job_events" title="Link to this definition">#</a></dt>
+<dd><p>Stream Server-Sent Events for a single <code class="xref py py-class docutils literal notranslate"><span class="pre">JobAggregate</span></code>.</p>
+<p>Emits:</p>
+<ul class="simple">
+<li><p>a catch-up batch of already-terminal <code class="docutils literal notranslate"><span class="pre">completed</span></code> / <code class="docutils literal notranslate"><span class="pre">failed</span></code>
+document events (so clients that connect after some documents
+already finished still see them),</p></li>
+<li><p>live per-document <code class="docutils literal notranslate"><span class="pre">processing</span></code> / <code class="docutils literal notranslate"><span class="pre">completed</span></code> / <code class="docutils literal notranslate"><span class="pre">failed</span></code>
+events,</p></li>
+<li><p>lifecycle events (<code class="docutils literal notranslate"><span class="pre">job_progress</span></code>, <code class="docutils literal notranslate"><span class="pre">job_finalized</span></code>,
+<code class="docutils literal notranslate"><span class="pre">job_failed</span></code>) — these arrive once J5 wires them through the
+tracker; the endpoint already routes them.</p></li>
+</ul>
+<p>A keepalive comment is emitted every 30 seconds.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.ingest_page_status">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">ingest_page_status</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">page_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#ingest_page_status"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.ingest_page_status" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.ingest_sidecar">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">ingest_sidecar</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">UploadFile</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">File(PydanticUndefined)</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">ttl_s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">Form(3600.0)</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">consume_on_read</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">Form(True)</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="nemo_retriever.service.models.html#nemo_retriever.service.models.responses.SidecarUploadResponse" title="nemo_retriever.service.models.responses.SidecarUploadResponse"><span class="pre">SidecarUploadResponse</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Response</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#ingest_sidecar"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.ingest_sidecar" title="Link to this definition">#</a></dt>
+<dd><p>Stash sidecar metadata in the service’s in-memory store.</p>
+<p>Returns an opaque <code class="docutils literal notranslate"><span class="pre">sidecar_id</span></code> the caller passes through
+<code class="docutils literal notranslate"><span class="pre">vdb_upload_params.meta_dataframe_id</span></code> on subsequent ingest
+requests. Sidecars are scoped to the bearer token (when auth is
+enabled) and auto-evicted after <code class="docutils literal notranslate"><span class="pre">ttl_s</span></code> seconds.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.ingest_status">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">ingest_status</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">item_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#ingest_status"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.ingest_status" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.ingest_status_batch">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">ingest_status_batch</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#ingest_status_batch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.ingest_status_batch" title="Link to this definition">#</a></dt>
+<dd><p>Return the status of many items in a single request.</p>
+<p>Accepts <code class="docutils literal notranslate"><span class="pre">{&quot;ids&quot;:</span> <span class="pre">[&quot;id1&quot;,</span> <span class="pre">&quot;id2&quot;,</span> <span class="pre">...]}</span></code> and returns a dict keyed by
+item id.  Works on the gateway’s local tracker — no backend proxying.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.job_callback">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">job_callback</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#job_callback"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.job_callback" title="Link to this definition">#</a></dt>
+<dd><p>Accept a completion notification from a worker pod.</p>
+<p>The gateway’s <code class="docutils literal notranslate"><span class="pre">JobTracker</span></code> is updated and an SSE event is published
+so connected clients are notified instantly.</p>
+<p>The log line emitted here is the primary diagnostic signal for
+“client hang” reports: it carries the <code class="docutils literal notranslate"><span class="pre">job_id</span></code> looked up from the
+tracker, the actual transition outcome (<code class="docutils literal notranslate"><span class="pre">transitioned</span></code> /
+<code class="docutils literal notranslate"><span class="pre">idempotent</span></code> / <code class="docutils literal notranslate"><span class="pre">unknown_document</span></code>), and the per-job subscriber
+count so operators can correlate worker-pod completion with
+client-side SSE delivery without grepping multiple files.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.pipeline_config">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">pipeline_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#pipeline_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.pipeline_config" title="Link to this definition">#</a></dt>
+<dd><p>Return redacted pipeline configuration.</p>
+<ul class="simple">
+<li><p><strong>worker / standalone</strong> — returns the local pipeline configs directly.</p></li>
+<li><p><strong>gateway</strong> — fans out GET requests to one realtime and one batch
+backend pod, aggregates the responses, and returns them keyed by role.</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.query">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">query</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Response</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#query"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.query" title="Link to this definition">#</a></dt>
+<dd><p>Proxy a query request to the VectorDB service.</p>
+<ul class="simple">
+<li><p><strong>gateway / standalone</strong> — forwards the JSON body to the vectordb pod.</p></li>
+<li><p><strong>worker</strong> — returns 404 (workers don’t handle queries).</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.submit_document_to_job">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">submit_document_to_job</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">UploadFile</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">File(PydanticUndefined)</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">Form({})</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="nemo_retriever.service.models.html#nemo_retriever.service.models.responses.IngestAccepted" title="nemo_retriever.service.models.responses.IngestAccepted"><span class="pre">IngestAccepted</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Response</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#submit_document_to_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.submit_document_to_job" title="Link to this definition">#</a></dt>
+<dd><p>General-purpose upload into a job.</p>
+<p>Routes to the realtime or batch pool based on PDF page count
+(matches the legacy <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/v1/ingest</span></code> behaviour). The <code class="docutils literal notranslate"><span class="pre">job_id</span></code>
+comes from the URL path; any <code class="docutils literal notranslate"><span class="pre">job_id</span></code> in the metadata body is
+ignored.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.submit_page_to_job">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">submit_page_to_job</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">UploadFile</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">File(PydanticUndefined)</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">document_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">Form(PydanticUndefined)</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">page_number</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">Form(PydanticUndefined)</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">filename</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">Form()</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="nemo_retriever.service.models.html#nemo_retriever.service.models.responses.PageIngestAccepted" title="nemo_retriever.service.models.responses.PageIngestAccepted"><span class="pre">PageIngestAccepted</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Response</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#submit_page_to_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.submit_page_to_job" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.submit_whole_document_to_job">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">submit_whole_document_to_job</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">UploadFile</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">File(PydanticUndefined)</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">Form({})</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="nemo_retriever.service.models.html#nemo_retriever.service.models.responses.DocumentIngestAccepted" title="nemo_retriever.service.models.responses.DocumentIngestAccepted"><span class="pre">DocumentIngestAccepted</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Response</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#submit_whole_document_to_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.submit_whole_document_to_job" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.ingest.worker_document_result">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.ingest.</span></span><span class="sig-name descname"><span class="pre">worker_document_result</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">document_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">JSONResponse</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/ingest.html#worker_document_result"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.ingest.worker_document_result" title="Link to this definition">#</a></dt>
+<dd><p>Return rows stored by the worker pool after pipeline completion.</p>
+</dd></dl>
+
+</section>
+<section id="module-nemo_retriever.service.routers.metrics">
+<span id="nemo-retriever-service-routers-metrics-module"></span><h2>nemo_retriever.service.routers.metrics module<a class="headerlink" href="#module-nemo_retriever.service.routers.metrics" title="Link to this heading">#</a></h2>
+<p>Metrics endpoints for inspecting ingest activity at job, document, and page level.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.metrics.ingest_metrics">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.metrics.</span></span><span class="sig-name descname"><span class="pre">ingest_metrics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/metrics.html#ingest_metrics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.metrics.ingest_metrics" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.metrics.ingest_metrics_document">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.metrics.</span></span><span class="sig-name descname"><span class="pre">ingest_metrics_document</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">document_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/metrics.html#ingest_metrics_document"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.metrics.ingest_metrics_document" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.metrics.ingest_metrics_job">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.metrics.</span></span><span class="sig-name descname"><span class="pre">ingest_metrics_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/metrics.html#ingest_metrics_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.metrics.ingest_metrics_job" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.metrics.ingest_metrics_job_errors">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.metrics.</span></span><span class="sig-name descname"><span class="pre">ingest_metrics_job_errors</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/metrics.html#ingest_metrics_job_errors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.metrics.ingest_metrics_job_errors" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="nemo_retriever.service.routers.metrics.ingest_metrics_page">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.service.routers.metrics.</span></span><span class="sig-name descname"><span class="pre">ingest_metrics_page</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">page_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">request</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Request</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/service/routers/metrics.html#ingest_metrics_page"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.service.routers.metrics.ingest_metrics_page" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</section>
+<section id="module-nemo_retriever.service.routers">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-nemo_retriever.service.routers" title="Link to this heading">#</a></h2>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="nemo_retriever.service.models.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">nemo_retriever.service.models package</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="nemo_retriever.service.services.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">nemo_retriever.service.services package</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#submodules">Submodules</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.service.routers.admin">nemo_retriever.service.routers.admin module</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.admin.pool_stats"><code class="docutils literal notranslate"><span class="pre">pool_stats()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.service.routers.dashboard">nemo_retriever.service.routers.dashboard module</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.dashboard.VdbQueryRequest"><code class="docutils literal notranslate"><span class="pre">VdbQueryRequest</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.dashboard.VdbQueryRequest.query"><code class="docutils literal notranslate"><span class="pre">query</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.dashboard.VdbQueryRequest.top_k"><code class="docutils literal notranslate"><span class="pre">top_k</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.dashboard.index"><code class="docutils literal notranslate"><span class="pre">index()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.dashboard.jobs_detail"><code class="docutils literal notranslate"><span class="pre">jobs_detail()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.dashboard.jobs_documents"><code class="docutils literal notranslate"><span class="pre">jobs_documents()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.dashboard.jobs_list"><code class="docutils literal notranslate"><span class="pre">jobs_list()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.dashboard.jobs_snapshot"><code class="docutils literal notranslate"><span class="pre">jobs_snapshot()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.dashboard.jobs_sse"><code class="docutils literal notranslate"><span class="pre">jobs_sse()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.dashboard.overview"><code class="docutils literal notranslate"><span class="pre">overview()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.dashboard.vdb_query"><code class="docutils literal notranslate"><span class="pre">vdb_query()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.dashboard.vdb_tables"><code class="docutils literal notranslate"><span class="pre">vdb_tables()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.service.routers.ingest">nemo_retriever.service.routers.ingest module</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.create_job"><code class="docutils literal notranslate"><span class="pre">create_job()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.delete_sidecar"><code class="docutils literal notranslate"><span class="pre">delete_sidecar()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.get_job"><code class="docutils literal notranslate"><span class="pre">get_job()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.get_job_document"><code class="docutils literal notranslate"><span class="pre">get_job_document()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.get_job_documents"><code class="docutils literal notranslate"><span class="pre">get_job_documents()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.ingest_document_status"><code class="docutils literal notranslate"><span class="pre">ingest_document_status()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.ingest_job_events"><code class="docutils literal notranslate"><span class="pre">ingest_job_events()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.ingest_page_status"><code class="docutils literal notranslate"><span class="pre">ingest_page_status()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.ingest_sidecar"><code class="docutils literal notranslate"><span class="pre">ingest_sidecar()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.ingest_status"><code class="docutils literal notranslate"><span class="pre">ingest_status()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.ingest_status_batch"><code class="docutils literal notranslate"><span class="pre">ingest_status_batch()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.job_callback"><code class="docutils literal notranslate"><span class="pre">job_callback()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.pipeline_config"><code class="docutils literal notranslate"><span class="pre">pipeline_config()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.query"><code class="docutils literal notranslate"><span class="pre">query()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.submit_document_to_job"><code class="docutils literal notranslate"><span class="pre">submit_document_to_job()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.submit_page_to_job"><code class="docutils literal notranslate"><span class="pre">submit_page_to_job()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.submit_whole_document_to_job"><code class="docutils literal notranslate"><span class="pre">submit_whole_document_to_job()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.ingest.worker_document_result"><code class="docutils literal notranslate"><span class="pre">worker_document_result()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.service.routers.metrics">nemo_retriever.service.routers.metrics module</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.metrics.ingest_metrics"><code class="docutils literal notranslate"><span class="pre">ingest_metrics()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.metrics.ingest_metrics_document"><code class="docutils literal notranslate"><span class="pre">ingest_metrics_document()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.metrics.ingest_metrics_job"><code class="docutils literal notranslate"><span class="pre">ingest_metrics_job()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.metrics.ingest_metrics_job_errors"><code class="docutils literal notranslate"><span class="pre">ingest_metrics_job_errors()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.service.routers.metrics.ingest_metrics_page"><code class="docutils literal notranslate"><span class="pre">ingest_metrics_page()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.service.routers">Module contents</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>
