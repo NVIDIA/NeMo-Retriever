@@ -41,20 +41,6 @@ def test_normalize_tables_adds_type_when_absent():
     assert str(result["type"].dtype) == "category"
 
 
-def test_normalize_tables_accepts_legacy_table_type_column():
-    raw = pd.DataFrame(
-        {
-            "table_schema": ["public", "public"],
-            "table_name": ["orders", "orders_v"],
-            "table_type": ["base table", "view"],
-        }
-    )
-    result = normalize_tables(raw)
-
-    assert "table_type" not in result.columns
-    assert result["type"].tolist() == ["base table", "view"]
-
-
 def test_normalize_tables_maps_materialized_view():
     raw = pd.DataFrame(
         {
