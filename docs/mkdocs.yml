@@ -207,11 +207,11 @@ markdown_extensions:
   - admonition
   - footnotes
 
-# MkDocs 1.6+: exclude suite landing and legacy duplicate pages (still in repo for parity).
+# MkDocs 1.6+: exclude legacy duplicate pages (still in repo for parity).
 # extraction/chunking.md — removed from nav; content is under concepts.md (redirect_maps keeps old URLs).
-# Use /index.md (docs root only); bare index.md would exclude every index.md (e.g. extraction/notebooks/index.md).
+# Root index.md is not in nav; redirect_maps sends index.md → extraction/overview.md so /latest/ (Docs Hub tile) resolves.
+# Use /index.md in exclude_docs only (bare index.md would exclude every index.md, e.g. extraction/notebooks/index.md).
 exclude_docs: |
-  /index.md
   extraction/chunking.md
   extraction/helm.md
   extraction/choose-your-path.md
