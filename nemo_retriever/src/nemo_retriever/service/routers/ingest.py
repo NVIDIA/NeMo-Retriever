@@ -1421,7 +1421,11 @@ async def answer(req: AnswerRequest, request: Request) -> Response | AnswerRespo
         )
 
     if resp.status_code != 200:
-        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+        return Response(
+            content=resp.content,
+            status_code=resp.status_code,
+            media_type=resp.headers.get("content-type", "application/json"),
+        )
 
     payload = resp.json()
     result_sets = payload.get("results") or []

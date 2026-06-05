@@ -155,6 +155,39 @@ def test_answer_retrieves_from_vectordb_and_generates_with_configured_llm(
     )
 
 
+def test_answer_preserves_vectordb_error_content_type(
+    app_with_answer_config: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeResponse:
+        status_code = 429
+        content = b"rate limited"
+        headers = {"content-type": "text/plain; charset=utf-8"}
+
+    class _FakeAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def post(self, url: str, **kwargs) -> _FakeResponse:
+            return _FakeResponse()
+
+    monkeypatch.setattr("httpx.AsyncClient", _FakeAsyncClient)
+
+    with patch("nemo_retriever.llm.clients.LiteLLMClient.from_kwargs") as from_kwargs:
+        resp = app_with_answer_config.post("/v1/answer", json={"query": "q"})
+
+    assert resp.status_code == 429
+    assert resp.text == "rate limited"
+    assert resp.headers["content-type"] == "text/plain; charset=utf-8"
+    from_kwargs.assert_not_called()
+
+
 def test_answer_response_fields_respect_chunk_and_metadata_flags(
     app_with_answer_config: TestClient,
     monkeypatch: pytest.MonkeyPatch,
