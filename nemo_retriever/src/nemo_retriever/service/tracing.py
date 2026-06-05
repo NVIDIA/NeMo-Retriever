@@ -233,7 +233,7 @@ def _is_sensitive_span_attribute_name(key: str) -> bool:
     if "raw" in token_set and (token_set & _RAW_CONTENT_TOKENS or "bytes" in token_set):
         return True
     if token_set & _RAW_CONTENT_TOKENS and not token_set & _MEASUREMENT_TOKENS:
-        return len(token_set) == 1
+        return True
     return False
 
 
