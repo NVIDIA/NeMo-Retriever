@@ -137,6 +137,31 @@ def traced_app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: l
         _reset_tracing_for_tests()
 
 
+
+@pytest.fixture
+def traced_gateway_app(monkeypatch: pytest.MonkeyPatch):
+    """Build a traced gateway app so dashboard job APIs are mounted."""
+    from nemo_retriever.service.tracing import _reset_tracing_for_tests
+
+    exported: list[Any] = []
+    _reset_tracing_for_tests()
+    monkeypatch.setenv("OTEL_TRACES_EXPORTER", "otlp")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel:4317")
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    monkeypatch.setattr(
+        "nemo_retriever.service.tracing.OTLPSpanExporter",
+        lambda *args, **kwargs: _CollectingExporter(exported),
+    )
+    monkeypatch.setattr("nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor)
+
+    cfg = ServiceConfig(mode="gateway")
+    try:
+        app = create_app(cfg)
+        with TestClient(app) as client:
+            yield client, exported
+    finally:
+        _reset_tracing_for_tests()
+
 def _make_pdf_bytes() -> bytes:
     """Return a 1-byte non-PDF payload — the worker is stubbed so content doesn't matter."""
     return b"%PDF-1.4\n%stub\n"
@@ -311,6 +336,36 @@ def test_create_job_with_tracing_returns_trace_id_body_header_and_snapshot(
     assert snapshot.json()["trace_id"] == trace_id
     assert exported_spans
 
+
+
+def test_dashboard_job_views_include_trace_id(traced_gateway_app: tuple[TestClient, list[Any]]) -> None:
+    client, exported_spans = traced_gateway_app
+
+    resp = client.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 1, "label": "dashboard-trace"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    job_id = body["job_id"]
+    trace_id = body["trace_id"]
+    assert re.fullmatch(r"[0-9a-f]{32}", trace_id)
+
+    snapshot = client.get("/v1/dashboard/api/jobs/snapshot")
+    assert snapshot.status_code == 200, snapshot.text
+    snapshot_jobs = {job["job_id"]: job for job in snapshot.json()["jobs"]}
+    assert snapshot_jobs[job_id]["trace_id"] == trace_id
+
+    listing = client.get("/v1/dashboard/api/jobs/list")
+    assert listing.status_code == 200, listing.text
+    listed_jobs = {job["job_id"]: job for job in listing.json()["jobs"]}
+    assert listed_jobs[job_id]["trace_id"] == trace_id
+
+    detail = client.get(f"/v1/dashboard/api/jobs/{job_id}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["trace_id"] == trace_id
+    assert exported_spans
 
 def test_create_job_retain_results_persisted_on_aggregate(app_with_stub_pool: TestClient) -> None:
     from nemo_retriever.service.services.job_tracker import get_job_tracker
