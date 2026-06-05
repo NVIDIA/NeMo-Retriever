@@ -510,6 +510,42 @@ def test_nim_otel_env_triton_url_override_is_preserved() -> None:
     assert page_values["TRITON_OTEL_URL"] == "http://explicit-triton/v1/traces"
 
 
+def test_existing_nim_env_endpoint_drives_triton_url_without_duplicate_endpoint() -> None:
+    docs = _helm_template(
+        [
+            "nimOperator.rerankqa.env[0].name=NIM_OTEL_EXPORTER_OTLP_ENDPOINT",
+            "nimOperator.rerankqa.env[0].value=http://manual-otel:4318",
+        ]
+    )
+
+    rerank = _find(docs, "NIMService", "llama-nemotron-rerank-vl-1b-v2")
+    env = _nim_env(rerank)
+    values = _env_values(env)
+
+    _assert_unique_env_names(env)
+    assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://manual-otel:4318"
+    assert values["TRITON_OTEL_URL"] == "http://manual-otel:4318/v1/traces"
+
+
+def test_existing_nim_env_triton_url_override_is_preserved() -> None:
+    docs = _helm_template(
+        [
+            "nimOperator.rerankqa.env[0].name=NIM_OTEL_EXPORTER_OTLP_ENDPOINT",
+            "nimOperator.rerankqa.env[0].value=http://manual-otel:4318",
+            "nimOperator.rerankqa.env[1].name=TRITON_OTEL_URL",
+            "nimOperator.rerankqa.env[1].value=http://manual-triton/v1/traces",
+        ]
+    )
+
+    rerank = _find(docs, "NIMService", "llama-nemotron-rerank-vl-1b-v2")
+    env = _nim_env(rerank)
+    values = _env_values(env)
+
+    _assert_unique_env_names(env)
+    assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://manual-otel:4318"
+    assert values["TRITON_OTEL_URL"] == "http://manual-triton/v1/traces"
+
+
 def test_per_nim_otel_opt_out_and_override() -> None:
     docs = _helm_template(
         [
