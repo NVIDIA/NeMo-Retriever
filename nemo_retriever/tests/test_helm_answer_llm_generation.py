@@ -79,7 +79,7 @@ class HelmAnswerLLMGenerationTests(TestCase):
         self.assertIn("nvidia.com/gpu: 2", block)
         self.assertIn('size: "250Gi"', block)
         self.assertIn(_SUPER49B_PROFILE, block)
-        self.assertIn("reasoningEnabled: false", values)
+        self.assertIn("reasoningEnabled: true", values)
         self.assertIn('ragSystemPromptPrefix: ""', block)
 
     def test_default_render_omits_answer_llm_and_disables_llm_answering(self) -> None:
@@ -108,7 +108,7 @@ class HelmAnswerLLMGenerationTests(TestCase):
         self.assertIn("NCCL_P2P_DISABLE", proc.stdout)
         self.assertIn(f'api_base: "http://{_ANSWER_LLM_SERVICE}:8000/v1"', proc.stdout)
         self.assertIn(f'model: "{_SUPER49B_MODEL}"', proc.stdout)
-        self.assertIn("reasoning_enabled: false", proc.stdout)
+        self.assertIn("reasoning_enabled: true", proc.stdout)
         self.assertIn("rag_system_prompt_prefix: null", proc.stdout)
         self.assertIn("enabled: true", proc.stdout)
         self.assertIn("NEMO_RETRIEVER_LLM_API_KEY", proc.stdout)
@@ -195,8 +195,9 @@ class HelmAnswerLLMGenerationTests(TestCase):
         self.assertIn('api_base: "http://external-llm:8000/v1"', proc.stdout)
         self.assertIn('model: "openai/custom-answerer"', proc.stdout)
         self.assertIn("rag_system_prompt_prefix: null", proc.stdout)
+        self.assertIn("reasoning_enabled: true", proc.stdout)
 
-    def test_service_llm_reasoning_enabled_can_be_overridden(self) -> None:
+    def test_service_llm_reasoning_enabled_can_be_disabled(self) -> None:
         proc = _helm_template(
             extra_args=(
                 "--set",
@@ -204,12 +205,12 @@ class HelmAnswerLLMGenerationTests(TestCase):
                 "--set",
                 "serviceConfig.llm.apiBase=http://external-llm:8000/v1",
                 "--set",
-                "serviceConfig.llm.reasoningEnabled=true",
+                "serviceConfig.llm.reasoningEnabled=false",
             )
         )
         _assert_helm_ok(self, proc)
 
-        self.assertIn("reasoning_enabled: true", proc.stdout)
+        self.assertIn("reasoning_enabled: false", proc.stdout)
         self.assertIn("rag_system_prompt_prefix: null", proc.stdout)
 
     def test_answer_llm_filters_reserved_ngc_api_key_from_custom_env(self) -> None:

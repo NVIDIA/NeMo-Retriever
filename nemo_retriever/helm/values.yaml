@@ -523,11 +523,11 @@ serviceConfig:
     # Optional prefix prepended to the RAG system prompt. Leave empty
     # unless an endpoint needs model-specific prompt directives.
     ragSystemPromptPrefix: ""
-    # Unified request-level reasoning control for /v1/answer. When false,
-    # the service sends portable no-reasoning metadata understood by both
-    # Super-49B and Nemotron 3 Nano. Set true to leave reasoning behavior
-    # to the LLM endpoint defaults for answer requests.
-    reasoningEnabled: false
+    # Unified request-level reasoning control for /v1/answer. Defaults to true
+    # so external OpenAI-compatible providers receive only standard request
+    # parameters. Set false for Nemotron endpoints that should receive the
+    # portable no-reasoning controls.
+    reasoningEnabled: true
 
   # Pipeline worker pools.  Workers are abstract dispatchers — sizing
   # depends on whether they do local GPU work or fan out to remote NIMs.

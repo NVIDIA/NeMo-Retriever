@@ -325,7 +325,7 @@ The retriever service picks up the in-cluster ASR endpoint when `nimOperator.aud
 | `serviceConfig.llm.apiKeySecret.key`                 | `api_key` | Secret key for external LLM credentials. Operator-managed `answer_llm` uses `NGC_API_KEY` from `nimOperator.answer_llm.authSecret` when no explicit LLM Secret is set. |
 | `serviceConfig.llm.model`                           | `""` | Optional explicit LiteLLM model id. Leave empty to inherit `nimOperator.answer_llm.model` when using the operator-managed answer LLM; set it for external endpoints. |
 | `serviceConfig.llm.ragSystemPromptPrefix`           | `""` | Optional explicit RAG prompt prefix. Leave empty unless an endpoint needs model-specific prompt directives. |
-| `serviceConfig.llm.reasoningEnabled`               | `false` | Request-level reasoning toggle for `/v1/answer`. When false, the service adds portable no-reasoning metadata; when true, requests leave reasoning behavior to the LLM endpoint defaults. |
+| `serviceConfig.llm.reasoningEnabled`               | `true` | Request-level reasoning toggle for `/v1/answer`. Defaults to true for external OpenAI-compatible providers; set false for Nemotron endpoints that should receive portable no-reasoning controls. |
 | `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the LanceDB vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (see [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
 | `serviceConfig.vectordb.embedModel`               | `nvidia/llama-nemotron-embed-vl-1b-v2` | Passed to vectordb + worker `embed_model_name`. |
@@ -386,18 +386,19 @@ llm:
   model: "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
   api_base: "http://answer-llm:8000/v1"
   rag_system_prompt_prefix: null
-  reasoning_enabled: false
+  reasoning_enabled: true
 ```
 
 The retriever service then exposes `POST /v1/answer`, which calls the
 VectorDB pod's `/v1/query` endpoint for context and sends those chunks to
 the configured LLM endpoint. The `answer_llm` NIM deployment leaves
 reasoning defaults model-neutral; `/v1/answer` controls reasoning per
-request. With `serviceConfig.llm.reasoningEnabled=false`, the service adds
-both `/no_think` and `chat_template_kwargs.enable_thinking=false` so
-Super-49B and Nemotron 3 Nano both skip reasoning. Set
-`serviceConfig.llm.reasoningEnabled=true` to leave answer requests at the
-LLM endpoint's default reasoning behavior. The default Super-49B NIMService
+request. By default, `serviceConfig.llm.reasoningEnabled=true`, so requests
+leave reasoning behavior to the LLM endpoint defaults and avoid sending
+provider-specific `chat_template_kwargs` to external OpenAI-compatible
+endpoints. Set `serviceConfig.llm.reasoningEnabled=false` for Nemotron
+endpoints that should skip reasoning; the service then adds both `/no_think`
+and `chat_template_kwargs.enable_thinking=false`. The default Super-49B NIMService
 resources request two GPUs (`nvidia.com/gpu: 2`) to match the bundled
 tensor-parallel NIM profile. Override `resources`, `modelProfile`, or
 `env` for deployments that use a different profile or hardware topology.

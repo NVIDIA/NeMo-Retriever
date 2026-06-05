@@ -64,7 +64,7 @@ llm:
   timeout: 180.0
   rag_system_prompt: null
   rag_system_prompt_prefix: null
-  reasoning_enabled: false
+  reasoning_enabled: true
 
 # Pipeline worker pools.  Workers are abstract dispatchers — sizing
 # depends on whether they do local GPU work or fan out to remote NIMs.

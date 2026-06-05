@@ -1366,8 +1366,11 @@ async def pipeline_config(request: Request):
 
 
 def _text_from_hit(hit: dict[str, Any]) -> str:
-    value = hit.get("text") or hit.get("content") or hit.get("chunk") or hit.get("page_content")
-    return str(value or "")
+    for key in ("text", "content", "chunk", "page_content"):
+        value = hit.get(key)
+        if value is not None:
+            return str(value)
+    return ""
 
 
 def _metadata_from_hit(hit: dict[str, Any]) -> dict[str, Any]:
