@@ -1,0 +1,18 @@
+{{- if and .Values.topology.otel.enabled .Values.topology.zipkin.enabled }}
+{{- $zipkin := .Values.topology.zipkin -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nemo-retriever.zipkin.fullname" . }}
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "zipkin") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "zipkin") | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ $zipkin.port }}
+      targetPort: http
+{{- end }}

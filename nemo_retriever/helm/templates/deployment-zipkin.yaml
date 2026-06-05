@@ -1,0 +1,46 @@
+{{- if and .Values.topology.otel.enabled .Values.topology.zipkin.enabled }}
+{{- $zipkin := .Values.topology.zipkin -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemo-retriever.zipkin.fullname" . }}
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "zipkin") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "zipkin") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "zipkin") | nindent 8 }}
+    spec:
+      {{- with $zipkin.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $zipkin.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $zipkin.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: zipkin
+          image: "{{ $zipkin.image.repository }}:{{ $zipkin.image.tag }}"
+          imagePullPolicy: {{ $zipkin.image.pullPolicy }}
+          {{- with $zipkin.javaOpts }}
+          env:
+            - name: JAVA_OPTS
+              value: {{ . | quote }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $zipkin.port }}
+              protocol: TCP
+          resources:
+            {{- toYaml $zipkin.resources | nindent 12 }}
+{{- end }}

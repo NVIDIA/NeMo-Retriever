@@ -200,6 +200,118 @@ nemo-retriever.role.configMapName
 {{- printf "%s-config" (include "nemo-retriever.role.fullname" .) -}}
 {{- end -}}
 
+
+{{/*
+=============================================================================
+Tracing helpers
+=============================================================================
+*/}}
+
+{{- define "nemo-retriever.zipkin.fullname" -}}
+{{- printf "%s-zipkin" (include "nemo-retriever.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "nemo-retriever.otel.fullname" -}}
+{{- printf "%s-otel" (include "nemo-retriever.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "nemo-retriever.zipkin.endpoint" -}}
+{{- if .Values.topology.zipkin.exporter.endpoint -}}
+{{- tpl .Values.topology.zipkin.exporter.endpoint . -}}
+{{- else -}}
+{{- printf "http://%s:%v/api/v2/spans" (include "nemo-retriever.zipkin.fullname" .) .Values.topology.zipkin.port -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "nemo-retriever.otel.config" -}}
+{{- $config := deepCopy .Values.topology.otel.config -}}
+{{- if .Values.topology.zipkin.exporter.enabled -}}
+{{- $exporters := get $config "exporters" | default dict -}}
+{{- $_ := set $exporters "zipkin" (dict "endpoint" (include "nemo-retriever.zipkin.endpoint" .)) -}}
+{{- $_ := set $config "exporters" $exporters -}}
+{{- $service := get $config "service" | default dict -}}
+{{- $pipelines := get $service "pipelines" | default dict -}}
+{{- $traces := get $pipelines "traces" | default dict -}}
+{{- $traceExporters := get $traces "exporters" | default list -}}
+{{- if not (has "zipkin" $traceExporters) -}}
+{{- $traceExporters = append $traceExporters "zipkin" -}}
+{{- end -}}
+{{- $_ := set $traces "exporters" $traceExporters -}}
+{{- $_ := set $pipelines "traces" $traces -}}
+{{- $_ := set $service "pipelines" $pipelines -}}
+{{- $_ := set $config "service" $service -}}
+{{- end -}}
+{{- toYaml $config -}}
+{{- end -}}
+
+{{- define "nemo-retriever.serviceOtelEnv" -}}
+{{- $root := .context -}}
+{{- $role := .role -}}
+{{- if and $root.Values.topology.otel.enabled $root.Values.service.otel.enabled -}}
+{{- $userEnvNames := dict -}}
+{{- range $env := $root.Values.service.env -}}
+{{- if and $env (hasKey $env "name") -}}
+{{- $_ := set $userEnvNames $env.name true -}}
+{{- end -}}
+{{- end -}}
+{{- $defaults := dict
+  "OTEL_EXPORTER_OTLP_ENDPOINT" (printf "http://%s:%v" (include "nemo-retriever.otel.fullname" $root) $root.Values.topology.otel.ports.otlpGrpc)
+  "OTEL_SERVICE_NAME" $root.Values.service.otel.serviceName
+  "OTEL_TRACES_EXPORTER" "otlp"
+  "OTEL_METRICS_EXPORTER" "otlp"
+  "OTEL_LOGS_EXPORTER" "none"
+  "OTEL_PROPAGATORS" "tracecontext,baggage"
+  "OTEL_RESOURCE_ATTRIBUTES" (printf "service.namespace=nemo-retriever,service.role=%s" $role)
+  "OTEL_PYTHON_EXCLUDED_URLS" "health"
+-}}
+{{- $otelEnv := mergeOverwrite (deepCopy $defaults) (deepCopy $root.Values.service.otel.env) -}}
+{{- range $name, $value := $otelEnv }}
+{{- if not (hasKey $userEnvNames $name) }}
+- name: {{ $name }}
+  value: {{ $value | quote }}
+{{- end }}
+{{- end }}
+{{- end -}}
+{{- end -}}
+
+{{- define "nemo-retriever.nimServiceOtelEnv" -}}
+{{- $root := .context -}}
+{{- $key := .key -}}
+{{- $name := .name -}}
+{{- $nim := index $root.Values.nimOperator $key -}}
+{{- $enabled := $root.Values.nimOperator.otel.enabled -}}
+{{- if not (eq $nim.otel.enabled nil) -}}
+{{- $enabled = $nim.otel.enabled -}}
+{{- end -}}
+{{- if and $root.Values.topology.otel.enabled $enabled -}}
+{{- $existingEnvNames := dict -}}
+{{- range $env := $nim.env -}}
+{{- if and $env (hasKey $env "name") -}}
+{{- $_ := set $existingEnvNames $env.name true -}}
+{{- end -}}
+{{- end -}}
+{{- $endpoint := default (printf "http://%s:%v" (include "nemo-retriever.otel.fullname" $root) $root.Values.topology.otel.ports.otlpHttp) $root.Values.nimOperator.otel.endpoint -}}
+{{- $tritonPath := default "/v1/traces" $root.Values.nimOperator.otel.tritonPath -}}
+{{- $serviceName := default $name $nim.otel.serviceName -}}
+{{- $defaults := dict
+  "NIM_ENABLE_OTEL" "true"
+  "NIM_OTEL_SERVICE_NAME" $serviceName
+  "NIM_OTEL_TRACES_EXPORTER" "otlp"
+  "NIM_OTEL_METRICS_EXPORTER" "console"
+  "NIM_OTEL_EXPORTER_OTLP_ENDPOINT" $endpoint
+  "TRITON_OTEL_URL" (printf "%s%s" $endpoint $tritonPath)
+  "TRITON_OTEL_RATE" "1"
+-}}
+{{- $otelEnv := mergeOverwrite (deepCopy $defaults) (deepCopy $root.Values.nimOperator.otel.env) (deepCopy $nim.otel.env) -}}
+{{- range $envName, $envValue := $otelEnv }}
+{{- if not (hasKey $existingEnvNames $envName) }}
+- name: {{ $envName }}
+  value: {{ $envValue | quote }}
+{{- end }}
+{{- end }}
+{{- end -}}
+{{- end -}}
+
 {{/*
 =============================================================================
 NIMService GPU resources
