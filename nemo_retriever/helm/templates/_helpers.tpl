@@ -225,13 +225,22 @@ Tracing helpers
 
 {{- define "nemo-retriever.otel.config" -}}
 {{- $config := deepCopy .Values.topology.otel.config -}}
-{{- if .Values.topology.zipkin.exporter.enabled -}}
+{{- $zipkinInjectionEnabled := and .Values.topology.zipkin.exporter.enabled (or .Values.topology.zipkin.enabled .Values.topology.zipkin.exporter.endpoint) -}}
+{{- if $zipkinInjectionEnabled -}}
+{{- $service := get $config "service" | default dict -}}
+{{- $pipelines := get $service "pipelines" | default dict -}}
+{{- $traces := get $pipelines "traces" -}}
+{{- if not $traces -}}
+{{- fail "topology.zipkin.exporter.enabled requires topology.otel.config.service.pipelines.traces with receivers and processors; provide that traces pipeline or set topology.zipkin.exporter.enabled=false" -}}
+{{- end -}}
+{{- $traceReceivers := get $traces "receivers" -}}
+{{- $traceProcessors := get $traces "processors" -}}
+{{- if or (not $traceReceivers) (not $traceProcessors) -}}
+{{- fail "topology.zipkin.exporter.enabled requires topology.otel.config.service.pipelines.traces with receivers and processors; provide that traces pipeline or set topology.zipkin.exporter.enabled=false" -}}
+{{- end -}}
 {{- $exporters := get $config "exporters" | default dict -}}
 {{- $_ := set $exporters "zipkin" (dict "endpoint" (include "nemo-retriever.zipkin.endpoint" .)) -}}
 {{- $_ := set $config "exporters" $exporters -}}
-{{- $service := get $config "service" | default dict -}}
-{{- $pipelines := get $service "pipelines" | default dict -}}
-{{- $traces := get $pipelines "traces" | default dict -}}
 {{- $traceExporters := get $traces "exporters" | default list -}}
 {{- if not (has "zipkin" $traceExporters) -}}
 {{- $traceExporters = append $traceExporters "zipkin" -}}

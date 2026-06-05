@@ -36,7 +36,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _helm_template(extra_sets: list[str] | None = None) -> list[dict]:
+def _helm_template_cmd(extra_sets: list[str] | None = None, extra_args: list[str] | None = None) -> list[str]:
     helm = shutil.which("helm")
     if helm is None:
         raise SkipTest("`helm` binary not available in this environment.")
@@ -63,7 +63,20 @@ def _helm_template(extra_sets: list[str] | None = None) -> list[dict]:
     ]
     for flag in extra_sets or []:
         cmd.extend(["--set", flag])
-    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    cmd.extend(extra_args or [])
+    return cmd
+
+
+def _helm_template_process(
+    extra_sets: list[str] | None = None, extra_args: list[str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        _helm_template_cmd(extra_sets=extra_sets, extra_args=extra_args), check=False, capture_output=True, text=True
+    )
+
+
+def _helm_template(extra_sets: list[str] | None = None, extra_args: list[str] | None = None) -> list[dict]:
+    proc = _helm_template_process(extra_sets=extra_sets, extra_args=extra_args)
     if proc.returncode != 0:
         raise AssertionError(f"`helm template` failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}")
     return [doc for doc in yaml.safe_load_all(proc.stdout) if doc]
@@ -110,7 +123,7 @@ def test_default_renders_zipkin_deployment_and_service() -> None:
     assert service["spec"]["ports"] == [{"name": "http", "protocol": "TCP", "port": 9411, "targetPort": "http"}]
 
 
-def test_zipkin_disabled_omits_zipkin_resources() -> None:
+def test_zipkin_disabled_omits_zipkin_resources_and_exporter() -> None:
     docs = _helm_template(["topology.zipkin.enabled=false"])
 
     deployment_names = _names_for_kind(docs, "Deployment")
@@ -120,6 +133,34 @@ def test_zipkin_disabled_omits_zipkin_resources() -> None:
     assert ZIPKIN_NAME not in service_names
     assert OTEL_NAME in deployment_names
     assert OTEL_NAME in service_names
+
+    config = yaml.safe_load(_find(docs, "ConfigMap", OTEL_CONFIG_NAME)["data"]["config.yaml"])
+    assert "zipkin" not in config["exporters"]
+    assert "zipkin" not in config["service"]["pipelines"]["traces"]["exporters"]
+    assert ZIPKIN_NAME not in _find(docs, "ConfigMap", OTEL_CONFIG_NAME)["data"]["config.yaml"]
+
+
+def test_zipkin_disabled_with_external_endpoint_still_exports_to_zipkin() -> None:
+    external_endpoint = "http://external-zipkin:9411/api/v2/spans"
+    docs = _helm_template(
+        ["topology.zipkin.enabled=false"],
+        extra_args=["--set-string", f"topology.zipkin.exporter.endpoint={external_endpoint}"],
+    )
+    config = yaml.safe_load(_find(docs, "ConfigMap", OTEL_CONFIG_NAME)["data"]["config.yaml"])
+
+    assert ZIPKIN_NAME not in _names_for_kind(docs, "Deployment")
+    assert config["exporters"]["zipkin"]["endpoint"] == external_endpoint
+    assert "zipkin" in config["service"]["pipelines"]["traces"]["exporters"]
+
+
+def test_zipkin_injection_requires_existing_traces_pipeline() -> None:
+    proc = _helm_template_process(extra_args=["--set-json", "topology.otel.config.service.pipelines.traces=null"])
+
+    assert proc.returncode != 0
+    assert (
+        "topology.zipkin.exporter.enabled requires topology.otel.config.service.pipelines.traces "
+        "with receivers and processors; provide that traces pipeline or set topology.zipkin.exporter.enabled=false"
+    ) in proc.stderr
 
 
 def test_otel_config_exports_traces_to_rendered_zipkin_endpoint() -> None:
