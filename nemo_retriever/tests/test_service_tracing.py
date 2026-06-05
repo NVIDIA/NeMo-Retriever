@@ -10,6 +10,8 @@ import re
 from typing import Any
 
 import pytest
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 
 from nemo_retriever.service.app import create_app
@@ -20,6 +22,7 @@ from nemo_retriever.service.tracing import (
     current_trace_id_hex,
     extract_trace_context,
     inject_trace_context,
+    span_attributes,
     start_span,
     tracing_enabled_from_env,
 )
@@ -62,17 +65,20 @@ def exported_spans(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
     ("env", "expected"),
     [
         ({}, False),
-        ({"OTEL_TRACES_EXPORTER": "otlp"}, False),
-        ({"OTEL_TRACES_EXPORTER": "OTLP"}, False),
+        ({"OTEL_TRACES_EXPORTER": "otlp"}, True),
+        ({"OTEL_TRACES_EXPORTER": "OTLP"}, True),
         ({"OTEL_TRACES_EXPORTER": "", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
         ({"OTEL_TRACES_EXPORTER": "none", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
-        ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": ""}, False),
+        ({"OTEL_TRACES_EXPORTER": "jaeger", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
+        ({"OTEL_TRACES_EXPORTER": "zipkin", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
+        ({"OTEL_TRACES_EXPORTER": "console", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
+        ({"OTEL_TRACES_EXPORTER": "custom", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
+        ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": ""}, True),
         ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317", "OTEL_SDK_DISABLED": "true"}, False),
         ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
-        ({"OTEL_TRACES_EXPORTER": "zipkin", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
     ],
 )
-def test_tracing_enabled_from_env_requires_exporter_and_endpoint(env: dict[str, str], expected: bool) -> None:
+def test_tracing_enabled_from_env_requires_otlp_exporter(env: dict[str, str], expected: bool) -> None:
     assert tracing_enabled_from_env(env) is expected
 
 
@@ -90,6 +96,58 @@ def test_configure_tracing_creates_spans_with_hex_trace_id(
     assert trace_id is not None
     assert re.fullmatch(r"[0-9a-f]{32}", trace_id)
     assert exported_spans
+
+
+def test_configure_tracing_treats_existing_global_provider_as_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OTEL_TRACES_EXPORTER", "otlp")
+    external_provider = TracerProvider()
+    trace.set_tracer_provider(external_provider)
+    monkeypatch.setattr(
+        "nemo_retriever.service.tracing.OTLPSpanExporter",
+        lambda *args, **kwargs: pytest.fail("configure_tracing should not construct an exporter"),
+    )
+
+    try:
+        assert configure_tracing(service_role="standalone") is True
+        assert configure_tracing(service_role="standalone") is True
+        assert trace.get_tracer_provider() is external_provider
+    finally:
+        external_provider.shutdown()
+
+
+def test_configure_tracing_cleans_up_partial_setup_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    cleanup_calls: list[str] = []
+
+    class _FailingProvider:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            return None
+
+        def add_span_processor(self, processor: Any) -> None:
+            raise RuntimeError("processor install failed")
+
+        def shutdown(self) -> None:
+            cleanup_calls.append("provider")
+
+    class _FakeExporter:
+        def shutdown(self) -> None:
+            cleanup_calls.append("exporter")
+
+    class _FakeProcessor:
+        def __init__(self, exporter: Any) -> None:
+            self.exporter = exporter
+
+        def shutdown(self) -> None:
+            cleanup_calls.append("processor")
+
+    monkeypatch.setenv("OTEL_TRACES_EXPORTER", "otlp")
+    monkeypatch.setattr("nemo_retriever.service.tracing.TracerProvider", _FailingProvider)
+    monkeypatch.setattr("nemo_retriever.service.tracing.OTLPSpanExporter", _FakeExporter)
+    monkeypatch.setattr("nemo_retriever.service.tracing.BatchSpanProcessor", _FakeProcessor)
+
+    assert configure_tracing(service_role="standalone") is False
+    assert cleanup_calls == ["processor", "exporter", "provider"]
 
 
 def test_trace_context_inject_extract_round_trips_traceparent(
@@ -131,32 +189,79 @@ def test_trace_context_inject_mutates_existing_carrier_preserving_unrelated_head
     assert carrier["traceparent"] != "00-00000000000000000000000000000001-0000000000000001-01"
 
 
-def test_span_attributes_drop_sensitive_keys(monkeypatch: pytest.MonkeyPatch, exported_spans: list[Any]) -> None:
+def test_trace_context_inject_removes_mixed_case_w3c_keys(
+    monkeypatch: pytest.MonkeyPatch, exported_spans: list[Any]
+) -> None:
     monkeypatch.setenv("OTEL_TRACES_EXPORTER", "otlp")
-    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel:4317")
     assert configure_tracing(service_role="standalone") is True
 
+    existing_carrier = {
+        "Traceparent": "00-00000000000000000000000000000001-0000000000000001-01",
+        "TRACEPARENT": "00-00000000000000000000000000000002-0000000000000002-01",
+        "Tracestate": "vendor=old",
+        "x-required": "keep",
+    }
+    with start_span("service.parent"):
+        carrier = inject_trace_context(existing_carrier)
+
+    assert carrier is existing_carrier
+    assert carrier["x-required"] == "keep"
+    assert "traceparent" in carrier
+    assert "Traceparent" not in carrier
+    assert "TRACEPARENT" not in carrier
+    assert "Tracestate" not in carrier
+    assert {key for key in carrier if key.lower() in {"traceparent", "tracestate"}} <= {"traceparent", "tracestate"}
+
+
+def test_span_attributes_drop_sensitive_keys_and_keep_benign_metadata() -> None:
     raw_attributes = {
         "Authorization": "Bearer abc",
         "auth": "abc",
         "auth.header": "Bearer abc",
         "x-api-key": "abc",
+        "API key": "abc",
         "apiKey": "abc",
         "access_token": "abc",
         "password": "abc",
         "client_secret": "abc",
         "request_body": "{}",
+        "body": "{}",
         "payload": b"raw",
         "file_bytes": b"raw",
         "content": "sensitive",
+        "raw_content": "sensitive",
+        "content_type": "application/json",
+        "content_length": 123,
+        "payload_size": 456,
+        "body_length": 789,
         "safe.status": "ok",
         "document_count": 2,
     }
-    with start_span("service.sanitize", attributes=raw_attributes):
+
+    assert span_attributes(raw_attributes) == {
+        "content_type": "application/json",
+        "content_length": 123,
+        "payload_size": 456,
+        "body_length": 789,
+        "safe.status": "ok",
+        "document_count": 2,
+    }
+    assert span_attributes() == {}
+
+
+def test_start_span_routes_attributes_through_public_sanitizer(
+    monkeypatch: pytest.MonkeyPatch, exported_spans: list[Any]
+) -> None:
+    monkeypatch.setenv("OTEL_TRACES_EXPORTER", "otlp")
+    assert configure_tracing(service_role="standalone") is True
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.span_attributes", lambda attributes=None: {"safe.status": "ok"})
+
+    with start_span("service.sanitize", attributes={"Authorization": "Bearer abc"}):
         pass
 
     attrs = dict(exported_spans[-1].attributes)
-    assert attrs == {"safe.status": "ok", "document_count": 2}
+    assert attrs == {"safe.status": "ok"}
 
 
 def test_create_app_configures_tracing_for_service_role(monkeypatch: pytest.MonkeyPatch) -> None:
