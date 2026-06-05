@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pytest
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 
+from nemo_retriever.api.internal.primitives.nim.nim_client import NimClient as InternalNimClient
 from nemo_retriever.nim.nim import _post_with_retries
 from nemo_retriever.service import tracing
 
@@ -109,3 +111,158 @@ def test_post_with_retries_injects_trace_context_and_emits_safe_span(
     assert "Authorization" not in attrs
     assert "request.body" not in attrs
     assert "payload" not in attrs
+
+
+class _PrimitiveModelInterface:
+    def name(self) -> str:
+        return "page-elements"
+
+    def parse_output(self, response: Any, **kwargs: Any) -> Any:
+        return response
+
+
+def _span_by_name(exported_spans: list[Any], name: str) -> Any:
+    return next(span for span in exported_spans if span.name == name)
+
+
+def test_internal_nim_client_http_injects_trace_context_and_emits_infer_span(
+    monkeypatch: pytest.MonkeyPatch,
+    exported_spans: list[Any],
+) -> None:
+    captured_headers: list[dict[str, str]] = []
+
+    class _Response:
+        status_code = 200
+        reason = "OK"
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, bool]:
+            return {"ok": True}
+
+    def _post(*args: Any, headers: dict[str, str], **kwargs: Any) -> _Response:
+        captured_headers.append(dict(headers))
+        return _Response()
+
+    monkeypatch.setattr("nemo_retriever.api.internal.primitives.nim.nim_client.requests.post", _post)
+
+    client = InternalNimClient(
+        model_interface=_PrimitiveModelInterface(),
+        protocol="http",
+        endpoints=("", "http://nim.example/v1/infer"),
+        auth_token="secret-token",
+        max_retries=1,
+        max_429_retries=1,
+    )
+
+    with tracing.start_span("test.parent"):
+        parent_trace_id = tracing.current_trace_id_hex()
+        parsed_output, batch_data = client._process_batch(
+            {"request": "body"},
+            batch_data={"batch": 1},
+            model_name="detector",
+        )
+
+    assert parsed_output == {"ok": True}
+    assert batch_data == {"batch": 1}
+    assert parent_trace_id is not None
+    assert captured_headers
+    assert "traceparent" in captured_headers[0]
+    assert captured_headers[0]["Authorization"] == "Bearer secret-token"
+    assert "traceparent" not in client.headers
+
+    span = _span_by_name(exported_spans, "nim.infer")
+    assert f"{span.context.trace_id:032x}" == parent_trace_id
+    assert span.attributes["nim.model"] == "detector"
+    assert span.attributes["nim.protocol"] == "http"
+    assert span.attributes["nim.service"] == "page-elements"
+    assert "Authorization" not in span.attributes
+    assert "request.body" not in span.attributes
+
+
+def test_internal_nim_client_grpc_passes_trace_context_headers_when_supported(
+    monkeypatch: pytest.MonkeyPatch,
+    exported_spans: list[Any],
+) -> None:
+    captured_headers: list[dict[str, str]] = []
+
+    class _InferInput:
+        def __init__(self, name: str, shape: Any, datatype: str) -> None:
+            self.name = name
+            self.shape = shape
+            self.datatype = datatype
+
+        def set_data_from_numpy(self, value: Any) -> None:
+            self.value = value
+
+    class _InferRequestedOutput:
+        def __init__(self, name: str) -> None:
+            self._name = name
+
+        def name(self) -> str:
+            return self._name
+
+    class _Response:
+        def as_numpy(self, name: str) -> np.ndarray:
+            return np.array([[1.0]], dtype=np.float32)
+
+    class _InferenceServerException(Exception):
+        def status(self) -> str:
+            return "StatusCode.UNKNOWN"
+
+        def message(self) -> str:
+            return str(self)
+
+    class _FakeGrpcClient:
+        def infer(self, *, headers: dict[str, str] | None = None, **kwargs: Any) -> _Response:
+            captured_headers.append(dict(headers or {}))
+            return _Response()
+
+        def close(self) -> None:
+            return None
+
+    class _GrpcModule:
+        InferenceServerException = _InferenceServerException
+        InferInput = _InferInput
+        InferRequestedOutput = _InferRequestedOutput
+
+        class InferenceServerClient:
+            def __init__(self, url: str) -> None:
+                self._client = _FakeGrpcClient()
+
+            def infer(self, **kwargs: Any) -> _Response:
+                return self._client.infer(**kwargs)
+
+            def close(self) -> None:
+                return None
+
+    monkeypatch.setattr("nemo_retriever.api.internal.primitives.nim.nim_client._triton_grpc", lambda: _GrpcModule)
+
+    client = InternalNimClient(
+        model_interface=_PrimitiveModelInterface(),
+        protocol="grpc",
+        endpoints=("nim-grpc:8001", ""),
+        max_retries=1,
+        max_429_retries=1,
+    )
+
+    with tracing.start_span("test.parent"):
+        parent_trace_id = tracing.current_trace_id_hex()
+        parsed_output, batch_data = client._process_batch(
+            np.array([[1.0]], dtype=np.float32),
+            batch_data={"batch": 2},
+            model_name="detector-grpc",
+        )
+
+    assert isinstance(parsed_output, np.ndarray)
+    assert batch_data == {"batch": 2}
+    assert parent_trace_id is not None
+    assert captured_headers
+    assert "traceparent" in captured_headers[0]
+
+    span = _span_by_name(exported_spans, "nim.infer")
+    assert f"{span.context.trace_id:032x}" == parent_trace_id
+    assert span.attributes["nim.model"] == "detector-grpc"
+    assert span.attributes["nim.protocol"] == "grpc"
+    assert span.attributes["nim.service"] == "page-elements"

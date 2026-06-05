@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 import re
@@ -12,6 +13,7 @@ import threading
 import time
 import queue
 from collections import namedtuple
+from contextlib import nullcontext
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from typing import Any
 from typing import Optional
@@ -25,6 +27,60 @@ from nemo_retriever.api.util.string_processing import generate_url
 
 
 logger = logging.getLogger(__name__)
+
+
+def _service_tracing() -> Any | None:
+    try:
+        from nemo_retriever.service import tracing
+    except Exception:
+        logger.debug("Service tracing helper unavailable for NimClient request", exc_info=True)
+        return None
+    return tracing
+
+
+def _inject_trace_headers() -> dict[str, str]:
+    tracing = _service_tracing()
+    if tracing is None:
+        return {}
+    try:
+        return dict(tracing.inject_trace_context())
+    except Exception as exc:
+        logger.warning("OpenTelemetry trace propagation failed for NimClient request: %s", exc)
+        return {}
+
+
+def _call_infer_with_optional_headers(client: Any, *, headers: dict[str, str], **kwargs: Any) -> Any:
+    if not headers:
+        return client.infer(**kwargs)
+
+    if not _callable_accepts_keyword(client.infer, "headers"):
+        logger.debug("Triton gRPC client does not expose infer(headers=...); skipping trace metadata propagation")
+        return client.infer(**kwargs)
+
+    try:
+        return client.infer(headers=headers, **kwargs)
+    except TypeError as exc:
+        message = str(exc).lower()
+        if "headers" in message and "unexpected" in message:
+            logger.debug("Triton gRPC client rejected infer(headers=...); retrying without trace metadata")
+            return client.infer(**kwargs)
+        raise
+
+
+def _callable_accepts_keyword(func: Any, keyword: str) -> bool:
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        return True
+    for parameter in signature.parameters.values():
+        if parameter.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+        if parameter.name == keyword and parameter.kind in {
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        }:
+            return True
+    return False
 
 
 def _triton_grpc():
@@ -186,21 +242,35 @@ class NimClient:
         tuple
             A tuple (parsed_output, batch_data) for subsequent post-processing.
         """
-        if self.protocol == "grpc":
-            logger.debug("Performing gRPC inference for a batch...")
-            response = self._grpc_infer(batch_input, model_name, **kwargs)
-            logger.debug("gRPC inference received response for a batch")
-        elif self.protocol == "http":
-            logger.debug("Performing HTTP inference for a batch...")
-            response = self._http_infer(batch_input)
-            logger.debug("HTTP inference received response for a batch")
-        else:
-            raise ValueError("Invalid protocol specified. Must be 'grpc' or 'http'.")
-
-        parsed_output = self.model_interface.parse_output(
-            response, protocol=self.protocol, data=batch_data, model_name=model_name, **kwargs
+        tracing = _service_tracing()
+        span_context = (
+            tracing.start_span(
+                "nim.infer",
+                attributes={
+                    "nim.model": model_name,
+                    "nim.protocol": self.protocol,
+                    "nim.service": self.model_interface.name(),
+                },
+            )
+            if tracing is not None
+            else nullcontext()
         )
-        return parsed_output, batch_data
+        with span_context:
+            if self.protocol == "grpc":
+                logger.debug("Performing gRPC inference for a batch...")
+                response = self._grpc_infer(batch_input, model_name, **kwargs)
+                logger.debug("gRPC inference received response for a batch")
+            elif self.protocol == "http":
+                logger.debug("Performing HTTP inference for a batch...")
+                response = self._http_infer(batch_input)
+                logger.debug("HTTP inference received response for a batch")
+            else:
+                raise ValueError("Invalid protocol specified. Must be 'grpc' or 'http'.")
+
+            parsed_output = self.model_interface.parse_output(
+                response, protocol=self.protocol, data=batch_data, model_name=model_name, **kwargs
+            )
+            return parsed_output, batch_data
 
     def try_set_max_batch_size(self, model_name, model_version: str = ""):
         """Attempt to set the max batch size for the model if it is not already set, ensuring thread safety."""
@@ -354,8 +424,13 @@ class NimClient:
 
         while attempt < self.max_retries:
             try:
-                response = self.client.infer(
-                    model_name=model_name, parameters=parameters, inputs=input_tensors, outputs=outputs
+                response = _call_infer_with_optional_headers(
+                    self.client,
+                    headers=_inject_trace_headers(),
+                    model_name=model_name,
+                    parameters=parameters,
+                    inputs=input_tensors,
+                    outputs=outputs,
                 )
 
                 logger.debug(f"gRPC inference response: {response}")
@@ -479,8 +554,16 @@ class NimClient:
                         model_name = self.model_interface.name()
                         logger.debug(f"{model_name}: Sending HTTP request with system prompt: '{system_content}'")
 
+                request_headers = dict(self.headers)
+                tracing = _service_tracing()
+                if tracing is not None:
+                    try:
+                        tracing.inject_trace_context(request_headers)
+                    except Exception as exc:
+                        logger.warning("OpenTelemetry trace propagation failed for NimClient HTTP request: %s", exc)
+
                 response = requests.post(
-                    self.endpoint_url, json=formatted_input, headers=self.headers, timeout=self.timeout
+                    self.endpoint_url, json=formatted_input, headers=request_headers, timeout=self.timeout
                 )
                 status_code = response.status_code
 
