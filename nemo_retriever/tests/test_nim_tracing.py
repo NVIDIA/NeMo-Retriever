@@ -362,3 +362,85 @@ def test_internal_nim_client_infer_executor_path_preserves_parent_trace_context(
 
     span = _span_by_name(exported_spans, "nim.infer")
     assert f"{span.context.trace_id:032x}" == parent_trace_id
+
+
+def test_public_nim_client_chat_executor_path_preserves_parent_trace_context(
+    monkeypatch: pytest.MonkeyPatch,
+    exported_spans: list[Any],
+) -> None:
+    captured_headers: list[dict[str, str]] = []
+
+    class _Response:
+        status_code = 200
+        text = "{}"
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, list[dict[str, dict[str, str]]]]:
+            return {"choices": [{"message": {"content": "hello"}}]}
+
+    def _post(*args: Any, headers: dict[str, str], **kwargs: Any) -> _Response:
+        captured_headers.append(dict(headers))
+        return _Response()
+
+    monkeypatch.setattr("nemo_retriever.nim.nim.requests.post", _post)
+    client = HttpNIMClient(max_pool_workers=1)
+    try:
+        with tracing.start_span("test.parent"):
+            parent_trace_id = tracing.current_trace_id_hex()
+            result = client.invoke_chat_completions(
+                invoke_url="http://nim.example/v1/chat/completions",
+                messages_list=[[{"role": "user", "content": "hi"}]],
+                max_retries=1,
+                max_429_retries=1,
+            )
+    finally:
+        client.shutdown()
+
+    assert result == ["hello"]
+    assert parent_trace_id is not None
+    assert captured_headers
+    assert "traceparent" in captured_headers[0]
+
+    span = _span_by_name(exported_spans, "nim.http.post")
+    assert f"{span.context.trace_id:032x}" == parent_trace_id
+
+
+def test_internal_dynamic_batching_keeps_different_trace_contexts_in_separate_batches(
+    exported_spans: list[Any],
+) -> None:
+    del exported_spans
+    client = InternalNimClient(
+        model_interface=_PrimitiveModelInterface(),
+        protocol="http",
+        endpoints=("", "http://nim.example/v1/infer"),
+        enable_dynamic_batching=True,
+        dynamic_batch_timeout=0.01,
+    )
+    client._batch_size = 2
+    captured_batches: list[list[Any]] = []
+
+    def _capture_batch(requests: list[Any]) -> None:
+        captured_batches.append(list(requests))
+        client._stop_event.set()
+
+    client._process_dynamic_batch = _capture_batch  # type: ignore[method-assign]
+
+    with tracing.start_span("test.parent.one"):
+        first_trace_id = tracing.current_trace_id_hex()
+        first_future = client.submit("one", "detector", (1, 1))
+    with tracing.start_span("test.parent.two"):
+        second_trace_id = tracing.current_trace_id_hex()
+        second_future = client.submit("two", "detector", (1, 1))
+
+    assert first_trace_id is not None and second_trace_id is not None
+    assert first_trace_id != second_trace_id
+
+    client._batcher_loop()
+
+    assert len(captured_batches) == 1
+    assert [request.data for request in captured_batches[0]] == ["one"]
+    assert client._request_queue.qsize() == 1
+    assert first_future.done() is False
+    assert second_future.done() is False

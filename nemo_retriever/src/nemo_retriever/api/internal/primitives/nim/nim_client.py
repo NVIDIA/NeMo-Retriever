@@ -62,6 +62,10 @@ def _extract_trace_context(trace_context: dict[str, str] | None) -> Any | None:
         return None
 
 
+def _same_trace_context(left: dict[str, str] | None, right: dict[str, str] | None) -> bool:
+    return dict(left or {}) == dict(right or {})
+
+
 def _inject_trace_headers() -> dict[str, str]:
     tracing = _service_tracing()
     if tracing is None:
@@ -692,6 +696,8 @@ class NimClient:
 
                     next_req_peek = self._request_queue.queue[0]
                     if next_req_peek is None:
+                        break
+                    if not _same_trace_context(first_req.trace_context, next_req_peek.trace_context):
                         break
 
                     if self._batch_memory_budget_bytes:
