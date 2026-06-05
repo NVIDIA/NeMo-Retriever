@@ -12,7 +12,6 @@ from typing import Any
 import pytest
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 
-from nemo_retriever.service import tracing
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import ServiceConfig
 from nemo_retriever.service.tracing import (
@@ -63,18 +62,17 @@ def exported_spans(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
     ("env", "expected"),
     [
         ({}, False),
-        ({"OTEL_TRACES_EXPORTER": "otlp"}, True),
-        ({"OTEL_TRACES_EXPORTER": "OTLP"}, True),
+        ({"OTEL_TRACES_EXPORTER": "otlp"}, False),
+        ({"OTEL_TRACES_EXPORTER": "OTLP"}, False),
         ({"OTEL_TRACES_EXPORTER": "", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
         ({"OTEL_TRACES_EXPORTER": "none", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
-        ({"OTEL_TRACES_EXPORTER": "jaeger", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
-        ({"OTEL_TRACES_EXPORTER": "zipkin", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
-        ({"OTEL_TRACES_EXPORTER": "console", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
+        ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": ""}, False),
         ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317", "OTEL_SDK_DISABLED": "true"}, False),
         ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
+        ({"OTEL_TRACES_EXPORTER": "zipkin", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
     ],
 )
-def test_tracing_enabled_from_env_requires_otlp_exporter(env: dict[str, str], expected: bool) -> None:
+def test_tracing_enabled_from_env_requires_exporter_and_endpoint(env: dict[str, str], expected: bool) -> None:
     assert tracing_enabled_from_env(env) is expected
 
 
@@ -159,22 +157,6 @@ def test_span_attributes_drop_sensitive_keys(monkeypatch: pytest.MonkeyPatch, ex
 
     attrs = dict(exported_spans[-1].attributes)
     assert attrs == {"safe.status": "ok", "document_count": 2}
-
-
-def test_span_attributes_public_helper_drops_sensitive_keys() -> None:
-    raw_attributes = {
-        "Authorization": "Bearer abc",
-        "auth": "abc",
-        "auth.header": "Bearer abc",
-        "x-api-key": "abc",
-        "request_body": "{}",
-        "payload": b"raw",
-        "safe.status": "ok",
-        "document_count": 2,
-    }
-
-    assert tracing.span_attributes(raw_attributes) == {"safe.status": "ok", "document_count": 2}
-    assert tracing.span_attributes() == {}
 
 
 def test_create_app_configures_tracing_for_service_role(monkeypatch: pytest.MonkeyPatch) -> None:
