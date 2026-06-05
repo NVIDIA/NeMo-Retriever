@@ -57,9 +57,8 @@ def tracing_enabled_from_env(env: Mapping[str, str] | None = None) -> bool:
     if source.get("OTEL_SDK_DISABLED", "").strip().lower() == "true":
         return False
 
-    traces_exporter = source.get("OTEL_TRACES_EXPORTER", "").strip()
-    endpoint = source.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
-    return bool(traces_exporter and traces_exporter.lower() != "none" and endpoint)
+    traces_exporter = source.get("OTEL_TRACES_EXPORTER", "").strip().lower()
+    return traces_exporter == "otlp"
 
 
 def configure_tracing(*, service_role: str, service_name: str | None = None) -> bool:
@@ -121,8 +120,8 @@ def start_span(
         kwargs["kind"] = kind
     if context is not None:
         kwargs["context"] = context
-    sanitized_attributes = _sanitize_span_attributes(attributes)
-    if sanitized_attributes is not None:
+    sanitized_attributes = span_attributes(attributes)
+    if sanitized_attributes:
         kwargs["attributes"] = sanitized_attributes
     return get_tracer().start_as_current_span(name, **kwargs)
 
@@ -136,9 +135,9 @@ def current_trace_id_hex() -> str | None:
     return f"{context.trace_id:032x}"
 
 
-def inject_trace_context(carrier: MutableMapping[str, str] | None = None) -> dict[str, str] | MutableMapping[str, str]:
-    """Inject W3C trace context into a carrier while preserving existing values."""
-    output: dict[str, str] | MutableMapping[str, str] = {} if carrier is None else carrier
+def inject_trace_context(carrier: MutableMapping[str, str] | None = None) -> MutableMapping[str, str]:
+    """Inject W3C trace context into a clean or provided mutable carrier."""
+    output: MutableMapping[str, str] = {} if carrier is None else carrier
     _TRACE_CONTEXT_PROPAGATOR.inject(output)
     return output
 
@@ -177,9 +176,10 @@ def _reset_tracing_for_tests() -> None:
         logger.debug("OpenTelemetry test reset skipped private provider state reset", exc_info=True)
 
 
-def _sanitize_span_attributes(attributes: Mapping[str, Any] | None) -> dict[str, Any] | None:
+def span_attributes(attributes: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Return span attributes with sensitive values removed."""
     if attributes is None:
-        return None
+        return {}
 
     sanitized: dict[str, Any] = {}
     for key, value in attributes.items():
