@@ -57,7 +57,7 @@ def _print_multi_tier_summary(eval_results: dict, total_queries: int) -> None:
             ml = stats.get("mean_latency_s", 0)
             sc = stats.get("scored_count", 0)
             ec = stats.get("error_count", 0)
-            typer.echo(f"  {name:20s} mean={ms:.2f}/5  latency={ml:.1f}s  scored={sc}  errors={ec}")
+            typer.echo(f"  {name:20s} mean={ms:.3f} (0-1)  latency={ml:.1f}s  scored={sc}  errors={ec}")
             dist = stats.get("score_distribution", {})
             if dist:
                 typer.echo(f"  {'':20s} dist: " + "  ".join(f"{k}:{v}" for k, v in sorted(dist.items())))

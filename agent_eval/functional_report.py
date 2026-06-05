@@ -18,7 +18,25 @@ import json
 import sys
 from pathlib import Path
 
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE))
+import gitinfo  # noqa: E402
+
 _NONRESULT = {"run_timeout", "run_error", "judge_error", "no_criteria"}
+
+
+def _run_commit(doc: dict) -> dict | None:
+    """The code commit recorded when the eval RAN (run_config.code_commit), if present."""
+    rd = doc.get("run_dir")
+    if not rd:
+        return None
+    cfg = Path(rd) / "run_config.json"
+    if not cfg.exists():
+        return None
+    try:
+        return json.loads(cfg.read_text()).get("code_commit")
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _load(spec: str) -> tuple[str, dict]:
@@ -57,6 +75,31 @@ def main(argv=None) -> int:
         "`validation_signal`+`expected_output_shape`; `ingest` adds a programmatic LanceDB "
         "rows>0 gate. Stateful tests are out of scope (separate driver).\n"
     )
+
+    # Code version — the commit of the code that RAN each eval (from run_config.code_commit),
+    # falling back to the report-time HEAD for runs that predate commit-recording.
+    L.append("## Code version\n")
+    report_info = gitinfo.git_commit()
+    any_run_commit = False
+    L.append("| run | eval-time code commit |")
+    L.append("|---|---|")
+    for label, d in runs:
+        ci = _run_commit(d)
+        if ci:
+            any_run_commit = True
+            L.append(f"| {label} | {gitinfo.format_commit(ci)} |")
+        else:
+            L.append(f"| {label} | _not recorded — predates commit logging_ |")
+    L.append(
+        f"\nReport generated from working tree at {gitinfo.format_commit(report_info)}."
+        + (
+            ""
+            if any_run_commit
+            else " ⚠️ No run recorded its eval-time commit; the line above is the **report-time** "
+            "code version, which may differ from what produced these runs."
+        )
+    )
+    L.append("")
 
     # Overall per agent.
     L.append("## Overall\n")

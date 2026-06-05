@@ -521,7 +521,7 @@ class Retriever:
             f1 = token_f1(reference, result.answer)
             return aic, float(f1.get("f1", 0.0)), bool(f1.get("exact_match", False))
 
-        def _judging() -> tuple[Optional[int], Optional[str], Optional[str]]:
+        def _judging() -> tuple[Optional[float], Optional[str], Optional[str]]:
             if judge is None or reference is None:
                 return None, None, None
             jr = judge.judge(query, reference, result.answer)
@@ -660,7 +660,7 @@ class RetrieverPipelineBuilder:
             raise ValueError("judge() requires either judge= or model=")
 
         if judge is not None:
-            transport = judge._client.transport
+            transport = judge.transport
             operator = JudgingOperator(
                 model=transport.model,
                 api_base=transport.api_base,

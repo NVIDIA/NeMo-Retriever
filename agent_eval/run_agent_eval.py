@@ -44,6 +44,7 @@ sys.path.insert(0, str(_HERE))
 
 from schema import QuerySet, Query  # noqa: E402
 import profiles  # noqa: E402
+import gitinfo  # noqa: E402
 from prompt import render_prompt, render_setup_prompt, parse_output_json  # noqa: E402
 from adapters.claude import ClaudeAdapter  # noqa: E402
 from adapters.codex import CodexAdapter  # noqa: E402
@@ -467,6 +468,7 @@ def main(argv: list[str] | None = None) -> int:
                 "agent": args.agent,
                 "model": args.model,
                 "profile": args.profile,
+                "code_commit": gitinfo.git_commit(),
                 "source_manifest": qs.source_manifest,
                 "queries_file": str(args.queries.resolve()),
                 "corpus_root": str(args.corpus_root),
