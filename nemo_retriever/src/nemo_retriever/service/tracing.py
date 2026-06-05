@@ -52,7 +52,7 @@ def tracing_enabled_from_env(env: Mapping[str, str] | None = None) -> bool:
 
     traces_exporter = source.get("OTEL_TRACES_EXPORTER", "").strip()
     endpoint = source.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
-    return bool(traces_exporter.lower() == "otlp" and endpoint)
+    return bool(traces_exporter and traces_exporter.lower() != "none" and endpoint)
 
 
 def configure_tracing(*, service_role: str, service_name: str | None = None) -> bool:
