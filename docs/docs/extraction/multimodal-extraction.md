@@ -77,17 +77,6 @@ Image captioning generates natural-language descriptions for unstructured image 
 
 **Captioning is optional** — enable it in your ingest configuration (for example, the `caption` API or pipeline flag) when you need natural-language descriptions of image content. Reasoning traces are disabled by default for captioning.
 
-!!! important "PDF chart regions are not captioned by Omni"
-
-    When **nemotron-page-elements-v3** classifies a PDF region as **chart**, that region is processed through layout detection and OCR—not the Omni caption stage. Enabling the caption NIM and the `caption` pipeline stage does **not** send chart-labeled figures to `/v1/chat/completions`.
-
-    The caption stage covers:
-
-    - Unstructured content in the `images` column (standalone image files and page-element regions **not** classified as table, chart, or infographic)
-    - Optional infographic regions when you set `caption_infographics=True` on `CaptionParams` (the VLM caption is stored in `caption`, separate from OCR `text`)
-
-    To validate caption traffic during ingest, inspect metadata such as `page_elements_v3_counts_by_label`. If the figure is labeled `chart`, expect no Omni chat-completions requests for that region even when captioning is enabled.
-
 **Related**
 
 - [Multimodal embeddings (VLM)](embedding.md)
