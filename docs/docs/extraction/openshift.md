@@ -2,7 +2,7 @@
 
 Use this page when you install the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) on **OpenShift 4.x** with the default **restricted-v2** Security Context Constraint (SCC) and **Pod Security Admission (PSA) `restricted`** profile.
 
-For general Kubernetes and Helm deployment choices, see [Deployment options](deployment-options.md). For chart values and NIM wiring, see the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
+For general Kubernetes and Helm deployment choices, refer to [Deployment options](deployment-options.md). For chart values and NIM wiring, refer to the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
 
 ## Overview { #openshift-deployment }
 
@@ -25,13 +25,13 @@ On clusters with **PSA `enforce=restricted`**, missing container `securityContex
 | Symptom on stock install | Cause | Helm override |
 | --- | --- | --- |
 | `FailedCreate`: UID/GID **1000** not in namespace range | Hardcoded `service.podSecurityContext` UID/GID/fsGroup | Omit `runAsUser`, `runAsGroup`, and `fsGroup`; keep only `runAsNonRoot: true` |
-| PSA warning: `allowPrivilegeEscalation`, capabilities, `seccompProfile` | Empty `service.securityContext` | Set restricted baseline on `service.securityContext` (see sample below) |
+| PSA warning: `allowPrivilegeEscalation`, capabilities, `seccompProfile` | Empty `service.securityContext` | Set restricted baseline on `service.securityContext` (refer to the sample below) |
 | `PermissionError` on `/var/lib/nemo-retriever/retriever-service.log` when `persistence.enabled=false` | Default log path is image-owned; random UID cannot write without a PVC | Point `serviceConfig.logging.file` at `/tmp/...` (chart mounts `emptyDir` at `/tmp`) |
 | `CreateContainerConfigError`: non-numeric image `USER nemo` on **vectordb** | Vectordb container has no `securityContext` block for SCC to annotate | Set `serviceConfig.vectordb.enabled=false` for a minimal service-only install, or patch the vectordb Deployment after install (below) |
 | PSA warnings on **otel-collector** | Otel Deployment has no `securityContext` in the chart | `topology.otel.enabled=false` unless you patch that Deployment |
-| Audio/video fails or pod never gets `ffmpeg` | `service.installFfmpeg=true` runs sudo at startup; **restricted-v2** blocks privilege escalation (`no-new-privileges`) | Prebuild a service image with `ffmpeg`/`ffprobe` baked in (see [Audio and video on restricted OpenShift](#audio-and-video-ffmpeg-on-restricted-openshift)); leave `service.installFfmpeg=false` |
-| `ImagePullBackOff` for a service image in the **internal OpenShift registry** | Chart `imagePullSecrets` lists only `ngc-secret`; the namespace ServiceAccount `dockercfg` secret is not merged automatically | Add the SA pull secret under `imagePullSecrets` (see [Internal registry pull secrets](#internal-registry-pull-secrets)) |
-| Optional NIM `CrashLoopBackOff` with missing `.so` in logs | GPU/CUDA libraries not on `LD_LIBRARY_PATH` for some NIM Operator stacks on OCP | Append paths via `nimOperator.<key>.env` (see [Optional NIM runtime environment](#optional-nim-runtime-environment)) |
+| Audio/video fails or pod never gets `ffmpeg` | `service.installFfmpeg=true` runs sudo at startup; **restricted-v2** blocks privilege escalation (`no-new-privileges`) | Prebuild a service image with `ffmpeg`/`ffprobe` baked in (refer to [Audio and video on restricted OpenShift](#audio-and-video-ffmpeg-on-restricted-openshift)); leave `service.installFfmpeg=false` |
+| `ImagePullBackOff` for a service image in the **internal OpenShift registry** | Chart-rendered `imagePullSecrets` may omit the namespace SA `dockercfg` secret required for internal-registry pulls | List every required pull secret under `imagePullSecrets` (refer to [Internal registry pull secrets](#internal-registry-pull-secrets)) |
+| Optional NIM `CrashLoopBackOff` with missing `.so` in logs | GPU/CUDA libraries not on `LD_LIBRARY_PATH` for some NIM Operator stacks on OCP | Append paths via `nimOperator.<key>.env` (refer to [Optional NIM runtime environment](#optional-nim-runtime-environment)) |
 
 ### Recommended value overrides
 
@@ -60,7 +60,7 @@ serviceConfig:
     # Writable without persistence PVC (chart always mounts emptyDir at /tmp).
     file: /tmp/retriever-service.log
   vectordb:
-    # Set false for a minimal service-only install; see vectordb patch below if you enable it.
+    # Set false for a minimal service-only install; refer to the vectordb patch below if you enable it.
     enabled: false
 
 topology:
@@ -88,7 +88,7 @@ Push the result to NGC, your private registry, or the [OpenShift internal regist
 
 ### Internal registry pull secrets { #internal-registry-pull-secrets }
 
-When you rebuild the service image into the OpenShift internal registry (`image-registry.openshift-image-registry.svc:5000/...`), pods pull through the namespace ServiceAccount's automatic `kubernetes.io/dockercfg` secret. The chart renders an explicit `imagePullSecrets` list on every Pod; that list **replaces** the implicit SA default rather than merging with it. If you set only `ngc-secret` (for NGC NIM images) but point `service.image` at the internal registry, the service Pod can fail with `ImagePullBackOff`.
+When you rebuild the service image into the OpenShift internal registry (`image-registry.openshift-image-registry.svc:5000/...`), pods normally pull through the namespace ServiceAccount's automatic `kubernetes.io/dockercfg` secret. The chart renders an explicit `imagePullSecrets` list on every Pod, so you must list **every** secret each Pod needs—including the SA `dockercfg` secret when `service.image` points at the internal registry. If the rendered list contains only `ngc-secret` (for NGC NIM images) while `service.image` uses the internal registry, the service Pod can fail with `ImagePullBackOff`.
 
 **Internal-registry service image only** — clear the chart-managed NGC pull secret name so the helper does not inject `ngc-secret` alone:
 
@@ -161,7 +161,7 @@ The retriever service caption profile already sends `chat_template_kwargs.enable
 }
 ```
 
-For pipeline scope (PDF chart regions are not captioned), see [Image captioning](prerequisites-support-matrix.md#image-captioning-2605) and [Image captioning](multimodal-extraction.md#image-captioning) in the extraction docs.
+For pipeline scope (PDF chart regions are not captioned), refer to [Image captioning](prerequisites-support-matrix.md#image-captioning-2605) and [Image captioning](multimodal-extraction.md#image-captioning) in the extraction docs.
 
 ### Example install (service only, no in-cluster NIMs)
 
