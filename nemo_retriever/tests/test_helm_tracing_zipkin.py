@@ -549,6 +549,23 @@ def test_all_enabled_nimservices_inherit_otel_env() -> None:
         assert values["TRITON_OTEL_RATE"] == "1"
 
 
+def test_chart_wide_nim_otel_disable_omits_managed_env() -> None:
+    docs = _helm_template(["nimOperator.otel.enabled=false"])
+    nimservices = [doc for doc in docs if doc.get("kind") == "NIMService"]
+    chart_managed_names = {"NIM_ENABLE_OTEL", "NIM_OTEL_EXPORTER_OTLP_ENDPOINT", "TRITON_OTEL_URL"}
+
+    assert {doc["metadata"]["name"] for doc in nimservices} == NIMSERVICE_NAMES
+    for doc in nimservices:
+        env = _nim_env(doc)
+        values = _env_values(env)
+
+        _assert_unique_env_names(env)
+        assert chart_managed_names.isdisjoint(values)
+
+    table_values = _env_values(_nim_env(_find(docs, "NIMService", "nemotron-table-structure-v1")))
+    assert table_values["NIM_TRITON_CUDA_MEMORY_POOL_MB"] == "2048"
+
+
 def test_per_nim_otel_endpoint_overrides_chart_endpoint() -> None:
     docs = _helm_template(
         [
