@@ -352,6 +352,74 @@ def test_create_job_succeeds_when_tracing_span_enter_fails(
     assert "x-trace-id" not in resp.headers
 
 
+def test_create_job_succeeds_when_trace_context_injection_fails(
+    app_with_stub_pool: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _raise() -> Any:
+        raise RuntimeError("propagator unavailable")
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.inject_trace_context", _raise)
+
+    resp = app_with_stub_pool.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 1, "label": "inject-failure"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["job_id"]
+    assert body.get("trace_id") is None
+    assert "x-trace-id" not in resp.headers
+
+
+def test_document_upload_succeeds_when_accept_trace_context_extraction_fails(
+    app_with_stub_pool: TestClient,
+    captured_items: list[WorkItem],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job_id = create_test_job(app_with_stub_pool)
+
+    def _raise(_carrier: dict[str, str]) -> Any:
+        raise RuntimeError("propagator unavailable")
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.extract_trace_context", _raise)
+
+    resp = app_with_stub_pool.post(
+        f"/v1/ingest/job/{job_id}/document",
+        headers={"traceparent": "00-" + "1" * 32 + "-" + "2" * 16 + "-01"},
+        files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": "{}"},
+    )
+
+    assert resp.status_code == 202, resp.text
+    _wait_for_items(captured_items, 1)
+    assert captured_items[0].job_id == job_id
+
+
+def test_document_upload_succeeds_when_enqueue_trace_context_injection_fails(
+    app_with_stub_pool: TestClient,
+    captured_items: list[WorkItem],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job_id = create_test_job(app_with_stub_pool)
+
+    def _raise() -> Any:
+        raise RuntimeError("propagator unavailable")
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.inject_trace_context", _raise)
+
+    resp = app_with_stub_pool.post(
+        f"/v1/ingest/job/{job_id}/document",
+        files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": "{}"},
+    )
+
+    assert resp.status_code == 202, resp.text
+    _wait_for_items(captured_items, 1)
+    assert captured_items[0].job_id == job_id
+    assert captured_items[0].trace_context == {}
+
+
 def test_create_job_with_tracing_returns_trace_id_body_header_and_snapshot(
     traced_app_with_stub_pool: tuple[TestClient, list[Any]],
 ) -> None:

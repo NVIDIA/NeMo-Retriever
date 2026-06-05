@@ -97,3 +97,35 @@ def test_pool_process_span_uses_work_item_trace_context(exported_spans: list[Any
         assert attrs["queue.wait_ms"] >= 0.0
 
     _run(body())
+
+
+def test_pool_processes_item_when_trace_context_extraction_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise(_carrier: dict[str, str]) -> Any:
+        raise RuntimeError("propagator unavailable")
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.extract_trace_context", _raise)
+
+    async def body() -> None:
+        done = asyncio.Event()
+
+        async def work(_item: WorkItem) -> int:
+            done.set()
+            return 1
+
+        pool = _Pool(name="rt-trace-fallback", num_workers=1, max_queue_size=4, work_fn=work)
+        pool.start()
+        try:
+            assert await pool.submit(
+                WorkItem(
+                    id="doc-1",
+                    job_id="job-1",
+                    trace_context={"traceparent": "00-" + "1" * 32 + "-" + "2" * 16 + "-01"},
+                )
+            )
+            await asyncio.wait_for(done.wait(), timeout=2.0)
+        finally:
+            await pool.shutdown()
+
+    _run(body())

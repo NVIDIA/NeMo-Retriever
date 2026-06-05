@@ -27,7 +27,7 @@ import asyncio
 import logging
 import time
 from enum import Enum
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from pydantic import ConfigDict, Field
 
@@ -53,6 +53,22 @@ _QUEUE_DEPTH_REPORT_INTERVAL_S = 1.0
 class PoolType(str, Enum):
     REALTIME = "realtime"
     BATCH = "batch"
+
+
+def _safe_extract_trace_context(carrier: Mapping[str, str] | None, *, pool_name: str, item_id: str) -> Any | None:
+    """Best-effort W3C trace context extraction for worker processing."""
+    from nemo_retriever.service import tracing
+
+    try:
+        return tracing.extract_trace_context(carrier)
+    except Exception as exc:
+        logger.warning(
+            "Pool '%s' trace context extraction failed for item %s; continuing without parent context: %s",
+            pool_name,
+            item_id,
+            exc,
+        )
+        return None
 
 
 class WorkItem(RichModel):
@@ -252,7 +268,7 @@ class _Pool:
             if item is None:
                 self._queue.task_done()
                 return
-            ctx = tracing.extract_trace_context(item.trace_context)
+            ctx = _safe_extract_trace_context(item.trace_context, pool_name=self._name, item_id=item.id)
             with tracing.start_span(
                 f"pool.{self._name}.process",
                 context=ctx,

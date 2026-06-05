@@ -219,9 +219,7 @@ async def _enqueue_or_reject(pool_type: PoolType, item: WorkItem) -> None:
     if pool is None:
         return
     if not item.trace_context:
-        from nemo_retriever.service import tracing
-
-        item.trace_context = dict(tracing.inject_trace_context())
+        item.trace_context = _safe_inject_trace_context()
     if not await pool.submit(pool_type, item):
         raise HTTPException(
             status_code=429,
@@ -457,6 +455,28 @@ def _parse_backend_json(resp: Response) -> dict:
         return {}
 
 
+def _safe_inject_trace_context() -> dict[str, str]:
+    """Best-effort W3C trace context capture for downstream propagation."""
+    from nemo_retriever.service import tracing
+
+    try:
+        return dict(tracing.inject_trace_context())
+    except Exception as exc:
+        logger.warning("Trace context injection failed; continuing without propagated context: %s", exc)
+        return {}
+
+
+def _safe_extract_trace_context(carrier: dict[str, str] | None) -> Any | None:
+    """Best-effort W3C trace context extraction for accept spans."""
+    from nemo_retriever.service import tracing
+
+    try:
+        return tracing.extract_trace_context(carrier)
+    except Exception as exc:
+        logger.warning("Trace context extraction failed; continuing without parent context: %s", exc)
+        return None
+
+
 def _trace_context_from_request_or_job(request: Request, job_id: str | None) -> dict[str, str]:
     inbound_traceparent = request.headers.get("traceparent")
     if inbound_traceparent:
@@ -485,7 +505,7 @@ def _start_accept_span(request: Request, job_id: str, name: str):
     return tracing.start_span(
         name,
         kind=SpanKind.SERVER,
-        context=tracing.extract_trace_context(carrier),
+        context=_safe_extract_trace_context(carrier),
         attributes={
             "service.role": _role(request),
             "job.id": job_id,
@@ -551,8 +571,8 @@ async def create_job(request: Request, response: Response, body: JobCreateReques
                 "job.expected_documents": body.expected_documents,
             },
         ):
-            trace_id = tracing.current_trace_id_hex()
-            trace_context = dict(tracing.inject_trace_context())
+            trace_context = _safe_inject_trace_context()
+            trace_id = tracing.current_trace_id_hex() if trace_context else None
             agg = tracker.register_job(
                 job_id,
                 expected_documents=body.expected_documents,
