@@ -1,6 +1,6 @@
 {{- if .Values.topology.otel.enabled }}
 {{- $otelName := include "nemo-retriever.otel.fullname" . -}}
-{{- $otelConfigName := include "nemo-retriever.otel.config.fullname" . -}}
+{{- $otelConfigName := include "nemo-retriever.otel.configMapName" . -}}
 {{- $otel := .Values.topology.otel -}}
 apiVersion: apps/v1
 kind: Deployment

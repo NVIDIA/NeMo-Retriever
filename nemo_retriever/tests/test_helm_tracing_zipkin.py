@@ -156,8 +156,11 @@ def _find_by_component(docs: list[dict], kind: str, component: str) -> dict:
 
 
 def test_long_release_preserves_tracing_name_suffixes_and_references() -> None:
-    long_release = "trace-parity-long-release-name-abcdefghijklmnopqrst"
-    docs = _helm_template(release_name=long_release)
+    long_release = "a" * 53
+    long_fullname = "b" * 63
+    docs = _helm_template(
+        release_name=long_release, extra_args=["--set-string", f"fullnameOverride={long_fullname}"]
+    )
 
     otel_deployment = _find_deployment_by_container(docs, "otel-collector")
     zipkin_deployment = _find_deployment_by_container(docs, "zipkin")
@@ -191,6 +194,35 @@ def test_long_release_preserves_tracing_name_suffixes_and_references() -> None:
 
     service_env = _env_values(_deployment_env(service_deployment))
     assert service_env["OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{otel_name}:4317"
+
+    otel_config_data = yaml.safe_load(otel_config["data"]["config.yaml"])
+    assert otel_config_data["exporters"]["zipkin"]["endpoint"] == f"http://{zipkin_name}:9411/api/v2/spans"
+
+
+def test_null_otel_env_maps_render_as_empty_maps() -> None:
+    docs = _helm_template(
+        extra_args=[
+            "--set-json",
+            "service.otel.env=null",
+            "--set-json",
+            "nimOperator.page_elements.otel=null",
+            "--set-json",
+            "nimOperator.otel.env=null",
+            "--set-json",
+            "nimOperator.rerankqa.otel.env=null",
+        ]
+    )
+
+    service_env = _env_values(_deployment_env(_find(docs, "Deployment", FULLNAME)))
+    assert service_env["OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4317"
+
+    page_env = _env_values(_nim_env(_find(docs, "NIMService", "nemotron-page-elements-v3")))
+    assert page_env["NIM_ENABLE_OTEL"] == "true"
+    assert page_env["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
+
+    rerank_env = _env_values(_nim_env(_find(docs, "NIMService", "llama-nemotron-rerank-vl-1b-v2")))
+    assert rerank_env["NIM_ENABLE_OTEL"] == "true"
+    assert rerank_env["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
 
 
 def test_default_renders_zipkin_deployment_and_service() -> None:

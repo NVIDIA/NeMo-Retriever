@@ -1,5 +1,5 @@
 {{- if .Values.topology.otel.enabled }}
-{{- $otelConfigName := include "nemo-retriever.otel.config.fullname" . -}}
+{{- $otelConfigName := include "nemo-retriever.otel.configMapName" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
