@@ -20,7 +20,6 @@ from nemo_retriever.service.tracing import (
     current_trace_id_hex,
     extract_trace_context,
     inject_trace_context,
-    span_attributes,
     start_span,
     tracing_enabled_from_env,
 )
@@ -63,10 +62,10 @@ def exported_spans(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
     ("env", "expected"),
     [
         ({}, False),
-        ({"OTEL_TRACES_EXPORTER": "otlp"}, True),
+        ({"OTEL_TRACES_EXPORTER": "otlp"}, False),
         ({"OTEL_TRACES_EXPORTER": "", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
         ({"OTEL_TRACES_EXPORTER": "none", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
-        ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": ""}, True),
+        ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": ""}, False),
         (
             {
                 "OTEL_TRACES_EXPORTER": "otlp",
@@ -78,7 +77,7 @@ def exported_spans(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
         ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
     ],
 )
-def test_tracing_enabled_from_env_requires_otlp_exporter(env: dict[str, str], expected: bool) -> None:
+def test_tracing_enabled_from_env_requires_exporter_and_endpoint(env: dict[str, str], expected: bool) -> None:
     assert tracing_enabled_from_env(env) is expected
 
 
@@ -107,9 +106,10 @@ def test_trace_context_inject_extract_round_trips_traceparent(
 
     with start_span("service.parent"):
         parent_trace_id = current_trace_id_hex()
-        carrier = inject_trace_context({"x-unrelated": "keep-out"})
+        carrier = inject_trace_context({"x-unrelated": "keep"})
 
-    assert set(carrier) == {"traceparent"}
+    assert carrier["x-unrelated"] == "keep"
+    assert "traceparent" in carrier
 
     extracted = extract_trace_context(carrier)
     with start_span("service.child", context=extracted):
@@ -123,7 +123,7 @@ def test_span_attributes_drop_sensitive_keys(monkeypatch: pytest.MonkeyPatch, ex
 
     raw_attributes = {
         "Authorization": "Bearer abc",
-        "x_api_key": "abc",
+        "x-api-key": "abc",
         "apiKey": "abc",
         "access_token": "abc",
         "password": "abc",
@@ -135,8 +135,6 @@ def test_span_attributes_drop_sensitive_keys(monkeypatch: pytest.MonkeyPatch, ex
         "safe.status": "ok",
         "document_count": 2,
     }
-    assert span_attributes(raw_attributes) == {"safe.status": "ok", "document_count": 2}
-
     with start_span("service.sanitize", attributes=raw_attributes):
         pass
 

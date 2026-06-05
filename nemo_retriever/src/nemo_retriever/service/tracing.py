@@ -56,7 +56,9 @@ def tracing_enabled_from_env(env: Mapping[str, str] | None = None) -> bool:
     if source.get("OTEL_SDK_DISABLED", "").strip().lower() == "true":
         return False
 
-    return source.get("OTEL_TRACES_EXPORTER", "").strip().lower() == "otlp"
+    traces_exporter = source.get("OTEL_TRACES_EXPORTER", "").strip()
+    endpoint = source.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    return bool(traces_exporter and traces_exporter.lower() != "none" and endpoint)
 
 
 def configure_tracing(*, service_role: str, service_name: str | None = None) -> bool:
@@ -134,11 +136,10 @@ def current_trace_id_hex() -> str | None:
 
 
 def inject_trace_context(carrier: MutableMapping[str, str] | None = None) -> dict[str, str]:
-    """Inject W3C trace context into a clean plain dict carrier."""
-    output: MutableMapping[str, str] = carrier if carrier is not None else {}
-    output.clear()
+    """Inject W3C trace context into a plain dict carrier."""
+    output = dict(carrier or {})
     _TRACE_CONTEXT_PROPAGATOR.inject(output)
-    return dict(output)
+    return output
 
 
 def extract_trace_context(carrier: Mapping[str, str] | None) -> Any:
@@ -175,47 +176,16 @@ def _reset_tracing_for_tests() -> None:
         logger.debug("OpenTelemetry test reset skipped private provider state reset", exc_info=True)
 
 
-def span_attributes(attributes: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """Return span attributes after filtering credentials and request bodies."""
-    if attributes is None:
-        return {}
-
-    sanitized: dict[str, Any] = {}
-    for key, value in attributes.items():
-        if _is_sensitive_attribute(key, value):
-            continue
-        sanitized[key] = value
-    return sanitized
-
-
-def span_attributes(attributes: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """Return span attributes after filtering credentials and request bodies."""
-    if attributes is None:
-        return {}
-
-    sanitized: dict[str, Any] = {}
-    for key, value in attributes.items():
-        if _is_sensitive_attribute(key, value):
-            continue
-        sanitized[key] = value
-    return sanitized
-
-
 def _sanitize_span_attributes(attributes: Mapping[str, Any] | None) -> dict[str, Any] | None:
     if attributes is None:
         return None
-    return span_attributes(attributes)
 
-
-def _is_sensitive_attribute(key: str, value: Any) -> bool:
-    lowered = key.lower()
-    normalized = lowered.replace("-", "_").replace(".", "_").replace(" ", "_")
-    compact = normalized.replace("_", "")
-    if any(part in lowered or part in normalized or part in compact for part in _SENSITIVE_ATTRIBUTE_NAME_PARTS):
-        return True
-    if isinstance(value, bytes):
-        return True
-    if isinstance(value, str):
-        value_compact = value.lower().replace("-", "_").replace(".", "_").replace(" ", "_").replace("_", "")
-        return "bearer" in value_compact or any(part in value_compact for part in _SENSITIVE_ATTRIBUTE_NAME_PARTS)
-    return False
+    sanitized: dict[str, Any] = {}
+    for key, value in attributes.items():
+        lowered = key.lower()
+        normalized = lowered.replace("-", "_").replace(".", "_").replace(" ", "_")
+        compact = normalized.replace("_", "")
+        if any(part in lowered or part in normalized or part in compact for part in _SENSITIVE_ATTRIBUTE_NAME_PARTS):
+            continue
+        sanitized[key] = value
+    return sanitized
