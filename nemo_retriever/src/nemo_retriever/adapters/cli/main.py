@@ -30,7 +30,6 @@ from nemo_retriever.ingest.plan import (
     IngestPlanRequest,
     IngestProfileValue,
     IngestRuntimeOptions,
-    IngestRunModeValue,
     IngestSourceOptions,
     IngestStorageOptions,
     LocalIngestEmbedBackendValue,
@@ -39,8 +38,22 @@ from nemo_retriever.ingest.plan import (
     TableOutputFormatValue,
     resolve_ingest_plan,
 )
+from nemo_retriever.params import IngestorRunMode
+from nemo_retriever.ingest.service import (
+    ServiceIngestCaptionOptions,
+    ServiceIngestChunkOptions,
+    ServiceIngestConnectionOptions,
+    ServiceIngestDedupOptions,
+    ServiceIngestEmbedOptions,
+    ServiceIngestExtractOptions,
+    ServiceIngestImageStoreOptions,
+    ServiceIngestPlanRequest,
+    ServiceIngestSourceOptions,
+    resolve_service_ingest_request,
+)
 from nemo_retriever.adapters.cli.ingest_workflow import (
     run_ingest_workflow,
+    run_service_ingest_workflow,
 )
 from nemo_retriever.adapters.cli.query_workflow import query_documents
 from nemo_retriever.query.options import (
@@ -89,7 +102,77 @@ for _name, _module, _attr in _LAZY_SUBAPPS:
     except Exception:
         logger.debug("Skipping '%s' sub-command (import failed)", _name)
 
-_ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError, ValidationError)
+_ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError, ValidationError, typer.BadParameter)
+
+
+_ROOT_SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
+    ("--lancedb-uri", "lancedb_uri"),
+    ("--table-name", "table_name"),
+    ("--overwrite/--append", "overwrite"),
+    ("--api-key", "api_key"),
+    ("--page-elements-invoke-url", "page_elements_invoke_url"),
+    ("--ocr-invoke-url", "ocr_invoke_url"),
+    ("--ocr-lang", "ocr_lang"),
+    ("--graphic-elements-invoke-url", "graphic_elements_invoke_url"),
+    ("--table-structure-invoke-url", "table_structure_invoke_url"),
+    ("--caption-invoke-url", "caption_invoke_url"),
+    ("--caption-model-name", "caption_model_name"),
+    ("--embed-invoke-url", "embed_invoke_url"),
+    ("--embed-model-name", "embed_model_name"),
+    ("--local-ingest-embed-backend", "local_ingest_embed_backend"),
+    ("--ray-address", "ray_address"),
+    ("--ray-log-to-driver/--no-ray-log-to-driver", "ray_log_to_driver"),
+    ("--pdf-split-batch-size", "pdf_split_batch_size"),
+    ("--pdf-extract-workers", "pdf_extract_workers"),
+    ("--pdf-extract-batch-size", "pdf_extract_batch_size"),
+    ("--pdf-extract-cpus-per-task", "pdf_extract_cpus_per_task"),
+    ("--page-elements-workers", "page_elements_workers"),
+    ("--page-elements-batch-size", "page_elements_batch_size"),
+    ("--page-elements-cpus-per-actor", "page_elements_cpus_per_actor"),
+    ("--page-elements-gpus-per-actor", "page_elements_gpus_per_actor"),
+    ("--ocr-workers", "ocr_workers"),
+    ("--ocr-batch-size", "ocr_batch_size"),
+    ("--ocr-cpus-per-actor", "ocr_cpus_per_actor"),
+    ("--ocr-gpus-per-actor", "ocr_gpus_per_actor"),
+    ("--table-structure-workers", "table_structure_workers"),
+    ("--table-structure-batch-size", "table_structure_batch_size"),
+    ("--table-structure-cpus-per-actor", "table_structure_cpus_per_actor"),
+    ("--table-structure-gpus-per-actor", "table_structure_gpus_per_actor"),
+    ("--nemotron-parse-workers", "nemotron_parse_workers"),
+    ("--nemotron-parse-batch-size", "nemotron_parse_batch_size"),
+    ("--nemotron-parse-gpus-per-actor", "nemotron_parse_gpus_per_actor"),
+    ("--embed-workers", "embed_workers"),
+    ("--embed-batch-size", "embed_batch_size"),
+    ("--embed-cpus-per-actor", "embed_cpus_per_actor"),
+    ("--embed-gpus-per-actor", "embed_gpus_per_actor"),
+    ("--segment-audio/--no-segment-audio", "segment_audio"),
+    ("--audio-split-type", "audio_split_type"),
+    ("--audio-split-interval", "audio_split_interval"),
+    ("--video-extract-audio/--no-video-extract-audio", "video_extract_audio"),
+    ("--video-extract-frames/--no-video-extract-frames", "video_extract_frames"),
+    ("--video-frame-fps", "video_frame_fps"),
+    ("--video-frame-dedup/--no-video-frame-dedup", "video_frame_dedup"),
+    ("--video-frame-text-dedup/--no-video-frame-text-dedup", "video_frame_text_dedup"),
+    ("--video-frame-text-dedup-max-dropped-frames", "video_frame_text_dedup_max_dropped_frames"),
+    ("--video-av-fuse/--no-video-av-fuse", "video_av_fuse"),
+)
+
+
+def _reject_root_service_incompatible_flags(ctx: typer.Context) -> None:
+    user_set: list[str] = []
+    for cli_flag, param_name in _ROOT_SERVICE_INCOMPATIBLE_FLAGS:
+        source = ctx.get_parameter_source(param_name)
+        if getattr(source, "name", None) in {"COMMANDLINE", "ENVIRONMENT"}:
+            user_set.append(cli_flag)
+    if not user_set:
+        return
+    raise typer.BadParameter(
+        "--run-mode=service delegates pipeline configuration to the "
+        "retriever service; the following flag(s) cannot be set on the "
+        "client and would be silently dropped: " + ", ".join(user_set) + ". "
+        "Remove them, or use --run-mode batch/inprocess to apply them locally. "
+        "Server-side pipeline configuration lives in retriever-service.yaml."
+    )
 
 
 def _query_cli_hit(hit: RetrievalHit) -> dict[str, object]:
@@ -176,6 +259,7 @@ def main() -> None:
 
 @app.command("ingest")
 def ingest_command(
+    ctx: typer.Context,
     documents: list[str] = typer.Argument(
         ...,
         help="One or more files, directories, or globs. Supported file types are detected automatically.",
@@ -187,10 +271,33 @@ def ingest_command(
     ),
     lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
     table_name: str = typer.Option("nemo-retriever", "--table-name", help="LanceDB table name."),
-    run_mode: IngestRunModeValue = typer.Option(
+    run_mode: IngestorRunMode = typer.Option(
         "inprocess",
         "--run-mode",
-        help="Execution mode for the SDK ingestor. Defaults to inprocess; use batch for Ray Data scale-out.",
+        help=(
+            "Execution mode for ingest: inprocess (default), batch for Ray Data scale-out, "
+            "or service for a remote retriever service."
+        ),
+    ),
+    service_url: str = typer.Option(
+        "http://localhost:7670",
+        "--service-url",
+        help="Base URL of the retriever service (used only when --run-mode=service).",
+    ),
+    service_concurrency: int = typer.Option(
+        8,
+        "--service-concurrency",
+        min=1,
+        help="Maximum concurrent document uploads to the service (used only when --run-mode=service).",
+    ),
+    service_api_token: str | None = typer.Option(
+        None,
+        "--service-api-token",
+        envvar="NEMO_RETRIEVER_API_TOKEN",
+        help=(
+            "Bearer token for authenticating with the retriever service "
+            "(used only when --run-mode=service). Falls back to $NEMO_RETRIEVER_API_TOKEN."
+        ),
     ),
     dry_run: bool = typer.Option(
         False,
@@ -596,119 +703,184 @@ def ingest_command(
     capture = _quiet_capture() if quiet else contextlib.nullcontext()
     try:
         with capture:
-            ingest_plan = resolve_ingest_plan(
-                IngestPlanRequest(
-                    source=IngestSourceOptions(documents=documents, profile=profile),
-                    runtime=IngestRuntimeOptions(
-                        run_mode=run_mode,
-                        ray_address=ray_address,
-                        ray_log_to_driver=ray_log_to_driver,
-                    ),
-                    extract=IngestExtractOptions(
-                        method=method,
-                        dpi=dpi,
-                        extract_text=extract_text,
-                        extract_images=extract_images,
-                        extract_tables=extract_tables,
-                        extract_charts=extract_charts,
-                        extract_infographics=extract_infographics,
-                        extract_page_as_image=extract_page_as_image,
-                        use_page_elements=use_page_elements,
-                        use_graphic_elements=use_graphic_elements,
-                        use_table_structure=use_table_structure,
-                        page_elements_invoke_url=page_elements_invoke_url,
-                        ocr_invoke_url=ocr_invoke_url,
-                        ocr_version=ocr_version,
-                        ocr_lang=ocr_lang,
-                        graphic_elements_invoke_url=graphic_elements_invoke_url,
-                        table_structure_invoke_url=table_structure_invoke_url,
-                        table_output_format=table_output_format,
-                        extract_api_key=api_key,
-                        batch=IngestExtractBatchOptions(
-                            pdf_split_batch_size=pdf_split_batch_size,
-                            pdf_extract_workers=pdf_extract_workers,
-                            pdf_extract_batch_size=pdf_extract_batch_size,
-                            pdf_extract_cpus_per_task=pdf_extract_cpus_per_task,
-                            page_elements_workers=page_elements_workers,
-                            page_elements_batch_size=page_elements_batch_size,
-                            page_elements_cpus_per_actor=page_elements_cpus_per_actor,
-                            page_elements_gpus_per_actor=page_elements_gpus_per_actor,
-                            ocr_workers=ocr_workers,
-                            ocr_batch_size=ocr_batch_size,
-                            ocr_cpus_per_actor=ocr_cpus_per_actor,
-                            ocr_gpus_per_actor=ocr_gpus_per_actor,
-                            table_structure_workers=table_structure_workers,
-                            table_structure_batch_size=table_structure_batch_size,
-                            table_structure_cpus_per_actor=table_structure_cpus_per_actor,
-                            table_structure_gpus_per_actor=table_structure_gpus_per_actor,
-                            nemotron_parse_workers=nemotron_parse_workers,
-                            nemotron_parse_batch_size=nemotron_parse_batch_size,
-                            nemotron_parse_gpus_per_actor=nemotron_parse_gpus_per_actor,
+            if run_mode == "service":
+                _reject_root_service_incompatible_flags(ctx)
+                service_request = resolve_service_ingest_request(
+                    ServiceIngestPlanRequest(
+                        source=ServiceIngestSourceOptions(documents=documents, profile=profile),
+                        connection=ServiceIngestConnectionOptions(
+                            service_url=service_url,
+                            service_concurrency=service_concurrency,
+                            service_api_token=service_api_token,
                         ),
-                    ),
-                    media=IngestMediaOptions(
-                        segment_audio=segment_audio,
-                        audio_split_type=audio_split_type,
-                        audio_split_interval=audio_split_interval,
-                        video_extract_audio=video_extract_audio,
-                        video_extract_frames=video_extract_frames,
-                        video_frame_fps=video_frame_fps,
-                        video_frame_dedup=video_frame_dedup,
-                        video_frame_text_dedup=video_frame_text_dedup,
-                        video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
-                        video_av_fuse=video_av_fuse,
-                    ),
-                    caption=IngestCaptionOptions(
-                        enabled=caption,
-                        caption_invoke_url=caption_invoke_url,
-                        caption_api_key=api_key,
-                        caption_model_name=caption_model_name,
-                        caption_context_text_max_chars=caption_context_text_max_chars,
-                        caption_infographics=caption_infographics,
-                    ),
-                    dedup=IngestDedupOptions(
-                        enabled=dedup,
-                        iou_threshold=dedup_iou_threshold,
-                    ),
-                    chunk=IngestChunkOptions(
-                        enabled=text_chunk,
-                        text_chunk_max_tokens=text_chunk_max_tokens,
-                        text_chunk_overlap_tokens=text_chunk_overlap_tokens,
-                    ),
-                    embed=IngestEmbedOptions(
-                        embed_invoke_url=embed_invoke_url,
-                        embed_model_name=embed_model_name,
-                        local_ingest_embed_backend=local_ingest_embed_backend,
-                        embed_api_key=api_key,
-                        embed_modality=embed_modality,
-                        embed_granularity=embed_granularity,
-                        text_elements_modality=text_elements_modality,
-                        structured_elements_modality=structured_elements_modality,
-                        batch=IngestEmbedBatchOptions(
-                            embed_workers=embed_workers,
-                            embed_batch_size=embed_batch_size,
-                            embed_cpus_per_actor=embed_cpus_per_actor,
-                            embed_gpus_per_actor=embed_gpus_per_actor,
+                        extract=ServiceIngestExtractOptions(
+                            method=method,
+                            dpi=dpi,
+                            extract_text=extract_text,
+                            extract_images=extract_images,
+                            extract_tables=extract_tables,
+                            extract_charts=extract_charts,
+                            extract_infographics=extract_infographics,
+                            extract_page_as_image=extract_page_as_image,
+                            use_page_elements=use_page_elements,
+                            use_graphic_elements=use_graphic_elements,
+                            use_table_structure=use_table_structure,
+                            table_output_format=table_output_format,
+                            ocr_version=ocr_version,
                         ),
-                    ),
-                    image_store=IngestImageStoreOptions(images_uri=store_images_uri),
-                    storage=IngestStorageOptions(
-                        lancedb_uri=lancedb_uri,
-                        table_name=table_name,
-                        overwrite=overwrite,
-                    ),
+                        dedup=ServiceIngestDedupOptions(
+                            enabled=dedup,
+                            iou_threshold=dedup_iou_threshold,
+                        ),
+                        caption=ServiceIngestCaptionOptions(
+                            enabled=caption,
+                            context_text_max_chars=caption_context_text_max_chars,
+                            caption_infographics=caption_infographics,
+                        ),
+                        chunk=ServiceIngestChunkOptions(
+                            enabled=text_chunk,
+                            text_chunk_max_tokens=text_chunk_max_tokens,
+                            text_chunk_overlap_tokens=text_chunk_overlap_tokens,
+                        ),
+                        embed=ServiceIngestEmbedOptions(
+                            embed_modality=embed_modality,
+                            text_elements_modality=text_elements_modality,
+                            structured_elements_modality=structured_elements_modality,
+                            embed_granularity=embed_granularity,
+                        ),
+                        image_store=ServiceIngestImageStoreOptions(images_uri=store_images_uri),
+                    )
                 )
-            )
-            summary = run_ingest_workflow(
-                ingest_plan,
-                dry_run=dry_run,
-            )
+                summary = run_service_ingest_workflow(
+                    service_request,
+                    dry_run=dry_run,
+                )
+            else:
+                ingest_plan = resolve_ingest_plan(
+                    IngestPlanRequest(
+                        source=IngestSourceOptions(documents=documents, profile=profile),
+                        runtime=IngestRuntimeOptions(
+                            run_mode=run_mode,
+                            ray_address=ray_address,
+                            ray_log_to_driver=ray_log_to_driver,
+                        ),
+                        extract=IngestExtractOptions(
+                            method=method,
+                            dpi=dpi,
+                            extract_text=extract_text,
+                            extract_images=extract_images,
+                            extract_tables=extract_tables,
+                            extract_charts=extract_charts,
+                            extract_infographics=extract_infographics,
+                            extract_page_as_image=extract_page_as_image,
+                            use_page_elements=use_page_elements,
+                            use_graphic_elements=use_graphic_elements,
+                            use_table_structure=use_table_structure,
+                            page_elements_invoke_url=page_elements_invoke_url,
+                            ocr_invoke_url=ocr_invoke_url,
+                            ocr_version=ocr_version,
+                            ocr_lang=ocr_lang,
+                            graphic_elements_invoke_url=graphic_elements_invoke_url,
+                            table_structure_invoke_url=table_structure_invoke_url,
+                            table_output_format=table_output_format,
+                            extract_api_key=api_key,
+                            batch=IngestExtractBatchOptions(
+                                pdf_split_batch_size=pdf_split_batch_size,
+                                pdf_extract_workers=pdf_extract_workers,
+                                pdf_extract_batch_size=pdf_extract_batch_size,
+                                pdf_extract_cpus_per_task=pdf_extract_cpus_per_task,
+                                page_elements_workers=page_elements_workers,
+                                page_elements_batch_size=page_elements_batch_size,
+                                page_elements_cpus_per_actor=page_elements_cpus_per_actor,
+                                page_elements_gpus_per_actor=page_elements_gpus_per_actor,
+                                ocr_workers=ocr_workers,
+                                ocr_batch_size=ocr_batch_size,
+                                ocr_cpus_per_actor=ocr_cpus_per_actor,
+                                ocr_gpus_per_actor=ocr_gpus_per_actor,
+                                table_structure_workers=table_structure_workers,
+                                table_structure_batch_size=table_structure_batch_size,
+                                table_structure_cpus_per_actor=table_structure_cpus_per_actor,
+                                table_structure_gpus_per_actor=table_structure_gpus_per_actor,
+                                nemotron_parse_workers=nemotron_parse_workers,
+                                nemotron_parse_batch_size=nemotron_parse_batch_size,
+                                nemotron_parse_gpus_per_actor=nemotron_parse_gpus_per_actor,
+                            ),
+                        ),
+                        media=IngestMediaOptions(
+                            segment_audio=segment_audio,
+                            audio_split_type=audio_split_type,
+                            audio_split_interval=audio_split_interval,
+                            video_extract_audio=video_extract_audio,
+                            video_extract_frames=video_extract_frames,
+                            video_frame_fps=video_frame_fps,
+                            video_frame_dedup=video_frame_dedup,
+                            video_frame_text_dedup=video_frame_text_dedup,
+                            video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
+                            video_av_fuse=video_av_fuse,
+                        ),
+                        caption=IngestCaptionOptions(
+                            enabled=caption,
+                            caption_invoke_url=caption_invoke_url,
+                            caption_api_key=api_key,
+                            caption_model_name=caption_model_name,
+                            caption_context_text_max_chars=caption_context_text_max_chars,
+                            caption_infographics=caption_infographics,
+                        ),
+                        dedup=IngestDedupOptions(
+                            enabled=dedup,
+                            iou_threshold=dedup_iou_threshold,
+                        ),
+                        chunk=IngestChunkOptions(
+                            enabled=text_chunk,
+                            text_chunk_max_tokens=text_chunk_max_tokens,
+                            text_chunk_overlap_tokens=text_chunk_overlap_tokens,
+                        ),
+                        embed=IngestEmbedOptions(
+                            embed_invoke_url=embed_invoke_url,
+                            embed_model_name=embed_model_name,
+                            local_ingest_embed_backend=local_ingest_embed_backend,
+                            embed_api_key=api_key,
+                            embed_modality=embed_modality,
+                            embed_granularity=embed_granularity,
+                            text_elements_modality=text_elements_modality,
+                            structured_elements_modality=structured_elements_modality,
+                            batch=IngestEmbedBatchOptions(
+                                embed_workers=embed_workers,
+                                embed_batch_size=embed_batch_size,
+                                embed_cpus_per_actor=embed_cpus_per_actor,
+                                embed_gpus_per_actor=embed_gpus_per_actor,
+                            ),
+                        ),
+                        image_store=IngestImageStoreOptions(images_uri=store_images_uri),
+                        storage=IngestStorageOptions(
+                            lancedb_uri=lancedb_uri,
+                            table_name=table_name,
+                            overwrite=overwrite,
+                        ),
+                    )
+                )
+                summary = run_ingest_workflow(
+                    ingest_plan,
+                    dry_run=dry_run,
+                )
     except _ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
     if summary.get("dry_run") is True:
         typer.echo(json.dumps(summary, indent=2, sort_keys=True, default=str))
+        return
+
+    if summary.get("run_mode") == "service":
+        n_files = len(summary["documents"])
+        service_target = summary["service_url"]
+        n_rows = summary.get("n_rows")
+        if n_rows is None:
+            typer.echo(
+                f"Ingested {n_files} file(s) through retriever service {service_target} " "(row count unavailable)."
+            )
+        else:
+            typer.echo(f"Ingested {n_files} file(s) → {n_rows} row(s) through retriever service {service_target}.")
         return
 
     # Report input-file count alongside the actual landed-row count from the

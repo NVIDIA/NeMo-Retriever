@@ -101,6 +101,152 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
     assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
 
+def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch) -> None:
+    import nemo_retriever.service_ingestor as service_ingestor_module
+
+    document = tmp_path / "service.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+    captured: dict[str, Any] = {}
+
+    class _FakeServiceIngestor(list):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__()
+            captured["init"] = kwargs
+            self.dataframe = None
+
+        def files(self, files: list[str]):
+            captured["files"] = files
+            return self
+
+        def extract(self, params=None, *, split_config=None, extraction_mode="auto", **_kwargs):
+            captured["extract_params"] = params
+            captured["split_config"] = split_config
+            captured["extraction_mode"] = extraction_mode
+            return self
+
+        def dedup(self, params=None, **_kwargs):
+            captured["dedup_params"] = params
+            return self
+
+        def caption(self, params=None, **_kwargs):
+            captured["caption_params"] = params
+            return self
+
+        def embed(self, params=None, **_kwargs):
+            captured["embed_params"] = params
+            return self
+
+        def ingest(self, *args: Any, **kwargs: Any):
+            return self
+
+    monkeypatch.setattr(service_ingestor_module, "ServiceIngestor", _FakeServiceIngestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--run-mode",
+            "service",
+            "--service-url",
+            "http://retriever-service:7670",
+            "--service-concurrency",
+            "3",
+            "--service-api-token",
+            "service-token",
+            "--dpi",
+            "300",
+            "--extract-images",
+            "--embed-granularity",
+            "page",
+            "--dedup",
+            "--dedup-iou-threshold",
+            "0.6",
+            "--caption",
+            "--caption-context-text-max-chars",
+            "12",
+            "--text-chunk",
+            "--text-chunk-max-tokens",
+            "64",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["init"] == {
+        "base_url": "http://retriever-service:7670",
+        "max_concurrency": 3,
+        "api_token": "service-token",
+    }
+    assert captured["files"] == [str(document)]
+    assert captured["extraction_mode"] == "auto"
+    assert captured["extract_params"].dpi == 300
+    assert captured["extract_params"].extract_images is True
+    assert captured["split_config"]["pdf"]["max_tokens"] == 64
+    assert captured["dedup_params"].iou_threshold == 0.6
+    assert captured["caption_params"].context_text_max_chars == 12
+    assert captured["embed_params"].embed_granularity == "page"
+    assert "through retriever service http://retriever-service:7670" in result.output
+
+
+def test_root_ingest_service_dry_run_redacts_token(tmp_path, monkeypatch) -> None:
+    import nemo_retriever.service_ingestor as service_ingestor_module
+
+    document = tmp_path / "service.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    def fail_service_ingestor(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("ServiceIngestor should not be created for --dry-run")
+
+    monkeypatch.setattr(service_ingestor_module, "ServiceIngestor", fail_service_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--run-mode",
+            "service",
+            "--service-api-token",
+            "service-token",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["run_mode"] == "service"
+    assert payload["documents"] == [str(document)]
+    assert payload["service"]["service_api_token"] == "<redacted>"
+    assert payload["service"]["service_url"] == "http://localhost:7670"
+
+
+def test_root_ingest_service_mode_rejects_local_only_flags(tmp_path) -> None:
+    document = tmp_path / "service.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--run-mode",
+            "service",
+            "--lancedb-uri",
+            "custom-db",
+            "--embed-invoke-url",
+            "http://embed.example/v1",
+            "--ray-address",
+            "ray://localhost:10001",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--run-mode=service" in result.output
+    assert "--lancedb-uri" in result.output
+    assert "--embed-invoke-url" in result.output
+    assert "--ray-address" in result.output
+
+
 def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     create_calls: list[dict[str, Any]] = []
