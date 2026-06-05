@@ -6,7 +6,7 @@ This documentation contains the release notes for [NeMo Retriever Library](overv
 
 NVIDIA® NeMo Retriever Library version 26.05 builds on the 26.03 foundation with a graph-based ingest architecture, expanded multimodal and tabular capabilities, production-oriented service deployment, and documentation aligned to a Helm-first supported path.
 
-To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md).
+To upgrade the Helm charts for this release, refer to the [NeMo Retriever Library Helm Charts](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md) and pin chart version `26.5.0`.
 
 Highlights for the 26.05 release include:
 
@@ -64,6 +64,7 @@ Highlights for the 26.05 release include:
 
 ### Packaging and platform
 
+- GA PyPI install: `uv pip install nemo-retriever==26.5.0` (see the library [quickstart](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever#setup-your-environment))
 - Optional install extras (`[local]`, `[multimedia]`, `[llm]`, `[tabular]`, `[nemotron-parse]`, `[service]`, and others), including slim remote/NIM-only installs on Mac and Windows  
 
 ### Helm chart
