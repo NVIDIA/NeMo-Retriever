@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from contextlib import nullcontext
 from typing import Any, Mapping, MutableMapping
 
 from opentelemetry import trace
@@ -36,9 +37,11 @@ logger = logging.getLogger(__name__)
 _DEFAULT_SERVICE_NAME = "nemo-retriever-service"
 _CONFIGURED_PROVIDER: Any | None = None
 _TRACE_CONTEXT_PROPAGATOR = TraceContextTextMapPropagator()
-_SENSITIVE_ATTRIBUTE_TOKENS = frozenset({"authorization", "auth", "token", "password", "secret"})
+_SENSITIVE_ATTRIBUTE_TOKENS = frozenset({
+    "authorization", "auth", "token", "password", "secret", "credential", "credentials"
+})
 _RAW_CONTENT_TOKENS = frozenset({"body", "payload", "content"})
-_MEASUREMENT_TOKENS = frozenset({"length", "size", "type", "count"})
+_BENIGN_CONTENT_METADATA_TOKENS = frozenset({"count", "encoding", "language", "length", "size", "type"})
 
 
 def tracing_enabled_from_env(env: Mapping[str, str] | None = None) -> bool:
@@ -128,7 +131,11 @@ def start_span(
     sanitized_attributes = span_attributes(attributes)
     if attributes is not None:
         kwargs["attributes"] = sanitized_attributes
-    return get_tracer().start_as_current_span(name, **kwargs)
+    try:
+        return get_tracer().start_as_current_span(name, **kwargs)
+    except Exception as exc:
+        logger.warning("OpenTelemetry span setup failed: %s", exc)
+        return nullcontext()
 
 
 def current_trace_id_hex() -> str | None:
@@ -237,7 +244,7 @@ def _is_sensitive_span_attribute_name(key: str) -> bool:
         return True
     if "raw" in token_set and (token_set & _RAW_CONTENT_TOKENS or "bytes" in token_set):
         return True
-    if token_set & _RAW_CONTENT_TOKENS and not token_set & _MEASUREMENT_TOKENS:
+    if token_set & _RAW_CONTENT_TOKENS and not token_set & _BENIGN_CONTENT_METADATA_TOKENS:
         return True
     return False
 

@@ -270,6 +270,26 @@ def test_create_job_returns_201_and_aggregate_fields(app_with_stub_pool: TestCli
     assert body["job_id"]
 
 
+def test_create_job_succeeds_when_tracing_span_setup_fails(
+    app_with_stub_pool: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _raise(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("tracer unavailable")
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.get_tracer", _raise)
+
+    resp = app_with_stub_pool.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 1, "label": "trace-failure"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["job_id"]
+    assert body.get("trace_id") is None
+    assert "x-trace-id" not in resp.headers
+
+
 def test_create_job_with_tracing_returns_trace_id_body_header_and_snapshot(
     traced_app_with_stub_pool: tuple[TestClient, list[Any]],
 ) -> None:
