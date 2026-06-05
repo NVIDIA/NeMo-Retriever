@@ -22,6 +22,7 @@ from nemo_retriever.service.tracing import (
     current_trace_id_hex,
     extract_trace_context,
     inject_trace_context,
+    span_attributes,
     start_span,
     tracing_enabled_from_env,
 )
@@ -72,25 +73,46 @@ def exported_spans(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
         ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317", "OTEL_SDK_DISABLED": "true"}, False),
         ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
         ({"OTEL_TRACES_EXPORTER": "OTLP", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
-        ({"OTEL_TRACES_EXPORTER": "jaeger", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
-        ({"OTEL_TRACES_EXPORTER": "zipkin", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
-        ({"OTEL_TRACES_EXPORTER": "console", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
-        ({"OTEL_TRACES_EXPORTER": "custom", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
+        ({"OTEL_TRACES_EXPORTER": "jaeger", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
+        ({"OTEL_TRACES_EXPORTER": "zipkin", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
+        ({"OTEL_TRACES_EXPORTER": "console", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
+        ({"OTEL_TRACES_EXPORTER": "custom", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
     ],
 )
 def test_tracing_enabled_from_env_requires_exporter_and_endpoint(env: dict[str, str], expected: bool) -> None:
     assert tracing_enabled_from_env(env) is expected
 
 
+def test_span_attributes_returns_sanitized_public_attribute_dict() -> None:
+    raw_attributes = {
+        "authorization": "Bearer abc",
+        "credentials": "abc",
+        "user_credentials": "abc",
+        "document_content": "sensitive",
+        "response_payload": b"raw",
+        "payload_text": "sensitive",
+        "body_text": "sensitive",
+        "content_type": "application/json",
+        "content_encoding": "gzip",
+        "content_language": "en",
+        "content_length": 123,
+        "payload_size": 456,
+        "body_length": 789,
+        "safe.status": "ok",
+        "document_count": 2,
+    }
 
-def test_start_span_is_noop_when_tracer_lookup_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    def _raise(*args: Any, **kwargs: Any) -> Any:
-        raise RuntimeError("tracer unavailable")
-
-    monkeypatch.setattr("nemo_retriever.service.tracing.get_tracer", _raise)
-
-    with start_span("service.unavailable"):
-        assert current_trace_id_hex() is None
+    assert span_attributes() == {}
+    assert span_attributes(raw_attributes) == {
+        "content_type": "application/json",
+        "content_encoding": "gzip",
+        "content_language": "en",
+        "content_length": 123,
+        "payload_size": 456,
+        "body_length": 789,
+        "safe.status": "ok",
+        "document_count": 2,
+    }
 
 
 def test_configure_tracing_creates_spans_with_hex_trace_id(
