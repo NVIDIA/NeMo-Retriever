@@ -315,6 +315,34 @@ def test_create_job_succeeds_when_tracing_span_setup_fails(
     assert "x-trace-id" not in resp.headers
 
 
+def test_create_job_succeeds_when_tracing_span_enter_fails(
+    app_with_stub_pool: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _FailingSpanContext:
+        def __enter__(self) -> Any:
+            raise RuntimeError("span enter failed")
+
+        def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> bool:
+            raise AssertionError("span context should not be entered")
+
+    class _Tracer:
+        def start_as_current_span(self, name: str, **kwargs: Any) -> Any:
+            return _FailingSpanContext()
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.get_tracer", lambda: _Tracer())
+
+    resp = app_with_stub_pool.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 1, "label": "trace-enter-failure"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["job_id"]
+    assert body.get("trace_id") is None
+    assert "x-trace-id" not in resp.headers
+
+
 def test_create_job_with_tracing_returns_trace_id_body_header_and_snapshot(
     traced_app_with_stub_pool: tuple[TestClient, list[Any]],
 ) -> None:

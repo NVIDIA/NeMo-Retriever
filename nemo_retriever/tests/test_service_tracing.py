@@ -7,8 +7,7 @@
 from __future__ import annotations
 
 import re
-from contextlib import nullcontext
-from typing import Any, Mapping
+from typing import Any
 
 import pytest
 from opentelemetry import trace
@@ -23,7 +22,6 @@ from nemo_retriever.service.tracing import (
     current_trace_id_hex,
     extract_trace_context,
     inject_trace_context,
-    span_attributes,
     start_span,
     tracing_enabled_from_env,
 )
@@ -74,72 +72,20 @@ def exported_spans(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
         ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317", "OTEL_SDK_DISABLED": "true"}, False),
         ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
         ({"OTEL_TRACES_EXPORTER": "OTLP", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
-        ({"OTEL_TRACES_EXPORTER": "jaeger", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
-        ({"OTEL_TRACES_EXPORTER": "zipkin", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
-        ({"OTEL_TRACES_EXPORTER": "console", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
-        ({"OTEL_TRACES_EXPORTER": "custom", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
+        ({"OTEL_TRACES_EXPORTER": "jaeger", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
+        ({"OTEL_TRACES_EXPORTER": "zipkin", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
+        ({"OTEL_TRACES_EXPORTER": "console", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
+        ({"OTEL_TRACES_EXPORTER": "custom", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
     ],
 )
 def test_tracing_enabled_from_env_requires_exporter_and_endpoint(env: dict[str, str], expected: bool) -> None:
     assert tracing_enabled_from_env(env) is expected
 
 
+def test_tracing_helper_keeps_span_attribute_sanitizer_private() -> None:
+    import nemo_retriever.service.tracing as tracing_module
 
-def test_span_attributes_drops_sensitive_keys_and_keeps_benign_metadata() -> None:
-    assert span_attributes(
-        {
-            "credential": "abc",
-            "credentials": {"token": "abc"},
-            "user_credentials": "abc",
-            "document_content": "sensitive",
-            "response_payload": b"raw",
-            "payload_text": "sensitive",
-            "body_text": "sensitive",
-            "request_body": "{}",
-            "body": "{}",
-            "payload": b"raw",
-            "file_bytes": b"raw",
-            "content": "sensitive",
-            "content_type": "application/json",
-            "content_encoding": "gzip",
-            "content_language": "en",
-            "content_length": 123,
-            "payload_size": 456,
-            "body_length": 789,
-            "safe.status": "ok",
-            "document_count": 2,
-        }
-    ) == {
-        "content_type": "application/json",
-        "content_encoding": "gzip",
-        "content_language": "en",
-        "content_length": 123,
-        "payload_size": 456,
-        "body_length": 789,
-        "safe.status": "ok",
-        "document_count": 2,
-    }
-
-
-def test_start_span_routes_attributes_through_public_helper(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[Mapping[str, Any] | None] = []
-
-    class _FakeTracer:
-        def start_as_current_span(self, name: str, **kwargs: Any) -> Any:
-            calls.append(kwargs["attributes"])
-            return nullcontext()
-
-    def _span_attributes(attributes: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        assert attributes == {"unsafe": "raw"}
-        return {"safe.status": "ok"}
-
-    monkeypatch.setattr("nemo_retriever.service.tracing.get_tracer", lambda: _FakeTracer())
-    monkeypatch.setattr("nemo_retriever.service.tracing.span_attributes", _span_attributes)
-
-    with start_span("service.sanitize", attributes={"unsafe": "raw"}):
-        pass
-
-    assert calls == [{"safe.status": "ok"}]
+    assert not hasattr(tracing_module, "span_attributes")
 
 
 def test_start_span_is_noop_when_tracer_lookup_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -150,6 +96,43 @@ def test_start_span_is_noop_when_tracer_lookup_fails(monkeypatch: pytest.MonkeyP
 
     with start_span("service.unavailable"):
         assert current_trace_id_hex() is None
+
+
+def test_start_span_is_noop_when_context_enter_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FailingSpanContext:
+        def __enter__(self) -> Any:
+            raise RuntimeError("span enter failed")
+
+        def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> bool:
+            raise AssertionError("span context should not be entered")
+
+    class _Tracer:
+        def start_as_current_span(self, name: str, **kwargs: Any) -> Any:
+            return _FailingSpanContext()
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.get_tracer", lambda: _Tracer())
+
+    with start_span("service.enter-failure"):
+        assert current_trace_id_hex() is None
+
+
+def test_start_span_does_not_swallow_user_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _SpanContext:
+        def __enter__(self) -> object:
+            return object()
+
+        def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> bool:
+            return False
+
+    class _Tracer:
+        def start_as_current_span(self, name: str, **kwargs: Any) -> Any:
+            return _SpanContext()
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.get_tracer", lambda: _Tracer())
+
+    with pytest.raises(RuntimeError, match="application failure"):
+        with start_span("service.user-failure"):
+            raise RuntimeError("application failure")
 
 
 def test_configure_tracing_creates_spans_with_hex_trace_id(

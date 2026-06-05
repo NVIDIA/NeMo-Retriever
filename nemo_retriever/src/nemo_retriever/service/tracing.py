@@ -52,7 +52,7 @@ def tracing_enabled_from_env(env: Mapping[str, str] | None = None) -> bool:
 
     traces_exporter = source.get("OTEL_TRACES_EXPORTER", "").strip()
     endpoint = source.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
-    return bool(traces_exporter.lower() == "otlp" and endpoint)
+    return bool(traces_exporter and traces_exporter.lower() != "none" and endpoint)
 
 
 def configure_tracing(*, service_role: str, service_name: str | None = None) -> bool:
@@ -110,11 +110,6 @@ def get_tracer(name: str = "nemo_retriever.service") -> Any:
     return trace.get_tracer(name)
 
 
-def span_attributes(attributes: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """Return span attributes after removing credentials and raw payload content."""
-    return _sanitize_span_attributes(attributes) or {}
-
-
 def start_span(
     name: str,
     *,
@@ -128,14 +123,41 @@ def start_span(
         kwargs["kind"] = kind
     if context is not None:
         kwargs["context"] = context
-    sanitized_attributes = span_attributes(attributes)
-    if attributes is not None:
+    sanitized_attributes = _sanitize_span_attributes(attributes)
+    if sanitized_attributes is not None:
         kwargs["attributes"] = sanitized_attributes
     try:
-        return get_tracer().start_as_current_span(name, **kwargs)
+        span_context = get_tracer().start_as_current_span(name, **kwargs)
     except Exception as exc:
         logger.warning("OpenTelemetry span setup failed: %s", exc)
         return nullcontext()
+    return _SafeSpanContext(span_context)
+
+
+class _SafeSpanContext:
+    """Context manager that keeps tracing failures observability-only."""
+
+    def __init__(self, span_context: Any) -> None:
+        self._span_context = span_context
+        self._entered = False
+
+    def __enter__(self) -> Any:
+        try:
+            span = self._span_context.__enter__()
+        except Exception as exc:
+            logger.warning("OpenTelemetry span setup failed: %s", exc)
+            return None
+        self._entered = True
+        return span
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> bool:
+        if not self._entered:
+            return False
+        try:
+            return bool(self._span_context.__exit__(exc_type, exc, traceback))
+        except Exception as span_exc:
+            logger.warning("OpenTelemetry span teardown failed: %s", span_exc)
+            return False
 
 
 def current_trace_id_hex() -> str | None:
