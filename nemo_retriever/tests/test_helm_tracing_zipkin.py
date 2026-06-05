@@ -191,6 +191,18 @@ def test_zipkin_injection_requires_existing_traces_pipeline() -> None:
     ) in proc.stderr
 
 
+def test_zipkin_injection_requires_non_empty_trace_receivers() -> None:
+    proc = _helm_template_process(
+        extra_args=["--set-json", "topology.otel.config.service.pipelines.traces.receivers=[]"]
+    )
+
+    assert proc.returncode != 0
+    assert (
+        "topology.zipkin.exporter.enabled requires topology.otel.config.service.pipelines.traces "
+        "with non-empty receivers; provide that traces pipeline or set topology.zipkin.exporter.enabled=false"
+    ) in proc.stderr
+
+
 def test_otel_config_exports_traces_to_rendered_zipkin_endpoint() -> None:
     docs = _helm_template()
     config = yaml.safe_load(_find(docs, "ConfigMap", OTEL_CONFIG_NAME)["data"]["config.yaml"])
@@ -253,6 +265,25 @@ def test_all_enabled_nimservices_inherit_otel_env() -> None:
         assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
         assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
         assert values["TRITON_OTEL_RATE"] == "1"
+
+
+def test_per_nim_otel_endpoint_overrides_chart_endpoint() -> None:
+    docs = _helm_template(
+        [
+            "nimOperator.otel.endpoint=http://chart-otel:4318",
+            "nimOperator.rerankqa.otel.endpoint=http://per-nim-otel:4318",
+        ]
+    )
+
+    page_elements = _find(docs, "NIMService", "nemotron-page-elements-v3")
+    page_values = _env_values(_nim_env(page_elements))
+    assert page_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://chart-otel:4318"
+    assert page_values["TRITON_OTEL_URL"] == "http://chart-otel:4318/v1/traces"
+
+    rerank = _find(docs, "NIMService", "llama-nemotron-rerank-vl-1b-v2")
+    rerank_values = _env_values(_nim_env(rerank))
+    assert rerank_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://per-nim-otel:4318"
+    assert rerank_values["TRITON_OTEL_URL"] == "http://per-nim-otel:4318/v1/traces"
 
 
 def test_per_nim_otel_opt_out_and_override() -> None:

@@ -898,6 +898,7 @@ nimOperator:
     otel:
       enabled: null
       serviceName: ""
+      endpoint: ""
       env: {}
     env:
       - name: NIM_HTTP_API_PORT
@@ -946,6 +947,7 @@ nimOperator:
     otel:
       enabled: null
       serviceName: ""
+      endpoint: ""
       env: {}
     env:
       - name: NIM_HTTP_API_PORT
@@ -996,6 +998,7 @@ nimOperator:
     otel:
       enabled: null
       serviceName: ""
+      endpoint: ""
       env: {}
     env:
       - name: OMP_NUM_THREADS
@@ -1043,6 +1046,7 @@ nimOperator:
     otel:
       enabled: null
       serviceName: ""
+      endpoint: ""
       env: {}
     env:
       - name: NIM_HTTP_API_PORT
@@ -1110,6 +1114,7 @@ nimOperator:
     otel:
       enabled: null
       serviceName: ""
+      endpoint: ""
       env: {}
     env:
       - name: NIM_HTTP_API_PORT
@@ -1166,6 +1171,7 @@ nimOperator:
     otel:
       enabled: null
       serviceName: ""
+      endpoint: ""
       env: {}
     env:
       - name: NIM_HTTP_API_PORT
@@ -1228,6 +1234,7 @@ nimOperator:
     otel:
       enabled: null
       serviceName: ""
+      endpoint: ""
       env: {}
     env:
       - name: NIM_HTTP_API_PORT
@@ -1268,6 +1275,7 @@ nimOperator:
     otel:
       enabled: null
       serviceName: ""
+      endpoint: ""
       env: {}
     env:
       - name: NIM_TAGS_SELECTOR

@@ -298,7 +298,9 @@ Tracing helpers
 {{- $_ := set $existingEnvNames $env.name true -}}
 {{- end -}}
 {{- end -}}
-{{- $endpoint := default (printf "http://%s:%v" (include "nemo-retriever.otel.fullname" $root) $root.Values.topology.otel.ports.otlpHttp) $root.Values.nimOperator.otel.endpoint -}}
+{{- $defaultEndpoint := printf "http://%s:%v" (include "nemo-retriever.otel.fullname" $root) $root.Values.topology.otel.ports.otlpHttp -}}
+{{- $chartEndpoint := default $defaultEndpoint $root.Values.nimOperator.otel.endpoint -}}
+{{- $endpoint := default $chartEndpoint $nim.otel.endpoint -}}
 {{- $tritonPath := default "/v1/traces" $root.Values.nimOperator.otel.tritonPath -}}
 {{- $serviceName := default $name $nim.otel.serviceName -}}
 {{- $defaults := dict
