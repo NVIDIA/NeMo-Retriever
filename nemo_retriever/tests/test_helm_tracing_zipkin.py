@@ -361,6 +361,34 @@ def test_zipkin_injection_initializes_missing_trace_exporters() -> None:
     assert config["service"]["pipelines"]["traces"]["exporters"] == ["zipkin"]
 
 
+def test_zipkin_injection_allows_empty_trace_component_maps() -> None:
+    docs = _helm_template(
+        extra_args=[
+            "--set-json",
+            "topology.otel.config.receivers.custom={}",
+            "--set-json",
+            "topology.otel.config.processors.custom={}",
+            "--set-json",
+            "topology.otel.config.exporters.custom={}",
+            "--set-json",
+            'topology.otel.config.service.pipelines.traces.receivers=["custom"]',
+            "--set-json",
+            'topology.otel.config.service.pipelines.traces.processors=["custom"]',
+            "--set-json",
+            'topology.otel.config.service.pipelines.traces.exporters=["custom"]',
+        ]
+    )
+    config = yaml.safe_load(_find(docs, "ConfigMap", OTEL_CONFIG_NAME)["data"]["config.yaml"])
+    traces = config["service"]["pipelines"]["traces"]
+
+    assert config["receivers"]["custom"] == {}
+    assert config["processors"]["custom"] == {}
+    assert config["exporters"]["custom"] == {}
+    assert traces["receivers"] == ["custom"]
+    assert traces["processors"] == ["custom"]
+    assert traces["exporters"] == ["custom", "zipkin"]
+
+
 def test_zipkin_injection_requires_existing_traces_pipeline() -> None:
     proc = _helm_template_process(extra_args=["--set-json", "topology.otel.config.service.pipelines.traces=null"])
 
@@ -391,7 +419,7 @@ def test_zipkin_injection_requires_referenced_receiver_to_exist() -> None:
     proc = _helm_template_process(extra_args=["--set-json", "topology.otel.config.receivers.otlp=null"])
 
     assert proc.returncode != 0
-    assert 'trace receiver "otlp" is missing or empty' in proc.stderr
+    assert 'trace receiver "otlp" is missing or null' in proc.stderr
     assert "fix topology.otel.config or set topology.zipkin.exporter.enabled=false" in proc.stderr
 
 
@@ -399,7 +427,7 @@ def test_zipkin_injection_requires_referenced_processor_to_exist() -> None:
     proc = _helm_template_process(extra_args=["--set-json", "topology.otel.config.processors.batch=null"])
 
     assert proc.returncode != 0
-    assert 'trace processor "batch" is missing or empty' in proc.stderr
+    assert 'trace processor "batch" is missing or null' in proc.stderr
     assert "fix topology.otel.config or set topology.zipkin.exporter.enabled=false" in proc.stderr
 
 
@@ -407,7 +435,7 @@ def test_zipkin_injection_requires_referenced_exporter_to_exist() -> None:
     proc = _helm_template_process(extra_args=["--set-json", "topology.otel.config.exporters.debug=null"])
 
     assert proc.returncode != 0
-    assert 'trace exporter "debug" is missing or empty' in proc.stderr
+    assert 'trace exporter "debug" is missing or null' in proc.stderr
     assert "fix topology.otel.config or set topology.zipkin.exporter.enabled=false" in proc.stderr
 
 

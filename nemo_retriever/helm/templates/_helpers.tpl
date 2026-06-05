@@ -251,17 +251,15 @@ Tracing helpers
 {{- end -}}
 {{- $receivers := get $config "receivers" | default dict -}}
 {{- range $receiverName := $traceReceivers -}}
-{{- $receiver := get $receivers $receiverName -}}
-{{- if not $receiver -}}
-{{- fail (printf "topology.otel.config.service.pipelines.traces trace receiver %q is missing or empty in topology.otel.config.receivers; fix topology.otel.config or set topology.zipkin.exporter.enabled=false" $receiverName) -}}
+{{- if or (not (hasKey $receivers $receiverName)) (eq (get $receivers $receiverName) nil) -}}
+{{- fail (printf "topology.otel.config.service.pipelines.traces trace receiver %q is missing or null in topology.otel.config.receivers; fix topology.otel.config or set topology.zipkin.exporter.enabled=false" $receiverName) -}}
 {{- end -}}
 {{- end -}}
 {{- $processors := get $config "processors" | default dict -}}
 {{- $traceProcessors := get $traces "processors" | default list -}}
 {{- range $processorName := $traceProcessors -}}
-{{- $processor := get $processors $processorName -}}
-{{- if not $processor -}}
-{{- fail (printf "topology.otel.config.service.pipelines.traces trace processor %q is missing or empty in topology.otel.config.processors; fix topology.otel.config or set topology.zipkin.exporter.enabled=false" $processorName) -}}
+{{- if or (not (hasKey $processors $processorName)) (eq (get $processors $processorName) nil) -}}
+{{- fail (printf "topology.otel.config.service.pipelines.traces trace processor %q is missing or null in topology.otel.config.processors; fix topology.otel.config or set topology.zipkin.exporter.enabled=false" $processorName) -}}
 {{- end -}}
 {{- end -}}
 {{- $exporters := get $config "exporters" | default dict -}}
@@ -277,9 +275,8 @@ Tracing helpers
 {{- $traceExporters = append $traceExporters "zipkin" -}}
 {{- end -}}
 {{- range $exporterName := $traceExporters -}}
-{{- $exporter := get $exporters $exporterName -}}
-{{- if not $exporter -}}
-{{- fail (printf "topology.otel.config.service.pipelines.traces trace exporter %q is missing or empty in topology.otel.config.exporters; fix topology.otel.config or set topology.zipkin.exporter.enabled=false" $exporterName) -}}
+{{- if or (not (hasKey $exporters $exporterName)) (eq (get $exporters $exporterName) nil) -}}
+{{- fail (printf "topology.otel.config.service.pipelines.traces trace exporter %q is missing or null in topology.otel.config.exporters; fix topology.otel.config or set topology.zipkin.exporter.enabled=false" $exporterName) -}}
 {{- end -}}
 {{- end -}}
 {{- $_ := set $traces "exporters" $traceExporters -}}
