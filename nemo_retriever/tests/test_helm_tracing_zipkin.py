@@ -153,13 +153,41 @@ def test_zipkin_disabled_with_external_endpoint_still_exports_to_zipkin() -> Non
     assert "zipkin" in config["service"]["pipelines"]["traces"]["exporters"]
 
 
+def test_zipkin_injection_allows_traces_pipeline_without_processors() -> None:
+    docs = _helm_template(
+        extra_args=[
+            "--set-json",
+            "topology.otel.config.service.pipelines.traces.processors=[]",
+        ]
+    )
+    config = yaml.safe_load(_find(docs, "ConfigMap", OTEL_CONFIG_NAME)["data"]["config.yaml"])
+    traces = config["service"]["pipelines"]["traces"]
+
+    assert traces["receivers"] == ["otlp"]
+    assert traces["processors"] == []
+    assert "zipkin" in traces["exporters"]
+    assert traces["exporters"].count("zipkin") == 1
+
+
+def test_zipkin_injection_initializes_missing_trace_exporters() -> None:
+    docs = _helm_template(
+        extra_args=[
+            "--set-json",
+            "topology.otel.config.service.pipelines.traces.exporters=null",
+        ]
+    )
+    config = yaml.safe_load(_find(docs, "ConfigMap", OTEL_CONFIG_NAME)["data"]["config.yaml"])
+
+    assert config["service"]["pipelines"]["traces"]["exporters"] == ["zipkin"]
+
+
 def test_zipkin_injection_requires_existing_traces_pipeline() -> None:
     proc = _helm_template_process(extra_args=["--set-json", "topology.otel.config.service.pipelines.traces=null"])
 
     assert proc.returncode != 0
     assert (
         "topology.zipkin.exporter.enabled requires topology.otel.config.service.pipelines.traces "
-        "with receivers and processors; provide that traces pipeline or set topology.zipkin.exporter.enabled=false"
+        "with non-empty receivers; provide that traces pipeline or set topology.zipkin.exporter.enabled=false"
     ) in proc.stderr
 
 
