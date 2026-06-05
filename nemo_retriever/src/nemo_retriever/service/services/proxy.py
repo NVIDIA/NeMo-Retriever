@@ -30,6 +30,7 @@ from fastapi.responses import Response
 
 from nemo_retriever.service.config import GatewayConfig
 from nemo_retriever.service.services.pipeline_pool import PoolType
+from nemo_retriever.service.tracing import inject_trace_context
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,7 @@ class GatewayProxy:
         fwd_headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host", "transfer-encoding")}
         if extra_headers:
             fwd_headers.update(extra_headers)
+        inject_trace_context(fwd_headers)
 
         try:
             backend_resp = await client.request(
@@ -176,6 +178,7 @@ class GatewayProxy:
         client = self._client_for(pool_type)
         backend_label = pool_type.value
         fwd_headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host",)}
+        inject_trace_context(fwd_headers)
 
         try:
             backend_resp = await client.get(path, headers=fwd_headers)
