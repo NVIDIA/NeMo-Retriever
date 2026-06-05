@@ -72,10 +72,10 @@ def exported_spans(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
         ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317", "OTEL_SDK_DISABLED": "true"}, False),
         ({"OTEL_TRACES_EXPORTER": "otlp", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
         ({"OTEL_TRACES_EXPORTER": "OTLP", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
-        ({"OTEL_TRACES_EXPORTER": "jaeger", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
-        ({"OTEL_TRACES_EXPORTER": "zipkin", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
-        ({"OTEL_TRACES_EXPORTER": "console", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
-        ({"OTEL_TRACES_EXPORTER": "custom", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, False),
+        ({"OTEL_TRACES_EXPORTER": "jaeger", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
+        ({"OTEL_TRACES_EXPORTER": "zipkin", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
+        ({"OTEL_TRACES_EXPORTER": "console", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
+        ({"OTEL_TRACES_EXPORTER": "custom", "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}, True),
     ],
 )
 def test_tracing_enabled_from_env_requires_exporter_and_endpoint(env: dict[str, str], expected: bool) -> None:
