@@ -22,14 +22,15 @@ Use the sections below to pick documentation and deployment options that match y
 
 **Docker Compose (unsupported, developer-only):** [Docker Compose for local development](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) — **not** a substitute for Helm or the published Library charts.
 
-For audio and video extraction in Kubernetes, set `service.installFfmpeg=true`
-so the service container installs `ffmpeg` and `ffprobe` at startup. This
-runtime install requires package-repository network egress, a writable root
-filesystem, and security policy that allows the image's scoped sudo use. If
-your cluster blocks startup package installation (for example air-gapped
-environments or **OpenShift restricted-v2**), use a custom service image that
-already contains `ffmpeg` and `ffprobe`, then set `service.image.repository`
-and `service.image.tag`. For OpenShift overrides, see
+For audio and video extraction in Kubernetes, the Helm chart defaults to
+`service.installFfmpeg=true`, which installs `ffmpeg` and `ffprobe` at container
+startup. That path requires package-repository network egress, a writable root
+filesystem, and security policy that allows the image's scoped sudo use. If your
+cluster blocks startup package installation (air-gapped environments or
+**OpenShift restricted-v2**), build a custom service image with `ffmpeg` and
+`ffprobe` baked in, set `service.installFfmpeg=false`, and point
+`service.image.repository` / `service.image.tag` at that image. For OpenShift
+value overrides, refer to
 [OpenShift deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#openshift-deployment)
 in the Helm chart README.
 

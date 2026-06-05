@@ -119,9 +119,9 @@ Do not also set `INSTALL_FFMPEG` in `service.env`; the chart fails rendering
 when both are configured so the rendered Pod does not contain duplicate
 environment variables.
 
-When `service.installFfmpeg=false` (the default), the service still starts
-normally and processes PDF, image, text and HTML uploads. Audio / video
-uploads are rejected up-front with **HTTP 501**:
+When `service.installFfmpeg=false`, the service still starts normally and
+processes PDF, image, text and HTML uploads. Audio / video uploads are
+rejected up-front with **HTTP 501**:
 
 ```text
 Audio and video ingestion require FFmpeg in the retriever service
@@ -291,7 +291,7 @@ short list of knobs you'll touch first.
 | `service.image.repository`    | `localhost:32000/nemo-retriever-service` | Override to a published image. |
 | `service.image.tag`           | `latest`                           |       |
 | `service.replicas`            | `1`                                | Hard cap = 1 while SQLite is the backend. |
-| `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Not for air-gapped clusters — use a custom image instead. |
+| `service.installFfmpeg`       | `true`                             | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Set `false` on air-gapped or **OpenShift restricted-v2** clusters and use a [prebuilt service image](#audio-and-video-ffmpeg-on-restricted-openshift) instead. |
 | `service.resources.requests`  | `16 / 16Gi`                        | Tune in tandem with `serviceConfig.pipeline.*Workers`. |
 | `service.resources.limits`    | `96 / 96Gi`                        |       |
 | `service.gpu.enabled`         | `false`                            | The service does **not** need a GPU. |
@@ -977,7 +977,7 @@ fields become hard rejections, not warnings.
 | `CreateContainerConfigError`: non-numeric image `USER nemo` on **vectordb** | Vectordb container has no `securityContext` block for SCC to annotate | Disable vectordb for smoke tests, or patch the vectordb Deployment after install (below) |
 | PSA warnings on **otel-collector** | Otel Deployment has no `securityContext` in the chart | `topology.otel.enabled=false` unless you patch that Deployment |
 | Audio/video fails or pod never gets `ffmpeg` | `service.installFfmpeg=true` runs sudo at startup; **restricted-v2** blocks privilege escalation (`no-new-privileges`) | Prebuild a service image with `ffmpeg`/`ffprobe` baked in (see [Audio and video on restricted OpenShift](#audio-and-video-ffmpeg-on-restricted-openshift)); leave `service.installFfmpeg=false` |
-| `ImagePullBackOff` for a service image in the **internal OpenShift registry** | Chart `imagePullSecrets` lists only `ngc-secret`; the namespace ServiceAccount `dockercfg` secret is not merged automatically | Add the SA pull secret under `imagePullSecrets` (see [Internal registry pull secrets](#internal-registry-pull-secrets)) |
+| `ImagePullBackOff` for a service image in the **internal OpenShift registry** | Chart-rendered `imagePullSecrets` may omit the namespace SA `dockercfg` secret required for internal-registry pulls | List every required pull secret under `imagePullSecrets` (refer to [Internal registry pull secrets](#internal-registry-pull-secrets)) |
 | Optional NIM `CrashLoopBackOff` with missing `.so` in logs | GPU/CUDA libraries not on `LD_LIBRARY_PATH` for some NIM Operator stacks on OCP | Append paths via `nimOperator.<key>.env` (see [Optional NIM runtime environment](#optional-nim-runtime-environment)) |
 
 ### Recommended value overrides
@@ -1004,7 +1004,7 @@ service:
       drop: ["ALL"]
     seccompProfile:
       type: RuntimeDefault
-  # Leave installFfmpeg false on restricted-v2; use a custom image for audio/video.
+  # Chart default is installFfmpeg: true; override to false on restricted-v2.
   installFfmpeg: false
 
 serviceConfig:
@@ -1051,21 +1051,23 @@ Push the result to NGC, your private registry, or the
 
 ### Internal registry pull secrets { #internal-registry-pull-secrets }
 
-When you rebuild the service image into the OpenShift internal registry
-(`image-registry.openshift-image-registry.svc:5000/...`), pods pull through the
-namespace ServiceAccount's automatic `kubernetes.io/dockercfg` secret. The chart
-renders an explicit `imagePullSecrets` list on every Pod; that list **replaces**
-the implicit SA default rather than merging with it. If you set only `ngc-secret`
-(for NGC NIM images) but point `service.image` at the internal registry, the
-service Pod can fail with `ImagePullBackOff`.
+When you push the service image to the OpenShift internal registry
+(`image-registry.openshift-image-registry.svc:5000/...`), pods need credentials
+for that registry **and** for NGC NIM images. The chart renders an explicit
+`imagePullSecrets` list on every Pod. List every secret each Pod needs—the
+namespace ServiceAccount `dockercfg` secret when `service.image` uses the
+internal registry, plus `ngc-secret` when in-cluster NIMs pull from NGC.
 
-**Internal-registry service image only** — omit the chart-managed NGC pull secret
+If the rendered list contains only `ngc-secret` while `service.image` uses the
+internal registry, the service Pod can fail with `ImagePullBackOff`.
+
+**Internal-registry service image only** — clear the chart-managed NGC pull secret
 name so the helper does not inject `ngc-secret` alone:
 
 ```yaml
 ngcImagePullSecret:
   create: false
-  # Do not set name — leaves ngc-secret out of the rendered Pod spec.
+  name: ""   # Explicitly empty — clears the default "ngc-secret"
 
 imagePullSecrets:
   - name: default-dockercfg-xxxxx   # replace with your SA secret (see below)
@@ -1102,20 +1104,26 @@ so CUDA/driver libraries from the GPU Operator stack were visible at runtime.
 Symptoms are `CrashLoopBackOff` and log lines referencing a missing `.so` (for
 example `libcudart` or `libcudnn`).
 
-Merge additional `env` entries under the relevant `nimOperator.<key>.env` list in
-your values file (retain the chart's existing `env` entries for that NIM and
-append `LD_LIBRARY_PATH`):
+Helm **replaces** the whole `env` list when you override `nimOperator.<key>.env`
+in a values file. Copy the chart defaults from `values.yaml` for that NIM, then
+append `LD_LIBRARY_PATH`:
 
 ```yaml
 nimOperator:
   audio:
     env:
-      # ... chart defaults (NIM_TAGS_SELECTOR, NIM_TRITON_LOG_VERBOSE, etc.) ...
+      - name: NIM_TAGS_SELECTOR
+        value: "name=parakeet-1-1b-ctc-en-us,mode=ofl,vad=default,diarizer=disabled"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
       - name: LD_LIBRARY_PATH
         value: "/usr/local/nvidia/lib64:/usr/local/cuda/lib64"
   nemotron_3_nano_omni_30b_a3b_reasoning:
     env:
-      # ... chart defaults (NIM_HTTP_API_PORT, etc.) ...
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TRITON_LOG_VERBOSE
+        value: "1"
       - name: LD_LIBRARY_PATH
         value: "/usr/local/nvidia/lib64:/usr/local/cuda/lib64"
 ```
@@ -1140,7 +1148,7 @@ caption text lands in `message.content` instead of reasoning-only fields:
 }
 ```
 
-See [Image captioning](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/docs/docs/extraction/prerequisites-support-matrix.md#image-captioning-2605)
+Refer to [Image captioning](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/docs/docs/extraction/prerequisites-support-matrix.md#image-captioning-2605)
 for when to enable the caption stage and which Helm key to use.
 
 ### Example install on OpenShift 4.20 (service-only smoke test)

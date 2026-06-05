@@ -11,11 +11,7 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 - For audio and video, `ffmpeg` and `ffprobe` must be on `PATH` (for example
   `sudo apt-get install -y --no-install-recommends ffmpeg` on Debian/Ubuntu).
   `ffmpeg-python` and `nemo-retriever[multimedia]` do not install these binaries.
-  On Helm with package-repo access, set `service.installFfmpeg=true`. On
-  OpenShift restricted-v2, use a prebuilt service image instead — see
-  [Audio and video on restricted OpenShift](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#audio-and-video-ffmpeg-on-restricted-openshift)
-  in the Helm chart README. For air-gapped clusters, see
-  [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+  For container and Kubernetes guidance, refer to [Audio and video](audio-video.md).
 
 !!! note
 
@@ -99,9 +95,7 @@ These NIM microservices are **optional** for the default extraction pipeline. Th
 
 ### Image captioning (26.05) { #image-captioning-2605 }
 
-For 26.05, use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above.
-
-For direct `/v1/chat/completions` smoke tests against the Omni NIM (outside the retriever service), set `chat_template_kwargs.enable_thinking=false` so the caption appears in `message.content`. The service caption profile already applies this during ingest. See [Omni caption manual smoke testing](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#omni-caption-manual-smoke-testing) for a request example.
+For 26.05, use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above. For pipeline scope (PDF chart regions are not captioned), refer to [Image captioning](multimodal-extraction.md#image-captioning).
 
 Optional features listed in the table above require additional GPU support, disk space, and feature-specific system dependencies beyond the four default NIMs.
 
