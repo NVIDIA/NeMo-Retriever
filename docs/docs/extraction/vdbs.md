@@ -91,7 +91,11 @@ Semantic retrieval uses dense embeddings to find content that is similar in mean
 
 ## Metadata and filtering { #metadata-and-filtering }
 
-[Metadata filtering: add sidecar metadata and filter searches](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb)
+Attach sidecar metadata at ingest with `meta_dataframe`, `meta_source_field`, and `meta_fields` on `vdb_upload`. Values merge into each chunk's `content_metadata` and are stored as compact JSON in LanceDB. Narrow results at query time with server-side `where` on [`Retriever.query`](nemo-retriever-api-reference.md) or client-side `filter_hits_by_content_metadata`.
+
+- [Metadata filtering notebook](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) — end-to-end ingest, `Retriever.query`, and both filter modes
+- [Sidecar metadata ingest](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb) — CLI and graph workflow
+- [VDB README (metadata filtering)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering) — operator behavior, SQL predicates, and examples
 
 ## LanceDB deployment characteristics { #lancedb-deployment-characteristics }
 
