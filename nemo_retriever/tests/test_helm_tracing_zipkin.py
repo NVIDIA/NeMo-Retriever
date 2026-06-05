@@ -314,6 +314,25 @@ def test_zipkin_deployment_renders_security_contexts() -> None:
     }
 
 
+def test_zipkin_deployment_renders_default_tcp_health_probes() -> None:
+    docs = _helm_template()
+    deployment = _find(docs, "Deployment", ZIPKIN_NAME)
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+
+    for probe_name in ("livenessProbe", "readinessProbe", "startupProbe"):
+        assert container[probe_name]["tcpSocket"] == {"port": "http"}
+
+
+def test_zipkin_deployment_omits_disabled_probe() -> None:
+    docs = _helm_template(["topology.zipkin.readinessProbe.enabled=false"])
+    deployment = _find(docs, "Deployment", ZIPKIN_NAME)
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+
+    assert "readinessProbe" not in container
+    assert "livenessProbe" in container
+    assert "startupProbe" in container
+
+
 def test_zipkin_injection_allows_traces_pipeline_without_processors() -> None:
     docs = _helm_template(
         extra_args=[
@@ -525,6 +544,27 @@ def test_existing_nim_env_endpoint_drives_triton_url_without_duplicate_endpoint(
     _assert_unique_env_names(env)
     assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://manual-otel:4318"
     assert values["TRITON_OTEL_URL"] == "http://manual-otel:4318/v1/traces"
+
+
+def test_existing_nim_env_endpoint_value_from_omits_chart_managed_triton_url() -> None:
+    docs = _helm_template(
+        [
+            "nimOperator.page_elements.env[0].name=NIM_OTEL_EXPORTER_OTLP_ENDPOINT",
+            "nimOperator.page_elements.env[0].valueFrom.secretKeyRef.name=otel-endpoint",
+            "nimOperator.page_elements.env[0].valueFrom.secretKeyRef.key=endpoint",
+        ]
+    )
+
+    page_elements = _find(docs, "NIMService", "nemotron-page-elements-v3")
+    env = _nim_env(page_elements)
+    values = _env_values(env)
+
+    _assert_unique_env_names(env)
+    assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] is None
+    assert next(
+        item for item in env if item["name"] == "NIM_OTEL_EXPORTER_OTLP_ENDPOINT"
+    )["valueFrom"] == {"secretKeyRef": {"name": "otel-endpoint", "key": "endpoint"}}
+    assert "TRITON_OTEL_URL" not in values
 
 
 def test_existing_nim_env_triton_url_override_is_preserved() -> None:

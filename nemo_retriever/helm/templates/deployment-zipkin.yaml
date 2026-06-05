@@ -49,6 +49,18 @@ spec:
             - name: http
               containerPort: {{ $zipkin.port }}
               protocol: TCP
+          {{- if $zipkin.startupProbe.enabled }}
+          startupProbe:
+            {{- omit $zipkin.startupProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if $zipkin.livenessProbe.enabled }}
+          livenessProbe:
+            {{- omit $zipkin.livenessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if $zipkin.readinessProbe.enabled }}
+          readinessProbe:
+            {{- omit $zipkin.readinessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml $zipkin.resources | nindent 12 }}
 {{- end }}

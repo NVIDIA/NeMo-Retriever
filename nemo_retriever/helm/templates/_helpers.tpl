@@ -379,13 +379,18 @@ Tracing helpers
   "TRITON_OTEL_RATE" "1"
 -}}
 {{- $explicitTritonUrl := or (hasKey $existingEnvNames "TRITON_OTEL_URL") (hasKey $chartNimOtelEnv "TRITON_OTEL_URL") (hasKey $nimOtelEnv "TRITON_OTEL_URL") -}}
+{{- $existingEndpointWithoutLiteral := and (hasKey $existingEnvNames "NIM_OTEL_EXPORTER_OTLP_ENDPOINT") (not (hasKey $existingEnvValues "NIM_OTEL_EXPORTER_OTLP_ENDPOINT")) -}}
 {{- $otelEnv := mergeOverwrite (deepCopy $defaults) (deepCopy $chartNimOtelEnv) (deepCopy $nimOtelEnv) -}}
 {{- $finalEndpoint := get $otelEnv "NIM_OTEL_EXPORTER_OTLP_ENDPOINT" -}}
 {{- if hasKey $existingEnvValues "NIM_OTEL_EXPORTER_OTLP_ENDPOINT" -}}
 {{- $finalEndpoint = get $existingEnvValues "NIM_OTEL_EXPORTER_OTLP_ENDPOINT" -}}
 {{- end -}}
 {{- if not $explicitTritonUrl -}}
+{{- if $existingEndpointWithoutLiteral -}}
+{{- $_ := unset $otelEnv "TRITON_OTEL_URL" -}}
+{{- else -}}
 {{- $_ := set $otelEnv "TRITON_OTEL_URL" (printf "%s%s" $finalEndpoint $tritonPath) -}}
+{{- end -}}
 {{- end -}}
 {{- range $envName, $envValue := $otelEnv }}
 {{- if not (hasKey $existingEnvNames $envName) }}

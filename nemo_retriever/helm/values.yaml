@@ -460,6 +460,30 @@ topology:
       pullPolicy: IfNotPresent
     port: 9411
     javaOpts: "-Xms128m -Xmx512m -XX:+ExitOnOutOfMemoryError"
+    livenessProbe:
+      enabled: true
+      tcpSocket:
+        port: http
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 6
+    readinessProbe:
+      enabled: true
+      tcpSocket:
+        port: http
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+    startupProbe:
+      enabled: true
+      tcpSocket:
+        port: http
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 60
     resources:
       requests:
         cpu: "250m"
