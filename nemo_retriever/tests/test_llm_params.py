@@ -318,6 +318,18 @@ class TestLLMJudgeConstruction:
         assert verdict.score is None
         assert verdict.error is not None and "judge_no_score" in verdict.error
 
+    @patch("litellm.completion")
+    def test_judge_transport_error_surfaced(self, mock_completion):
+        """When every attempt raises, the last transport error is in the JudgeResult."""
+        from nemo_retriever.llm.clients import LLMJudge
+
+        mock_completion.side_effect = RuntimeError("connection refused")
+        judge = LLMJudge.from_kwargs(model="m", num_retries=2)
+        verdict = judge.judge(query="q", reference="ref", candidate="cand")
+        assert verdict.score is None
+        assert "judge_no_score" in verdict.error
+        assert "connection refused" in verdict.error
+
     def test_judge_empty_candidate_short_circuits(self):
         """Empty candidate is handled locally with no LLM call."""
         from nemo_retriever.llm.clients import LLMJudge

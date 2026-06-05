@@ -27,6 +27,7 @@ parser (the prompts already demand ``{"rating": X}``).
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 from typing import Any, Optional
@@ -34,6 +35,8 @@ from typing import Any, Optional
 from nemo_retriever.llm.clients.litellm import LiteLLMClient
 from nemo_retriever.llm.types import JudgeResult
 from nemo_retriever.params.models import LLMInferenceParams, LLMRemoteClientParams
+
+logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
 # Prompts -- verbatim from ragas AnswerAccuracy (util.py), rendered through a
@@ -284,23 +287,33 @@ class LLMJudge:
             )
         return cls(transport=transport, sampling=sampling)
 
-    def _rate(self, prefix: str, query: str, user_answer: str, reference_answer: str) -> float:
-        """Run one judge prompt, returning a normalised 0.0/0.5/1.0 score or NaN.
+    def _rate(self, prefix: str, query: str, user_answer: str, reference_answer: str) -> tuple[float, Optional[str]]:
+        """Run one judge prompt.
 
-        Mirrors ragas ``_get_judge_rating``: retry on an invalid rating or a
-        transport error up to ``num_retries`` attempts, then give up with NaN.
+        Returns ``(score, error)`` where ``score`` is the normalised
+        0.0/0.5/1.0 rating (or NaN) and ``error`` is the last transport error
+        string when every attempt failed, else ``None``. Mirrors ragas
+        ``_get_judge_rating``: retry on an invalid rating or a transport error
+        up to ``num_retries`` attempts, then give up with NaN.
         """
         messages = [{"role": "user", "content": _render_prompt(prefix, query, user_answer, reference_answer)}]
         attempts = max(1, self.transport.num_retries)
-        for _ in range(attempts):
+        last_exc: Optional[Exception] = None
+        for attempt in range(attempts):
             try:
                 raw, _ = self._client.complete(messages)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - retried; surfaced below if all attempts fail
+                last_exc = exc
+                logger.warning("Judge transport error on attempt %d/%d: %s", attempt + 1, attempts, exc)
                 continue
             rating = _parse_rating(raw)
             if rating in _VALID_RATINGS:
-                return rating / 4.0
-        return float("nan")
+                return rating / 4.0, None
+        if last_exc is not None:
+            logger.warning("All %d judge attempts failed; last error: %s", attempts, last_exc)
+            return float("nan"), str(last_exc)
+        # Attempts succeeded at the transport layer but never produced a valid rating.
+        return float("nan"), None
 
     def judge(self, query: str, reference: str, candidate: str) -> JudgeResult:
         """Score a candidate answer against the reference answer (0.0-1.0)."""
@@ -309,18 +322,18 @@ class LLMJudge:
 
         try:
             # Judge 1: candidate as the user answer, reference as ground truth.
-            rating1 = self._rate(_JUDGE1_PREFIX, query, candidate, reference)
+            rating1, err1 = self._rate(_JUDGE1_PREFIX, query, candidate, reference)
             # Judge 2: roles swapped (bidirectional check) under the paraphrased rubric.
-            rating2 = self._rate(_JUDGE2_PREFIX, query, reference, candidate)
+            rating2, err2 = self._rate(_JUDGE2_PREFIX, query, reference, candidate)
         except Exception as exc:
             return JudgeResult(score=None, reasoning="", error=f"judge_api_error: {exc}")
 
         score = _average_scores(rating1, rating2)
         if math.isnan(score):
-            return JudgeResult(
-                score=None,
-                reasoning="",
-                error="judge_no_score: neither judge produced a valid rating",
-            )
+            transport_err = err1 or err2
+            error = "judge_no_score: neither judge produced a valid rating"
+            if transport_err is not None:
+                error += f" (last transport error: {transport_err})"
+            return JudgeResult(score=None, reasoning="", error=error)
         # AnswerAccuracy emits only a numeric rating, so there is no rationale.
         return JudgeResult(score=float(score), reasoning="")
