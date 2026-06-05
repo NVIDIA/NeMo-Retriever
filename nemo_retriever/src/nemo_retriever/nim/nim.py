@@ -25,6 +25,27 @@ def _service_tracing() -> Any | None:
     return tracing
 
 
+def _capture_trace_context() -> dict[str, str] | None:
+    service_tracing = _service_tracing()
+    if service_tracing is None:
+        return None
+    try:
+        return dict(service_tracing.inject_trace_context())
+    except Exception as exc:
+        logger.warning("OpenTelemetry trace context capture failed for NIM request: %s", exc)
+        return None
+
+
+def _extract_trace_context(service_tracing: Any, trace_context: Dict[str, str] | None) -> Any | None:
+    if not trace_context:
+        return None
+    try:
+        return service_tracing.extract_trace_context(trace_context)
+    except Exception as exc:
+        logger.warning("OpenTelemetry trace context extraction failed for NIM request: %s", exc)
+        return None
+
+
 def _set_span_attribute(span: Any, key: str, value: Any) -> None:
     setter = getattr(span, "set_attribute", None)
     if setter is None:
@@ -97,12 +118,14 @@ def _post_with_retries(
     timeout_s: float,
     max_retries: int,
     max_429_retries: int,
+    trace_context: Dict[str, str] | None = None,
 ) -> Any:
     base_delay = 2.0
     attempt = 0
     retries_429 = 0
 
     service_tracing = _service_tracing()
+    span_parent_context = _extract_trace_context(service_tracing, trace_context) if service_tracing is not None else None
 
     while attempt < int(max_retries):
         request_headers = dict(headers)
@@ -110,6 +133,7 @@ def _post_with_retries(
             span_context = (
                 service_tracing.start_span(
                     "nim.http.post",
+                    context=span_parent_context,
                     attributes={
                         "http.method": "POST",
                         "nim.endpoint": _safe_endpoint_attribute(invoke_url),
@@ -257,6 +281,7 @@ class NIMClient:
 
         ranges = _chunk_ranges(n, int(max_batch_size))
         flattened: List[Optional[Any]] = [None] * n
+        trace_context = _capture_trace_context()
 
         def _invoke_one_batch(start: int, end: int, endpoint_url: str) -> Tuple[int, int, List[Any]]:
             inputs = [
@@ -276,6 +301,7 @@ class NIMClient:
                 timeout_s=float(timeout_s),
                 max_retries=int(max_retries),
                 max_429_retries=int(max_429_retries),
+                trace_context=trace_context,
             )
             per_image = _normalize_batch_response(response_json, end - start)
             return start, end, per_image
@@ -354,6 +380,7 @@ class NIMClient:
 
         invoke_urls = _parse_invoke_urls(invoke_url)
         results: List[Optional[str]] = [None] * len(messages_list)
+        trace_context = _capture_trace_context()
 
         def _invoke_one(idx: int, messages: List[Dict[str, Any]], endpoint_url: str) -> Tuple[int, str]:
             payload: Dict[str, Any] = {
@@ -371,6 +398,7 @@ class NIMClient:
                 timeout_s=float(timeout_s),
                 max_retries=int(max_retries),
                 max_429_retries=int(max_429_retries),
+                trace_context=trace_context,
             )
             return idx, extract_chat_completion_text(response_json)
 

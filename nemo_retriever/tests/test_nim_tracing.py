@@ -13,6 +13,7 @@ import pytest
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 
 from nemo_retriever.api.internal.primitives.nim.nim_client import NimClient as InternalNimClient
+from nemo_retriever.nim.nim import NIMClient as HttpNIMClient
 from nemo_retriever.nim.nim import _post_with_retries
 from nemo_retriever.service import tracing
 
@@ -117,8 +118,17 @@ class _PrimitiveModelInterface:
     def name(self) -> str:
         return "page-elements"
 
+    def prepare_data_for_inference(self, data: Any) -> Any:
+        return data
+
+    def format_input(self, data: Any, **kwargs: Any) -> tuple[list[Any], list[dict[str, Any]]]:
+        return [data], [{"original_image_shapes": None}]
+
     def parse_output(self, response: Any, **kwargs: Any) -> Any:
         return response
+
+    def process_inference_results(self, parsed_output: Any, **kwargs: Any) -> Any:
+        return parsed_output
 
 
 def _span_by_name(exported_spans: list[Any], name: str) -> Any:
@@ -266,3 +276,89 @@ def test_internal_nim_client_grpc_passes_trace_context_headers_when_supported(
     assert span.attributes["nim.model"] == "detector-grpc"
     assert span.attributes["nim.protocol"] == "grpc"
     assert span.attributes["nim.service"] == "page-elements"
+
+
+def test_public_nim_client_executor_path_preserves_parent_trace_context(
+    monkeypatch: pytest.MonkeyPatch,
+    exported_spans: list[Any],
+) -> None:
+    captured_headers: list[dict[str, str]] = []
+
+    class _Response:
+        status_code = 200
+        text = "{}"
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, list[dict[str, bool]]]:
+            return {"data": [{"ok": True}]}
+
+    def _post(*args: Any, headers: dict[str, str], **kwargs: Any) -> _Response:
+        captured_headers.append(dict(headers))
+        return _Response()
+
+    monkeypatch.setattr("nemo_retriever.nim.nim.requests.post", _post)
+    client = HttpNIMClient(max_pool_workers=1)
+    try:
+        with tracing.start_span("test.parent"):
+            parent_trace_id = tracing.current_trace_id_hex()
+            result = client.invoke_image_inference_batches(
+                invoke_url="http://nim.example/v1/infer",
+                image_b64_list=["iVBORw0KGgo="],
+                max_batch_size=1,
+                max_retries=1,
+                max_429_retries=1,
+            )
+    finally:
+        client.shutdown()
+
+    assert result == [{"ok": True}]
+    assert parent_trace_id is not None
+    assert captured_headers
+    assert "traceparent" in captured_headers[0]
+
+    span = _span_by_name(exported_spans, "nim.http.post")
+    assert f"{span.context.trace_id:032x}" == parent_trace_id
+
+
+def test_internal_nim_client_infer_executor_path_preserves_parent_trace_context(
+    monkeypatch: pytest.MonkeyPatch,
+    exported_spans: list[Any],
+) -> None:
+    captured_headers: list[dict[str, str]] = []
+
+    class _Response:
+        status_code = 200
+        reason = "OK"
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, bool]:
+            return {"ok": True}
+
+    def _post(*args: Any, headers: dict[str, str], **kwargs: Any) -> _Response:
+        captured_headers.append(dict(headers))
+        return _Response()
+
+    monkeypatch.setattr("nemo_retriever.api.internal.primitives.nim.nim_client.requests.post", _post)
+    client = InternalNimClient(
+        model_interface=_PrimitiveModelInterface(),
+        protocol="http",
+        endpoints=("", "http://nim.example/v1/infer"),
+        max_retries=1,
+        max_429_retries=1,
+    )
+
+    with tracing.start_span("test.parent"):
+        parent_trace_id = tracing.current_trace_id_hex()
+        result = client.infer({"request": "body"}, model_name="detector", max_pool_workers=1)
+
+    assert result == [{"ok": True}]
+    assert parent_trace_id is not None
+    assert captured_headers
+    assert "traceparent" in captured_headers[0]
+
+    span = _span_by_name(exported_spans, "nim.infer")
+    assert f"{span.context.trace_id:032x}" == parent_trace_id

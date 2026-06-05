@@ -38,6 +38,30 @@ def _service_tracing() -> Any | None:
     return tracing
 
 
+def _capture_trace_context() -> dict[str, str] | None:
+    tracing = _service_tracing()
+    if tracing is None:
+        return None
+    try:
+        return dict(tracing.inject_trace_context())
+    except Exception as exc:
+        logger.warning("OpenTelemetry trace context capture failed for NimClient request: %s", exc)
+        return None
+
+
+def _extract_trace_context(trace_context: dict[str, str] | None) -> Any | None:
+    if not trace_context:
+        return None
+    tracing = _service_tracing()
+    if tracing is None:
+        return None
+    try:
+        return tracing.extract_trace_context(trace_context)
+    except Exception as exc:
+        logger.warning("OpenTelemetry trace context extraction failed for NimClient request: %s", exc)
+        return None
+
+
 def _inject_trace_headers() -> dict[str, str]:
     tracing = _service_tracing()
     if tracing is None:
@@ -97,7 +121,7 @@ CUDA_ERROR_REGEX = re.compile(
 )
 
 # A simple structure to hold a request's data and its Future for the result
-InferenceRequest = namedtuple("InferenceRequest", ["data", "future", "model_name", "dims", "kwargs"])
+InferenceRequest = namedtuple("InferenceRequest", ["data", "future", "model_name", "dims", "kwargs", "trace_context"])
 
 
 class NimClient:
@@ -222,7 +246,7 @@ class NimClient:
 
             return self._max_batch_sizes[model_name]
 
-    def _process_batch(self, batch_input, *, batch_data, model_name, **kwargs):
+    def _process_batch(self, batch_input, *, batch_data, model_name, _trace_context: dict[str, str] | None = None, **kwargs):
         """
         Process a single batch input for inference using its corresponding batch_data.
 
@@ -243,9 +267,11 @@ class NimClient:
             A tuple (parsed_output, batch_data) for subsequent post-processing.
         """
         tracing = _service_tracing()
+        span_parent_context = _extract_trace_context(_trace_context)
         span_context = (
             tracing.start_span(
                 "nim.infer",
+                context=span_parent_context,
                 attributes={
                     "nim.model": model_name,
                     "nim.protocol": self.protocol,
@@ -346,12 +372,18 @@ class NimClient:
 
             # 4. Process each batch concurrently using a thread pool.
             #    We enumerate the batches so that we can later reassemble results in order.
+            trace_context = _capture_trace_context()
             results = [None] * len(formatted_batches)
             with ThreadPoolExecutor(max_workers=max_pool_workers) as executor:
                 future_to_idx = {}
                 for idx, (batch, batch_data) in enumerate(zip(formatted_batches, formatted_batch_data)):
                     future = executor.submit(
-                        self._process_batch, batch, batch_data=batch_data, model_name=model_name, **kwargs
+                        self._process_batch,
+                        batch,
+                        batch_data=batch_data,
+                        model_name=model_name,
+                        _trace_context=trace_context,
+                        **kwargs,
                     )
                     future_to_idx[future] = idx
 
@@ -704,7 +736,13 @@ class NimClient:
             )
 
             # 2. Perform inference using the existing _process_batch logic
-            parsed_output, _ = self._process_batch(batch_input, batch_data=batch_data, model_name=model_name, **kwargs)
+            parsed_output, _ = self._process_batch(
+                batch_input,
+                batch_data=batch_data,
+                model_name=model_name,
+                _trace_context=first_req.trace_context,
+                **kwargs,
+            )
 
             # 3. Process the batched output to get final results
             all_results = self.model_interface.process_inference_results(
@@ -750,7 +788,14 @@ class NimClient:
             )
 
         future = Future()
-        request = InferenceRequest(data=data, future=future, model_name=model_name, dims=dims, kwargs=kwargs)
+        request = InferenceRequest(
+            data=data,
+            future=future,
+            model_name=model_name,
+            dims=dims,
+            kwargs=kwargs,
+            trace_context=_capture_trace_context(),
+        )
         self._request_queue.put(request)
         return future
 
