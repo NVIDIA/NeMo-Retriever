@@ -244,6 +244,10 @@ def create_app(config: ServiceConfig) -> FastAPI:
     _configure_logging(config)
     _apply_resource_limits(config)
 
+    from nemo_retriever.service.tracing import configure_tracing
+
+    configure_tracing(service_role=config.mode)
+
     app = FastAPI(
         title="Retriever Service",
         description="Low-latency document ingestion service powered by nemo-retriever",

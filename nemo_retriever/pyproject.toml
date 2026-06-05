@@ -47,6 +47,9 @@ dependencies = [
   "uvicorn[standard]>=0.30.0",
   "python-multipart>=0.0.9",
   "prometheus-fastapi-instrumentator>=7.0,<8",
+  "opentelemetry-api>=1.41.1",
+  "opentelemetry-sdk>=1.41.1",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.41.1",
   # MCP server for AI agent integration
   "fastmcp>=2.0.0",
   # HTTP clients
