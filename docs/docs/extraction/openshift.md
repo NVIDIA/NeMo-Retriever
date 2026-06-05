@@ -31,7 +31,7 @@ On clusters with **PSA `enforce=restricted`**, missing container `securityContex
 | PSA warnings on **otel-collector** | Otel Deployment has no `securityContext` in the chart | `topology.otel.enabled=false` unless you patch that Deployment |
 | Audio/video fails or pod never gets `ffmpeg` | `service.installFfmpeg=true` runs sudo at startup; **restricted-v2** blocks privilege escalation (`no-new-privileges`) | Prebuild a service image with `ffmpeg`/`ffprobe` baked in (refer to [Audio and video on restricted OpenShift](#audio-and-video-ffmpeg-on-restricted-openshift)); leave `service.installFfmpeg=false` |
 | `ImagePullBackOff` for a service image in the **internal OpenShift registry** | Chart-rendered `imagePullSecrets` may omit the namespace SA `dockercfg` secret required for internal-registry pulls | List every required pull secret under `imagePullSecrets` (refer to [Internal registry pull secrets](#internal-registry-pull-secrets)) |
-| Optional NIM `CrashLoopBackOff` with missing `.so` in logs | GPU/CUDA libraries not on `LD_LIBRARY_PATH` for some NIM Operator stacks on OCP | Append paths via `nimOperator.<key>.env` (refer to [Optional NIM runtime environment](#optional-nim-runtime-environment)) |
+| Optional NIM `CrashLoopBackOff` with missing `.so` in logs | GPU/CUDA libraries not on `LD_LIBRARY_PATH` for some NIM Operator stacks on OCP | Append paths through `nimOperator.<key>.env` (refer to [Optional NIM runtime environment](#optional-nim-runtime-environment)) |
 
 ### Recommended value overrides
 
@@ -70,9 +70,9 @@ topology:
 
 When **`persistence.enabled=true`**, you can keep the default log path under `persistence.mountPath` (`/var/lib/nemo-retriever`) because the PVC is mounted and SCC-assigned `fsGroup` applies. When persistence is off, always relocate logs to `/tmp` (or another path backed by `service.extraVolumes`).
 
-### Audio and video (`ffmpeg`) on restricted OpenShift { #audio-and-video-ffmpeg-on-restricted-openshift }
+### Audio and video (ffmpeg) on restricted OpenShift { #audio-and-video-ffmpeg-on-restricted-openshift }
 
-The Helm chart supports `service.installFfmpeg=true`, which installs `ffmpeg`/`ffprobe` at container startup via passwordless `sudo`. On OpenShift **restricted-v2** SCC, that path is blocked: PSA restricted sets `allowPrivilegeEscalation: false` and the SCC enforces **no-new-privileges**, so the entrypoint cannot elevate to install packages.
+The Helm chart supports `service.installFfmpeg=true`, which installs `ffmpeg`/`ffprobe` at container startup through passwordless `sudo`. On OpenShift **restricted-v2** SCC, that path is blocked: PSA restricted sets `allowPrivilegeEscalation: false` and the SCC enforces **no-new-privileges**, so the entrypoint cannot elevate to install packages.
 
 For audio and video extraction on OpenShift, **do not** set `service.installFfmpeg=true`. Instead, extend the service image on a connected build host and point the chart at that tag (same pattern as [air-gapped custom service images](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image)):
 
@@ -88,7 +88,9 @@ Push the result to NGC, your private registry, or the [OpenShift internal regist
 
 ### Internal registry pull secrets { #internal-registry-pull-secrets }
 
-When you rebuild the service image into the OpenShift internal registry (`image-registry.openshift-image-registry.svc:5000/...`), pods normally pull through the namespace ServiceAccount's automatic `kubernetes.io/dockercfg` secret. The chart renders an explicit `imagePullSecrets` list on every Pod, so you must list **every** secret each Pod needs—including the SA `dockercfg` secret when `service.image` points at the internal registry. If the rendered list contains only `ngc-secret` (for NGC NIM images) while `service.image` uses the internal registry, the service Pod can fail with `ImagePullBackOff`.
+When you rebuild the service image into the OpenShift internal registry (`image-registry.openshift-image-registry.svc:5000/...`), pods normally pull through the namespace ServiceAccount's automatic `kubernetes.io/dockercfg` secret. The chart renders an explicit `imagePullSecrets` list on every Pod, so you must list **every** secret each Pod needs—including the SA `dockercfg` secret when `service.image` points at the internal registry.
+
+If the rendered list contains only `ngc-secret` (for NGC NIM images) while `service.image` uses the internal registry, the service Pod can fail with `ImagePullBackOff`.
 
 **Internal-registry service image only** — clear the chart-managed NGC pull secret name so the helper does not inject `ngc-secret` alone:
 
@@ -98,7 +100,7 @@ ngcImagePullSecret:
   name: ""   # Explicitly empty — clears the default "ngc-secret"
 
 imagePullSecrets:
-  - name: default-dockercfg-xxxxx   # replace with your SA secret (see below)
+  - name: default-dockercfg-xxxxx   # replace with your SA secret (section below)
 ```
 
 **Both NGC NIMs and an internal-registry service image** — list every secret the pods need:
@@ -161,7 +163,7 @@ The retriever service caption profile already sends `chat_template_kwargs.enable
 }
 ```
 
-For pipeline scope (PDF chart regions are not captioned), refer to [Image captioning](prerequisites-support-matrix.md#image-captioning-2605) and [Image captioning](multimodal-extraction.md#image-captioning) in the extraction docs.
+For pipeline scope (PDF chart regions are not captioned), refer to [Image captioning (support matrix)](prerequisites-support-matrix.md#image-captioning-2605) and [Image captioning (pipeline scope)](multimodal-extraction.md#image-captioning) in the extraction docs.
 
 ### Example install (service only, no in-cluster NIMs)
 
@@ -196,7 +198,7 @@ oc get pods -n nemo-retriever
 oc describe pod -l app.kubernetes.io/name=nemo-retriever -n nemo-retriever
 ```
 
-You should see SCC-assigned numeric `runAsUser` on containers that declare a `securityContext` block, and no PSA warnings once overrides are applied.
+You should see SCC-assigned numeric `runAsUser` on containers that declare a `securityContext` block, and no PSA warnings after overrides are applied.
 
 ### Example install with NIM Operator (in-cluster NIMs)
 

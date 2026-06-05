@@ -296,10 +296,8 @@ short list of knobs you'll touch first.
 
 For audio and video extraction, set `service.installFfmpeg=true` when your
 cluster allows runtime package installation. **OpenShift restricted-v2** blocks
-that path — use a prebuilt service image instead; see
-[Audio and video on restricted OpenShift](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/openshift.md#audio-and-video-ffmpeg-on-restricted-openshift).
-For air-gapped clusters, see
-[Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
+that path — use a prebuilt service image instead; refer to [Audio and video on restricted OpenShift](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/openshift.md#audio-and-video-ffmpeg-on-restricted-openshift).
+For air-gapped clusters, refer to [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
 
 ### Audio and video (Parakeet ASR) { #audio-video-parakeet }
 
