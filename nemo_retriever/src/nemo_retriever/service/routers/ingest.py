@@ -470,6 +470,7 @@ def _aggregate_to_response(agg, *, documents: list[dict[str, Any]] | None = None
         finalized_at=agg.finalized_at,
         elapsed_s=agg.elapsed_s,
         label=agg.label,
+        trace_id=agg.trace_id,
         counts=dict(agg.counts),
         document_ids=list(agg.document_ids),
         documents=documents,
@@ -482,7 +483,7 @@ def _aggregate_to_response(agg, *, documents: list[dict[str, Any]] | None = None
     status_code=201,
     summary="Create a new ingestion job aggregate",
 )
-async def create_job(request: Request, body: JobCreateRequest) -> JobCreatedResponse:
+async def create_job(request: Request, response: Response, body: JobCreateRequest) -> JobCreatedResponse:
     """Open a job that will receive ``expected_documents`` uploads.
 
     The server returns an opaque ``job_id`` the client uses for every
@@ -490,23 +491,41 @@ async def create_job(request: Request, body: JobCreateRequest) -> JobCreatedResp
     call. The job is in-memory only; gateway pod restarts erase it
     (this is intentional — see the J1 design notes).
     """
+    from opentelemetry.trace import SpanKind
+
+    from nemo_retriever.service import tracing
     from nemo_retriever.service.services.job_tracker import JobTrackerError
 
     tracker = get_job_tracker()
     if tracker is None:
         raise HTTPException(status_code=503, detail="Job tracker not available")
     job_id = uuid.uuid4().hex
+    trace_id: str | None = None
     try:
-        agg = tracker.register_job(
-            job_id,
-            expected_documents=body.expected_documents,
-            label=body.label,
-            metadata=body.metadata,
-            retain_results=body.retain_results,
-        )
+        with tracing.start_span(
+            "ingest.job",
+            kind=SpanKind.SERVER,
+            attributes={
+                "service.role": _role(request),
+                "job.expected_documents": body.expected_documents,
+            },
+        ):
+            trace_id = tracing.current_trace_id_hex()
+            trace_context = dict(tracing.inject_trace_context())
+            agg = tracker.register_job(
+                job_id,
+                expected_documents=body.expected_documents,
+                label=body.label,
+                metadata=body.metadata,
+                retain_results=body.retain_results,
+                trace_id=trace_id,
+                trace_context=trace_context,
+            )
     except JobTrackerError as exc:
         raise HTTPException(status_code=getattr(exc, "status_code", 500), detail=str(exc)) from exc
 
+    if trace_id:
+        response.headers[tracing.TRACE_ID_HEADER] = trace_id
     if (m := get_metrics()) is not None:
         m.record_request("/v1/ingest/job")
         m.record_job_created(job_id)
@@ -516,6 +535,7 @@ async def create_job(request: Request, body: JobCreateRequest) -> JobCreatedResp
         status=agg.status.value,
         created_at=agg.created_at,
         label=agg.label,
+        trace_id=agg.trace_id,
     )
 
 

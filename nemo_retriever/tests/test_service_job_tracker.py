@@ -81,6 +81,36 @@ def test_register_job_creates_pending_aggregate() -> None:
     assert event["type"] == "job_created"
 
 
+def test_register_job_persists_trace_context_and_events_include_trace_id() -> None:
+    tracker, bus = _make_tracker_with_bus()
+    trace_id = "0123456789abcdef0123456789abcdef"
+    trace_context = {
+        "traceparent": f"00-{trace_id}-0123456789abcdef-01",
+    }
+
+    agg = tracker.register_job(
+        "job-trace",
+        expected_documents=1,
+        trace_id=trace_id,
+        trace_context=trace_context,
+    )
+
+    assert agg.trace_id == trace_id
+    assert agg.trace_context == trace_context
+    trace_context["traceparent"] = "mutated"
+    assert agg.trace_context["traceparent"] != "mutated"
+
+    stored = tracker.get_job("job-trace")
+    assert stored is not None
+    assert stored.trace_id == trace_id
+    assert stored.trace_context["traceparent"] != "mutated"
+
+    routing, event = bus.events[0]
+    assert routing == "job-trace"
+    assert event["type"] == "job_created"
+    assert event["trace_id"] == trace_id
+
+
 def test_register_job_rejects_nonpositive_expected_count() -> None:
     tracker = JobTracker()
     with pytest.raises(ValueError, match="positive"):

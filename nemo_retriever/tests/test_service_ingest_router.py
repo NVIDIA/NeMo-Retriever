@@ -19,10 +19,12 @@ runs without any GPU / Ray dependencies.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
@@ -37,6 +39,21 @@ from .conftest import create_test_job
 @pytest.fixture
 def captured_items() -> list[WorkItem]:
     return []
+
+
+class _CollectingExporter:
+    def __init__(self, exported: list[Any]) -> None:
+        self._exported = exported
+
+    def export(self, spans: Any) -> SpanExportResult:
+        self._exported.extend(spans)
+        return SpanExportResult.SUCCESS
+
+    def shutdown(self) -> None:
+        return None
+
+    def force_flush(self, timeout_millis: int = 30_000) -> bool:
+        return True
 
 
 @pytest.fixture
@@ -70,6 +87,54 @@ def app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: list[Wor
     app = create_app(cfg)
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture
+def traced_app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: list[WorkItem]):
+    """Build a traced standalone app with in-memory span export."""
+    from nemo_retriever.service.tracing import _reset_tracing_for_tests
+
+    exported: list[Any] = []
+    _reset_tracing_for_tests()
+    monkeypatch.setenv("OTEL_TRACES_EXPORTER", "otlp")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel:4317")
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    monkeypatch.setattr(
+        "nemo_retriever.service.tracing.OTLPSpanExporter",
+        lambda *args, **kwargs: _CollectingExporter(exported),
+    )
+    monkeypatch.setattr("nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor)
+
+    async def _stub_work(item: WorkItem) -> tuple[int, list[dict[str, Any]]]:
+        captured_items.append(item)
+        return 1, [{"id": item.id, "stub": True}]
+
+    def _stub_realtime(_config: ServiceConfig):
+        return _stub_work
+
+    def _stub_batch(_config: ServiceConfig):
+        return _stub_work
+
+    monkeypatch.setattr(
+        "nemo_retriever.service.services.pipeline_executor.create_realtime_work_fn",
+        _stub_realtime,
+    )
+    monkeypatch.setattr(
+        "nemo_retriever.service.services.pipeline_executor.create_batch_work_fn",
+        _stub_batch,
+    )
+
+    cfg = ServiceConfig(
+        mode="standalone",
+        pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
+        pipeline_overrides=PipelineOverridesConfig(),
+    )
+    try:
+        app = create_app(cfg)
+        with TestClient(app) as client:
+            yield client, exported
+    finally:
+        _reset_tracing_for_tests()
 
 
 def _make_pdf_bytes() -> bytes:
@@ -203,6 +268,28 @@ def test_create_job_returns_201_and_aggregate_fields(app_with_stub_pool: TestCli
     assert body["status"] == "pending"
     assert body["label"] == "smoke"
     assert body["job_id"]
+
+
+def test_create_job_with_tracing_returns_trace_id_body_header_and_snapshot(
+    traced_app_with_stub_pool: tuple[TestClient, list[Any]],
+) -> None:
+    client, exported_spans = traced_app_with_stub_pool
+
+    resp = client.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 2, "label": "trace-smoke"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    trace_id = body["trace_id"]
+    assert re.fullmatch(r"[0-9a-f]{32}", trace_id)
+    assert resp.headers["x-trace-id"] == trace_id
+
+    snapshot = client.get(f"/v1/ingest/job/{body['job_id']}")
+    assert snapshot.status_code == 200, snapshot.text
+    assert snapshot.json()["trace_id"] == trace_id
+    assert exported_spans
 
 
 def test_create_job_retain_results_persisted_on_aggregate(app_with_stub_pool: TestClient) -> None:

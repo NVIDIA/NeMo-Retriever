@@ -76,6 +76,7 @@ class JobCreatedResponse(RichModel):
     status: str
     created_at: str
     label: str | None = None
+    trace_id: str | None = None
 
 
 class JobAggregateResponse(RichModel):
@@ -95,6 +96,7 @@ class JobAggregateResponse(RichModel):
     finalized_at: str | None = None
     elapsed_s: float | None = None
     label: str | None = None
+    trace_id: str | None = None
     counts: dict[str, int] = Field(default_factory=dict)
     document_ids: list[str] = Field(default_factory=list)
     documents: list[dict[str, Any]] | None = None
