@@ -22,6 +22,7 @@ class Query:
         self.ast_node_count: int = 0
         self.join_count: int = 0
         self.union_count: int = 0
+        self.dialect_used: str | None = None
 
         month = ltimestamp.month
         year = ltimestamp.year

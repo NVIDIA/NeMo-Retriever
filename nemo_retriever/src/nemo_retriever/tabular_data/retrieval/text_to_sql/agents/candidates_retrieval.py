@@ -73,15 +73,10 @@ class CandidateRetrievalAgent(BaseAgent):
 
         try:
             entities = path_state.get("entities", [])
-
-            connector = state.get("connector")
-            database_name = getattr(connector, "database_name", None) if connector else None
-
             extracted = extract_candidates(
                 state["retriever"],
                 entities,
                 question,
-                database_name=database_name,
             )
 
             # Primary path: tuple (custom_analysis_candidates, column_candidates) — keep streams separate.

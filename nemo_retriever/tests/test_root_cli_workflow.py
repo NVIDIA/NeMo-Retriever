@@ -25,8 +25,11 @@ from nemo_retriever.params import (
     AudioChunkParams,
     AudioVisualFuseParams,
     CaptionParams,
+    DedupParams,
     EmbedParams,
     ExtractParams,
+    HtmlChunkParams,
+    StoreParams,
     TextChunkParams,
     VideoFrameParams,
     VideoFrameTextDedupParams,
@@ -48,8 +51,10 @@ def _make_fake_ingestor() -> Any:
     fake_ingestor = create_autospec(GraphIngestor, instance=True, spec_set=True)
     fake_ingestor.files.return_value = fake_ingestor
     fake_ingestor.extract.return_value = fake_ingestor
+    fake_ingestor.dedup.return_value = fake_ingestor
     fake_ingestor.caption.return_value = fake_ingestor
     fake_ingestor.embed.return_value = fake_ingestor
+    fake_ingestor.store.return_value = fake_ingestor
     fake_ingestor.vdb_upload.return_value = fake_ingestor
     fake_ingestor.ingest.return_value = [{"status": "ok"}]
     return fake_ingestor
@@ -231,6 +236,119 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
     assert embed_params.embed_model_name == "nvidia/llama-nemotron-embed-1b-v2"
 
 
+def test_root_ingest_passes_migrated_extraction_and_embedding_flags(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "jp20-style.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--use-graphic-elements",
+            "--use-table-structure",
+            "--embed-modality",
+            "text_image",
+            "--embed-granularity",
+            "element",
+            "--text-elements-modality",
+            "text",
+            "--structured-elements-modality",
+            "image",
+        ],
+    )
+
+    assert result.exit_code == 0
+    extract_params = fake_ingestor.extract.call_args.args[0]
+    assert isinstance(extract_params, ExtractParams)
+    assert extract_params.use_graphic_elements is True
+    assert extract_params.use_table_structure is True
+
+    embed_params = fake_ingestor.embed.call_args.args[0]
+    assert isinstance(embed_params, EmbedParams)
+    assert embed_params.embed_modality == "text_image"
+    assert embed_params.embed_granularity == "element"
+    assert embed_params.text_elements_modality == "text"
+    assert embed_params.structured_elements_modality == "image"
+
+
+def test_root_ingest_text_chunk_builds_split_config(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "chunked.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--text-chunk",
+            "--text-chunk-max-tokens",
+            "512",
+            "--text-chunk-overlap-tokens",
+            "64",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert fake_ingestor.extract.call_args.kwargs["split_config"] == {
+        "pdf": {
+            "max_tokens": 512,
+            "overlap_tokens": 64,
+            "tokenizer_model_id": None,
+            "encoding": "utf-8",
+            "tokenizer_cache_dir": None,
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    ("filename", "param_key", "param_type"),
+    [
+        ("notes.txt", "text_params", TextChunkParams),
+        ("page.html", "html_params", HtmlChunkParams),
+    ],
+)
+def test_root_ingest_text_chunk_uses_dedicated_text_params(
+    monkeypatch,
+    tmp_path,
+    filename: str,
+    param_key: str,
+    param_type: type[TextChunkParams | HtmlChunkParams],
+) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / filename
+    document.write_text("chunk me", encoding="utf-8")
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--text-chunk",
+            "--text-chunk-max-tokens",
+            "512",
+            "--text-chunk-overlap-tokens",
+            "64",
+        ],
+    )
+
+    assert result.exit_code == 0
+    extract_kwargs = fake_ingestor.extract.call_args.kwargs
+    assert "split_config" not in extract_kwargs
+    chunk_params = extract_kwargs[param_key]
+    assert isinstance(chunk_params, param_type)
+    assert chunk_params.max_tokens == 512
+    assert chunk_params.overlap_tokens == 64
+
+
 def test_root_ingest_passes_ocr_lang_option(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "english-ocr.pdf"
@@ -345,6 +463,96 @@ def test_root_ingest_passes_batch_tuning_options(monkeypatch, tmp_path) -> None:
     assert "Ingested 1 file(s) → 42 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
 
+def test_root_ingest_passes_public_parity_options(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "parity.pdf"
+    image_store = tmp_path / "images"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 14)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--api-key",
+            "nvapi-secret",
+            "--dedup",
+            "--dedup-iou-threshold",
+            "0.6",
+            "--caption",
+            "--caption-invoke-url",
+            "http://vlm:8000/v1/chat/completions",
+            "--store-images-uri",
+            str(image_store),
+            "--method",
+            "nemotron_parse",
+            "--pdf-split-batch-size",
+            "2",
+            "--nemotron-parse-workers",
+            "3",
+            "--nemotron-parse-batch-size",
+            "4",
+            "--nemotron-parse-gpus-per-actor",
+            "0.5",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert [method_call[0] for method_call in fake_ingestor.method_calls] == [
+        "files",
+        "extract",
+        "dedup",
+        "caption",
+        "embed",
+        "store",
+        "vdb_upload",
+        "ingest",
+    ]
+
+    extract_params = fake_ingestor.extract.call_args.args[0]
+    assert isinstance(extract_params, ExtractParams)
+    assert extract_params.method == "nemotron_parse"
+    assert extract_params.api_key == "nvapi-secret"
+    assert extract_params.batch_tuning.pdf_split_batch_size == 2
+    assert extract_params.batch_tuning.nemotron_parse_workers == 3
+    assert extract_params.batch_tuning.nemotron_parse_batch_size == 4
+    assert extract_params.batch_tuning.gpu_nemotron_parse == 0.5
+
+    dedup_params = fake_ingestor.dedup.call_args.args[0]
+    assert isinstance(dedup_params, DedupParams)
+    assert dedup_params.iou_threshold == 0.6
+
+    caption_params = fake_ingestor.caption.call_args.args[0]
+    assert isinstance(caption_params, CaptionParams)
+    assert caption_params.api_key == "nvapi-secret"
+
+    embed_params = fake_ingestor.embed.call_args.args[0]
+    assert isinstance(embed_params, EmbedParams)
+    assert embed_params.api_key == "nvapi-secret"
+
+    store_params = fake_ingestor.store.call_args.args[0]
+    assert isinstance(store_params, StoreParams)
+    assert store_params.storage_uri == str(image_store.resolve())
+    assert "Ingested 1 file(s) → 14 row(s) in LanceDB lancedb/nemo-retriever." in result.output
+
+
+def test_root_ingest_rejects_dedup_threshold_without_dedup(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "dedup-threshold.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--dedup-iou-threshold", "0.6"])
+
+    assert result.exit_code == 1
+    assert "Dedup options require --dedup" in result.output
+    fake_ingestor.dedup.assert_not_called()
+    fake_ingestor.embed.assert_not_called()
+
+
 def test_ingest_documents_accepts_legacy_public_api_kwargs(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "legacy-public-api.pdf"
@@ -363,6 +571,10 @@ def test_ingest_documents_accepts_legacy_public_api_kwargs(monkeypatch, tmp_path
         table_structure_batch_size=12,
         table_structure_cpus_per_actor=0.4,
         table_structure_gpus_per_actor=0.25,
+        pdf_split_batch_size=9,
+        nemotron_parse_workers=10,
+        nemotron_parse_batch_size=11,
+        nemotron_parse_gpus_per_actor=0.6,
         embed_gpus_per_actor=0.5,
     )
 
@@ -377,11 +589,41 @@ def test_ingest_documents_accepts_legacy_public_api_kwargs(monkeypatch, tmp_path
     assert extract_params.batch_tuning.table_structure_batch_size == 12
     assert extract_params.batch_tuning.table_structure_cpus_per_actor == 0.4
     assert extract_params.batch_tuning.gpu_table_structure == 0.25
+    assert extract_params.batch_tuning.pdf_split_batch_size == 9
+    assert extract_params.batch_tuning.nemotron_parse_workers == 10
+    assert extract_params.batch_tuning.nemotron_parse_batch_size == 11
+    assert extract_params.batch_tuning.gpu_nemotron_parse == 0.6
 
     embed_params = fake_ingestor.embed.call_args.args[0]
     assert isinstance(embed_params, EmbedParams)
     assert embed_params.local_ingest_embed_backend == "hf"
     assert embed_params.batch_tuning.gpu_embed == 0.5
+
+
+def test_execute_ingest_plan_returns_structured_execution_data(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "execution-result.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 9)
+
+    plan = sdk_workflow.resolve_ingest_plan(
+        [str(document)],
+        run_mode="inprocess",
+        lancedb_uri="/tmp/nemo-test-lancedb",
+        table_name="execution_result",
+    )
+    execution = sdk_workflow.execute_ingest_plan(plan)
+
+    assert execution.documents == [str(document)]
+    assert execution.lancedb_uri == "/tmp/nemo-test-lancedb"
+    assert execution.table_name == "execution_result"
+    assert execution.lancedb_target == "/tmp/nemo-test-lancedb/execution_result"
+    assert execution.n_rows == 9
+    assert execution.result == [{"status": "ok"}]
+    assert execution.metadata["branch_summary"]
+    assert execution.to_summary_dict()["n_rows"] == 9
 
 
 def test_root_ingest_reports_empty_directory_error(tmp_path) -> None:
@@ -424,6 +666,18 @@ def test_root_ingest_help_does_not_expose_input_type() -> None:
     assert "--profile" in result.output
     assert "[auto|fast-text]" in result.output
     assert "--extract-images" in result.output
+    # Rich help truncates long option names in narrow test terminals.
+    assert "--use-graphic-el" in result.output
+    assert "--use-table-stru" in result.output
+    assert "--embed-modality" in result.output
+    assert "--embed-granular" in result.output
+    assert "--text-elements-" in result.output
+    assert "--structured-ele" in result.output
+    assert "--text-chunk" in result.output
+    assert "--store-images-" in result.output
+    assert "--api-key" in result.output
+    assert "--dedup" in result.output
+    assert "--nemotron-par" in result.output
     assert "--caption" in result.output
     assert "--run-mode" in result.output
     assert "[inprocess|batch" in result.output

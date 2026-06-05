@@ -15,7 +15,8 @@ Three execution surfaces are exposed:
 1. :meth:`ServiceIngestor.ingest` — sync, blocks until every document has
    finished, returns a :class:`ServiceIngestResult` (a ``list`` subclass
    holding per-document completion events, plus ``job_id`` / ``failures``
-   / ``document_ids`` / ``elapsed_s`` / ``job_status`` / ``dataframe``
+   / ``document_ids`` / ``document_filenames`` / ``elapsed_s`` /
+   ``job_status`` / ``dataframe``
    attributes). By default ``return_results=True`` fetches each
    completed document's rows from the status endpoint into
    ``result.dataframe``. Each
@@ -119,6 +120,9 @@ class ServiceIngestResult(list):
         that failed during upload or pipeline processing.
     document_ids
         Document identifiers returned by the server, in upload order.
+    document_filenames
+        Mapping from server document id to the source filename submitted for
+        that document.
     elapsed_s
         Wall-clock seconds from first upload to last result.
     job_status
@@ -142,6 +146,7 @@ class ServiceIngestResult(list):
         self.job_id: str | None = None
         self.failures: list[tuple[str, str]] = []
         self.document_ids: list[str] = []
+        self.document_filenames: dict[str, str] = {}
         self.elapsed_s: float = 0.0
         self.job_status: str | None = None
         self.dataframe: Any = None
@@ -1098,6 +1103,10 @@ class ServiceIngestor(ingestor):
 
             if event_type == "upload_complete":
                 total_uploaded += 1
+                document_id = evt.get("document_id")
+                filename = evt.get("filename")
+                if document_id and filename:
+                    result.document_filenames[str(document_id)] = str(filename)
                 if result.job_id is None:
                     # Race: SSE delivered an upload_complete before the
                     # generator yielded job_created. Fall back to the

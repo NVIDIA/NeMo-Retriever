@@ -40,7 +40,7 @@ def _get_schemas_from_graph_by_ids(
         column_id:    column.id,
         table_name:   table.name,
         table_id:     table.id,
-        db_name:      db.name,
+        database_name:      db.name,
         table_schema: schema.name,
         data_type:    column.data_type
     }}) AS data
@@ -67,20 +67,20 @@ def get_schemas_by_ids(relevant_schemas_ids: list = None):
     data_array = _get_schemas_from_graph_by_ids(relevant_schemas_ids)
     logger.info(f"time took to get all data from graph: {time.time() - before_get_all}")
     data_df = pd.DataFrame(data_array)
-    dbs = list(data_df["db_name"].unique())
+    dbs = list(data_df["database_name"].unique())
 
-    schemas = data_df[["db_name", "table_schema"]]
+    schemas = data_df[["database_name", "table_schema"]]
     schemas = schemas.drop_duplicates().to_dict(orient="records")
 
     all_schemas = {}
     schema_dfs = {}
     dbs_nodes = {}
-    for db_name in dbs:
-        db_node = Neo4jNode(name=db_name, label=Labels.DB, props={"name": db_name})
-        dbs_nodes[db_name] = db_node
+    for database_name in dbs:
+        database_node = Neo4jNode(name=database_name, label=Labels.DB, props={"name": database_name})
+        dbs_nodes[database_name] = database_node
 
-    tables_df = data_df[["db_name", "table_schema", "table_name", "table_id"]].drop_duplicates(
-        subset=["db_name", "table_schema", "table_name"]
+    tables_df = data_df[["database_name", "table_schema", "table_name", "table_id"]].drop_duplicates(
+        subset=["database_name", "table_schema", "table_name"]
     )
     tables_df = tables_df.rename(columns={"table_id": "id"})
 
@@ -99,13 +99,13 @@ def get_schemas_by_ids(relevant_schemas_ids: list = None):
         if not table_schema:
             continue
 
-        schema_db_name: str = schema["db_name"]
-        schema_db_node = dbs_nodes[schema_db_name]
+        schema_database_name: str = schema["database_name"]
+        schema_database_node = dbs_nodes[schema_database_name]
         tables_df = pd.DataFrame(schema_dfs[table_schema]["tables"])
         columns_df = pd.DataFrame(schema_dfs[table_schema]["columns"])
 
         all_schemas[table_schema.lower()] = Schema(
-            schema_db_node,
+            schema_database_node,
             tables_df,
             columns_df,
             table_schema,

@@ -70,6 +70,7 @@ def _expand_info(ids_and_labels):
                             WITH n, head(collect(sql.sql_full_query)) as sql_code, head(collect(sql)) as sql_node
                             OPTIONAL MATCH (sql_node)-[:{Edges.SQL}]->(t:{Labels.TABLE})
                                 <-[:{Edges.CONTAINS}]-(schema:{Labels.SCHEMA})
+                                <-[:{Edges.CONTAINS}]-(db:{Labels.DB})
                             WITH n, sql_code,
                                  [x IN collect(
                                      CASE WHEN t IS NOT NULL THEN
@@ -77,6 +78,7 @@ def _expand_info(ids_and_labels):
                                              properties(t),
                                              {{label: "{Labels.TABLE}",
                                               schema_name: schema.name,
+                                              database_name: db.name,
                                               columns: [(t)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN}) |
                                                   {{name: c.name,
                                                     data_type: toString(coalesce(c.data_type, "")),
@@ -97,7 +99,8 @@ def _expand_info(ids_and_labels):
                             ) as item',
                         n:{Labels.COLUMN},
                             'MATCH(n)<-[:{Edges.CONTAINS}]-(parent)<-[:{Edges.CONTAINS}]-(schema:{Labels.SCHEMA})
-                            WITH n, parent, schema,
+                            <-[:{Edges.CONTAINS}]-(db:{Labels.DB})
+                            WITH n, parent, schema, db,
                                  [(parent)-[:{Edges.CONTAINS}]->(c:{Labels.COLUMN}) |
                                   {{name: c.name,
                                     data_type: toString(coalesce(c.data_type, "")),
@@ -106,13 +109,14 @@ def _expand_info(ids_and_labels):
                                     sample_values: CASE WHEN c.sample_values IS NOT NULL AND size(c.sample_values) > 0
                                                         THEN c.sample_values ELSE null END
                                   }}] AS column_list
-                            WITH n, parent, schema, column_list,
+                            WITH n, parent, schema, db, column_list,
                                  apoc.map.merge(
                                      properties(parent),
                                      {{label: coalesce(parent.label,
                                       toLower(head(labels(parent))), "{Labels.TABLE}"),
                                       columns: column_list,
-                                      schema_name: schema.name}}
+                                      schema_name: schema.name,
+                                      database_name: db.name}}
                                  ) AS t0
                             RETURN apoc.map.merge(
                                      apoc.map.setPairs(properties(n),[

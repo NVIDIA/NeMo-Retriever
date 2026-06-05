@@ -14,13 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 def db_exists(db_node):
-    db_name = db_node.get_name()
+    database_name = db_node.get_name()
     query = f"""
-    MATCH (n:{Labels.DB}{{name: $db_name}})
+    MATCH (n:{Labels.DB}{{name: $database_name}})
     OPTIONAL MATCH (n)-[r]-(v)
     RETURN n.id AS id, count(r) AS nbrs
     """
-    result_data = get_neo4j_conn().query_read(query=query, parameters={"db_name": db_name})
+    result_data = get_neo4j_conn().query_read(query=query, parameters={"database_name": database_name})
     if not result_data or len(result_data) == 0:
         return None, None
 
@@ -121,9 +121,9 @@ def update_diff_from_existing_schema(new_schema, latest_timestamp):
     try:
         # load existing schema
         schema_name = new_schema.get_schema_name()
-        db_name = new_schema.get_db_name()
+        database_name = new_schema.get_database_name()
 
-        existing_schema = load_schema_from_graph(db_name, schema_name)
+        existing_schema = load_schema_from_graph(database_name, schema_name)
         if existing_schema is None:
             return
 

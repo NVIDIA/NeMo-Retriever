@@ -106,6 +106,7 @@ def test_ingest_default_returns_service_ingest_result(stub_ingestor: ServiceInge
     # ``.failures``.
     assert len(result) == 2
     assert result.failures == [("doc-b", "boom")]
+    assert result.document_filenames == {"doc-a": "a.pdf", "doc-b": "b.pdf"}
     assert result.dataframe is not None
     assert len(result.dataframe) == 1
     assert "document_id" not in result.dataframe.columns

@@ -153,7 +153,7 @@ def _create_table_text(
     Returns just the text string; the caller is responsible for wrapping it
     in an embed-row dict via :func:`_create_row`.
     """
-    text = f"db_name: {database_name}" f", schema_name: {schema_name}" f", table_name: {table_name}"
+    text = f"database_name: {database_name}" f", schema_name: {schema_name}" f", table_name: {table_name}"
     if table_description:
         text += f", table_description: {table_description}"
 
@@ -189,7 +189,7 @@ def _create_column_text(
     in an embed-row dict via :func:`_create_row`.
     """
     text = (
-        f"db_name: {database_name}"
+        f"database_name: {database_name}"
         f", schema_name: {schema_name}"
         f", table_name: {table_name}"
         f", column_name: {column_name}"
