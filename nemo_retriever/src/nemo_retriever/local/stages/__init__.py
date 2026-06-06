@@ -1,12 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-"""
-Checkpointable local pipeline stages.
-
-Each stage is a standalone Typer CLI module intended to be run independently,
-reading previous artifacts from disk and writing new artifacts alongside inputs.
-"""
-
-# Intentionally empty: stages are imported explicitly in `nemo_retriever.local.__main__`.
+_alias(__name__, "nemo_retriever.cli.local.stages")

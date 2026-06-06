@@ -1,10 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-from __future__ import annotations
-
-from nemo_retriever.text_embed.commands import app, main, run
-from nemo_retriever.text_embed.processor import embed_text_from_primitives_df, maybe_inject_local_hf_embedder
-
-__all__ = ["app", "embed_text_from_primitives_df", "main", "maybe_inject_local_hf_embedder", "run"]
+_alias(__name__, "nemo_retriever.cli.text_embed.stage")

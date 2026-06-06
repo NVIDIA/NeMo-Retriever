@@ -1,16 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-from __future__ import annotations
-
-import typer
-
-from nemo_retriever.pdf import stage
-
-app = typer.Typer(help="PDF Extraction")
-app.add_typer(stage.app, name="stage")
-
-
-def main() -> None:
-    app()
+_alias(__name__, "nemo_retriever.cli.pdf.__main__")

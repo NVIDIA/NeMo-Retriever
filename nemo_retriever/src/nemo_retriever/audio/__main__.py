@@ -1,12 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-"""Entrypoint for `python -m nemo_retriever.audio`. Do not import this from the package __init__."""
-
-from __future__ import annotations
-
-from nemo_retriever.audio.cli import app
-
-if __name__ == "__main__":
-    app()
+_alias(__name__, "nemo_retriever.cli.audio.__main__")

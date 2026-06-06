@@ -1,30 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-from __future__ import annotations
-
-from importlib import import_module
-
-import typer
-
-app = typer.Typer(help="Comparison utilities")
-
-
-def _register_optional_compare_commands() -> None:
-    for module_name, command_name in (
-        ("compare_json", "json"),
-        ("compare_results", "results"),
-    ):
-        try:
-            module = import_module(f"{__package__}.{module_name}")
-        except ModuleNotFoundError:
-            continue
-        app.add_typer(module.app, name=command_name)
-
-
-_register_optional_compare_commands()
-
-
-def main() -> None:
-    app()
+_alias(__name__, "nemo_retriever.cli.compare.__main__")

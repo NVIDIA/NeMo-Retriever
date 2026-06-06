@@ -1,16 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-from __future__ import annotations
-
-import typer
-
-from nemo_retriever.utils.image.render import app as render_app
-
-app = typer.Typer(help="Utilities for working with images (visualization, inspection, conversions)")
-app.add_typer(render_app, name="render")
-
-
-def main() -> None:
-    app()
+_alias(__name__, "nemo_retriever.cli.image.__main__")
