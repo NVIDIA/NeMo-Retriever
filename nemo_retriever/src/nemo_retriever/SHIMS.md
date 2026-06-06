@@ -253,3 +253,10 @@ cleanup pass deletes every old module listed here, then deletes this file.
 | `nemo_retriever.rerank.rerank` | `nemo_retriever.operators.rerank` | PR3-operators |
 | `nemo_retriever.dedup.dedup` | `nemo_retriever.operators.dedup` | PR3-operators |
 | `nemo_retriever.vdb.operators` | `nemo_retriever.operators.vdb` | PR3-operators |
+| `nemo_retriever.retriever` | `nemo_retriever.graph.retriever` | PR4-graph |
+| `nemo_retriever.retriever_graph_utils` | `nemo_retriever.graph.retriever_utils` | PR4-graph |
+| `nemo_retriever.application.pipeline` | `nemo_retriever.graph.stages` | PR4-graph |
+| `nemo_retriever.application.pipeline.build_plan` | `nemo_retriever.graph.stages.build_plan` | PR4-graph |
+| `nemo_retriever.application.pipeline.contracts` | `nemo_retriever.graph.stages.contracts` | PR4-graph |
+| `nemo_retriever.application.pipeline.run_plan` | `nemo_retriever.graph.stages.run_plan` | PR4-graph |
+| `nemo_retriever.application.pipeline.stage_registry` | `nemo_retriever.graph.stages.stage_registry` | PR4-graph |

@@ -1,17 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-from nemo_retriever.application.pipeline.build_plan import build_stage_plan
-from nemo_retriever.application.pipeline.contracts import StageContract, StageProcessor, validate_stage_input
-from nemo_retriever.application.pipeline.run_plan import run_stage_plan
-from nemo_retriever.application.pipeline.stage_registry import STAGE_REGISTRY
-
-__all__ = [
-    "STAGE_REGISTRY",
-    "StageContract",
-    "StageProcessor",
-    "build_stage_plan",
-    "run_stage_plan",
-    "validate_stage_input",
-]
+_alias(__name__, "nemo_retriever.graph.stages")
