@@ -266,3 +266,4 @@ cleanup pass deletes every old module listed here, then deletes this file.
 | `nemo_retriever.ingest_plans` | `nemo_retriever.ingestor.plans` | PR5-ingestor |
 | `nemo_retriever.ingest_results` | `nemo_retriever.ingestor.results` | PR5-ingestor |
 | `nemo_retriever.ingest_config` | `nemo_retriever.ingestor.config` | PR5-ingestor |
+| `nemo_retriever.service_ingestor` | `nemo_retriever.service.service_ingestor` | PR6-service |
