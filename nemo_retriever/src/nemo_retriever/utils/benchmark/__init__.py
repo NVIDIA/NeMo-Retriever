@@ -1,11 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-"""
-Benchmark commands for measuring actor-stage throughput.
-"""
-
-from nemo_retriever.utils.benchmark.__main__ import app
-
-__all__ = ["app"]
+_alias(__name__, "nemo_retriever.tools.benchmark")

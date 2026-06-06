@@ -3,4 +3,4 @@
 """Deprecated import shim."""
 from nemo_retriever.common._shim import alias as _alias
 
-_alias(__name__, "nemo_retriever.operators.graph_ops.scoring_operator")
+_alias(__name__, "nemo_retriever.tools.evaluation.scoring_operator")

@@ -1,16 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-"""
-Recall evaluation utilities and CLI.
-"""
-
-from nemo_retriever.recall.__main__ import app
-from nemo_retriever.recall.core import RecallConfig, evaluate_recall
-
-__all__ = [
-    "app",
-    "RecallConfig",
-    "evaluate_recall",
-]
+_alias(__name__, "nemo_retriever.tools.recall")
