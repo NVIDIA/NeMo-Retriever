@@ -27,43 +27,43 @@ __all__ = [
 
 def __getattr__(name: str):
     if name == "NemotronPageElementsV3":
-        from .nemotron_page_elements_v3 import NemotronPageElementsV3
+        from nemo_retriever.model.local.nemotron_page_elements_v3 import NemotronPageElementsV3
 
         return NemotronPageElementsV3
     if name == "NemotronOCRV1":
-        from .nemotron_ocr_v1 import NemotronOCRV1
+        from nemo_retriever.model.local.nemotron_ocr_v1 import NemotronOCRV1
 
         return NemotronOCRV1
     if name == "NemotronOCRV2":
-        from .nemotron_ocr_v2 import NemotronOCRV2
+        from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2
 
         return NemotronOCRV2
     if name == "NemotronTableStructureV1":
-        from .nemotron_table_structure_v1 import NemotronTableStructureV1
+        from nemo_retriever.model.local.nemotron_table_structure_v1 import NemotronTableStructureV1
 
         return NemotronTableStructureV1
     if name == "NemotronGraphicElementsV1":
-        from .nemotron_graphic_elements_v1 import NemotronGraphicElementsV1
+        from nemo_retriever.model.local.nemotron_graphic_elements_v1 import NemotronGraphicElementsV1
 
         return NemotronGraphicElementsV1
     if name == "NemotronParseV12":
-        from .nemotron_parse_v1_2 import NemotronParseV12
+        from nemo_retriever.model.local.nemotron_parse_v1_2 import NemotronParseV12
 
         return NemotronParseV12
     if name == "NemotronRerankV2":
-        from .nemotron_rerank_v2 import NemotronRerankV2
+        from nemo_retriever.model.local.nemotron_rerank_v2 import NemotronRerankV2
 
         return NemotronRerankV2
     if name == "NemotronRerankVLV2":
-        from .nemotron_rerank_vl_v2_hf import NemotronRerankVLV2
+        from nemo_retriever.model.local.nemotron_rerank_vl_v2_hf import NemotronRerankVLV2
 
         return NemotronRerankVLV2
     if name == "NemotronVLMCaptioner":
-        from .nemotron_vlm_captioner import NemotronVLMCaptioner
+        from nemo_retriever.model.local.nemotron_vlm_captioner import NemotronVLMCaptioner
 
         return NemotronVLMCaptioner
     if name == "ParakeetCTC1B1ASR":
-        from .parakeet_ctc_1_1b_asr import ParakeetCTC1B1ASR
+        from nemo_retriever.model.local.parakeet_ctc_1_1b_asr import ParakeetCTC1B1ASR
 
         return ParakeetCTC1B1ASR
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

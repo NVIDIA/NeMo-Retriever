@@ -2,6 +2,6 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from .__main__ import app
+from nemo_retriever.local.__main__ import app
 
 __all__ = ["app"]

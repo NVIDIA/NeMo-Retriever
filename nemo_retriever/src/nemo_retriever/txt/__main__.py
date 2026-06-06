@@ -18,7 +18,7 @@ import typer
 from rich.console import Console
 from nemo_retriever.params import TextChunkParams
 
-from . import txt_file_to_chunks_df
+from nemo_retriever.txt import txt_file_to_chunks_df
 
 console = Console()
 app = typer.Typer(help="Txt extraction: tokenizer-based split, write primitives-like JSON.")

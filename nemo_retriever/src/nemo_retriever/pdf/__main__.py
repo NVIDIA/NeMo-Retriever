@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import typer
 
-from . import stage
+from nemo_retriever.pdf import stage
 
 app = typer.Typer(help="PDF Extraction")
 app.add_typer(stage.app, name="stage")

@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.utils.hf_model_registry import install_pinned_hf_hub_download
-from ..model import BaseModel, ModelRunMode
+from nemo_retriever.model.model import BaseModel, ModelRunMode
 
 from PIL import Image
 

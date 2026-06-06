@@ -4,7 +4,7 @@
 
 """Document-to-PDF conversion utilities."""
 
-from .to_pdf import (
+from nemo_retriever.utils.convert.to_pdf import (
     SUPPORTED_EXTENSIONS,
     DocToPdfConversionActor,
     convert_to_pdf_bytes,

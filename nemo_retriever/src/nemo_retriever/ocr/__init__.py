@@ -2,8 +2,8 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from .gpu_ocr import OCRActor
-from .shared import ocr_page_elements
+from nemo_retriever.ocr.gpu_ocr import OCRActor
+from nemo_retriever.ocr.shared import ocr_page_elements
 
 __all__ = [
     "OCRActor",

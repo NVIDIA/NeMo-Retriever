@@ -18,7 +18,7 @@ from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
-from .convert import html_bytes_to_chunks_df
+from nemo_retriever.html.convert import html_bytes_to_chunks_df
 
 
 @designer_component(

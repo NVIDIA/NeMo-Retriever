@@ -9,10 +9,10 @@ This package intentionally reuses the core extraction logic from `nemo_retriever
 and only provides thin orchestration wrappers.
 """
 
-from .__main__ import app
-from .config import PDFExtractionStageConfig, load_pdf_extractor_schema_from_dict
-from .io import pdf_files_to_ledger_df
-from .stage import extract_pdf_primitives_from_ledger_df, make_pdf_task_config
+from nemo_retriever.pdf.__main__ import app
+from nemo_retriever.pdf.config import PDFExtractionStageConfig, load_pdf_extractor_schema_from_dict
+from nemo_retriever.pdf.io import pdf_files_to_ledger_df
+from nemo_retriever.pdf.stage import extract_pdf_primitives_from_ledger_df, make_pdf_task_config
 
 __all__ = [
     "app",

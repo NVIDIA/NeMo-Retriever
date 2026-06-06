@@ -6,6 +6,6 @@
 Comparison utilities for inspecting differences between pipeline outputs.
 """
 
-from .__main__ import app
+from nemo_retriever.utils.compare.__main__ import app
 
 __all__ = ["app"]

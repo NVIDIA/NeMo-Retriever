@@ -18,7 +18,7 @@ from nemo_retriever.graph.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.graph.operator_archetype import ArchetypeOperator
 
-from .split import txt_bytes_to_chunks_df
+from nemo_retriever.txt.split import txt_bytes_to_chunks_df
 
 
 @designer_component(
@@ -45,7 +45,7 @@ class TextChunkCPUActor(AbstractOperator, CPUOperator):
         return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        from .split import split_df
+        from nemo_retriever.txt.split import split_df
 
         if not isinstance(data, pd.DataFrame) or data.empty:
             return data

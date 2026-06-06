@@ -24,7 +24,7 @@ from nemo_retriever.audio.media_interface import is_media_available
 from nemo_retriever.audio.media_interface import media_dependency_error_message
 from nemo_retriever.params import AudioChunkParams
 
-from .common import (
+from nemo_retriever.utils.benchmark.common import (
     benchmark_sweep,
     maybe_init_ray,
     maybe_write_results_json,

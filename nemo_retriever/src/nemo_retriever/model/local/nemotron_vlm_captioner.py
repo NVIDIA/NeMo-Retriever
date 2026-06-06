@@ -21,7 +21,7 @@ from nemo_retriever.caption.model_profiles import (
     supported_caption_models_by_variant,
 )
 from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
-from ..model import BaseModel, ModelRunMode
+from nemo_retriever.model.model import BaseModel, ModelRunMode
 
 _DEFAULT_MAX_NUM_SEQS = 256
 

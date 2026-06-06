@@ -6,8 +6,8 @@
 Recall evaluation utilities and CLI.
 """
 
-from .__main__ import app
-from .core import RecallConfig, evaluate_recall
+from nemo_retriever.recall.__main__ import app
+from nemo_retriever.recall.core import RecallConfig, evaluate_recall
 
 __all__ = [
     "app",

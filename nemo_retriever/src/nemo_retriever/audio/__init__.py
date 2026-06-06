@@ -20,7 +20,7 @@ from nemo_retriever.audio.media_interface import MediaInterface
 from nemo_retriever.params import ASRParams
 from nemo_retriever.params import AudioChunkParams
 
-from .cli import app
+from nemo_retriever.audio.cli import app
 
 __all__ = [
     "ASRActor",

@@ -2,10 +2,10 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from .build_plan import build_stage_plan
-from .contracts import StageContract, StageProcessor, validate_stage_input
-from .run_plan import run_stage_plan
-from .stage_registry import STAGE_REGISTRY
+from nemo_retriever.application.pipeline.build_plan import build_stage_plan
+from nemo_retriever.application.pipeline.contracts import StageContract, StageProcessor, validate_stage_input
+from nemo_retriever.application.pipeline.run_plan import run_stage_plan
+from nemo_retriever.application.pipeline.stage_registry import STAGE_REGISTRY
 
 __all__ = [
     "STAGE_REGISTRY",

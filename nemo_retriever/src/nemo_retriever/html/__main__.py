@@ -18,7 +18,7 @@ import typer
 from rich.console import Console
 from nemo_retriever.params import HtmlChunkParams
 
-from . import html_file_to_chunks_df
+from nemo_retriever.html import html_file_to_chunks_df
 
 console = Console()
 app = typer.Typer(help="HTML extraction: markitdown -> markdown -> chunks, write primitives-like JSON.")

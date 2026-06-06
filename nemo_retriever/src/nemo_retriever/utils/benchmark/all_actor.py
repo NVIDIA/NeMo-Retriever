@@ -9,7 +9,7 @@ from typing import Optional
 
 import typer
 
-from . import extract_actor, ocr_actor, page_elements_actor, split_actor
+from nemo_retriever.utils.benchmark import extract_actor, ocr_actor, page_elements_actor, split_actor
 
 app = typer.Typer(help="Run all actor-stage benchmarks in sequence.")
 

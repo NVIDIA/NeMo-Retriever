@@ -8,7 +8,7 @@ HTML ingestion: markitdown conversion to markdown, then tokenizer-based chunking
 Compatible with the same embed and LanceDB stages as PDF/txt primitives.
 """
 
-from .convert import (
+from nemo_retriever.html.convert import (
     html_bytes_to_chunks_df,
     html_file_to_chunks_df,
     html_to_markdown,

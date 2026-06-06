@@ -7,7 +7,7 @@ from __future__ import annotations
 import warnings
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
-from .stage_registry import STAGE_REGISTRY
+from nemo_retriever.application.pipeline.stage_registry import STAGE_REGISTRY
 
 StagePlan = List[Tuple[str, Dict[str, Any]]]
 

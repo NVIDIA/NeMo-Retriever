@@ -12,7 +12,7 @@ import typer
 
 from nemo_retriever.pdf.split import PDFSplitActor
 
-from .common import (
+from nemo_retriever.utils.benchmark.common import (
     benchmark_sweep,
     make_seed_split_row,
     maybe_init_ray,

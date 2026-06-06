@@ -31,12 +31,12 @@ __all__ = ["app", "run"]
 
 
 if TYPE_CHECKING:
-    from .__main__ import app, run  # noqa: F401
+    from nemo_retriever.pipeline.__main__ import app, run  # noqa: F401
 
 
 def __getattr__(name: str) -> Any:
     if name in {"app", "run"}:
-        from . import __main__ as _main
+        from nemo_retriever.pipeline import __main__ as _main
 
         return getattr(_main, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

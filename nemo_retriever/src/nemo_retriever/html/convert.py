@@ -19,11 +19,11 @@ from typing import Any, Dict, List, Optional, Union
 import pandas as pd
 from nemo_retriever.params import HtmlChunkParams
 
-from ..txt.split import (
+from nemo_retriever.txt.split import (
     DEFAULT_TOKENIZER_MODEL_ID,
     split_text_by_tokens,
 )
-from ..txt.split import _get_tokenizer as _get_txt_tokenizer
+from nemo_retriever.txt.split import _get_tokenizer as _get_txt_tokenizer
 
 
 def html_to_markdown(html_content: Union[str, bytes, Path]) -> str:

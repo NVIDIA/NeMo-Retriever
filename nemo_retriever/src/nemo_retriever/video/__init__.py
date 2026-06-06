@@ -27,7 +27,7 @@ from nemo_retriever.video.split import VideoSplitActor
 from nemo_retriever.video.split import video_asr_audio_chunk_params
 from nemo_retriever.video.text_dedup import VideoFrameTextDedup
 
-from .cli import app
+from nemo_retriever.video.cli import app
 
 __all__ = [
     "app",

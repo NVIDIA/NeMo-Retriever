@@ -2,12 +2,12 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from .adobe import adobe_extractor
-from .llama import llama_parse_extractor
-from .nemotron_parse import nemotron_parse_extractor
-from .pdfium import pdfium_extractor
-from .tika import tika_extractor
-from .unstructured_io import unstructured_io_extractor
+from nemo_retriever.api.internal.extract.pdf.engines.adobe import adobe_extractor
+from nemo_retriever.api.internal.extract.pdf.engines.llama import llama_parse_extractor
+from nemo_retriever.api.internal.extract.pdf.engines.nemotron_parse import nemotron_parse_extractor
+from nemo_retriever.api.internal.extract.pdf.engines.pdfium import pdfium_extractor
+from nemo_retriever.api.internal.extract.pdf.engines.tika import tika_extractor
+from nemo_retriever.api.internal.extract.pdf.engines.unstructured_io import unstructured_io_extractor
 
 __all__ = [
     "adobe_extractor",

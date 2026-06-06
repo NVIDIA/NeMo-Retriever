@@ -16,7 +16,12 @@ rerank_hits
     vLLM / NIM ``/v1/ranking`` endpoint.
 """
 
-from .rerank import NemotronRerankActor, NemotronRerankCPUActor, NemotronRerankGPUActor, rerank_hits
+from nemo_retriever.rerank.rerank import (
+    NemotronRerankActor,
+    NemotronRerankCPUActor,
+    NemotronRerankGPUActor,
+    rerank_hits,
+)
 
 __all__ = [
     "NemotronRerankActor",

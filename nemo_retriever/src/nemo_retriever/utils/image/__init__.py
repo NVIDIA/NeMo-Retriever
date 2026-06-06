@@ -2,10 +2,10 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from .__main__ import app
+from nemo_retriever.utils.image.__main__ import app
 
 try:
-    from .render import (
+    from nemo_retriever.utils.image.render import (
         render_page_element_detections_for_dir,
         render_page_element_detections_for_image,
     )
