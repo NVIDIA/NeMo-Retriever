@@ -1,11 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-
-from pydantic import ConfigDict, BaseModel
-
-
-# Define a base class with extra fields forbidden
-class BaseModelNoExt(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+_alias(__name__, "nemo_retriever.common.api.internal.schemas.meta.base_model_noext")

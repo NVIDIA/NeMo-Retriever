@@ -1,17 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-"""Document-to-PDF conversion utilities."""
-
-from nemo_retriever.utils.convert.to_pdf import (
-    SUPPORTED_EXTENSIONS,
-    DocToPdfConversionActor,
-    convert_to_pdf_bytes,
-)
-
-__all__ = [
-    "SUPPORTED_EXTENSIONS",
-    "DocToPdfConversionActor",
-    "convert_to_pdf_bytes",
-]
+_alias(__name__, "nemo_retriever.common.modality.convert")

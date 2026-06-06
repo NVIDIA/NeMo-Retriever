@@ -1,22 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-"""Canonical content-type discriminator strings for video-pipeline rows.
-
-Rows flowing through the video graph carry a ``_content_type`` value (both
-as a top-level column and inside ``metadata``) so each stage can filter to
-the rows it owns and pass everything else through. Keeping these literals
-in one module avoids typos across the actors that read and write them.
-"""
-
-from __future__ import annotations
-
-# Per-utterance ASR text from the audio track.
-AUDIO = "audio"
-
-# Single OCR'd video frame.
-VIDEO_FRAME = "video_frame"
-
-# Fused row: an audio utterance joined with concurrent frame OCR text.
-AUDIO_VISUAL = "audio_visual"
+_alias(__name__, "nemo_retriever.common.modality.video._content_types")

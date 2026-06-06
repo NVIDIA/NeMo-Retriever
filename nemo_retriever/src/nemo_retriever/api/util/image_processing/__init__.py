@@ -1,5 +1,6 @@
-from nemo_retriever.api.util.image_processing.transforms import scale_image_to_encoding_size
+# SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-__all__ = [
-    "scale_image_to_encoding_size",
-]
+_alias(__name__, "nemo_retriever.common.api.util.image_processing")
