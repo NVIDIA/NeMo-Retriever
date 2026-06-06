@@ -260,3 +260,9 @@ cleanup pass deletes every old module listed here, then deletes this file.
 | `nemo_retriever.application.pipeline.contracts` | `nemo_retriever.graph.stages.contracts` | PR4-graph |
 | `nemo_retriever.application.pipeline.run_plan` | `nemo_retriever.graph.stages.run_plan` | PR4-graph |
 | `nemo_retriever.application.pipeline.stage_registry` | `nemo_retriever.graph.stages.stage_registry` | PR4-graph |
+| `nemo_retriever.graph_ingestor` | `nemo_retriever.ingestor.graph_ingestor` | PR5-ingestor |
+| `nemo_retriever.branch_extraction` | `nemo_retriever.ingestor.branch_extraction` | PR5-ingestor |
+| `nemo_retriever.ingest_manifest` | `nemo_retriever.ingestor.manifest` | PR5-ingestor |
+| `nemo_retriever.ingest_plans` | `nemo_retriever.ingestor.plans` | PR5-ingestor |
+| `nemo_retriever.ingest_results` | `nemo_retriever.ingestor.results` | PR5-ingestor |
+| `nemo_retriever.ingest_config` | `nemo_retriever.ingestor.config` | PR5-ingestor |
