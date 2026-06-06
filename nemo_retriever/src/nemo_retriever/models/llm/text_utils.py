@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Shared text-processing utilities for LLM output hygiene.
+
+Pure-stdlib module.  Lives under ``nemo_retriever.llm`` so that the
+lightweight SDK surface (``LiteLLMClient``, ``Retriever.answer``) does
+not pull in ``pandas`` or any evaluation dependencies just to clean
+``<think>`` tags out of a model response.
+"""
+
+from __future__ import annotations
+
+import re
+
+
+def strip_think_tags(text: str) -> str:
+    """Remove ``<think>...</think>`` reasoning blocks from model output.
+
+    Handles both closed tags (``<think>...</think>``) and unclosed tags
+    where the model hit the token limit mid-reasoning and never emitted
+    ``</think>``.  Returns an empty string if nothing remains after
+    stripping so callers can detect ``thinking_truncated``.
+    """
+    stripped = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    stripped = re.sub(r"<think>.*", "", stripped, flags=re.DOTALL)
+    return stripped.strip()

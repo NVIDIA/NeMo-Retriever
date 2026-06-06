@@ -1,20 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
-# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+# AUTO-GENERATED SHIM. See nemo_retriever/SHIMS.md.
+"""Deprecated import shim."""
+from nemo_retriever.common._shim import alias as _alias
 
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Any, Dict
-
-from nemo_retriever.api.internal.schemas.transform.transform_text_embedding_schema import TextEmbeddingSchema
-
-
-def load_text_embedding_schema_from_dict(cfg: Dict[str, Any]) -> TextEmbeddingSchema:
-    return TextEmbeddingSchema(**(cfg or {}))
-
-
-@dataclass(frozen=True)
-class TextEmbeddingStageConfig:
-    batch_size: int = 256
-    stage_name: str = "text_embedding"
+_alias(__name__, "nemo_retriever.models.inference.config")
