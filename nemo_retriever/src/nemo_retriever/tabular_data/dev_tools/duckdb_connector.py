@@ -105,6 +105,7 @@ class DuckDB(SQLDatabase):
                     WHEN '{view}' THEN '{view}'
                     WHEN '{materialized_view}' THEN '{materialized_view}'
                     WHEN '{base_table}' THEN '{base_table}'
+                    ELSE '{base_table}'
                 END AS type
             FROM information_schema.tables
             ORDER BY table_schema, table_name
