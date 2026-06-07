@@ -1029,9 +1029,7 @@ helm install retriever ./nemo_retriever/helm -n nemo-retriever \
   --set ngcApiSecret.create=false \
   --set nims.enabled=false \
   --set persistence.enabled=false \
-  --set retrieverResults.enabled=false \
-  --set service.image.repository=nvcr.io/nvstaging/nim/nrl-service \
-  --set service.image.tag=26.05-RC4
+  --set retrieverResults.enabled=false
 ```
 
 Verify pods:

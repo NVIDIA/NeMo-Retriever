@@ -57,7 +57,7 @@ def _fake_generation(answer: str = "RAG retrieves context and uses an LLM.", err
     return GenerationResult(answer=answer, latency_s=0.12, model="fake-llm/test", error=error)
 
 
-def _fake_judge_result(score: int | None = 5, reasoning: str = "correct and complete"):
+def _fake_judge_result(score: float | None = 1.0, reasoning: str = "correct and complete"):
     from nemo_retriever.llm.types import JudgeResult
 
     return JudgeResult(score=score, reasoning=reasoning, error=None)
@@ -147,7 +147,7 @@ class TestAnswer:
         llm = MagicMock()
         llm.generate.return_value = _fake_generation()
         judge = MagicMock()
-        judge.judge.return_value = _fake_judge_result(score=5)
+        judge.judge.return_value = _fake_judge_result(score=1.0)
 
         with patch.object(r, "query", return_value=_fake_hits()):
             result = r.answer(
@@ -157,7 +157,7 @@ class TestAnswer:
                 reference="RAG retrieves context and uses an LLM.",
             )
 
-        assert result.judge_score == 5
+        assert result.judge_score == 1.0
         assert result.judge_reasoning == "correct and complete"
         assert result.token_f1 is not None
         assert result.exact_match is not None
@@ -214,7 +214,7 @@ class TestAnswer:
 
         def _slow_judge(query, reference, candidate):
             time.sleep(judge_latency)
-            return _fake_judge_result(score=4)
+            return _fake_judge_result(score=1.0)
 
         judge.judge.side_effect = _slow_judge
 
@@ -228,7 +228,7 @@ class TestAnswer:
             )
             elapsed = time.perf_counter() - start
 
-        assert result.judge_score == 4
+        assert result.judge_score == 1.0
         assert result.token_f1 is not None
         assert (
             elapsed < judge_latency + 0.2
@@ -447,7 +447,7 @@ class TestPipelineBuilder:
 
                 def _judge_process(df, **_):
                     out = df.copy()
-                    out["judge_score"] = [5] * len(out)
+                    out["judge_score"] = [1.0] * len(out)
                     return out
 
                 mock_gen_cls.return_value = _build_mock_operator("QAGenerationOperator", _gen_process)
@@ -641,5 +641,4 @@ def _build_fake_judge():
         num_retries=3,
         timeout=120.0,
     )
-    client = SimpleNamespace(transport=transport)
-    return SimpleNamespace(_client=client)
+    return SimpleNamespace(transport=transport)

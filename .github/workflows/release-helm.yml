@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Chart version (e.g. 26.05-RC1)'
+        description: 'Chart version (e.g. 26.5.0)'
         required: true
         type: string
       source-ref:

@@ -15,6 +15,7 @@ _CONTENT_TYPE_ALIASES: dict[str, str] = {
     "chart_caption": "chart",
     "image": "image",
     "image_caption": "image",
+    "images": "image",
     "infographic": "infographic",
     "infographic_caption": "infographic",
     "table": "table",

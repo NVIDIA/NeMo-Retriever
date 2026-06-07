@@ -24,14 +24,14 @@ def _managed_cfg(tmp_path: Path, **overrides) -> HarnessConfig:
         "preset": "base",
         "run_mode": "service",
         "manage_service": True,
-        "helm_chart": "nim-nvstaging/nemo-retriever",
-        "helm_chart_version": "26.05-RC6",
+        "helm_chart": "nemo-microservices/nemo-retriever",
+        "helm_chart_version": "26.5.0",
         "helm_release": "nrl-smoke",
         "helm_namespace": "nrl-smoke-ns",
         "helm_values_file": str(values_file),
         "helm_set": {
-            "service.image.repository": "nvcr.io/nvstaging/nim/nrl-service",
-            "service.image.tag": "26.05-RC6",
+            "service.image.repository": "nvcr.io/nvidia/nemo-microservices/nrl-service",
+            "service.image.tag": "26.5.0",
             "ngcApiSecret.create": True,
             "service.env": [{"name": "PYTHONFAULTHANDLER", "value": "1"}],
         },
@@ -59,19 +59,19 @@ def test_build_upgrade_command_supports_remote_chart_version_values_and_inline_s
         "upgrade",
         "--install",
         "nrl-smoke",
-        "nim-nvstaging/nemo-retriever",
+        "nemo-microservices/nemo-retriever",
     ]
     assert "--namespace" in cmd
     assert cmd[cmd.index("--namespace") + 1] == "nrl-smoke-ns"
     assert "--version" in cmd
-    assert cmd[cmd.index("--version") + 1] == "26.05-RC6"
+    assert cmd[cmd.index("--version") + 1] == "26.5.0"
     assert "-f" in cmd
     assert cmd[cmd.index("-f") + 1] == cfg.helm_values_file
     assert "--timeout" in cmd
     assert cmd[cmd.index("--timeout") + 1] == "900s"
     assert "--set" in cmd
-    assert "service.image.repository=nvcr.io/nvstaging/nim/nrl-service" in cmd
-    assert "service.image.tag=26.05-RC6" in cmd
+    assert "service.image.repository=nvcr.io/nvidia/nemo-microservices/nrl-service" in cmd
+    assert "service.image.tag=26.5.0" in cmd
     assert "ngcApiSecret.create=true" in cmd
     assert "--set-json" in cmd
     assert 'service.env=[{"name":"PYTHONFAULTHANDLER","value":"1"}]' in cmd
@@ -149,7 +149,7 @@ def test_display_command_redacts_secret_inline_values(tmp_path: Path) -> None:
         helm_set={
             "ngcApiSecret.password": "super-secret-token",
             "ngcImagePullSecret.dockerconfigjson": "encoded-secret",
-            "service.image.tag": "26.05-RC6",
+            "service.image.tag": "26.5.0",
         },
     )
     manager = HelmServiceManager(cfg)
@@ -160,7 +160,7 @@ def test_display_command_redacts_secret_inline_values(tmp_path: Path) -> None:
     assert "encoded-secret" not in display
     assert "ngcApiSecret.password=<redacted>" in display
     assert "ngcImagePullSecret.dockerconfigjson=<redacted>" in display
-    assert "service.image.tag=26.05-RC6" in display
+    assert "service.image.tag=26.5.0" in display
 
 
 def test_stop_uninstalls_release_when_port_forward_signal_is_denied(monkeypatch, tmp_path: Path) -> None:

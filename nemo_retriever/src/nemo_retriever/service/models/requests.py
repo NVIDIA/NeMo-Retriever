@@ -46,3 +46,12 @@ class JobCreateRequest(RichModel):
     expected_documents: int = Field(ge=1, description="Number of documents this job will receive")
     label: str | None = Field(default=None, description="Optional human-readable tag for the dashboard")
     metadata: dict[str, Any] = Field(default_factory=dict)
+    retain_results: bool = Field(
+        default=False,
+        description=(
+            "When false (default), completed documents keep only ``result_rows`` in the "
+            "job tracker; row payloads are discarded after the pipeline finishes. Set true "
+            "when the client will poll ``GET /v1/ingest/status/{id}`` to fetch "
+            "``result_data``."
+        ),
+    )

@@ -10,7 +10,9 @@ both halves of the pipeline:
   ingestion of Nemo Retriever Library (NRL) record batches.
 - `retrieval` — nearest-neighbor search over **precomputed query vectors**.
   Query strings are embedded upstream (see `nemo_retriever.Retriever`);
-  the VDB only sees vectors.
+  the VDB search boundary receives vectors as the primary input. Backends
+  that combine dense and lexical evidence may also receive aligned
+  `query_texts` as execution-only retrieval context.
 
 Methods accept `**kwargs` so backend-specific options (e.g. LanceDB's
 `where` predicate for metadata filtering, refinement factors,
@@ -102,9 +104,11 @@ class VDB(ABC):
 
         Despite the parameter name `queries` (kept for backward
         compatibility), this method receives a list of embedding vectors,
-        one per query — *not* raw text. Query text is embedded upstream,
-        typically inside `nemo_retriever.Retriever`, before this method
-        is called.
+        one per query. Query text is embedded upstream, typically inside
+        `nemo_retriever.Retriever`, before this method is called. Backends
+        that need the raw query string for retrieval-time lexical matching
+        may additionally consume `query_texts` from `kwargs`; those strings
+        must be aligned one-to-one with the input vectors.
 
         Implementations search the index, apply any post-filtering, and
         return a list of hit lists aligned with the input (one inner list
@@ -120,6 +124,10 @@ class VDB(ABC):
           serialized JSON, e.g.
           `metadata LIKE '%"meta_a":"alpha"%'`.
           The `_filter` alias is accepted in addition to `where`.
+        - query_texts: raw query strings aligned with the input vectors.
+          Dense retrieval backends should not require this. LanceDB hybrid
+          search requires it because the backend combines the precomputed
+          dense vector with a full-text query at search time.
         - refine_factor / nprobes / search_kwargs: ANN tuning passed
           through to the backend.
 
@@ -128,9 +136,9 @@ class VDB(ABC):
         for the full filter cookbook (sidecar merge, server-side vs
         client-side filtering, escaping).
 
-        Hybrid search with precomputed vectors is not implemented by the
-        reference `LanceDB` backend; passing `hybrid=True` raises
-        `NotImplementedError` on that path.
+        `query_texts` is execution-only context. Operators should avoid
+        persisting it in backend constructor kwargs and pass it only for
+        retrieval calls whose effective mode needs raw text.
         """
         pass
 

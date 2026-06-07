@@ -349,7 +349,7 @@ class QAEvalPipeline(EvalOperator):
                 model = row.get(f"{prefix}_model", "")
                 gen_error = row.get(f"{prefix}_gen_error")
                 j_score_raw = row.get(f"{prefix}_judge_score")
-                j_score = None if pd.isna(j_score_raw) else int(j_score_raw)
+                j_score = None if pd.isna(j_score_raw) else float(j_score_raw)
                 j_reasoning = row.get(f"{prefix}_judge_reasoning", "")
                 j_error = row.get(f"{prefix}_judge_error")
                 tf1_val = row.get(f"{prefix}_token_f1", 0.0)
@@ -405,7 +405,9 @@ class QAEvalPipeline(EvalOperator):
         for name in self.llm_clients:
             scores = scores_by_model[name]
             latencies = latencies_by_model[name]
-            dist: dict[str, int] = {str(k): 0 for k in range(1, 6)}
+            # The dual-judge AnswerAccuracy logic (0/2/4 judges, normalised +
+            # averaged) yields one of these discrete values on a 0.0-1.0 scale.
+            dist: dict[str, int] = {str(v): 0 for v in (0.0, 0.25, 0.5, 0.75, 1.0)}
             for s in scores:
                 dist[str(s)] = dist.get(str(s), 0) + 1
             by_model[name] = {

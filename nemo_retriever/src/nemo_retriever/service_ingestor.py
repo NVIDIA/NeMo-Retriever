@@ -15,7 +15,8 @@ Three execution surfaces are exposed:
 1. :meth:`ServiceIngestor.ingest` — sync, blocks until every document has
    finished, returns a :class:`ServiceIngestResult` (a ``list`` subclass
    holding per-document completion events, plus ``job_id`` / ``failures``
-   / ``document_ids`` / ``elapsed_s`` / ``job_status`` / ``dataframe``
+   / ``document_ids`` / ``document_filenames`` / ``elapsed_s`` /
+   ``job_status`` / ``dataframe``
    attributes). By default ``return_results=True`` fetches each
    completed document's rows from the status endpoint into
    ``result.dataframe``. Each
@@ -119,6 +120,9 @@ class ServiceIngestResult(list):
         that failed during upload or pipeline processing.
     document_ids
         Document identifiers returned by the server, in upload order.
+    document_filenames
+        Mapping from server document id to the source filename submitted for
+        that document.
     elapsed_s
         Wall-clock seconds from first upload to last result.
     job_status
@@ -142,6 +146,7 @@ class ServiceIngestResult(list):
         self.job_id: str | None = None
         self.failures: list[tuple[str, str]] = []
         self.document_ids: list[str] = []
+        self.document_filenames: dict[str, str] = {}
         self.elapsed_s: float = 0.0
         self.job_status: str | None = None
         self.dataframe: Any = None
@@ -1065,6 +1070,7 @@ class ServiceIngestor(ingestor):
         """
         return_failures, return_traces, return_results = self._resolve_execute_flags(params, kwargs)
         del params, kwargs
+        retain_results = return_results or self._save_to_disk_dir is not None
         result = ServiceIngestResult()
         traces: list[dict[str, Any]] = []
         rows_by_document: dict[str, list[dict[str, Any]]] = {}
@@ -1074,7 +1080,7 @@ class ServiceIngestor(ingestor):
         documents_failed = 0
         total_uploaded = 0
 
-        for evt in self.ingest_stream():
+        for evt in self.ingest_stream(retain_results=retain_results):
             if return_traces:
                 traces.append(evt)
             event_type = evt.get("event")
@@ -1097,6 +1103,10 @@ class ServiceIngestor(ingestor):
 
             if event_type == "upload_complete":
                 total_uploaded += 1
+                document_id = evt.get("document_id")
+                filename = evt.get("filename")
+                if document_id and filename:
+                    result.document_filenames[str(document_id)] = str(filename)
                 if result.job_id is None:
                     # Race: SSE delivered an upload_complete before the
                     # generator yielded job_created. Fall back to the
@@ -1210,7 +1220,7 @@ class ServiceIngestor(ingestor):
     # Execution — sync streaming
     # ------------------------------------------------------------------
 
-    def ingest_stream(self) -> Iterator[dict[str, Any]]:
+    def ingest_stream(self, *, retain_results: bool = False) -> Iterator[dict[str, Any]]:
         """Sync generator yielding events as documents are processed.
 
         Yields dicts with:
@@ -1222,6 +1232,32 @@ class ServiceIngestor(ingestor):
         * ``{"event": "job_progress", "job_id": ..., "completed": ..., "failed": ..., ...}``
         * ``{"event": "job_finalized"|"job_partial"|"job_failed", "job_id": ..., ...}``
         """
+        return self._ingest_stream_with_retain(retain_results)
+
+    # ------------------------------------------------------------------
+    # Execution — async streaming
+    # ------------------------------------------------------------------
+
+    async def aingest_stream(self, *, retain_results: bool = False) -> AsyncIterator[dict[str, Any]]:
+        """Async generator yielding events as documents are processed."""
+        files = self._collect_inputs()
+        if not files:
+            return
+
+        self._document_ids.clear()
+        async for evt in self._aingest_stream_impl(files, retain_results=retain_results):
+            if evt.get("event") == "upload_complete":
+                did = evt.get("document_id")
+                if did:
+                    self._document_ids.append(did)
+            yield evt
+
+    # ------------------------------------------------------------------
+    # Async helper used by both sync and async streaming entry points
+    # ------------------------------------------------------------------
+
+    def _ingest_stream_with_retain(self, retain_results: bool) -> Iterator[dict[str, Any]]:
+        """Like :meth:`ingest_stream` but passes server-side retention to the HTTP client."""
         files = self._collect_inputs()
         if not files:
             return iter(())
@@ -1235,36 +1271,19 @@ class ServiceIngestor(ingestor):
                     self._document_ids.append(did)
 
         def _factory():
-            return self._wrap_for_capture(self._aingest_stream_impl(files), _record_doc_id)
+            return self._wrap_for_capture(
+                self._aingest_stream_impl(files, retain_results=retain_results),
+                _record_doc_id,
+            )
 
         bridge = _AsyncToSyncBridge(_factory)
         return iter(bridge)
 
-    # ------------------------------------------------------------------
-    # Execution — async streaming
-    # ------------------------------------------------------------------
-
-    async def aingest_stream(self) -> AsyncIterator[dict[str, Any]]:
-        """Async generator yielding events as documents are processed."""
-        files = self._collect_inputs()
-        if not files:
-            return
-
-        self._document_ids.clear()
-        async for evt in self._aingest_stream_impl(files):
-            if evt.get("event") == "upload_complete":
-                did = evt.get("document_id")
-                if did:
-                    self._document_ids.append(did)
-            yield evt
-
-    # ------------------------------------------------------------------
-    # Async helper used by both sync and async streaming entry points
-    # ------------------------------------------------------------------
-
     async def _aingest_stream_impl(
         self,
         files: list[Path],
+        *,
+        retain_results: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
         from nemo_retriever.service.client import RetrieverServiceClient
 
@@ -1274,7 +1293,11 @@ class ServiceIngestor(ingestor):
             api_token=self._api_token,
         )
         pipeline_payload = self._pipeline_payload()
-        async for evt in client.aingest_documents_stream(files=files, pipeline_spec=pipeline_payload):
+        async for evt in client.aingest_documents_stream(
+            files=files,
+            pipeline_spec=pipeline_payload,
+            retain_results=retain_results,
+        ):
             yield evt
 
     @staticmethod

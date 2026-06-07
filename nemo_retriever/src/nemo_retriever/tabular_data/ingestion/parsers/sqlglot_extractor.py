@@ -33,7 +33,7 @@ from sqlglot.optimizer.qualify import qualify
 
 
 class SQLSyntaxError(ValueError):
-    """Raised when ``sqlglot`` cannot parse the SQL for the given dialect.
+    """Raised when ``sqlglot`` cannot parse the SQL with any of the given dialects.
 
     Distinguishes pure syntax/tokenization failures from later resolution
     issues (e.g. unknown tables, schema mismatches), so callers can classify
@@ -111,6 +111,7 @@ class ExtractionResult:
     ast_node_count: int = 0
     joins: list[JoinPair] = field(default_factory=list)
     unions: list[UnionPair] = field(default_factory=list)
+    dialect_used: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -487,8 +488,8 @@ def _extract_union_pairs(
 
 def extract_tables_and_columns(
     sql: str,
-    dialect: str = "sqlite",
-    all_schemas: dict = {},
+    dialects: list[str],
+    all_schemas: dict,
 ) -> ExtractionResult:
     """Return an :class:`ExtractionResult` for all real source tables in *sql*.
 
@@ -496,9 +497,10 @@ def extract_tables_and_columns(
     ----------
     sql:
         Raw SQL string.
-    dialect:
-        sqlglot dialect (e.g. ``"sqlite"``, ``"duckdb"``, ``"snowflake"``).
-        Defaults to ``"sqlite"``.
+    dialects:
+        sqlglot dialects to try in order (e.g. ``["postgres", "duckdb"]``).
+        At least one dialect must be supplied; an empty list raises
+        :class:`SQLSyntaxError` for any input.
     all_schemas:
         ``{schema_name: Schema}`` dict from Neo4j.  Pass ``{}`` (default) to
         skip schema-assisted resolution and rely solely on ``qualify()``.
@@ -514,11 +516,37 @@ def extract_tables_and_columns(
 
         ``.ast_node_count`` — total number of sqlglot AST nodes; used as
         a cheap structural fingerprint to pre-filter duplicate candidates.
+
+    Raises
+    ------
+    SQLSyntaxError
+        When *sql* cannot be parsed with any dialect in *dialects* (including
+        empty/whitespace-only input).
     """
-    try:
-        statement = sqlglot.parse_one(sql, dialect=dialect)
-    except (ParseError, TokenError) as err:
-        raise SQLSyntaxError(str(err)) from err
+    statement = None
+    dialect_used: str = ""
+    last_err: Exception | None = None
+    for i, dialect in enumerate(dialects):
+        try:
+            statement = sqlglot.parse_one(sql, dialect=dialect)
+            dialect_used = dialect
+            break
+        except (ParseError, TokenError) as err:
+            last_err = err
+            is_last_dialect = i == len(dialects) - 1
+            if is_last_dialect:
+                raise SQLSyntaxError(
+                    f"Invalid query syntax or unsupported dialect. Supported dialects: {','.join(dialects)}. "
+                    f"Last parser error: {err}"
+                ) from err
+
+    if statement is None:
+        raise SQLSyntaxError(
+            f"Invalid query syntax or unsupported dialect. Supported dialects: {','.join(dialects)}."
+            + (f" Last parser error: {last_err}" if last_err else "")
+        )
+
+    dialect = dialect_used
 
     ast_node_count = sum(1 for _ in statement.walk())
 
@@ -533,7 +561,7 @@ def extract_tables_and_columns(
     }
 
     if not source_table_names:
-        return ExtractionResult(ast_node_count=ast_node_count)
+        return ExtractionResult(ast_node_count=ast_node_count, dialect_used=dialect_used)
 
     # alias → real table name (e.g. "o" → "orders")
     alias_map = _alias_to_table_map(statement, cte_names)
@@ -688,4 +716,5 @@ def extract_tables_and_columns(
         ast_node_count=ast_node_count,
         joins=join_pairs,
         unions=union_pairs,
+        dialect_used=dialect_used,
     )

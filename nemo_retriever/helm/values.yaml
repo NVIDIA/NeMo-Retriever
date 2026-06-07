@@ -67,13 +67,13 @@ imagePullSecrets: []
 # =============================================================================
 service:
   image:
-    # Default points at the staging image published to NGC. Override
+    # Default points at the GA image published to NGC. Override
     # `repository` / `tag` to pin a different build, e.g. one produced by:
-    #   docker build -f nemo_retriever/Dockerfile --target service \
+    #   docker build -f Dockerfile --target service \
     #       -t <your-registry>/nemo-retriever-service:<tag> .
-    repository: localhost:32000/nemo-retriever-service
-    tag: "latest"
-    pullPolicy: Always
+    repository: nvcr.io/nvidia/nemo-microservices/nrl-service
+    tag: "26.5.0"
+    pullPolicy: IfNotPresent
 
   # Number of pod replicas. Must stay at 1 while persistence is SQLite-backed
   # (RWO PVC + single writer). Bumping this requires switching to a shared

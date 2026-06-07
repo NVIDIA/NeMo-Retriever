@@ -555,7 +555,7 @@ DataFrame. The chain is executed by `InprocessExecutor` (DFS traversal).
 RetrievalLoaderOperator >> QAGenerationOperator >> JudgingOperator >> ScoringOperator
         |                         |                      |                  |
   Loads ground truth +     Generates answers       LLM-as-judge        Programmatic
-  retrieval JSON into      via LiteLLMClient       scoring (1-5)       metrics (F1,
+  retrieval JSON into      via LiteLLMClient       scoring (0-1)       metrics (F1,
   a DataFrame with         (ThreadPool, N          via LLMJudge        exact match,
   query, answer,           concurrent workers)                         failure modes)
   context columns
@@ -596,7 +596,7 @@ nemo_retriever.evaluation.orchestrator (QAEvalPipeline)
     |     |-- LiteLLMClient   (NVIDIA NIM, OpenAI, vLLM, Ollama)
     |
     |-- judge : AnswerJudge protocol
-          |-- LLMJudge        (1-5 rubric via LLM-as-judge)
+          |-- LLMJudge        (ragas AnswerAccuracy, 0-1 dual-judge)
 ```
 
 Construct with `build_eval_pipeline(config)` from `nemo_retriever.evaluation.config`
@@ -622,7 +622,7 @@ signature works -- no inheritance or registration required.
 |----------|--------|----------------------|
 | `RetrieverStrategy` | `retrieve(query, top_k) -> RetrievalResult` | `FileRetriever` (cached JSON) |
 | `LLMClient` | `generate(query, chunks) -> GenerationResult` | `LiteLLMClient` (NIM, OpenAI, vLLM) |
-| `AnswerJudge` | `judge(query, reference, candidate) -> JudgeResult` | `LLMJudge` (1-5 rubric) |
+| `AnswerJudge` | `judge(query, reference, candidate) -> JudgeResult` | `LLMJudge` (ragas AnswerAccuracy, 0-1) |
 
 ### Files (`nemo_retriever.evaluation`)
 
@@ -639,7 +639,7 @@ The evaluation framework lives in `nemo_retriever/src/nemo_retriever/evaluation/
 | `config.py` | Eval config loader: `load_eval_config()`, `build_eval_chain()`, `build_eval_pipeline()`; supports YAML/JSON with `${VAR}` expansion |
 | `retrievers.py` | `FileRetriever` (cached JSON with normalized query matching) |
 | `generators.py` | `LiteLLMClient` -- unified LLM client via litellm (NIM, OpenAI, vLLM, HF) |
-| `judges.py` | `LLMJudge` -- 1-5 scoring with key-term anchoring rubric |
+| `judges.py` | `LLMJudge` -- 0-1 scoring via ragas `AnswerAccuracy` (dual-judge) |
 | `scoring.py` | Programmatic scoring functions: `answer_in_context`, `token_f1`, `classify_failure`, `score_dataframe` |
 | `orchestrator.py` | `QAEvalPipeline` -- multi-model orchestrator with `evaluate()` (dict API) and `process()` (DataFrame API) |
 | `ground_truth.py` | Dataset loaders: `bo767_infographic`, `vidore/*`, and generic `csv:` loader |
@@ -940,67 +940,38 @@ After normalizing both reference and candidate (lowercase, strip punctuation, nu
 | `recall` | `common_tokens / reference_tokens` | Fraction of the reference's tokens the model captured |
 | `f1` | `2 * P * R / (P + R)` | Harmonic mean of precision and recall |
 
-### Tier 3: `judge_score` (LLM-as-judge, 1-5 scale)
+### Tier 3: `judge_score` (LLM-as-judge, 0.0-1.0 scale)
 
-An LLM scores the candidate against the reference using a structured rubric:
+`LLMJudge` is a from-scratch port of ragas'
+[`AnswerAccuracy`](https://pypi.org/project/ragas/) metric -- it reproduces the
+**dual-judge** logic directly on `LiteLLMClient`, with no ragas / instructor /
+openai dependency:
 
-| Score | Label | Criteria |
-|-------|-------|----------|
-| **5** | Fully correct | All required facts present |
-| **4** | Nearly correct | Nearly all facts present; one minor trivial difference |
-| **3** | Mostly correct | Most facts present but at least one non-trivial fact missing or slightly wrong |
-| **2** | Partially correct | Some facts present but core answer incomplete or has a significant error |
-| **1** | Incorrect | None/almost none of the required facts; includes wrong answer, irrelevant response, or "context does not contain" when the answer exists |
+1. **Judge 1** rates the candidate against the reference.
+2. **Judge 2** repeats the rating with the candidate/reference roles swapped
+   (a bidirectional equivalence check), under a paraphrased rubric.
+3. Each judge returns `0` (no match), `2` (partial match), or `4` (exact
+   match); each is normalised to `0.0-1.0` and the two are averaged
+   (NaN-aware: a single valid judge still scores).
 
-<details>
-<summary><strong>Current judge prompt</strong></summary>
+The two prompts and their few-shot examples are copied verbatim from ragas
+(`AnswerAccuracyJudge1Prompt` / `AnswerAccuracyJudge2Prompt`), rendered through
+a faithful reproduction of `BasePrompt.to_string`, and run against the judge
+model via `litellm` (NVIDIA NIM by default). `instructor` constrained decoding
+is replaced by the prompts' own `{"rating": X}` JSON contract plus a tolerant
+parser. The dual `0/2/4` design yields one of `{0.0, 0.25, 0.5, 0.75, 1.0}`.
+`AnswerAccuracy` emits **only** a numeric rating, so `judge_reasoning` is
+always empty.
 
-**System:**
+| `judge_score` | `classify_failure` band |
+|---------------|-------------------------|
+| `>= 0.75` (`0.75`, `1.0`) | `correct` |
+| `0.25 - 0.5` | `partial` (or refusal variants) |
+| `< 0.25` (`0.0`) | `retrieval_miss` / `generation_miss` / refusal variants |
 
-```
-You are an expert evaluator for factual question answering.
-
-You will receive a QUESTION, a REFERENCE answer, and a CANDIDATE answer.
-
-Step 1 -- Identify required facts:
-  Break the REFERENCE into its key terms: specific numbers, names, dates,
-  percentages, units, or short phrases that constitute the factual core.
-  Example: "16% of adults" -> required facts = ["16%", "adults"].
-
-Step 2 -- Check each required fact in the CANDIDATE:
-  - Allow numeric equivalence: "16.00%" = "16%", "1,000" = "1000".
-  - Allow paraphrasing: "Peers" matches "Peers of those adults".
-  - Allow additional correct detail: extra facts do NOT reduce the score.
-  - Short but correct answers are fine: "Peers" is valid for "Peers".
-
-Step 3 -- Score on a 1-5 scale based on the fraction of required facts present:
-  5 - All required facts present. Answer is fully correct.
-  4 - Nearly all required facts present. One minor fact may differ trivially.
-  3 - Most required facts present but at least one non-trivial fact is missing
-      or slightly wrong.
-  2 - Some required facts present but the core answer is incomplete or has a
-      significant factual error.
-  1 - None or almost none of the required facts present. Includes: wrong answer,
-      irrelevant response, or stating "the context does not contain this
-      information" when the reference answer exists.
-
-Respond ONLY with valid JSON:
-{"score": <integer 1-5>, "reasoning": "<one sentence citing which required facts were matched or missed>"}
-
-No text outside the JSON object.
-```
-
-**User:**
-
-```
-Question: {query}
-
-Reference answer: {reference}
-
-Candidate answer: {candidate}
-```
-
-</details>
+> Migration note: the previous judge used a custom single-call `1-5` rubric.
+> Scores from before this change are **not** comparable; re-baseline any saved
+> judge numbers, thresholds, and cached `agent_eval` run JSON.
 
 ### Output fields per query
 
@@ -1014,8 +985,8 @@ Candidate answer: {candidate}
 | `gen_latency_s` | Generation | `float` | Generation API call latency (seconds) |
 | `gen_error` | Generation | `str?` | Error string if generation failed, else `null` |
 | `token_f1` | **Tier 2** | `float` | SQuAD-style F1 (0.0-1.0) |
-| `judge_score` | **Tier 3** | `int?` | LLM judge score (1-5), `null` on error |
-| `judge_reasoning` | **Tier 3** | `str` | One-sentence explanation from the judge |
+| `judge_score` | **Tier 3** | `float?` | ragas AnswerAccuracy score (0.0-1.0), `null` on error |
+| `judge_reasoning` | **Tier 3** | `str` | Always empty -- AnswerAccuracy emits only a rating |
 | `judge_error` | Tier 3 | `str?` | Error string if judging failed, else `null` |
 | `failure_mode` | Derived | `str` | Classification (see below) |
 
@@ -1134,8 +1105,8 @@ No registration step needed -- pass the instance directly to `QAEvalPipeline`.
     },
     "tier3_llm_judge": {
       "generator": {
-        "mean_score": 3.74,
-        "score_distribution": {"1": 251, "2": 44, "3": 28, "4": 26, "5": 621},
+        "mean_score": 0.69,
+        "score_distribution": {"0.0": 251, "0.25": 44, "0.5": 28, "0.75": 26, "1.0": 621},
         "mean_latency_s": 11.7,
         "scored_count": 970,
         "error_count": 35

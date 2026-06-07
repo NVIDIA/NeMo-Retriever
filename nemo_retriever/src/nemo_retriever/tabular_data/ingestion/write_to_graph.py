@@ -52,13 +52,13 @@ def populate_tabular_data(data, num_workers, dialect):
         populate_pks(pks=data["pks"], database_name=database)
 
     if "queries" in data:
-        populate_queries(all_schemas, data["queries"], num_workers, dialect)
+        populate_queries(all_schemas, data["queries"], num_workers, [dialect])
 
     return all_schemas
 
 
 def populate_db(tables_df, columns_df, database, num_workers):
-    schemas, db_node = schemas_parser.parse_df(tables_df, columns_df, db_name=database)
+    schemas, db_node = schemas_parser.parse_df(tables_df, columns_df, database_name=database)
     existing_db_id, loaded = db_exists(db_node)
 
     latest_timestamp = datetime.now(timezone.utc).replace(microsecond=0)

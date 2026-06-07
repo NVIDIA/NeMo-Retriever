@@ -233,8 +233,8 @@ class TestLLMJudgeConstruction:
         transport = LLMRemoteClientParams(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
         judge = LLMJudge(transport=transport)
         assert judge.model == "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
-        assert judge._client.sampling.temperature == 0.1
-        assert judge._client.sampling.max_tokens == 4096
+        assert judge.sampling.temperature == 0.1
+        assert judge.sampling.max_tokens == 4096
 
     def test_custom_sampling_override(self):
         from nemo_retriever.llm.clients import LLMJudge
@@ -243,8 +243,8 @@ class TestLLMJudgeConstruction:
         transport = LLMRemoteClientParams(model="m")
         sampling = LLMInferenceParams(temperature=0.4, max_tokens=1024)
         judge = LLMJudge(transport=transport, sampling=sampling)
-        assert judge._client.sampling.temperature == 0.4
-        assert judge._client.sampling.max_tokens == 1024
+        assert judge.sampling.temperature == 0.4
+        assert judge.sampling.max_tokens == 1024
 
     def test_from_kwargs_matches_structured(self):
         from nemo_retriever.llm.clients import LLMJudge
@@ -256,22 +256,22 @@ class TestLLMJudgeConstruction:
             timeout=60.0,
             extra_params={"user": "t"},
         )
-        assert judge._client.transport.model == "m"
-        assert judge._client.transport.api_key == "k"
-        assert judge._client.transport.num_retries == 2
-        assert judge._client.transport.timeout == 60.0
-        assert judge._client.transport.extra_params == {"user": "t"}
+        assert judge.transport.model == "m"
+        assert judge.transport.api_key == "k"
+        assert judge.transport.num_retries == 2
+        assert judge.transport.timeout == 60.0
+        assert judge.transport.extra_params == {"user": "t"}
         # Sampling stays at judge defaults even when using flat constructor.
-        assert judge._client.sampling.temperature == 0.1
-        assert judge._client.sampling.max_tokens == 4096
+        assert judge.sampling.temperature == 0.1
+        assert judge.sampling.max_tokens == 4096
 
     def test_from_kwargs_accepts_sampling_overrides(self):
         from nemo_retriever.llm.clients import LLMJudge
 
         judge = LLMJudge.from_kwargs(model="m", temperature=0.2, max_tokens=512)
 
-        assert judge._client.sampling.temperature == 0.2
-        assert judge._client.sampling.max_tokens == 512
+        assert judge.sampling.temperature == 0.2
+        assert judge.sampling.max_tokens == 512
 
     def test_from_kwargs_uses_default_model(self):
         from nemo_retriever.llm.clients import LLMJudge
@@ -280,17 +280,55 @@ class TestLLMJudgeConstruction:
         assert judge.model == LLMJudge._DEFAULT_MODEL
 
     @patch("litellm.completion")
-    def test_judge_returns_parsed_result(self, mock_completion):
+    def test_judge_returns_perfect_score(self, mock_completion):
+        """Both judges rate 4 -> normalised 1.0 each -> averaged 1.0."""
         from nemo_retriever.llm.clients import LLMJudge
 
-        mock_completion.return_value = _fake_litellm_response(
-            '{"score": 4, "reasoning": "mostly correct"}',
-        )
+        mock_completion.return_value = _fake_litellm_response('{"rating": 4}')
         judge = LLMJudge.from_kwargs(model="m")
         verdict = judge.judge(query="q", reference="ref", candidate="cand")
-        assert verdict.score == 4
-        assert verdict.reasoning == "mostly correct"
+        assert verdict.score == 1.0
+        assert verdict.reasoning == ""
         assert verdict.error is None
+        # Dual-judge: exactly two LLM calls per row.
+        assert mock_completion.call_count == 2
+
+    @patch("litellm.completion")
+    def test_judge_averages_the_two_judges(self, mock_completion):
+        """Judge 1 -> 4 (1.0), judge 2 -> 2 (0.5); average is 0.75."""
+        from nemo_retriever.llm.clients import LLMJudge
+
+        mock_completion.side_effect = [
+            _fake_litellm_response('{"rating": 4}'),
+            _fake_litellm_response('{"rating": 2}'),
+        ]
+        judge = LLMJudge.from_kwargs(model="m")
+        verdict = judge.judge(query="q", reference="ref", candidate="cand")
+        assert verdict.score == 0.75
+        assert verdict.error is None
+
+    @patch("litellm.completion")
+    def test_judge_unparseable_rating_becomes_none(self, mock_completion):
+        """When neither judge yields a valid 0/2/4 rating, score is None with an error."""
+        from nemo_retriever.llm.clients import LLMJudge
+
+        mock_completion.return_value = _fake_litellm_response("I cannot rate this answer.")
+        judge = LLMJudge.from_kwargs(model="m", num_retries=2)
+        verdict = judge.judge(query="q", reference="ref", candidate="cand")
+        assert verdict.score is None
+        assert verdict.error is not None and "judge_no_score" in verdict.error
+
+    @patch("litellm.completion")
+    def test_judge_transport_error_surfaced(self, mock_completion):
+        """When every attempt raises, the last transport error is in the JudgeResult."""
+        from nemo_retriever.llm.clients import LLMJudge
+
+        mock_completion.side_effect = RuntimeError("connection refused")
+        judge = LLMJudge.from_kwargs(model="m", num_retries=2)
+        verdict = judge.judge(query="q", reference="ref", candidate="cand")
+        assert verdict.score is None
+        assert "judge_no_score" in verdict.error
+        assert "connection refused" in verdict.error
 
     def test_judge_empty_candidate_short_circuits(self):
         """Empty candidate is handled locally with no LLM call."""
@@ -323,8 +361,8 @@ class TestBackCompatCallSites:
 
         op = JudgingOperator(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
         assert op._judge.model == "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
-        assert op._judge._client.sampling.temperature == 0.1
-        assert op._judge._client.sampling.max_tokens == 4096
+        assert op._judge.sampling.temperature == 0.1
+        assert op._judge.sampling.max_tokens == 4096
 
     def test_judging_operator_plumbs_num_retries_to_inner_judge(self):
         """JudgingOperator(num_retries=...) must flow down to the LLMJudge it
@@ -340,7 +378,7 @@ class TestBackCompatCallSites:
             model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
             num_retries=7,
         )
-        assert op._judge._client.transport.num_retries == 7
+        assert op._judge.transport.num_retries == 7
 
     def test_pipeline_builder_judge_forwards_transport_num_retries(self):
         """RetrieverPipelineBuilder.judge(judge) unpacks transport.* onto the
@@ -364,7 +402,7 @@ class TestBackCompatCallSites:
 
         judging_ops = [s for s in builder._steps if isinstance(s, JudgingOperator)]
         assert len(judging_ops) == 1
-        assert judging_ops[0]._judge._client.transport.num_retries == 7
+        assert judging_ops[0]._judge.transport.num_retries == 7
 
     def test_pipeline_builder_judge_defaults_num_retries_when_flat_kwargs(self):
         """The flat ``model=...`` branch of .judge() must still default
@@ -382,7 +420,7 @@ class TestBackCompatCallSites:
 
         judging_ops = [s for s in builder._steps if isinstance(s, JudgingOperator)]
         assert len(judging_ops) == 1
-        assert judging_ops[0]._judge._client.transport.num_retries == 3
+        assert judging_ops[0]._judge.transport.num_retries == 3
 
 
 class TestApiKeyRedaction:

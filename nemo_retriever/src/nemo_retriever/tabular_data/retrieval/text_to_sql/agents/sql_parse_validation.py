@@ -84,12 +84,12 @@ class SQLValidationAgent(BaseAgent):
         """
         path_state = state.get("path_state", {})
         response = path_state.get("sql_generation_result")
-        connector = state.get("connector")
-        dialect = connector.dialect
+        connectors = state.get("connectors") or []
+        dialects = [c.dialect for c in connectors if getattr(c, "dialect", None)]
         schemas_ids = get_all_schemas_ids()
         schemas = get_schemas_by_ids(schemas_ids)
 
-        validation_result = self._sql_parse_validation(schemas, response.sql_code, dialect)
+        validation_result = self._sql_parse_validation(schemas, response.sql_code, dialects)
 
         if validation_result.get("error"):
             error_msg = validation_result["error"]
@@ -123,13 +123,13 @@ class SQLValidationAgent(BaseAgent):
         }
 
     @staticmethod
-    def _sql_parse_validation(schemas, sql: str, dialect: str) -> dict:
+    def _sql_parse_validation(schemas, sql: str, dialects: list[str]) -> dict:
         result: dict = {}
         try:
             parse_query_single(
                 sql=sql,
-                dialect=dialect,
                 schemas=schemas,
+                dialects=dialects,
             )
             result["success"] = True
         except Exception as error:
