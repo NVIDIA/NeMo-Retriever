@@ -60,11 +60,17 @@ def chunks(lst, n):
 
 
 def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize and type a tables DataFrame. Expects a DataFrame only."""
+    """Normalize and type a tables DataFrame.
+
+    Accepts rows from either a SQL connector (``information_schema``) or Neo4j
+    graph reload (``get_schema_tables``). Connector-specific columns such as
+    ``owner`` are dropped; graph-only columns such as ``id`` and ``database``
+    are preserved.
+    """
     types = {
         "table_schema": "category",
         "table_name": "string",
-        "type": "category",
+        "table_type": "category",
         "created": "string",
         "description": "string",
     }
@@ -77,15 +83,18 @@ def normalize_tables(df: pd.DataFrame) -> pd.DataFrame:
         if key not in df.columns:
             df[key] = pd.NA
 
-    df["type"] = df["type"].fillna(TableTypes.BASE_TABLE)
+    df["table_type"] = df["table_type"].fillna(TableTypes.BASE_TABLE)
     df = df.astype(dtype=types)
 
     if "created" in df:
         df["created"] = pd.to_datetime(df["created"], utc=True, format="mixed")
-        df["created"] = df["created"].apply(lambda x: x.tz_convert(timezone.utc).replace(microsecond=0))
+        df["created"] = df["created"].apply(
+            lambda x: x.tz_convert(timezone.utc).replace(microsecond=0) if pd.notna(x) else x
+        )
 
-    if "owner" in df:
-        df = df.drop(columns=["owner"])
+    for extra_col in ("owner",):
+        if extra_col in df.columns:
+            df = df.drop(columns=[extra_col])
 
     return df
 

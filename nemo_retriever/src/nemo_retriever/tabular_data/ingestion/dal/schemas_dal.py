@@ -95,11 +95,11 @@ def get_schema_tables(database_name, schema_name):
                 (t:{Labels.TABLE})
                 WITH d.name as database, s.name as table_schema, t.name as table_name, t.id as t_id,
                 tostring(t.created) as created, t.description as description,
-                t.`type` as node_type
+                t.table_type as table_type
                 RETURN collect({{
                     database: database, table_schema: table_schema, table_name: table_name,
                     id:t_id, created: created, description: description,
-                    type: node_type
+                    table_type: table_type
                 }}) as tables
                 """
     res = get_neo4j_conn().query_read(

@@ -42,10 +42,10 @@ class Schema:
             self.columns_df = self.columns_df.loc[self.columns_df["table_name"].isin(table_names)]
 
             self.tables_df["table_name_lower"] = self.tables_df["table_name"].apply(lambda x: x.lower())
-            if "type" not in self.tables_df.columns:
-                self.tables_df["type"] = TableTypes.BASE_TABLE
-            self.tables_df["type"] = (
-                self.tables_df["type"].fillna(TableTypes.BASE_TABLE).apply(lambda x: str(x).lower())
+            if "table_type" not in self.tables_df.columns:
+                self.tables_df["table_type"] = TableTypes.BASE_TABLE
+            self.tables_df["table_type"] = (
+                self.tables_df["table_type"].fillna(TableTypes.BASE_TABLE).apply(lambda x: str(x).lower())
             )
             if "id" not in self.tables_df.columns:
                 self.tables_df["id"] = None
@@ -88,7 +88,7 @@ class Schema:
         self.tables_df["props"] = self.tables_df.apply(
             lambda x: {
                 "name": x["table_name"].strip('"'),
-                "type": x["type"].lower(),
+                "table_type": x["table_type"].lower(),
                 "created": None if pd.isna(x["created"]) else x["created"],
                 "description": None if pd.isna(x["description"]) else x["description"],
                 "id": x.id,
@@ -332,7 +332,7 @@ class Schema:
         self,
         table_name,
         id=None,
-        type=None,
+        table_type=None,
         created=None,
         description=None,
     ):
@@ -341,7 +341,7 @@ class Schema:
         match_props = {"id": id}
         props = self.update_table_props_by_arguments(
             props,
-            type,
+            table_type,
             created,
             description,
         )
@@ -396,15 +396,15 @@ class Schema:
                 if "description" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["description"])
                 else table_df.iloc[0]["description"]
             )
-            node_type = (
+            node_table_type = (
                 None
-                if "type" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["type"])
-                else table_df.iloc[0]["type"]
+                if "table_type" not in table_df.iloc[0] or pd.isna(table_df.iloc[0]["table_type"])
+                else table_df.iloc[0]["table_type"]
             )
             self.create_table_node(
                 table_df.iloc[0]["table_name"],
                 id,
-                node_type,
+                node_table_type,
                 created,
                 description,
             )
@@ -465,12 +465,12 @@ class Schema:
     def update_table_props_by_arguments(
         self,
         props,
-        type,
+        table_type,
         created,
         description,
     ):
-        if type:
-            props.update({"type": type.lower()})
+        if table_type:
+            props.update({"table_type": table_type.lower()})
         if created:
             props.update({"created": created})
         if description:

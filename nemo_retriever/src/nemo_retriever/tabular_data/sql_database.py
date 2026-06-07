@@ -78,7 +78,7 @@ class SQLDatabase(ABC):
 
         Required columns: ``table_schema``, ``table_name``.
 
-        Optional column: ``type`` — persisted on Neo4j ``Table`` nodes. Canonical values
+        Optional column: ``table_type`` — persisted on Neo4j ``Table`` nodes. Canonical values
         are defined in :class:`~nemo_retriever.tabular_data.ingestion.model.reserved_words.TableTypes`
         (``view``, ``materialized view``, ``base table``). Connectors that do not
         provide it default to ``base table`` during ingestion.
