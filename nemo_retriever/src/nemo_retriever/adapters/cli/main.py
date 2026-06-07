@@ -28,8 +28,9 @@ from nemo_retriever.adapters.cli.sdk_workflow import (
     TableOutputFormatValue,
     ingest_documents,
     query_documents,
+    verify_claim,
 )
-from nemo_retriever.vdb.records import RetrievalHit
+from nemo_retriever.adapters.cli._hit_format import _query_cli_hit
 from nemo_retriever.version import get_version_info
 
 logger = logging.getLogger(__name__)
@@ -69,14 +70,6 @@ for _name, _module, _attr in _LAZY_SUBAPPS:
         logger.debug("Skipping '%s' sub-command (import failed)", _name)
 
 _ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError, ValidationError)
-
-
-def _query_cli_hit(hit: RetrievalHit) -> dict[str, object]:
-    return {
-        "source": hit.get("source", ""),
-        "page_number": hit.get("page_number"),
-        "text": hit.get("text", ""),
-    }
 
 
 def _silence_noisy_libraries() -> None:
@@ -309,6 +302,11 @@ def ingest_command(
         None,
         "--caption-infographics/--no-caption-infographics",
         help="Caption infographic crops in addition to extracted images.",
+    ),
+    hybrid: bool = typer.Option(
+        False,
+        "--hybrid",
+        help="Build a full-text (BM25) index alongside vectors so `query --hybrid` can run hybrid search.",
     ),
     dedup: bool = typer.Option(
         False,
@@ -615,6 +613,7 @@ def ingest_command(
                 lancedb_uri=lancedb_uri,
                 table_name=table_name,
                 overwrite=overwrite,
+                hybrid=hybrid,
                 page_elements_invoke_url=page_elements_invoke_url,
                 ocr_invoke_url=ocr_invoke_url,
                 ocr_version=ocr_version,
@@ -744,6 +743,16 @@ def query_command(
             "any of --reranker-invoke-url / --reranker-model-name / --reranker-backend is set."
         ),
     ),
+    hybrid: bool = typer.Option(
+        False,
+        "--hybrid",
+        help="Combine vector + full-text (BM25) retrieval. Requires an index built with `ingest --hybrid`.",
+    ),
+    max_text_chars: int | None = typer.Option(
+        None,
+        "--max-text-chars",
+        help="Truncate each hit's text to N chars (0 = omit text, metadata-only summary). Default: full text.",
+    ),
 ) -> None:
     if reranker_invoke_url is None:
         reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
@@ -768,12 +777,113 @@ def query_command(
                 reranker_model_name=reranker_model_name,
                 reranker_backend=reranker_backend,
                 rerank=rerank,
+                hybrid=hybrid,
             )
     except _ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
-    typer.echo(json.dumps([_query_cli_hit(hit) for hit in hits], indent=2, sort_keys=True, default=str))
+    typer.echo(json.dumps([_query_cli_hit(hit, max_text_chars) for hit in hits], indent=2, sort_keys=True, default=str))
+
+
+@app.command("verify")
+def verify_command(
+    claim: str = typer.Argument(..., help="Claim to find independent evidence for."),
+    source: str = typer.Option(
+        ..., "--source", help="Document the claim is attributed to (basename, with or without .pdf)."
+    ),
+    page: int | None = typer.Option(None, "--page", help="Restrict to this 1-indexed page/segment."),
+    against: str = typer.Option(
+        "text,table", "--against", help="Comma-separated modalities treated as independent evidence."
+    ),
+    lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
+    table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),
+) -> None:
+    """Fetch independent text/table evidence for a claim's location (you judge agreement)."""
+    try:
+        result = verify_claim(
+            claim,
+            source,
+            page=page,
+            lancedb_uri=lancedb_uri,
+            table_name=table_name,
+            against=against,
+        )
+    except _ROOT_CLI_ERRORS as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(json.dumps(result, indent=2, sort_keys=True, default=str))
+
+
+@app.command("retrieve")
+def retrieve_command(
+    question: str = typer.Argument(..., help="The question to retrieve evidence for."),
+    top_k: int = typer.Option(10, "--top-k", min=1, help="Max evidence items."),
+    hybrid: bool = typer.Option(
+        True, "--hybrid/--no-hybrid", help="Fused vector+BM25 (falls back to vector if no FTS index)."
+    ),
+    lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
+    table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),
+    embed_model_name: str | None = typer.Option(None, "--embed-model-name", help="Embedding model name."),
+) -> None:
+    """Retrieve answer-ready, fidelity-tagged, cited evidence + coverage for a question."""
+    from nemo_retriever.adapters.cli.sdk_workflow import retrieve
+
+    try:
+        with _quiet_capture():
+            result = retrieve(
+                question,
+                top_k=top_k,
+                hybrid=hybrid,
+                lancedb_uri=lancedb_uri,
+                table_name=table_name,
+                embed_model_name=embed_model_name,
+            )
+    except _ROOT_CLI_ERRORS as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(json.dumps(result, indent=2, sort_keys=True, default=str))
+
+
+@app.command("serve-models")
+def serve_models_command(
+    embed_model_name: str = typer.Option(
+        "nvidia/llama-nemotron-embed-1b-v2", "--embed-model-name", help="Embedding model to serve warm."
+    ),
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind the vLLM server."),
+    embed_port: int = typer.Option(8081, "--embed-port", help="Port for the embeddings server."),
+    ready_timeout: float = typer.Option(600.0, "--ready-timeout", help="Seconds to wait for readiness."),
+) -> None:
+    """Serve a WARM embedder so `retriever query` avoids the per-query cold-load.
+
+    Prints an `export EMBED_INVOKE_URL=...` line; query/verify/MCP honor that env var.
+    A warm query must also pass `--embed-model-name` matching the served model.
+    """
+    import signal as _signal
+
+    from nemo_retriever.adapters.cli import serve_models as sm
+
+    argv = sm.build_vllm_argv(embed_model_name, host, embed_port)
+    proc = sm.spawn(argv)  # own process group, so the whole vLLM tree can be reaped
+
+    def _on_sigterm(_signum, _frame):
+        # Default SIGTERM would skip cleanup and orphan the vLLM children.
+        raise SystemExit(0)
+
+    _signal.signal(_signal.SIGTERM, _on_sigterm)
+    try:
+        if not sm.wait_ready(host, embed_port, timeout=ready_timeout):
+            typer.echo("Error: embedder server did not become ready in time.", err=True)
+            raise typer.Exit(1)
+        typer.echo(f"Embedder warm at {sm.embeddings_url(host, embed_port)}")
+        typer.echo(sm.export_line(host, embed_port))
+        typer.echo(sm.usage_hint(embed_model_name))
+        typer.echo("Leave this running; Ctrl-C to stop.")
+        proc.wait()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sm.terminate_group(proc)
 
 
 @app.callback()

@@ -666,6 +666,7 @@ def resolve_ingest_plan(
     lancedb_uri: str = DEFAULT_LANCEDB_URI,
     table_name: str = DEFAULT_TABLE_NAME,
     overwrite: bool = True,
+    hybrid: bool = False,
     page_elements_invoke_url: str | None = None,
     ocr_invoke_url: str | None = None,
     ocr_version: OcrVersionValue | None = None,
@@ -795,9 +796,10 @@ def resolve_ingest_plan(
     )
     extract_params = ExtractParams(**extract_kwargs)
     embed_params = EmbedParams(**embed_kwargs) if embed_kwargs else None
-    vdb_params = VdbUploadParams(
-        vdb_kwargs={"uri": lancedb_uri, "table_name": table_name, "overwrite": bool(overwrite)}
-    )
+    vdb_upload_kwargs: dict[str, Any] = {"uri": lancedb_uri, "table_name": table_name, "overwrite": bool(overwrite)}
+    if hybrid:
+        vdb_upload_kwargs["hybrid"] = True
+    vdb_params = VdbUploadParams(vdb_kwargs=vdb_upload_kwargs)
     caption_params = _build_caption_params(
         caption=caption,
         caption_invoke_url=caption_invoke_url,
@@ -1018,6 +1020,7 @@ def ingest_documents(
     lancedb_uri: str = DEFAULT_LANCEDB_URI,
     table_name: str = DEFAULT_TABLE_NAME,
     overwrite: bool = True,
+    hybrid: bool = False,
     page_elements_invoke_url: str | None = None,
     ocr_invoke_url: str | None = None,
     ocr_version: OcrVersionValue | None = None,
@@ -1114,6 +1117,7 @@ def ingest_documents(
         lancedb_uri=lancedb_uri,
         table_name=table_name,
         overwrite=overwrite,
+        hybrid=hybrid,
         page_elements_invoke_url=page_elements_invoke_url,
         ocr_invoke_url=ocr_invoke_url,
         ocr_version=ocr_version,
@@ -1223,6 +1227,239 @@ def _count_lancedb_rows(lancedb_uri: str, table_name: str) -> int | None:
         return None
 
 
+def verify_claim(
+    claim: str,
+    source: str,
+    *,
+    page: int | None = None,
+    lancedb_uri: str = DEFAULT_LANCEDB_URI,
+    table_name: str = DEFAULT_TABLE_NAME,
+    against: Sequence[str] | str = ("text", "table"),
+) -> dict[str, Any]:
+    """Fetch independent-modality evidence for a claim's (source[, page]) location.
+
+    Index-lookup only: returns the stored ``text``/``table`` chunks for the
+    location plus a mechanical term/number overlap signal. Does NOT judge
+    agreement — the caller decides confirmed/refuted from the evidence.
+    """
+    import json as _json
+    import os as _os
+    import re as _re
+
+    if isinstance(against, str):
+        against = [a.strip() for a in against.split(",") if a.strip()]
+    against_set = {a.lower() for a in against}
+
+    def _stem(p: str) -> str:
+        b = _os.path.basename(str(p))
+        return b[:-4] if b.lower().endswith(".pdf") else b
+
+    target = _stem(source)
+    evidence: list[dict[str, Any]] = []
+
+    try:
+        import lancedb  # local import — keeps CLI startup snappy
+
+        df = lancedb.connect(lancedb_uri).open_table(table_name).to_pandas()
+    except Exception as exc:  # noqa: BLE001 — diagnostic only
+        logger.debug("verify: could not open %s/%s: %s", lancedb_uri, table_name, exc)
+        df = None
+
+    if df is not None:
+        for _, row in df.iterrows():
+            raw_src = row.get("source")
+            raw_meta = row.get("metadata")
+            try:
+                src_name = (
+                    _json.loads(raw_src).get("source_name")
+                    if isinstance(raw_src, str) and raw_src.strip().startswith("{")
+                    else str(raw_src)
+                )
+            except Exception:  # noqa: BLE001
+                src_name = str(raw_src)
+            try:
+                meta = _json.loads(raw_meta) if isinstance(raw_meta, str) else (raw_meta or {})
+            except Exception:  # noqa: BLE001
+                meta = {}
+            if _stem(src_name or "") != target:
+                continue
+            row_page = meta.get("page_number")
+            if page is not None and row_page != page:
+                continue
+            row_type = str(meta.get("type") or "text").lower()
+            if row_type not in against_set:
+                continue
+            evidence.append({"text": str(row.get("text") or ""), "modality": row_type, "page": row_page})
+
+    evidence_text = "\n".join(e["text"] for e in evidence).lower()
+    nums = _re.findall(r"\d[\d.,%]*", claim)
+    stop = {
+        "the",
+        "and",
+        "for",
+        "with",
+        "that",
+        "this",
+        "from",
+        "into",
+        "what",
+        "which",
+        "does",
+        "cost",
+        "costs",
+        "most",
+        "page",
+        "number",
+    }
+    words = [w for w in _re.findall(r"[A-Za-z][A-Za-z0-9\-]{3,}", claim) if w.lower() not in stop]
+    terms: list[str] = []
+    for t in nums + words:
+        if t not in terms:
+            terms.append(t)
+    matched = [t for t in terms if t.lower() in evidence_text]
+    unmatched = [t for t in terms if t.lower() not in evidence_text]
+
+    return {
+        "claim": claim,
+        "source": source,
+        "page": page,
+        "evidence": evidence,
+        "independent_evidence_found": bool(evidence),
+        "matched_terms": matched,
+        "unmatched_terms": unmatched,
+    }
+
+
+_KNOWN_MODALITIES = {"text", "table", "chart", "image", "audio", "video_frame"}
+
+
+def _normalize_modality(value: Any) -> str:
+    m = str(value or "text").lower()
+    if m in _KNOWN_MODALITIES:
+        return m
+    if m.startswith("table"):
+        return "table"
+    if m.startswith("chart"):
+        return "chart"
+    if m.startswith(("image", "infographic")):
+        return "image"
+    if m.startswith("video"):
+        return "video_frame"
+    if m.startswith("audio"):
+        return "audio"
+    return "text"
+
+
+def _evidence_item(hit: dict[str, Any]) -> dict[str, Any]:
+    import os as _os
+
+    from nemo_retriever.vdb.records import _derive_fidelity
+
+    meta = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
+    src_raw = hit.get("pdf_basename") or hit.get("source") or ""
+    source = _os.path.basename(str(src_raw))
+    if source.lower().endswith(".pdf"):
+        source = source[:-4]
+    raw_modality = hit.get("content_type") or meta.get("type") or "text"
+    modality = _normalize_modality(raw_modality)
+
+    page = hit.get("page_number")
+    if page is not None:
+        locator = {"kind": "page", "value": page}
+        citation = f"{source} p.{page}"
+    elif meta.get("segment_start_seconds") is not None:
+        locator = {"kind": "segment", "value": meta["segment_start_seconds"]}
+        citation = f"{source} @{meta['segment_start_seconds']}"
+    elif meta.get("frame_timestamp_seconds") is not None:
+        locator = {"kind": "timestamp", "value": meta["frame_timestamp_seconds"]}
+        citation = f"{source} @{meta['frame_timestamp_seconds']}"
+    elif meta.get("bbox_xyxy_norm") is not None:
+        locator = {"kind": "bbox", "value": meta["bbox_xyxy_norm"]}
+        citation = source
+    else:
+        locator = {"kind": "page", "value": None}
+        citation = source
+
+    fidelity = meta.get("fidelity") or _derive_fidelity(raw_modality, meta, meta) or "verbatim"
+
+    if "_score" in hit and hit["_score"] is not None:
+        score: float = hit["_score"]
+    elif "_distance" in hit and hit["_distance"] is not None:
+        score = hit["_distance"]
+    else:
+        score = 0.0
+
+    return {
+        "text": hit.get("text", ""),
+        "source": source,
+        "locator": locator,
+        "modality": modality,
+        "fidelity": fidelity,
+        "score": score,
+        "citation": citation,
+    }
+
+
+def retrieve(
+    question: str,
+    *,
+    top_k: int = 10,
+    hybrid: bool = True,
+    lancedb_uri: str = DEFAULT_LANCEDB_URI,
+    table_name: str = DEFAULT_TABLE_NAME,
+    embed_model_name: str | None = None,
+    embed_invoke_url: str | None = None,
+) -> dict[str, Any]:
+    """Skill-first retrieve: one fused query -> answer-ready, fidelity-tagged, cited evidence + coverage.
+
+    Single hybrid (vector+BM25) query; if the index has no FTS index, gracefully
+    falls back to vector-only. Returns the ``retrieve_result`` contract shape.
+
+    ``embed_invoke_url`` defaults from ``EMBED_INVOKE_URL`` (set by ``retriever
+    serve-models``) so retrieval is warm when a model server is running.
+    """
+    import os as _os
+
+    endpoint = embed_invoke_url if embed_invoke_url is not None else (_os.environ.get("EMBED_INVOKE_URL") or None)
+
+    def _run(use_hybrid: bool) -> list:
+        return query_documents(
+            question,
+            top_k=top_k,
+            hybrid=use_hybrid,
+            lancedb_uri=lancedb_uri,
+            table_name=table_name,
+            embed_model_name=embed_model_name,
+            embed_invoke_url=endpoint,
+        )
+
+    if hybrid:
+        try:
+            hits = _run(True)
+            strategies = ["semantic", "lexical"]
+        except Exception:  # noqa: BLE001 — e.g. table has no FTS index; degrade to vector
+            hits = _run(False)
+            strategies = ["semantic"]
+    else:
+        hits = _run(False)
+        strategies = ["semantic"]
+
+    evidence = [_evidence_item(h) for h in (hits or [])]
+    sources = {e["source"] for e in evidence if e.get("source")}
+    thin: list[str] = []
+    if not evidence:
+        thin.append("no matches — likely out of corpus")
+    else:
+        if len(sources) == 1:
+            thin.append("single source")
+        if all(e["fidelity"] == "vlm_caption" for e in evidence):
+            thin.append("only low-fidelity (chart/image) evidence")
+    return {
+        "evidence": evidence,
+        "coverage": {"strategies_used": strategies, "n_docs_seen": len(sources), "thin_spots": thin},
+    }
+
+
 def query_documents(
     query: str,
     *,
@@ -1239,6 +1476,7 @@ def query_documents(
     reranker_model_name: str | None = None,
     reranker_backend: str | None = None,
     rerank: bool = False,
+    hybrid: bool = False,
 ) -> list[RetrievalHit]:
     """Run the minimal SDK query path used by the root CLI.
 
@@ -1252,9 +1490,12 @@ def query_documents(
     embed_kwargs = _build_embed_kwargs(
         embed_invoke_url, embed_model_name, local_ingest_embed_backend=query_embed_backend
     )
+    vdb_kwargs: dict[str, Any] = {"uri": lancedb_uri, "table_name": table_name}
+    if hybrid:
+        vdb_kwargs["hybrid"] = True
     retriever_kwargs: dict[str, Any] = {
         "top_k": top_k,
-        "vdb_kwargs": {"uri": lancedb_uri, "table_name": table_name},
+        "vdb_kwargs": vdb_kwargs,
     }
     if embed_kwargs:
         retriever_kwargs["embed_kwargs"] = embed_kwargs

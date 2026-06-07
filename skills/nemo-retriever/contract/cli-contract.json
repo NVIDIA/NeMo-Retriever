@@ -1,0 +1,22 @@
+{
+  "contract_version": "0.1.0",
+  "primitive": "retrieve",
+  "subcommands_required": ["ingest", "retrieve", "serve-models"],
+  "retrieve": {
+    "required_flags": ["--top-k", "--hybrid"],
+    "operator_flags": ["--lancedb-uri", "--table-name", "--embed-model-name"],
+    "forbidden_flags": ["--content-types", "--rerank", "--candidate-k", "--max-text-chars", "--page-dedup"],
+    "result_schema": "retrieve-result.schema.json"
+  },
+  "ingest": {
+    "required_flags": ["--append", "--overwrite", "--hybrid", "--ocr-version", "--ocr-lang", "--table-name", "--lancedb-uri", "--embed-model-name"],
+    "forbidden_flags": ["--input-type"],
+    "single_pass_multiformat": true
+  },
+  "default_table_name": "nemo-retriever",
+  "_default_table_name_note": "engine DEFAULT_TABLE_NAME constant; NOT the skill name. Operator-config only.",
+  "legacy": {
+    "note": "query/verify still ship but the retriever skill does not depend on them; not gated by doctor.py.",
+    "subcommands": ["query", "verify"]
+  }
+}
