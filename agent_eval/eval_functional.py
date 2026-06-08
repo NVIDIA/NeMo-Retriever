@@ -180,7 +180,7 @@ def _run_rubric(
     )
     system = _RUBRIC_SYSTEM_INGEST if ingest_action else _RUBRIC_SYSTEM
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-    raw, _ = judge._client.complete(messages)  # reuse the judge's transport/auth
+    raw, _ = judge.complete(messages)  # reuse the judge transport/auth for a raw rubric call
     return _parse_rubric(raw)
 
 
@@ -191,12 +191,15 @@ def _build_judge(model: str, api_base: str | None, api_key_env: str, *, timeout:
     if not key:
         print(f"  judge disabled: ${api_key_env} not set", file=sys.stderr)
         return None
+    # This harness grades against its own rubric prompt via a raw chat completion,
+    # so it needs a plain completion client -- not the ragas AnswerAccuracy scorer
+    # that LLMJudge now wraps. Use LiteLLMClient directly with the judge's transport.
     try:
-        from nemo_retriever.llm.clients.judge import LLMJudge  # type: ignore
+        from nemo_retriever.llm.clients.litellm import LiteLLMClient  # type: ignore
     except Exception as exc:  # noqa: BLE001
-        print(f"  judge disabled: cannot import LLMJudge ({exc})", file=sys.stderr)
+        print(f"  judge disabled: cannot import LiteLLMClient ({exc})", file=sys.stderr)
         return None
-    return LLMJudge.from_kwargs(
+    return LiteLLMClient.from_kwargs(
         model=model, api_base=api_base, api_key=key, temperature=0.0, timeout=timeout, num_retries=num_retries
     )
 

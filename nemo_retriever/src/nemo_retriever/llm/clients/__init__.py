@@ -10,15 +10,15 @@ implementation in its own submodule (``litellm.py``, ``judge.py``, ...)
 so that adding a new client means adding a new file rather than
 extending a monolithic module.  To keep the public import path stable,
 the registered client classes plus the internal prompt-helper
-(``_build_rag_prompt``) and response-parser (``_parse_judge_response``)
-are re-exported from this package's namespace.  Any caller that imports
+(``_build_rag_prompt``) are re-exported from this package's namespace.
+Any caller that imports
 ``from nemo_retriever.llm.clients import LiteLLMClient`` will therefore
 continue to work unchanged after the module-to-package refactor.
 """
 
 from __future__ import annotations
 
-from nemo_retriever.llm.clients.judge import LLMJudge, _parse_judge_response
+from nemo_retriever.llm.clients.judge import LLMJudge
 from nemo_retriever.llm.clients.litellm import LiteLLMClient, _build_rag_prompt
 
 _REGISTRY: dict[str, type] = {}
@@ -58,7 +58,6 @@ __all__ = [
     "LLMJudge",
     "LiteLLMClient",
     "_build_rag_prompt",
-    "_parse_judge_response",
     "get_client",
     "register_client",
 ]

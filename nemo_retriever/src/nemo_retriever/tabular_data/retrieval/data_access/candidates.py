@@ -121,7 +121,7 @@ def _expand_info(ids_and_labels):
                             RETURN apoc.map.merge(
                                      apoc.map.setPairs(properties(n),[
                                          ["table_name", parent.name],
-                                         ["table_type", parent.type],
+                                         ["table_type", parent.table_type],
                                          ["parent_id", parent.id]
                                      ]),
                                      {{relevant_tables: [t0]}}

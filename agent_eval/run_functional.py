@@ -34,6 +34,7 @@ _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 
 import profiles  # noqa: E402
+import gitinfo  # noqa: E402
 from prompt import render_functional_prompt  # noqa: E402
 from adapters.claude import ClaudeAdapter  # noqa: E402
 from adapters.codex import CodexAdapter  # noqa: E402
@@ -266,6 +267,7 @@ def main(argv=None) -> int:
                 "num_queries": len(queries),
                 "gpu_pool": gpu_pool,
                 "dry_run": args.dry_run,
+                "code_commit": gitinfo.git_commit(),
             },
             indent=2,
         )

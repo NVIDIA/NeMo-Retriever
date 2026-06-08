@@ -162,6 +162,11 @@ python3 build_report.py /tmp/runs/agenteval_claude_skill_<ts> --no-judge
 **Outputs:** `report.md` + `report.json` inside each run dir; `comparison.md` +
 `comparison.json` in `--out` when multiple runs are passed.
 
+Every report opens with a **`## Code version`** section: the git commit that *ran* the eval
+(recorded at run time in `run_config.code_commit` — full sha, branch, dirty flag) plus the
+report-time `HEAD`. Runs that predate commit-logging show the report-time `HEAD` with a
+warning that the eval-time commit is unknown.
+
 ### Cost & token accounting
 
 Cost and token totals are made apples-to-apples across agents inside `build_report.py`:
@@ -411,6 +416,10 @@ python3 functional_report.py \
 |---|---|---|
 | `--eval` | *(required, 1+)* | `label=path/to/functional_eval.json` (repeatable, one per agent/run). |
 | `--out` | `functional_report.md` | Merged report path. |
+
+The report opens with a **`## Code version`** section showing each run's eval-time commit
+(from `run_config.code_commit`) plus the report-time `HEAD` — same provenance convention as the
+recall `build_report.py`.
 
 ---
 

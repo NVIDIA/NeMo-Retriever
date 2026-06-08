@@ -32,6 +32,11 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+import gitinfo  # noqa: E402
+
 # ---- optional reuse of nemo_retriever (report-side only) ------------------- #
 try:
     from nemo_retriever.skill_eval.score import recall_at_k  # type: ignore
@@ -313,7 +318,7 @@ class QueryScore:
     status: str
     has_gold_pages: bool
     recall: dict[int, float] = field(default_factory=dict)
-    judge_score: int | None = None
+    judge_score: float | None = None
     judge_error: str = ""
     refusal_expected: bool = False
     refusal_correct: bool | None = None
@@ -512,8 +517,30 @@ def _render_tokens_md(tokens: dict, setup_metas: list[dict]) -> str:
     return "".join(md)
 
 
+def _render_code_version_md(code_commit: dict | None) -> str:
+    """A '## Code version' block: the commit that RAN the eval (run_config.code_commit) if
+    recorded, plus the report-time HEAD for reference."""
+    report_info = gitinfo.git_commit()
+    lines = ["\n## Code version\n"]
+    if code_commit:
+        lines.append(f"- eval-time code commit: {gitinfo.format_commit(code_commit)}\n")
+    else:
+        lines.append("- eval-time code commit: _not recorded — this run predates commit logging_\n")
+    lines.append(f"- report generated from working tree: {gitinfo.format_commit(report_info)}\n")
+    if not code_commit:
+        lines.append(
+            "- ⚠️ eval-time commit unknown; the report-time version above may differ "
+            "from the code that produced this run.\n"
+        )
+    return "".join(lines)
+
+
 def render_md(
-    run_label: str, scores: list[QueryScore], tokens: dict | None = None, setup_metas: list[dict] | None = None
+    run_label: str,
+    scores: list[QueryScore],
+    tokens: dict | None = None,
+    setup_metas: list[dict] | None = None,
+    code_commit: dict | None = None,
 ) -> str:
     overall = _agg(scores)
     by_domain: dict[str, list[QueryScore]] = defaultdict(list)
@@ -546,6 +573,7 @@ def render_md(
         "retr_succeeded_clean = retriever command exited 0; retr_succeeded_engine also counts "
         "retriever calls whose only failure was a downstream parser._\n",
         f"- queries: {overall.get('n')}  | with gold pages: {overall.get('n_with_gold_pages')}\n",
+        _render_code_version_md(code_commit),
         "\n## Overall\n",
         head,
         row("overall", overall),
@@ -630,13 +658,15 @@ def report_for_run(run_dir: Path, gold: dict[str, Gold], judge, ks=(1, 5, 10)) -
     label = cfg.get("run_id", run_dir.name)
     setup_metas = _load_setup_metas(run_dir)
     tokens = _token_summary(scores, setup_metas)
-    md = render_md(label, scores, tokens, setup_metas)
+    code_commit = cfg.get("code_commit")
+    md = render_md(label, scores, tokens, setup_metas, code_commit=code_commit)
     (run_dir / "report.md").write_text(md)
     report = {
         "run_id": label,
         "agent": cfg.get("agent"),
         "model": cfg.get("model"),
         "profile": cfg.get("profile"),
+        "code_commit": code_commit,
         "overall": _agg(scores),
         "tokens": tokens,
         "setup_turns": setup_metas,
@@ -662,7 +692,18 @@ def render_comparison(reports: list[dict]) -> str:
         "refusal_correct_rate",
     ]
     head = "| run | " + " | ".join(cols) + " |\n|" + "---|" * (len(cols) + 1) + "\n"
-    md = ["# agent_eval comparison\n\n", head]
+    md = ["# agent_eval comparison\n\n"]
+    # Code version per run (eval-time commit) + report-time HEAD.
+    md.append("## Code version\n\n| run | eval-time code commit |\n|---|---|\n")
+    for r in reports:
+        ci = r.get("code_commit")
+        md.append(
+            f"| {r['run_id']} | "
+            + (gitinfo.format_commit(ci) if ci else "_not recorded — predates commit logging_")
+            + " |\n"
+        )
+    md.append(f"\nReport generated from working tree at {gitinfo.format_commit(gitinfo.git_commit())}.\n\n")
+    md.append(head)
     for r in reports:
         o = r["overall"]
         vals = [r.get("profile"), r.get("agent"), r.get("model")] + [o.get(c) for c in cols[3:]]
