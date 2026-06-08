@@ -89,12 +89,15 @@ jobs:
           - id: nemotron-page-elements-v3
             url: https://huggingface.co/nvidia/nemotron-page-elements-v3
             project_subdir: ""
+            nightly_base_version: "3.0.2"
           - id: nemotron-table-structure-v1
             url: https://huggingface.co/nvidia/nemotron-table-structure-v1
             project_subdir: ""
+            nightly_base_version: "1.0.1"
           - id: nemotron-graphic-elements-v1
             url: https://huggingface.co/nvidia/nemotron-graphic-elements-v1
             project_subdir: ""
+            nightly_base_version: "1.0.1"
 
     steps:
       - name: Checkout orchestrator repo
@@ -153,6 +156,7 @@ jobs:
             --work-dir ".work" \
             --dist-dir "dist-out" \
             --project-subdir "${{ matrix.repo.project_subdir }}" \
+            --nightly-base-version "${{ matrix.repo.nightly_base_version }}" \
             ${upload_flag} \
             --repository-url "${repo_url}" \
             --token-env "${token_env}" \

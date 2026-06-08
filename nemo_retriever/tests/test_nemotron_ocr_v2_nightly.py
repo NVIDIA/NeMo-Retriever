@@ -65,25 +65,67 @@ def _install_upstream_ocr_v2_stub(monkeypatch: pytest.MonkeyPatch) -> list[dict[
     return captured_kwargs
 
 
-def test_local_extra_accepts_stable_ocr_2_and_newer_dev_releases() -> None:
+def _requirement(dependencies: list[str], name: str) -> Requirement:
+    return next(Requirement(dep) for dep in dependencies if Requirement(dep).name == name)
+
+
+def test_local_extras_keep_stable_and_nightly_nemotron_choices_separate() -> None:
     pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    local_deps = pyproject["project"]["optional-dependencies"]["local"]
+    optional_deps = pyproject["project"]["optional-dependencies"]
+    local_base_deps = optional_deps["local-base"]
+    local_deps = optional_deps["local"]
+    local_nightly_deps = optional_deps["local-nightly"]
+    all_deps = optional_deps["all"]
     uv_tool = pyproject["tool"]["uv"]
     uv_sources = uv_tool["sources"]
     uv_indexes = uv_tool["index"]
+    uv_conflicts = [
+        {entry["extra"] for entry in conflict}
+        for conflict in uv_tool["conflicts"]
+    ]
 
-    ocr_dep = next(dep for dep in local_deps if dep.startswith("nemotron-ocr"))
-    ocr_requirement = Requirement(ocr_dep)
+    assert not any(dep.startswith("nemotron-") for dep in local_base_deps)
+    assert "nemo_retriever[local-base]" in local_deps
+    assert "nemo_retriever[local-base]" in local_nightly_deps
+    assert any("local" in dep for dep in all_deps)
+    assert not any("local-nightly" in dep for dep in all_deps)
+    assert {"local", "local-nightly"} in uv_conflicts
+    assert {"all", "local-nightly"} in uv_conflicts
 
-    assert ocr_requirement.specifier.contains("2.0.0")
-    assert not ocr_requirement.specifier.contains("3.0.0")
-    assert ocr_requirement.specifier.contains("2.0.1")
-    assert not ocr_requirement.specifier.contains("1.0.1")
-    assert str(ocr_requirement.marker) == (
+    assert str(_requirement(local_deps, "nemotron-page-elements-v3").specifier) == "==3.0.1"
+    assert str(_requirement(local_deps, "nemotron-graphic-elements-v1").specifier) == "==1.0.0"
+    assert str(_requirement(local_deps, "nemotron-table-structure-v1").specifier) == "==1.0.0"
+
+    stable_ocr_requirement = _requirement(local_deps, "nemotron-ocr")
+    assert stable_ocr_requirement.specifier.contains("2.0.0")
+    assert not stable_ocr_requirement.specifier.contains("3.0.0")
+    assert stable_ocr_requirement.specifier.contains("2.0.1")
+    assert not stable_ocr_requirement.specifier.contains("1.0.1")
+    assert str(stable_ocr_requirement.marker) == (
         'sys_platform == "linux" and (platform_machine == "x86_64" or platform_machine == "aarch64")'
     )
-    assert not any(dep.startswith("nemotron-ocr-v2") for dep in local_deps)
+
+    nightly_page_requirement = _requirement(local_nightly_deps, "nemotron-page-elements-v3")
+    assert nightly_page_requirement.specifier.contains("3.0.1.dev1", prereleases=True)
+    assert nightly_page_requirement.specifier.contains("3.0.2.dev1", prereleases=True)
+    assert not nightly_page_requirement.specifier.contains("3.0.1", prereleases=True)
+    assert not nightly_page_requirement.specifier.contains("3.0.2", prereleases=True)
+
+    for package in ("nemotron-graphic-elements-v1", "nemotron-table-structure-v1"):
+        nightly_requirement = _requirement(local_nightly_deps, package)
+        assert nightly_requirement.specifier.contains("1.0.0.dev1", prereleases=True)
+        assert nightly_requirement.specifier.contains("1.0.1.dev1", prereleases=True)
+        assert not nightly_requirement.specifier.contains("1.0.0", prereleases=True)
+        assert not nightly_requirement.specifier.contains("1.0.1", prereleases=True)
+
+    nightly_ocr_requirement = _requirement(local_nightly_deps, "nemotron-ocr")
+    assert nightly_ocr_requirement.specifier.contains("2.0.1.dev1", prereleases=True)
+    assert not nightly_ocr_requirement.specifier.contains("2.0.0", prereleases=True)
+    assert not nightly_ocr_requirement.specifier.contains("2.0.1", prereleases=True)
+    assert str(nightly_ocr_requirement.marker) == str(stable_ocr_requirement.marker)
+
+    assert not any(dep.startswith("nemotron-ocr-v2") for dep in local_deps + local_nightly_deps)
     assert "nemotron-ocr" in uv_tool["no-build-package"]
     assert "nemotron-ocr-v2" not in uv_tool["no-build-package"]
     assert "nemotron-ocr" not in uv_sources
