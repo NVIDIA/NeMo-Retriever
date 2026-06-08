@@ -710,7 +710,7 @@ def ingest_command(
     # shrinks to zero rows when every NIM call failed. The previous message
     # only reported inputs and hid both cases. ``n_rows`` is None when the
     # table read itself failed (caller can still see file count + URI).
-    n_files = len(summary["documents"])
+    n_files = summary["n_documents"]
     table_path = f"{summary['lancedb_uri']}/{summary['table_name']}"
     n_rows = summary.get("n_rows")
     if n_rows is None:

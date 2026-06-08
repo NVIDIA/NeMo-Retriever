@@ -691,9 +691,15 @@ def test_execute_ingest_plan_returns_structured_execution_data(monkeypatch, tmp_
     assert execution.n_rows == 9
     assert execution.result_n_rows == 1
     assert execution.result == [{"status": "ok"}]
-    assert execution.metadata["branch_summary"]
-    assert execution.to_summary_dict()["n_rows"] == 9
-    assert execution.to_summary_dict()["result_n_rows"] == 1
+    assert execution.run_metadata["branch_summary"]
+    summary = execution.to_summary_dict()
+    assert summary == {
+        "n_documents": 1,
+        "lancedb_uri": "/tmp/nemo-test-lancedb",
+        "table_name": "execution_result",
+        "n_rows": 9,
+        "result_n_rows": 1,
+    }
 
 
 def test_execute_ingest_plan_requires_vdb_stage_for_row_verification(monkeypatch, tmp_path) -> None:
@@ -712,7 +718,7 @@ def test_execute_ingest_plan_requires_vdb_stage_for_row_verification(monkeypatch
     )
     plan = replace(plan, vdb_params=None)
 
-    with pytest.raises(ValueError, match="Row verification requires an effective VDB upload stage"):
+    with pytest.raises(ValueError, match="Row verification checks the effective VDB upload target"):
         ingest_execution.execute_ingest_plan(plan)
 
 

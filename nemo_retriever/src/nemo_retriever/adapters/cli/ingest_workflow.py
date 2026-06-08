@@ -13,8 +13,12 @@ from nemo_retriever.ingest_manifest import format_branch_summary
 _DRY_RUN_SECRET_FIELD_PATTERNS = ("api_key", "password", "secret", "credential", "bearer")
 
 
-def params_to_dry_run_dict(params: Any | None) -> dict[str, Any] | None:
-    """Convert params to dry-run JSON data while redacting credential values."""
+def _params_to_dry_run_dict(params: Any | None) -> dict[str, Any] | None:
+    """Convert params to dry-run JSON data while redacting credential values.
+
+    Dry-run output serializes the resolved Pydantic option models. Those models
+    can hold endpoint credentials, so redact before printing them to the user.
+    """
     if params is None:
         return None
     if hasattr(params, "model_dump"):
@@ -50,7 +54,7 @@ def _strip_secret_values(value: Any) -> Any:
     return value
 
 
-def ingest_plan_to_dry_run_data(plan: ResolvedIngestPlan) -> dict[str, Any]:
+def _ingest_plan_to_dry_run_data(plan: ResolvedIngestPlan) -> dict[str, Any]:
     """Return the JSON payload printed by ``retriever ingest --dry-run``."""
     return {
         "dry_run": True,
@@ -67,20 +71,20 @@ def ingest_plan_to_dry_run_data(plan: ResolvedIngestPlan) -> dict[str, Any]:
         ],
         "branch_summary": format_branch_summary(plan.branches),
         "create_ingestor": dict(plan.create_kwargs),
-        "extract": params_to_dry_run_dict(plan.extract_params),
-        "text": params_to_dry_run_dict(plan.text_params),
-        "html": params_to_dry_run_dict(plan.html_params),
-        "audio": params_to_dry_run_dict(plan.audio_chunk_params),
-        "asr": params_to_dry_run_dict(plan.asr_params),
-        "video_frames": params_to_dry_run_dict(plan.video_frame_params),
-        "video_frame_text_dedup": params_to_dry_run_dict(plan.video_text_dedup_params),
-        "audio_visual_fuse": params_to_dry_run_dict(plan.av_fuse_params),
-        "split_config": params_to_dry_run_dict(plan.split_config),
-        "dedup": params_to_dry_run_dict(plan.dedup_params),
-        "caption": params_to_dry_run_dict(plan.caption_params),
-        "embed": params_to_dry_run_dict(plan.embed_params),
-        "store": params_to_dry_run_dict(plan.store_params),
-        "vdb_upload": params_to_dry_run_dict(plan.vdb_params),
+        "extract": _params_to_dry_run_dict(plan.extract_params),
+        "text": _params_to_dry_run_dict(plan.text_params),
+        "html": _params_to_dry_run_dict(plan.html_params),
+        "audio": _params_to_dry_run_dict(plan.audio_chunk_params),
+        "asr": _params_to_dry_run_dict(plan.asr_params),
+        "video_frames": _params_to_dry_run_dict(plan.video_frame_params),
+        "video_frame_text_dedup": _params_to_dry_run_dict(plan.video_text_dedup_params),
+        "audio_visual_fuse": _params_to_dry_run_dict(plan.av_fuse_params),
+        "split_config": _params_to_dry_run_dict(plan.split_config),
+        "dedup": _params_to_dry_run_dict(plan.dedup_params),
+        "caption": _params_to_dry_run_dict(plan.caption_params),
+        "embed": _params_to_dry_run_dict(plan.embed_params),
+        "store": _params_to_dry_run_dict(plan.store_params),
+        "vdb_upload": _params_to_dry_run_dict(plan.vdb_params),
     }
 
 
@@ -91,6 +95,6 @@ def run_ingest_workflow(
 ) -> dict[str, Any]:
     """Apply root ingest workflow policy to an already-resolved plan."""
     if dry_run:
-        return ingest_plan_to_dry_run_data(plan)
+        return _ingest_plan_to_dry_run_data(plan)
 
     return execute_ingest_plan(plan).to_summary_dict()

@@ -17,7 +17,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class IngestExecutionResult:
-    """Structured result from executing a resolved root ingest plan."""
+    """Structured result from executing a resolved ingest plan.
+
+    ``result`` is the raw value returned by ``Ingestor.ingest()`` and may be a
+    large dataframe-like object. ``result_n_rows`` counts that current result
+    when possible. ``initial_n_rows`` and ``n_rows`` are LanceDB table counts
+    before and after execution when row verification is enabled.
+    ``run_metadata`` holds execution-level details, not per-chunk metadata.
+    """
 
     plan: ResolvedIngestPlan
     result: object
@@ -26,7 +33,7 @@ class IngestExecutionResult:
     initial_n_rows: int | None
     lancedb_uri: str
     table_name: str
-    metadata: dict[str, Any]
+    run_metadata: dict[str, Any]
 
     @property
     def documents(self) -> list[str]:
@@ -38,9 +45,8 @@ class IngestExecutionResult:
 
     def to_summary_dict(self) -> dict[str, Any]:
         return {
-            "documents": self.documents,
+            "n_documents": len(self.plan.documents),
             "lancedb_uri": self.lancedb_uri,
-            "result": self.result,
             "table_name": self.table_name,
             "n_rows": self.n_rows,
             "result_n_rows": self.result_n_rows,
@@ -83,14 +89,22 @@ def execute_ingest_plan(
 ) -> IngestExecutionResult:
     """Execute a resolved ingest plan and return structured execution data.
 
-    Root ``retriever ingest`` uses row verification as its public success bar.
-    Development wrappers can disable verification while preserving the exact
-    shared plan/build/ingest path and layering their own reporting afterward.
+    Args:
+        plan: Fully resolved ingest graph options.
+        verify_rows: When true, use the VDB upload target as the success check.
+            Verification counts rows returned by the current ingest result when
+            possible, then counts rows in LanceDB after upload. Disable this
+            for extraction/embed-only plans that intentionally omit VDB upload.
+        raise_on_empty: When true, raise if verification proves the current run
+            produced no rows or failed to add rows to an append target.
     """
 
     lancedb_target = _resolve_lancedb_target(plan)
     if verify_rows and lancedb_target is None:
-        raise ValueError("Row verification requires an effective VDB upload stage; pass verify_rows=False to skip it.")
+        raise ValueError(
+            "Row verification checks the effective VDB upload target; "
+            "pass verify_rows=False for extraction/embed-only plans."
+        )
     lancedb_uri, table_name, overwrite = lancedb_target or (plan.lancedb_uri, plan.table_name, True)
 
     initial_n_rows = None
@@ -119,7 +133,7 @@ def execute_ingest_plan(
         initial_n_rows=initial_n_rows,
         lancedb_uri=lancedb_uri,
         table_name=table_name,
-        metadata={
+        run_metadata={
             "lancedb_target": f"{lancedb_uri}/{table_name}",
             "profile": plan.profile,
             "branch_summary": format_branch_summary(plan.branches),
