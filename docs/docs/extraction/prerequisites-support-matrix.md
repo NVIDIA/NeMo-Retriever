@@ -2,16 +2,21 @@
 
 Before you begin using [NeMo Retriever Library](overview.md), confirm your software stack, deployment hardware, and—if you use them—advanced features (audio and video, Nemotron Parse, VLM image captioning, reranking) against the guidance in this page.
 
-## Software Requirements
+## Software Requirements { #software-requirements }
 
 - Linux operating systems (Ubuntu 22.04 or later recommended)
-- [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `535`, CUDA >= `12.2`)
+- [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `580`, CUDA >= `13.0`)
 - [Python](https://www.python.org/downloads/) `3.12` — required to install and run the NeMo Retriever Library Python API, CLI, and related packages from PyPI (for example `pip` or `uv`). Older Python versions will fail dependency resolution without a clear error.
 - [UV Python package and environment manager](https://docs.astral.sh/uv/getting-started/installation/) (optional; recommended for creating isolated environments)
 - For audio and video, `ffmpeg` and `ffprobe` must be on `PATH` (for example
   `sudo apt-get install -y --no-install-recommends ffmpeg` on Debian/Ubuntu).
   `ffmpeg-python` and `nemo-retriever[multimedia]` do not install these binaries.
   For container and Kubernetes guidance, refer to [Audio and video](audio-video.md).
+- For PDF extraction with `extract_method="nemotron_parse"`, install the Nemotron Parse
+  client dependencies with `pip install "nemo-retriever[nemotron-parse]"` (pulls
+  `open-clip-torch`, which provides the `open_clip` module required by the Nemotron Parse
+  NIM client). The base `nemo-retriever` install and `[local]` extra do not include this
+  package.
 
 !!! note
 
@@ -58,7 +63,7 @@ Ensure your deployment environment meets these specifications before running the
 
 The NeMo Retriever Library extraction core pipeline features run on a single A10G or better GPU.
 
-### Default Helm NIMs
+### Default Helm NIMs { #default-helm-nims }
 
 The production Helm chart enables these NIM microservices **by default** (for example with `nimOperator.*.enabled=true`):
 
@@ -66,16 +71,20 @@ The production Helm chart enables these NIM microservices **by default** (for ex
 |-----------|-----|------|
 | `page_elements` | [nemotron-page-elements-v3](https://huggingface.co/nvidia/nemotron-page-elements-v3) | Page layout and element detection |
 | `table_structure` | [nemotron-table-structure-v1](https://huggingface.co/nvidia/nemotron-table-structure-v1) | Table structure extraction |
-| `ocr` | [nemotron-ocr-v2](https://huggingface.co/nvidia/nemotron-ocr-v2) | Image OCR |
+| `ocr` | [nemotron-ocr-v1](https://huggingface.co/nvidia/nemotron-ocr-v1) | Image OCR |
 | `vlm_embed` | [llama-nemotron-embed-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2) | Multimodal (VL) embedding |
 
-### Nemotron OCR v2 language mode { #nemotron-ocr-v2-language-mode }
+### OCR artifacts (Helm vs local Hugging Face) { #nemotron-ocr-v2-language-mode }
 
 !!! note
 
+    **Helm / NIM:** The production chart deploys **Nemotron OCR v1** under `nimOperator.ocr` (`nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0`). For image defaults and upgrade notes, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#ocr-nim-configuration) in the Helm chart README.
+
     **Local Hugging Face inference:** When you deploy locally with HuggingFace model weights (for example `pip install "nemo-retriever[local]"` and GPU inference without remote OCR NIM URLs), the default OCR engine is **Nemotron OCR v2**, which runs in **multilingual** mode by default. For CLI flags and API parameters, refer to [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). Remote OCR NIM endpoints use their own model and language behavior; local OCR language selectors are not sent on remote requests.
 
-    **Helm / NIM:** The chart deploys the core OCR NIM under `nimOperator.ocr`. For image defaults, multilingual behavior, and upgrade notes, refer to [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#nemotron-ocr-v2-language-mode) in the Helm chart README.
+Default OCR NIM container for release Helm deployments:
+
+- **Image:** `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0`
 
 Default VL embedder container and model for release deployments:
 
@@ -101,7 +110,7 @@ Optional features listed in the table above require additional GPU support, disk
 
 For published NIM model IDs and deployment-specific constraints, use the product support matrices linked under [Related Topics](#related-topics) below.
 
-## Model Hardware Requirements
+## Model Hardware Requirements { #model-hardware-requirements }
 
 NeMo Retriever Library supports the following GPU hardware given system constraints in the table.
 
@@ -109,6 +118,8 @@ NeMo Retriever Library supports the following GPU hardware given system constrai
 - **NIM disk space** — approximate container and on-disk model cache for self-hosted NIM microservices (not the same as HF download size). For Nemotron 3 Nano Omni captioning, refer to the [NVIDIA NIM for Vision Language Models support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning).
 
 Model repositories and NIM references are linked in [Core and Advanced Pipeline Features](#core-and-advanced-pipeline-features) above.
+
+**B200 and audio/video extraction (26.05):** The [audio and video](audio-video.md) transcription path (self-hosted Parakeet ASR via `nimOperator.audio`) is **not supported on B200** or other Blackwell GPUs. Core PDF and multimodal extraction on B200 is unchanged. See footnote ⁴ below.
 
 | Feature | HF Model Weights | GPU Option | [RTX Pro 6000](https://www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/) | [B200](https://www.nvidia.com/en-us/data-center/dgx-b200/) | [H200 NVL](https://www.nvidia.com/en-us/data-center/h200/) | [H100](https://www.nvidia.com/en-us/data-center/h100/) | [A100 80GB](https://www.nvidia.com/en-us/data-center/a100/) | A100 40GB | [A10G](https://aws.amazon.com/ec2/instance-types/g5/) | L40S | [RTX PRO 4500 Blackwell](https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-4500/) |
 |---------|------------------|------------|--------|--------|--------|--------|--------|--------|--------|--------|------------------------|

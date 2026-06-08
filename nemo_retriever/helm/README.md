@@ -1259,7 +1259,7 @@ Refer to [Deployment options — Air-gapped and disconnected deployment](https:/
 ### Container images to mirror (26.05 chart defaults)
 
 Verify tags on the Git branch or tag you ship (for example `26.05` or
-`26.05-RC1`). Defaults below match
+`26.5.0`). Defaults below match
 [`values.yaml`](./values.yaml) on the current chart.
 
 | Role | `nimOperator` key | Default image (`repository:tag`) |

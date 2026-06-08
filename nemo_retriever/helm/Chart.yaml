@@ -18,8 +18,8 @@ description: |
   shared PostgreSQL backend so the service can scale horizontally.
 
 type: application
-version: 26.05-RC1
-appVersion: "26.05-RC1"
+version: "26.5.0"
+appVersion: "26.5.0"
 kubeVersion: ">=1.25.0-0"
 home: https://github.com/NVIDIA/NeMo-Retriever
 sources:

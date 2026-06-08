@@ -68,6 +68,7 @@ class WorkItem(RichModel):
     # Owning job aggregate (J1+). Always set today since the only
     # admission path is /v1/ingest/job/{job_id}/document.
     job_id: str | None = None
+    retain_results: bool = False
     # Validated per-request pipeline overrides (PipelineSpec serialised
     # to a dict). ``None`` means: run the legacy startup-baked pipeline.
     pipeline_spec: dict[str, Any] | None = None
@@ -267,10 +268,17 @@ class _Pool:
                     elif isinstance(result, int):
                         result_rows = result
 
-                if item.callback_url:
-                    from nemo_retriever.service.services.worker_result_store import store_result_data
+                retain_results = item.retain_results
+                if not retain_results and item.job_id:
+                    tracker_lookup = get_job_tracker()
+                    if tracker_lookup is not None:
+                        retain_results = tracker_lookup.should_retain_results(item.job_id)
 
-                    store_result_data(item.id, result_data)
+                if item.callback_url:
+                    if retain_results:
+                        from nemo_retriever.service.services.worker_result_store import store_result_data
+
+                        store_result_data(item.id, result_data)
                     await _fire_gateway_callback(
                         item.callback_url,
                         item.id,
@@ -281,7 +289,7 @@ class _Pool:
                     tracker.mark_completed(
                         item.id,
                         result_rows=result_rows,
-                        result_data=result_data,
+                        result_data=result_data if retain_results else None,
                     )
                 self._processed += 1
             except Exception as exc:

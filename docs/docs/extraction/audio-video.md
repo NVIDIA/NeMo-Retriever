@@ -61,17 +61,11 @@ This pipeline enables retrieval at the speech segment level when you enable segm
 
 ## Run Parakeet on the cluster (Helm) { #run-parakeet-on-the-cluster-helm }
 
-Use the following procedure to run the NIM on your own infrastructure. Self-hosted Parakeet runs on Kubernetes via the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md). Enable the ASR NIM per [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default) and the [Helm chart — NIM operator sub-stack](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#nim-operator-sub-stack); pin the workload to a dedicated GPU and wire the ASR endpoint in your pipeline.
+Use the following procedure for self-hosted Parakeet on your cluster. For chart enablement, GPU placement, ffmpeg, and endpoint wiring, see [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default) and [Audio and video (Parakeet ASR)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#audio-video-parakeet) in the Helm chart README, plus [Deployment options](deployment-options.md).
 
-!!! important
+1. Deploy or upgrade per that Helm guide and [Deployment options](deployment-options.md).
 
-    Pin the Parakeet workload to the dedicated GPU with your Helm values or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) (for example, node selectors, resource limits, or device requests appropriate to your cluster).
-
-1. Deploy or upgrade with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) and enable Parakeet for your release (see [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default)). Follow [Deployment options](deployment-options.md).
-
-2. If the service will process audio or video files, set `service.installFfmpeg=true` in the Helm chart when your cluster allows runtime package installation; for air-gapped clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image) for `service.image` overrides.
-
-3. After the services are running, interact with the pipeline from Python.
+2. After the services are running, interact with the pipeline from Python.
 
     - The `Ingestor` object initializes the ingestion process.
     - The `files` method specifies the input files to process.
@@ -89,13 +83,9 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
     )
     ```
 
+To generate one extracted element for each sentence-like ASR segment, pass `asr_params=ASRParams(segment_audio=True)` to `.extract_audio(...)`. This option applies when audio extraction runs with a self-hosted Parakeet NIM or using build.nvidia.com hosted inference, but has no effect when using the local Hugging Face Parakeet model.
 
-    To generate one extracted element for each sentence-like ASR segment, pass `asr_params=ASRParams(segment_audio=True)` to `.extract_audio(...)`. This option applies when audio extraction runs with a self-hosted Parakeet NIM or using build.nvidia.com hosted inference, but has no effect when using the local Hugging Face Parakeet model.
-
-
-    !!! tip
-
-        For more Python examples, refer to [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+For more Python examples, refer to [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
 
 ## Parakeet with hosted inference (build.nvidia.com) { #parakeet-hosted-inference-build-nvidia }
 

@@ -1,69 +1,41 @@
-# Use Custom Metadata to Filter Search Results
+# Custom metadata and filtering
 
-You can upload custom metadata for documents during ingestion. 
-By uploading custom metadata you can attach additional information to documents, 
-and use it for filtering results during retrieval operations. 
-For example, you can add author metadata to your documents, and filter by author when you retrieve results. 
-To create filters at query time, use predicates supported by [LanceDB SQL](https://lancedb.github.io/lancedb/sql/) against your table schema (custom fields are serialized into the `metadata` column with your ingested chunks). For a worked example, see the repository notebook linked at the end of this page.
+Use this documentation to attach per-document metadata during ingestion and to narrow [LanceDB](vdbs.md) search results in [NeMo Retriever Library](overview.md). Implementation details live in the package [Vector DB operators and LanceDB](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering) README.
 
-Use this documentation to use custom metadata to filter search results when you work with [NeMo Retriever Library](overview.md).
+## On this page { #on-this-page }
 
+- [Attach metadata at ingestion](#attach-metadata-at-ingestion)
+- [How metadata is stored](#how-metadata-is-stored)
+- [Filter results at query time](#filter-results-at-query-time)
+- [Writing `where` predicates](#writing-where-predicates)
+- [Server-side vs client-side filters](#server-side-vs-client-side-filters)
+- [Inspect hit metadata](#inspect-hit-metadata)
+- [Limitations](#limitations)
+- [Related content](#related-content)
 
-## Limitations
+## Attach metadata at ingestion { #attach-metadata-at-ingestion }
 
-The following are limitation when you use custom metadata:
+Pass a **sidecar metadata table** on `vdb_upload` so selected columns are merged into each chunk's `content_metadata` before LanceDB upload. All three parameters must be set together:
 
-- Metadata fields must be consistent across documents in the same collection.
-- Complex filter expressions may impact retrieval performance.
-- If you update your custom metadata, you must ingest your documents again to use the new metadata.
+| Parameter | Purpose |
+|-----------|---------|
+| `meta_dataframe` | Path to CSV, JSON, or Parquet, or an in-memory `pandas.DataFrame` |
+| `meta_source_field` | Column that identifies each document (must match ingest paths or basenames per `meta_join_key`) |
+| `meta_fields` | Non-empty list of column names to copy into `content_metadata` |
 
-
-
-## Add Custom Metadata During Ingestion
-
-You can add custom metadata during the document ingestion process. 
-You can specify metadata for each file, 
-and you can specify different metadata for different documents in the same ingestion batch.
-
-
-### Metadata Structure
-
-You specify custom metadata as a dataframe or a file (json, csv, or parquet). 
-
-The following example contains metadata fields for category, department, and timestamp. 
-You can create whatever metadata is helpful for your scenario.
+Optional `meta_join_key` controls how rows are matched to documents: `auto` (try full path then basename), `source_id` (full path), or `source_name` (basename only).
 
 ```python
 import pandas as pd
+from nemo_retriever import create_ingestor
 
 meta_df = pd.DataFrame(
     {
         "source": ["data/woods_frost.pdf", "data/multimodal_test.pdf"],
-        "category": ["Alpha", "Bravo"],
-        "department": ["Language", "Engineering"],
-        "timestamp": ["2025-05-01T00:00:00", "2025-05-02T00:00:00"]
+        "meta_a": ["alpha", "bravo"],
+        "meta_b": [10, 20],
     }
 )
-
-# Convert the dataframe to a csv file, 
-# to demonstrate how to ingest a metadata file in a later step.
-
-file_path = "./meta_file.csv"
-meta_df.to_csv(file_path)
-```
-
-
-### Example: Add Custom Metadata During Ingestion
-
-The following example adds custom metadata during ingestion. 
-For more information about `create_ingestor` and run modes, refer to [Use the Python API](nemo-retriever-api-reference.md).
-For more information about the `vdb_upload` method, refer to [Upload Data](vdbs.md).
-
-```python
-from nemo_retriever import create_ingestor
-
-# Service-backed pipeline: point `base_url` at your running retriever service.
-# For local graph execution instead, see [Use the Python API](nemo-retriever-api-reference.md).
 
 hostname = "localhost"
 table_name = "nemo_retriever_collection"
@@ -90,6 +62,10 @@ results = ingestor.ingest_async().result()
 ```
 
 Merge values from `meta_df` (or `file_path`) into each document's `content_metadata` before `vdb_upload`, or follow the step-by-step pattern in [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb), so category, department, and timestamp are present on the chunks LanceDB indexes.
+
+## How metadata is stored { #how-metadata-is-stored }
+
+During ingestion, each chunk's `content_metadata` is serialized as a **compact JSON string** (no spaces after `:` or `,`) in the LanceDB table's `metadata` column. Sidecar columns from `meta_dataframe`, `meta_source_field`, and `meta_fields` are merged into that JSON object before upload, so custom keys live in the same string—not separate columns. That is why `Retriever.query` filters often use `metadata LIKE '%\"key\":\"value\"%'`. For operator behavior and predicate examples, see [Vector DB operators and LanceDB — Metadata filtering](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering).
 
 ## Best Practices
 
@@ -150,9 +126,11 @@ hits = retriever.query(
 )
 ```
 
+For a runnable end-to-end flow (ingest, `Retriever.query`, and both filter modes), see [nemo_retriever_retriever_query_metadata_filter.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb).
 
+When you ingest through the **retriever service**, upload the sidecar with [`POST /v1/ingest/sidecar`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/routers/ingest.py#L1040-L1129) (multipart file; response [`SidecarUploadResponse`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/models/responses.py#L60-L68)), then pass the returned `sidecar_id` as `meta_dataframe_id` with `meta_source_field` and `meta_fields` in `pipeline.vdb_upload_params` on [`POST /v1/ingest`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/models/requests.py#L15-L32) ([`PipelineSpec`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/models/pipeline_spec.py#L55-L78)). Request and response shapes, form fields, and auth headers are in the service OpenAPI UI at `/docs` (or `/openapi.json`) on your retriever base URL (for example `http://localhost:7670/docs` after `retriever service start`). Do not send a raw local path as `meta_dataframe` on the service spec.
 
-## Related Content
+## Related content { #related-content }
 
 - [Vector databases](vdbs.md) — canonical LanceDB upload and retrieval guide
 - [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb) — CLI and graph ingest with sidecar metadata

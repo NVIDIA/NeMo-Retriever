@@ -9,7 +9,7 @@ The repository includes notebooks that demonstrate multimodal RAG patterns:
 - [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb)
 - [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb)
 
-These are also linked from [Jupyter Notebooks](notebooks.md) and the [FAQ](faq.md).
+These are also linked from [Jupyter Notebooks](notebooks/index.md) and the [FAQ](faq.md).
 
 ## Haystack
 

@@ -216,6 +216,7 @@ class RetrieverServiceClient:
         *,
         expected_documents: int,
         label: str | None = None,
+        retain_results: bool = False,
     ) -> str:
         """Open a server-side job aggregate and return the assigned ``job_id``.
 
@@ -224,7 +225,10 @@ class RetrieverServiceClient:
         call sized to the number of files supplied.
         """
         url = f"{self._base_url}/v1/ingest/job"
-        payload: dict[str, Any] = {"expected_documents": expected_documents}
+        payload: dict[str, Any] = {
+            "expected_documents": expected_documents,
+            "retain_results": retain_results,
+        }
         if label is not None:
             payload["label"] = label
         resp = await client.post(url, json=payload)
@@ -639,6 +643,7 @@ class RetrieverServiceClient:
         files: list[Path],
         *,
         pipeline_spec: dict[str, Any] | None = None,
+        retain_results: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
         """Async generator: upload files, yield events as documents complete.
 
@@ -665,7 +670,11 @@ class RetrieverServiceClient:
             limits=pool_limits,
             headers=self._auth_headers,
         ) as client:
-            job_id = await self._create_job(client, expected_documents=len(files))
+            job_id = await self._create_job(
+                client,
+                expected_documents=len(files),
+                retain_results=retain_results,
+            )
             yield {
                 "event": "job_created",
                 "job_id": job_id,

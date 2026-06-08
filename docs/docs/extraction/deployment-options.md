@@ -36,7 +36,7 @@ in the Helm chart README.
 
 ### I want examples and notebooks
 
-1. [Jupyter Notebooks](notebooks.md)
+1. [Jupyter Notebooks](notebooks/index.md)
 2. [Integrate with LangChain, LlamaIndex, Haystack](integrations-langchain-llamaindex-haystack.md)
 
 ### I need API details and keys
@@ -50,7 +50,7 @@ in the Helm chart README.
 2. [Throughput is dataset-dependent](multimodal-extraction.md#extraction-limitations-and-quality)
 3. [Evaluate on your data](evaluate-on-your-data.md)
 
-## When to use NVIDIA-hosted NIMs
+## When to use NVIDIA-hosted NIMs { #when-to-use-nvidia-hosted-nims }
 
 [NVIDIA-hosted NIMs](https://build.nvidia.com/) run inference on NVIDIA-managed infrastructure. You call models with API keys (refer to [Get your API key](api-keys.md)) without operating GPU nodes yourself.
 
@@ -62,7 +62,7 @@ Consider hosted NIMs when:
 
 **Also refer to:** [NVIDIA NIM catalog](https://build.nvidia.com/)
 
-## When to self-host NIMs
+## When to self-host NIMs { #when-to-self-host-nims }
 
 Self-hosted NIMs run on your GPUs or air-gapped hardware, typically with Kubernetes and the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html).
 

@@ -247,7 +247,7 @@ def create_app(config: ServiceConfig) -> FastAPI:
     app = FastAPI(
         title="Retriever Service",
         description="Low-latency document ingestion service powered by nemo-retriever",
-        version="1.0.0",
+        version="26.5.0",
         docs_url="/docs",
         lifespan=_lifespan,
     )

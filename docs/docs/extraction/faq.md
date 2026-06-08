@@ -20,10 +20,12 @@ For more information, refer to [Vector databases](vdbs.md).
 
 For images that `nemoretriever-page-elements-v3` does not classify as tables, charts, or infographics,
 you can use our VLM caption task to create a dense caption of the detected image. 
-That caption is then be embedded along with the rest of your content. 
-For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
+That caption is then embedded along with the rest of your content. 
+For chart-labeled PDF regions and other caption scope limits, see [Are PDF chart or figure regions captioned when Omni is enabled?](#are-pdf-chart-or-figure-regions-captioned-when-omni-is-enabled). For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
+## Are PDF chart or figure regions captioned when Omni is enabled?
 
+No. Chart-labeled PDF regions are not routed through Omni captioning. See [Charts and infographics](multimodal-extraction.md#charts-and-infographics) and [Image captioning](multimodal-extraction.md#image-captioning) for scope, validation, and what the caption stage covers.
 
 ## When should I consider advanced visual parsing?
 

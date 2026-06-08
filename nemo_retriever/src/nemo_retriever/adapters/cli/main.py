@@ -165,9 +165,9 @@ def ingest_command(
     lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
     table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),
     run_mode: IngestRunModeValue = typer.Option(
-        "batch",
+        "inprocess",
         "--run-mode",
-        help="Execution mode for the SDK ingestor. Defaults to batch; use inprocess to skip Ray for local debug/CI.",
+        help="Execution mode for the SDK ingestor. Defaults to inprocess; use batch for Ray Data scale-out.",
     ),
     dry_run: bool = typer.Option(
         False,

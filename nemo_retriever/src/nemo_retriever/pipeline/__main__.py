@@ -8,15 +8,14 @@ Registered on the ``retriever`` CLI as the ``pipeline`` subcommand.
 
 Examples::
 
-    # Batch mode (Ray) with PDF extraction + embedding
+    # In-process mode (default; no Ray) for local extraction + embedding
+    retriever pipeline run /data/pdfs \\
+        --ocr-invoke-url http://localhost:9000/v1
+
+    # Batch mode (Ray) for large-scale throughput
     retriever pipeline run /data/pdfs \\
         --run-mode batch \\
         --embed-invoke-url http://localhost:8000/v1
-
-    # In-process mode (no Ray) for quick local testing
-    retriever pipeline run /data/pdfs \\
-        --run-mode inprocess \\
-        --ocr-invoke-url http://localhost:9000/v1
 
     # Service mode (delegate to a running retriever service)
     retriever pipeline run /data/pdfs \\
@@ -979,10 +978,10 @@ def run(
     ),
     # --- I/O and execution ------------------------------------------------
     run_mode: str = typer.Option(
-        "batch",
+        "inprocess",
         "--run-mode",
         help=(
-            "Execution mode: 'batch' (Ray Data), 'inprocess' (pandas, no Ray), "
+            "Execution mode: 'inprocess' (pandas, no Ray, default), 'batch' (Ray Data), "
             "or 'service' (remote retriever service)."
         ),
         rich_help_panel=_PANEL_IO,
