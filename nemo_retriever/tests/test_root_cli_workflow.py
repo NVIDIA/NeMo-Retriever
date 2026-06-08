@@ -610,7 +610,8 @@ def test_resolved_ingest_plan_runs_through_workflow(monkeypatch, tmp_path) -> No
     )
     result = ingest_workflow.run_ingest_workflow(plan)
 
-    assert result["documents"] == [str(document)]
+    assert result["n_documents"] == 1
+    assert fake_ingestor.files.call_args.args == ([str(document)],)
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
     assert extract_params.use_table_structure is True
