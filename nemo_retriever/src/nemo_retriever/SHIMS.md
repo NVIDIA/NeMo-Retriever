@@ -363,3 +363,5 @@ cleanup pass deletes every old module listed here, then deletes this file.
 | `nemo_retriever.utils.benchmark.split_actor` | `nemo_retriever.tools.benchmark.split_actor` | PR8-tools |
 | `nemo_retriever.graph.beir_eval` | `nemo_retriever.tools.recall.beir_eval` | PR8-tools |
 | `nemo_retriever.graph.recall_eval` | `nemo_retriever.tools.recall.recall_eval` | PR8-tools |
+| `nemo_retriever.graph.tabular_fetch_embeddings_operator` | `nemo_retriever.tabular_data.operators.tabular_fetch_embeddings_operator` | PR9-tabular |
+| `nemo_retriever.graph.tabular_schema_extract_operator` | `nemo_retriever.tabular_data.operators.tabular_schema_extract_operator` | PR9-tabular |
