@@ -995,7 +995,8 @@ imagePullSecrets:
   - name: my-private-registry
 
 ngcImagePullSecret:
-  create: false   # use secrets that authenticate to YOUR mirror
+  create: false
+  name: ""   # Explicitly empty — clears the default "ngc-secret"
 
 nimOperator:
   page_elements:
@@ -1006,8 +1007,8 @@ nimOperator:
   # Repeat for table_structure, ocr, vlm_embed, and any optional keys you enable.
 ```
 
-- Set `nimOperator.<key>.image.pullSecrets` to the Secret name your
-  `NIMService` resources should use (defaults to `ngc-secret`).
+- Set `nimOperator.<key>.image.pullSecrets` to your mirror pull secret
+  (for example `my-private-registry`; chart default is `ngc-secret`).
 - Leave `serviceConfig.nimEndpoints.*` empty when operator-managed NIMs
   are in-cluster; set explicit URLs only for external or mirrored services
   outside the chart.

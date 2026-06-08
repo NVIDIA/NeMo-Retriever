@@ -133,6 +133,7 @@ Helm **replaces** the whole `env` list when you override `nimOperator.<key>.env`
 nimOperator:
   audio:
     env:
+      # Retain chart defaults, then append LD_LIBRARY_PATH.
       - name: NIM_TAGS_SELECTOR
         value: "name=parakeet-1-1b-ctc-en-us,mode=ofl,vad=default,diarizer=disabled"
       - name: NIM_TRITON_LOG_VERBOSE
@@ -141,6 +142,7 @@ nimOperator:
         value: "/usr/local/nvidia/lib64:/usr/local/cuda/lib64"
   nemotron_3_nano_omni_30b_a3b_reasoning:
     env:
+      # Retain chart defaults, then append LD_LIBRARY_PATH.
       - name: NIM_HTTP_API_PORT
         value: "8000"
       - name: NIM_TRITON_LOG_VERBOSE
