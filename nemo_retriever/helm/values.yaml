@@ -452,6 +452,8 @@ topology:
   # ---------------------------------------------------------------------------
   # Zipkin
   # ---------------------------------------------------------------------------
+  # Enabled by default to preserve managed trace-backend parity with the legacy
+  # 26.1.2 Helm chart. Set false to avoid deploying chart-owned Zipkin.
   zipkin:
     enabled: true
     image:
