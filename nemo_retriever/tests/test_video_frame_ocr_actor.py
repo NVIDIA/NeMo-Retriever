@@ -70,6 +70,23 @@ def test_cpu_actor_calls_remote_batched_with_b64_list() -> None:
     call_kwargs = nim_client.invoke_image_inference_batches.call_args.kwargs
     assert call_kwargs["image_b64_list"] == ["AAA", "BBB"]
     assert call_kwargs["invoke_url"] == "https://example/ocr"
+    assert call_kwargs["merge_levels"] == ["paragraph", "paragraph"]
+
+
+def test_cpu_actor_forwards_configured_merge_level_to_remote() -> None:
+    df = _make_frame_df(["AAA"])
+
+    nim_client = MagicMock()
+    nim_client.invoke_image_inference_batches = MagicMock(return_value=[[{"text_prediction": {"text": "word"}}]])
+
+    actor = VideoFrameOCRCPUActor(ocr_invoke_url="https://example/ocr", merge_level="word")
+    actor._nim_client = nim_client
+
+    out = actor.run(df)
+
+    assert out["text"].tolist() == ["word"]
+    call_kwargs = nim_client.invoke_image_inference_batches.call_args.kwargs
+    assert call_kwargs["merge_levels"] == ["word"]
 
 
 def test_cpu_actor_defaults_to_hosted_ocr_v1() -> None:

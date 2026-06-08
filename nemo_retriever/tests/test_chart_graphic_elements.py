@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 import importlib
 import io
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -191,6 +191,37 @@ class TestGraphicElementsOCRPageElements:
         assert len(chart_entries) == 1
         assert "ChartTitle" in chart_entries[0]["text"]
         assert chart_entries[0]["bbox_xyxy_norm"] == [0.0, 0.0, 1.0, 1.0]
+
+    def test_remote_ocr_uses_word_merge_level(self) -> None:
+        from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
+
+        import torch
+
+        df = _make_chart_page_df(width=200, height=100)
+
+        mock_ge_model = MagicMock()
+        mock_ge_model._model = MagicMock()
+        mock_ge_model._model.labels = ["chart_title"]
+        mock_ge_model.preprocess.return_value = torch.zeros(1, 3, 100, 200)
+        mock_ge_model.invoke.return_value = {
+            "boxes": torch.tensor([[0.0, 0.0, 1.0, 0.3]]),
+            "labels": torch.tensor([0]),
+            "scores": torch.tensor([0.9]),
+        }
+
+        ocr_response = [[{"left": 0.1, "right": 0.9, "upper": 0.05, "lower": 0.25, "text": "ChartTitle"}]]
+        with patch(
+            "nemo_retriever.chart.shared.invoke_image_inference_batches",
+            return_value=ocr_response,
+        ) as remote_ocr:
+            result = graphic_elements_ocr_page_elements(
+                df,
+                graphic_elements_model=mock_ge_model,
+                ocr_invoke_url="http://fake-ocr",
+            )
+
+        assert "ChartTitle" in result.iloc[0]["chart"][0]["text"]
+        assert remote_ocr.call_args.kwargs["merge_levels"] == ["word"]
 
     def test_fallback_when_no_ge_detections(self) -> None:
         """When GE model returns no detections, should fall back to OCR-only text."""
