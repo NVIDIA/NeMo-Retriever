@@ -81,9 +81,9 @@ from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple, Union
 
 import httpx
 
-from nemo_retriever.ingest_results import concat_ingest_results
+from nemo_retriever.ingestor.results import concat_ingest_results
 from nemo_retriever.ingestor import _merge_params, ingestor
-from nemo_retriever.params import (
+from nemo_retriever.common.params import (
     CaptionParams,
     IngestExecuteParams,
     PdfSplitParams,
@@ -573,7 +573,7 @@ class ServiceIngestor(ingestor):
     def dedup(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
         """Record a dedup stage with optional :class:`DedupParams` overrides."""
         if params is not None or kwargs:
-            from nemo_retriever.service.policy import _DEFAULT_ALLOWED_DEDUP_KEYS
+            from nemo_retriever.common.policy import _DEFAULT_ALLOWED_DEDUP_KEYS
 
             merged = _merge_params(params, kwargs)
             _wire_client_stage_params(
@@ -593,7 +593,7 @@ class ServiceIngestor(ingestor):
         rejected if set here.
         """
         if params is not None or kwargs:
-            from nemo_retriever.service.policy import _DEFAULT_ALLOWED_EMBED_KEYS
+            from nemo_retriever.common.policy import _DEFAULT_ALLOWED_EMBED_KEYS
 
             merged = _merge_params(params, kwargs)
             _wire_client_stage_params(
@@ -626,7 +626,7 @@ class ServiceIngestor(ingestor):
         by client-side model defaults).
         """
         if params is not None or kwargs:
-            from nemo_retriever.service.policy import _DEFAULT_ALLOWED_EXTRACT_KEYS
+            from nemo_retriever.common.policy import _DEFAULT_ALLOWED_EXTRACT_KEYS
 
             merged = _merge_params(params, kwargs)
             _wire_client_stage_params(
@@ -647,7 +647,7 @@ class ServiceIngestor(ingestor):
     ) -> "ServiceIngestor":
         """Record image-file extraction (``extraction_mode='image'``)."""
         if params is not None or kwargs:
-            from nemo_retriever.service.policy import _DEFAULT_ALLOWED_EXTRACT_KEYS
+            from nemo_retriever.common.policy import _DEFAULT_ALLOWED_EXTRACT_KEYS
 
             merged = _merge_params(params, kwargs)
             _wire_client_stage_params(
@@ -717,7 +717,7 @@ class ServiceIngestor(ingestor):
         for k in list(params_dict):
             if k != "storage_uri" and k in _SERVER_OWNED_KEYS:
                 raise ValueError(f"ServiceIngestor.store(): key {k!r} is server-owned in " "run_mode='service'.")
-        from nemo_retriever.service.policy import _DEFAULT_ALLOWED_STORE_KEYS
+        from nemo_retriever.common.policy import _DEFAULT_ALLOWED_STORE_KEYS
 
         params_dict = _filter_policy_allowed(params_dict, _DEFAULT_ALLOWED_STORE_KEYS)
         _set_stage_params(self._pipeline_spec, "store_params", params_dict)

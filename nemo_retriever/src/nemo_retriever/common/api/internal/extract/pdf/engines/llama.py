@@ -27,7 +27,7 @@ from typing import List
 
 import aiohttp
 
-from nemo_retriever.api.internal.enums.common import ContentTypeEnum
+from nemo_retriever.common.api.internal.enums.common import ContentTypeEnum
 
 DEFAULT_RESULT_TYPE = "text"
 DEFAULT_FILE_NAME = "_.pdf"

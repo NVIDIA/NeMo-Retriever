@@ -11,9 +11,9 @@ import numpy as np
 import torch
 from PIL import Image
 
-from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
-from nemo_retriever.utils.hf_model_registry import get_hf_revision
-from nemo_retriever.model.model import BaseModel, ModelRunMode
+from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.models.hf_model_registry import get_hf_revision
+from nemo_retriever.models.model import BaseModel, ModelRunMode
 
 # Type alias for all supported single-image input formats.
 ImageInput = Union[torch.Tensor, np.ndarray, Image.Image, str, Path]

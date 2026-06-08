@@ -10,9 +10,9 @@ from typing import Optional
 import ray.data as rd
 import typer
 
-from nemo_retriever.pdf.extract import PDFExtractionActor
+from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor
 
-from nemo_retriever.utils.benchmark.common import (
+from nemo_retriever.tools.benchmark.common import (
     benchmark_sweep,
     make_seed_extraction_row,
     maybe_init_ray,

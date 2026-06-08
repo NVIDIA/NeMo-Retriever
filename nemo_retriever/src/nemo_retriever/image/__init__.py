@@ -10,7 +10,7 @@ Converts each image into the same single-row DataFrame schema that
 detection, OCR, table/chart/infographic extraction, embedding) work unchanged.
 """
 
-from nemo_retriever.image.load import (
+from nemo_retriever.common.modality.image.load import (
     image_bytes_to_pages_df,
     image_file_to_pages_df,
 )

@@ -10,11 +10,11 @@ from typing import Any, Dict, Optional
 import typer
 from rich.console import Console
 
-from nemo_retriever.ingest_config import load_ingest_config_section
-from nemo_retriever.io.dataframe import read_dataframe, write_dataframe
+from nemo_retriever.ingestor.config import load_ingest_config_section
+from nemo_retriever.common.io.dataframe import read_dataframe, write_dataframe
 
-from nemo_retriever.chart.config import load_chart_extractor_schema_from_dict
-from nemo_retriever.chart.processor import extract_chart_data_from_primitives_df
+from nemo_retriever.common.modality.chart.config import load_chart_extractor_schema_from_dict
+from nemo_retriever.common.modality.chart.processor import extract_chart_data_from_primitives_df
 
 app = typer.Typer(help="Chart Extraction Stage")
 console = Console()

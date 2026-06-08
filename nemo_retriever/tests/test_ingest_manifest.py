@@ -7,16 +7,16 @@ import pandas as pd
 import pytest
 
 from nemo_retriever.graph import Graph
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.branch_extraction import normalize_ray_branch_datasets
-from nemo_retriever.graph_ingestor import GraphIngestor
-from nemo_retriever.adapters.cli.sdk_workflow import _strip_secret_values, resolve_ingest_plan
-from nemo_retriever.ingest_manifest import (
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.ingestor.branch_extraction import normalize_ray_branch_datasets
+from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+from nemo_retriever.cli.sdk_workflow import _strip_secret_values, resolve_ingest_plan
+from nemo_retriever.ingestor.manifest import (
     build_input_manifest,
     plan_extraction_branches,
     resolve_branch_extraction_inputs,
 )
-from nemo_retriever.params import ASRParams
+from nemo_retriever.common.params import ASRParams
 
 
 class _TagOperator(AbstractOperator):

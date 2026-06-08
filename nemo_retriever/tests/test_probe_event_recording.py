@@ -8,12 +8,12 @@ from unittest.mock import patch, MagicMock
 
 import requests
 
-from nemo_retriever.nim.error_reporter import (
+from nemo_retriever.models.nim.error_reporter import (
     _errors,
     drain_errors,
     report_error,
 )
-from nemo_retriever.nim.probe import (
+from nemo_retriever.models.nim.probe import (
     _probe_results,
     drain_probe_results,
     probe_endpoint,

@@ -29,32 +29,32 @@ from typing import List
 import numpy as np
 import pypdfium2 as pdfium
 
-from nemo_retriever.api.internal.extract.pdf.engines.pdfium import _extract_page_elements
-from nemo_retriever.api.internal.primitives.nim.model_interface import nemotron_parse as nemotron_parse_utils
-from nemo_retriever.api.internal.enums.common import AccessLevelEnum
-from nemo_retriever.api.internal.enums.common import ContentTypeEnum
-from nemo_retriever.api.internal.enums.common import ContentDescriptionEnum
-from nemo_retriever.api.internal.enums.common import TableFormatEnum
-from nemo_retriever.api.internal.enums.common import TextTypeEnum
-from nemo_retriever.api.internal.schemas.meta.metadata_schema import validate_metadata
-from nemo_retriever.api.internal.primitives.nim.model_interface.yolox import (
+from nemo_retriever.common.api.internal.extract.pdf.engines.pdfium import _extract_page_elements
+from nemo_retriever.common.api.internal.primitives.nim.model_interface import nemotron_parse as nemotron_parse_utils
+from nemo_retriever.common.api.internal.enums.common import AccessLevelEnum
+from nemo_retriever.common.api.internal.enums.common import ContentTypeEnum
+from nemo_retriever.common.api.internal.enums.common import ContentDescriptionEnum
+from nemo_retriever.common.api.internal.enums.common import TableFormatEnum
+from nemo_retriever.common.api.internal.enums.common import TextTypeEnum
+from nemo_retriever.common.api.internal.schemas.meta.metadata_schema import validate_metadata
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.yolox import (
     YOLOX_PAGE_IMAGE_PREPROC_WIDTH,
     YOLOX_PAGE_IMAGE_PREPROC_HEIGHT,
     YOLOX_PAGE_IMAGE_FORMAT,
 )
-from nemo_retriever.api.internal.schemas.extract.extract_pdf_schema import NemotronParseConfigSchema
-from nemo_retriever.api.util.metadata.aggregators import (
+from nemo_retriever.common.api.internal.schemas.extract.extract_pdf_schema import NemotronParseConfigSchema
+from nemo_retriever.common.api.util.metadata.aggregators import (
     extract_pdf_metadata,
     LatexTable,
     Base64Image,
     construct_image_metadata_from_pdf_image,
     construct_text_metadata,
 )
-from nemo_retriever.api.util.pdf.pdfium import pdfium_pages_to_numpy
-from nemo_retriever.api.internal.primitives.nim.default_values import YOLOX_MAX_BATCH_SIZE
-from nemo_retriever.api.util.exception_handlers.pdf import pdfium_exception_handler
-from nemo_retriever.api.util.image_processing.transforms import numpy_to_base64, crop_image
-from nemo_retriever.api.util.nim import create_inference_client
+from nemo_retriever.common.api.util.pdf.pdfium import pdfium_pages_to_numpy
+from nemo_retriever.common.api.internal.primitives.nim.default_values import YOLOX_MAX_BATCH_SIZE
+from nemo_retriever.common.api.util.exception_handlers.pdf import pdfium_exception_handler
+from nemo_retriever.common.api.util.image_processing.transforms import numpy_to_base64, crop_image
+from nemo_retriever.common.api.util.nim import create_inference_client
 
 
 logger = logging.getLogger(__name__)

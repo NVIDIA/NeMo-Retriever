@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nemo_retriever.evaluation.config import _normalize_config, build_eval_chain, build_eval_pipeline
+from nemo_retriever.tools.evaluation.config import _normalize_config, build_eval_chain, build_eval_pipeline
 
 
 def _make_multi_judge_config() -> dict:

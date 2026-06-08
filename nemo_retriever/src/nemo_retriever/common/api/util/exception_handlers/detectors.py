@@ -13,7 +13,7 @@ try:
 except ImportError:
     _LangDetectException = None
 
-from nemo_retriever.api.internal.enums.common import LanguageEnum
+from nemo_retriever.common.api.internal.enums.common import LanguageEnum
 
 logger = logging.getLogger(__name__)
 

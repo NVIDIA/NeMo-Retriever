@@ -23,7 +23,7 @@ import re
 import threading
 import unicodedata
 
-from nemo_retriever.llm.types import RetrievalResult
+from nemo_retriever.models.llm.types import RetrievalResult
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +174,7 @@ class FileRetriever:
             If set, also writes the retrieval JSON to this path so it
             can be reloaded later via ``FileRetriever(file_path=...)``.
         """
-        from nemo_retriever.export import query_lancedb, write_retrieval_json
+        from nemo_retriever.common.io.export import query_lancedb, write_retrieval_json
 
         all_results, meta = query_lancedb(
             lancedb_uri=lancedb_uri,

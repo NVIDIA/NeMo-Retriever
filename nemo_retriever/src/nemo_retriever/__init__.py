@@ -19,7 +19,7 @@ for _finder in sys.meta_path:
         _finder.has_warned_pynvml = True
         break
 
-from nemo_retriever.retriever import retriever as _retriever_cls
+from nemo_retriever.graph.retriever import retriever as _retriever_cls
 
 __all__ = [
     "__version__",
@@ -41,7 +41,7 @@ def __getattr__(name: str):
 
         return create_ingestor
     if name in {"__version__", "get_version", "get_version_info"}:
-        from nemo_retriever.version import __version__, get_version, get_version_info
+        from nemo_retriever.common.version import __version__, get_version, get_version_info
 
         return {
             "__version__": __version__,
@@ -53,7 +53,7 @@ def __getattr__(name: str):
 
         return ingestor
     if name == "GraphIngestionError":
-        from nemo_retriever.graph_ingestor import GraphIngestionError
+        from nemo_retriever.ingestor.graph_ingestor import GraphIngestionError
 
         return GraphIngestionError
     if name == "RetrieverServiceCompatibilityError":

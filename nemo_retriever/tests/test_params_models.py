@@ -7,7 +7,7 @@
 import pytest
 from pydantic import ValidationError
 
-from nemo_retriever.params.models import EmbedParams, ExtractParams, NO_API_KEY, StoreParams, VideoFrameParams
+from nemo_retriever.common.params.models import EmbedParams, ExtractParams, NO_API_KEY, StoreParams, VideoFrameParams
 
 
 class TestVideoFrameParams:

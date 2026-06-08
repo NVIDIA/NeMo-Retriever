@@ -32,9 +32,9 @@ import math
 import re
 from typing import Any, Optional
 
-from nemo_retriever.llm.clients.litellm import LiteLLMClient
-from nemo_retriever.llm.types import JudgeResult
-from nemo_retriever.params.models import LLMInferenceParams, LLMRemoteClientParams
+from nemo_retriever.models.llm.clients.litellm import LiteLLMClient
+from nemo_retriever.models.llm.types import JudgeResult
+from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
 
 logger = logging.getLogger(__name__)
 

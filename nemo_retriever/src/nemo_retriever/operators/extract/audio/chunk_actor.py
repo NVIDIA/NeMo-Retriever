@@ -18,13 +18,13 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from nemo_retriever.audio.media_interface import MediaInterface
-from nemo_retriever.audio.media_interface import ensure_media_on_disk
-from nemo_retriever.audio.media_interface import is_media_available
-from nemo_retriever.audio.media_interface import media_dependency_error_message
-from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.common.modality.audio.media_interface import MediaInterface
+from nemo_retriever.common.modality.audio.media_interface import ensure_media_on_disk
+from nemo_retriever.common.modality.audio.media_interface import is_media_available
+from nemo_retriever.common.modality.audio.media_interface import media_dependency_error_message
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.params import AudioChunkParams
+from nemo_retriever.common.params import AudioChunkParams
 
 logger = logging.getLogger(__name__)
 

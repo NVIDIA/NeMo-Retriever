@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Annotated, Any, Optional
 
 from nemo_retriever.graph.designer import Param, designer_component
-from nemo_retriever.harness.config import VALID_BEIR_DOC_ID_FIELDS, VALID_BEIR_LOADERS
+from nemo_retriever.tools.harness.config import VALID_BEIR_DOC_ID_FIELDS, VALID_BEIR_LOADERS
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +93,8 @@ class RecallEvaluatorActor:
 
         Returns the ``summary_dict`` produced by ``print_run_summary``.
         """
-        from nemo_retriever.model import resolve_embed_model
-        from nemo_retriever.utils.detection_summary import print_run_summary
+        from nemo_retriever.models import resolve_embed_model
+        from nemo_retriever.common.detection_summary import print_run_summary
 
         resolved_model = resolve_embed_model(self.embedding_model)
 
@@ -108,7 +108,7 @@ class RecallEvaluatorActor:
 
         if self.evaluation_mode == "beir":
             evaluation_label = "BEIR"
-            from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir
+            from nemo_retriever.tools.recall.beir import BeirConfig, evaluate_lancedb_beir
 
             beir_cfg = BeirConfig(
                 lancedb_uri=self.lancedb_uri,
@@ -130,7 +130,7 @@ class RecallEvaluatorActor:
             if self.match_mode != "audio_segment" or self.recall_adapter != "none":
                 raise ValueError("Audio recall evaluation is only supported for audio_segment runs")
 
-            from nemo_retriever.recall.core import RecallConfig, retrieve_and_score
+            from nemo_retriever.tools.recall.core import RecallConfig, retrieve_and_score
 
             query_csv_path = Path(self.query_csv)
             if not query_csv_path.exists():

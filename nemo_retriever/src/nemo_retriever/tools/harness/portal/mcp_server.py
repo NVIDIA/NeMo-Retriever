@@ -19,8 +19,8 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from nemo_retriever.harness import history
-from nemo_retriever.harness.portal.mcp_registry import get_tool_registry
+from nemo_retriever.tools.harness import history
+from nemo_retriever.tools.harness.portal.mcp_registry import get_tool_registry
 
 logger = logging.getLogger(__name__)
 

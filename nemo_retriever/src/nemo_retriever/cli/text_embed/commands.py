@@ -16,8 +16,8 @@ from rich.console import Console
 from rich.traceback import install
 from tqdm import tqdm
 
-from nemo_retriever.ingest_config import load_ingest_config_section
-from nemo_retriever.text_embed.processor import embed_text_from_primitives_df, maybe_inject_local_hf_embedder
+from nemo_retriever.ingestor.config import load_ingest_config_section
+from nemo_retriever.models.inference.processor import embed_text_from_primitives_df, maybe_inject_local_hf_embedder
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -153,7 +153,7 @@ def run(
     ),
 ) -> None:
     # Local import to avoid a circular import at module load.
-    from nemo_retriever.text_embed.config import load_text_embedding_schema_from_dict
+    from nemo_retriever.models.inference.config import load_text_embedding_schema_from_dict
 
     input_dir = Path(input_dir)
     output_dir = Path(output_dir) if output_dir is not None else None

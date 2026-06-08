@@ -5,7 +5,7 @@
 
 Usage::
 
-    from nemo_retriever.harness.portal.mcp_registry import portal_tool
+    from nemo_retriever.tools.harness.portal.mcp_registry import portal_tool
 
     @portal_tool(
         name="trigger_benchmark_run",

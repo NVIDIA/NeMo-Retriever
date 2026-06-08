@@ -7,7 +7,7 @@ import pandas as pd
 from typing import Any, Dict, List, Optional, Tuple
 import logging
 
-from nemo_retriever.api.internal.extract.pdf.engines.pdf_helpers import _orchestrate_row_extraction
+from nemo_retriever.common.api.internal.extract.pdf.engines.pdf_helpers import _orchestrate_row_extraction
 
 logger = logging.getLogger(__name__)
 

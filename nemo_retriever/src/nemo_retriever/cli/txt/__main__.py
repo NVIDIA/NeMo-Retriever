@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional  # noqa: F401
 
 import typer
 from rich.console import Console
-from nemo_retriever.params import TextChunkParams
+from nemo_retriever.common.params import TextChunkParams
 
 from nemo_retriever.txt import txt_file_to_chunks_df
 

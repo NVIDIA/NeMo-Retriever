@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_retriever.service.models.pipeline_spec import PipelineSpec
+from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 
 
 # ----------------------------------------------------------------------

@@ -10,9 +10,9 @@ import re
 from typing import Any, Optional, Callable, Tuple
 from functools import wraps
 
-from nemo_retriever.api.internal.primitives.ingest_control_message import IngestControlMessage
-from nemo_retriever.api.internal.primitives.tracing.logging import TaskResultStatus, annotate_task_result
-from nemo_retriever.api.util.control_message.validators import cm_ensure_payload_not_null, cm_set_failure
+from nemo_retriever.common.api.internal.primitives.ingest_control_message import IngestControlMessage
+from nemo_retriever.common.api.internal.primitives.tracing.logging import TaskResultStatus, annotate_task_result
+from nemo_retriever.common.api.util.control_message.validators import cm_ensure_payload_not_null, cm_set_failure
 
 logger = logging.getLogger(__name__)
 

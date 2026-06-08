@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import Field
 
-from nemo_retriever.service.models.base import RichModel
+from nemo_retriever.common.schemas.base import RichModel
 
 
 class IngestAccepted(RichModel):

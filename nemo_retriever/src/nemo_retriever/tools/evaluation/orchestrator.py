@@ -30,13 +30,13 @@ from typing import Any, ClassVar, Optional
 
 import pandas as pd
 
-from nemo_retriever.evaluation.eval_operator import EvalOperator
-from nemo_retriever.evaluation.scoring import (
+from nemo_retriever.tools.evaluation.eval_operator import EvalOperator
+from nemo_retriever.tools.evaluation.scoring import (
     answer_in_context,
     classify_failure,
     token_f1,
 )
-from nemo_retriever.llm.types import (
+from nemo_retriever.models.llm.types import (
     AnswerJudge,
     GenerationResult,
     JudgeResult,

@@ -10,9 +10,9 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import pandas as pd
 
-from nemo_retriever.io.image_store import inline_image_b64
-from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
-from nemo_retriever.params.models import IMAGE_MODALITIES
+from nemo_retriever.common.io.image_store import inline_image_b64
+from nemo_retriever.operators.extract.ocr.ocr import _crop_b64_image_by_norm_bbox
+from nemo_retriever.common.params.models import IMAGE_MODALITIES
 
 _CONTENT_COLUMNS = ("table", "chart", "infographic")
 

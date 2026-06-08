@@ -136,7 +136,7 @@ def query_lancedb(
         ``{"chunks": [...], "metadata": [...]}`` and *metadata* is the
         envelope metadata dict.
     """
-    from nemo_retriever.retriever import Retriever
+    from nemo_retriever.graph.retriever import Retriever
 
     retriever = Retriever(
         vdb_kwargs={

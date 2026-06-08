@@ -18,11 +18,11 @@ from typing import Any, Optional
 import typer
 import yaml
 
-from nemo_retriever.harness.artifacts import create_session_dir, last_commit
-from nemo_retriever.harness.config import REPO_ROOT
-from nemo_retriever.skill_eval.dataset import DatasetEntry, load_config, load_eval_manifest
-from nemo_retriever.skill_eval.report import overall_recall, write_summary
-from nemo_retriever.skill_eval.runner import (
+from nemo_retriever.tools.harness.artifacts import create_session_dir, last_commit
+from nemo_retriever.tools.harness.config import REPO_ROOT
+from nemo_retriever.tools.skill_eval.dataset import DatasetEntry, load_config, load_eval_manifest
+from nemo_retriever.tools.skill_eval.report import overall_recall, write_summary
+from nemo_retriever.tools.skill_eval.runner import (
     CONDITIONS,
     DEFAULT_AGENT_MODELS,
     SUPPORTED_AGENTS,
@@ -109,7 +109,7 @@ def _build_judge(cfg: dict) -> Optional[Any]:
         typer.echo(f"Judge disabled: ${api_key_env} is not set in the environment.")
         return None
     try:
-        from nemo_retriever.llm.clients.judge import LLMJudge
+        from nemo_retriever.models.llm.clients.judge import LLMJudge
     except ImportError as exc:
         typer.echo(f"Judge disabled: failed to import LLMJudge ({exc}). Install nemo-retriever[llm].")
         return None
@@ -139,7 +139,7 @@ def _build_trace_summarizer(cfg: dict) -> Optional[Any]:
     if shutil.which("claude") is None:
         typer.echo("Trace summarizer disabled: `claude` CLI is not on PATH.")
         return None
-    from nemo_retriever.skill_eval.trace_summarizer import TraceSummarizer
+    from nemo_retriever.tools.skill_eval.trace_summarizer import TraceSummarizer
 
     summarizer = TraceSummarizer.from_kwargs(
         model=str(sum_cfg.get("model", "claude-opus-4-7")),

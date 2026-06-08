@@ -23,16 +23,16 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from nemo_retriever.audio import asr_actor as _asr_actor
-from nemo_retriever.audio.asr_actor import (
+from nemo_retriever.operators.extract.audio.asr_actor import (
     DEFAULT_NGC_ASR_FUNCTION_ID,
     DEFAULT_NGC_ASR_GRPC_ENDPOINT,
     _ASRActorBase,
     _concat_with_passthrough,
     _split_audio_rows,
 )
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.params import ASRParams
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.common.params import ASRParams
 
 logger = logging.getLogger(__name__)
 

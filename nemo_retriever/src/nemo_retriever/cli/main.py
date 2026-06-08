@@ -16,7 +16,7 @@ import tempfile
 from pydantic import ValidationError
 import typer
 
-from nemo_retriever.adapters.cli.sdk_workflow import (
+from nemo_retriever.cli.sdk_workflow import (
     AudioSplitTypeValue,
     DEFAULT_LANCEDB_URI,
     DEFAULT_TABLE_NAME,
@@ -29,8 +29,8 @@ from nemo_retriever.adapters.cli.sdk_workflow import (
     ingest_documents,
     query_documents,
 )
-from nemo_retriever.vdb.records import RetrievalHit
-from nemo_retriever.version import get_version_info
+from nemo_retriever.common.vdb.records import RetrievalHit
+from nemo_retriever.common.version import get_version_info
 
 logger = logging.getLogger(__name__)
 

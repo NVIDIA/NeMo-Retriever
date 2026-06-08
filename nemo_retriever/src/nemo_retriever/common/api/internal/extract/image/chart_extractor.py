@@ -14,18 +14,18 @@ from typing import Tuple
 import numpy as np
 import pandas as pd
 
-from nemo_retriever.api.internal.schemas.extract.extract_chart_schema import ChartExtractorSchema
-from nemo_retriever.api.internal.schemas.meta.ingest_job_schema import IngestTaskChartExtraction
-from nemo_retriever.api.util.image_processing.table_and_chart import join_yolox_graphic_elements_and_ocr_output
-from nemo_retriever.api.util.image_processing.table_and_chart import process_yolox_graphic_elements
-from nemo_retriever.api.internal.primitives.nim.model_interface.ocr import PaddleOCRModelInterface
-from nemo_retriever.api.internal.primitives.nim.model_interface.ocr import NemoRetrieverOCRModelInterface
-from nemo_retriever.api.internal.primitives.nim.model_interface.ocr import get_ocr_model_name
-from nemo_retriever.api.internal.primitives.nim import NimClient
-from nemo_retriever.api.internal.primitives.nim.model_interface.yolox import YoloxGraphicElementsModelInterface
-from nemo_retriever.api.util.image_processing.transforms import base64_to_numpy
-from nemo_retriever.api.util.nim import create_inference_client
-from nemo_retriever.ocr.config import resolve_ocr_v2_model_dir
+from nemo_retriever.common.api.internal.schemas.extract.extract_chart_schema import ChartExtractorSchema
+from nemo_retriever.common.api.internal.schemas.meta.ingest_job_schema import IngestTaskChartExtraction
+from nemo_retriever.common.api.util.image_processing.table_and_chart import join_yolox_graphic_elements_and_ocr_output
+from nemo_retriever.common.api.util.image_processing.table_and_chart import process_yolox_graphic_elements
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.ocr import PaddleOCRModelInterface
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.ocr import NemoRetrieverOCRModelInterface
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.ocr import get_ocr_model_name
+from nemo_retriever.common.api.internal.primitives.nim import NimClient
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.yolox import YoloxGraphicElementsModelInterface
+from nemo_retriever.common.api.util.image_processing.transforms import base64_to_numpy
+from nemo_retriever.common.api.util.nim import create_inference_client
+from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_model_dir
 
 PADDLE_MIN_WIDTH = 32
 PADDLE_MIN_HEIGHT = 32
@@ -51,8 +51,8 @@ def _local_nemotron_ocr_boxes_texts(
 
     # Import locally to avoid import cycles / optional heavy deps unless needed.
     try:
-        from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2  # type: ignore
-        from nemo_retriever.ocr.config import resolve_ocr_v2_lang
+        from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2  # type: ignore
+        from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_lang
     except Exception as e:
         raise RuntimeError(
             "Local chart OCR fallback requires the `nemo-retriever` package to be importable "

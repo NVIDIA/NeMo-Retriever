@@ -21,7 +21,7 @@ Usage:
 
 ```python
 import pandas as pd
-from nemo_retriever.text_embed.main_text_embed import create_text_embeddings_for_df
+from nemo_retriever.models.inference.main_text_embed import create_text_embeddings_for_df
 
 # df must have a `text` column (recommended) and may have `metadata` dicts.
 df = pd.DataFrame([{"text": "hello", "metadata": {"source_path": "/tmp/a.pdf"}}])
@@ -48,10 +48,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import pandas as pd
-from nemo_retriever.api.util.string_processing import ensure_openai_embeddings_http_url
+from nemo_retriever.common.api.util.string_processing import ensure_openai_embeddings_http_url
 
-from nemo_retriever.model import _DEFAULT_EMBED_MODEL
-from nemo_retriever.params.models import IMAGE_MODALITIES
+from nemo_retriever.models import _DEFAULT_EMBED_MODEL
+from nemo_retriever.common.params.models import IMAGE_MODALITIES
 
 logger = logging.getLogger(__name__)
 

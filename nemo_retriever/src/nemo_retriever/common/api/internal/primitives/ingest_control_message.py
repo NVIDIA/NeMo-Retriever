@@ -11,7 +11,7 @@ from typing import Any, Dict, Generator, List, Optional, Union
 import logging
 import pandas as pd
 
-from nemo_retriever.api.internal.primitives.control_message_task import ControlMessageTask
+from nemo_retriever.common.api.internal.primitives.control_message_task import ControlMessageTask
 
 logger = logging.getLogger(__name__)
 

@@ -16,9 +16,9 @@ from typing import Any, Callable, Dict, List, Literal, Optional
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.nim.chat_completions import invoke_chat_completion_step
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.models.nim.chat_completions import invoke_chat_completion_step
 
 logger = logging.getLogger(__name__)
 
@@ -350,9 +350,9 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
     --------
     ::
 
-        from nemo_retriever.graph.react_agent_operator import ReActAgentOperator
-        from nemo_retriever.graph.rrf_aggregator_operator import RRFAggregatorOperator
-        from nemo_retriever.graph.selection_agent_operator import SelectionAgentOperator
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+        from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
         from nemo_retriever.graph.executor import InprocessExecutor
 
         def my_retriever(query_text: str, top_k: int) -> list[dict]:

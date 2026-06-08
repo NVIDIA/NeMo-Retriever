@@ -14,7 +14,7 @@ def get_vdb_op_cls(vdb_op: str):
     available_vdb_ops = ["lancedb"]
 
     if vdb_op == "lancedb":
-        from nemo_retriever.vdb.lancedb import LanceDB
+        from nemo_retriever.common.vdb.lancedb import LanceDB
 
         return LanceDB
 

@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.graph.content_transforms import explode_content_to_rows
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.common.modality.content_transforms import explode_content_to_rows
 from nemo_retriever.graph.designer import designer_component
 
 

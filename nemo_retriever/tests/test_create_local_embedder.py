@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nemo_retriever.model import create_local_embedder, create_local_query_embedder
+from nemo_retriever.models import create_local_embedder, create_local_query_embedder
 
 
 @pytest.fixture(autouse=True)

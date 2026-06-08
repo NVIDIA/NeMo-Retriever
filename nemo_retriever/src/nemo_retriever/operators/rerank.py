@@ -58,13 +58,13 @@ import traceback
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.model import is_vl_rerank_model
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.models import is_vl_rerank_model
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
 
 logger = logging.getLogger(__name__)
@@ -234,8 +234,8 @@ def rerank_hits(
     images_b64: Optional[List[Optional[str]]] = None
     _model_name = getattr(model, "model_name", model_name) if model is not None else model_name
     if is_vl_rerank_model(_model_name) and modality != "text":
-        from nemo_retriever.io.image_store import load_image_b64_from_uri, render_page_image_b64
-        from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
+        from nemo_retriever.common.io.image_store import load_image_b64_from_uri, render_page_image_b64
+        from nemo_retriever.operators.extract.ocr.ocr import _crop_b64_image_by_norm_bbox
 
         render_cache: dict[tuple[str, int], Optional[str]] = {}
         needs_render = False
@@ -389,7 +389,7 @@ class NemotronRerankGPUActor(AbstractOperator, GPUOperator):
             raise ValueError(
                 "NemotronRerankGPUActor does not support remote endpoint execution. Use NemotronRerankCPUActor instead."
             )
-        from nemo_retriever.model import create_local_reranker
+        from nemo_retriever.models import create_local_reranker
 
         self._model = create_local_reranker(
             model_name=str(self._kwargs.get("model_name", _DEFAULT_MODEL)),

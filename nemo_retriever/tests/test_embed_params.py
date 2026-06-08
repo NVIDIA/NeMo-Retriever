@@ -10,7 +10,7 @@ import warnings
 
 import pytest
 
-from nemo_retriever.params.models import EmbedParams, IMAGE_MODALITIES
+from nemo_retriever.common.params.models import EmbedParams, IMAGE_MODALITIES
 
 
 def test_image_text_alias_is_rejected():

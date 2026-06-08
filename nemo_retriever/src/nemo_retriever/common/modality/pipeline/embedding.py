@@ -10,9 +10,9 @@ from typing import Any, List, Optional, Sequence
 
 import pandas as pd
 
-from nemo_retriever.model import resolve_embed_model
-from nemo_retriever.params.models import IMAGE_MODALITIES
-from nemo_retriever.text_embed.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
+from nemo_retriever.models import resolve_embed_model
+from nemo_retriever.common.params.models import IMAGE_MODALITIES
+from nemo_retriever.models.inference.main_text_embed import TextEmbeddingConfig, create_text_embeddings_for_df
 
 
 def _embed_group(

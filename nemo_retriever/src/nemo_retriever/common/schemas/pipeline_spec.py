@@ -32,7 +32,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import ConfigDict, Field
 
-from nemo_retriever.service.models.base import RichModel
+from nemo_retriever.common.schemas.base import RichModel
 
 
 ExtractionMode = Literal["pdf", "image", "auto", "text", "html", "audio"]

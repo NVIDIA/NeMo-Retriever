@@ -23,7 +23,7 @@ from tests import _ffprobe_first_stream_type
 from tests import _make_test_mp4_with_av
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.pipeline_graph import Graph
-from nemo_retriever.params import (
+from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
     AudioVisualFuseParams,

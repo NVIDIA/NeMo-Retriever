@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_retriever.harness import history
-from nemo_retriever.harness.portal.mcp_registry import portal_tool
+from nemo_retriever.tools.harness import history
+from nemo_retriever.tools.harness.portal.mcp_registry import portal_tool
 
 
 # ---------------------------------------------------------------------------
@@ -39,7 +39,7 @@ def trigger_benchmark_run(
     tags: list[str] | None = None,
 ) -> dict[str, Any]:
     """Trigger a benchmark run."""
-    from nemo_retriever.harness.portal.app import (
+    from nemo_retriever.tools.harness.portal.app import (
         _resolve_dataset_config,
         _resolve_git_override,
         _resolve_preset_overrides,
@@ -299,7 +299,7 @@ def list_schedules() -> list[dict[str, Any]]:
 )
 def get_portal_status() -> dict[str, Any]:
     """Get portal health and version information."""
-    from nemo_retriever.version import get_version_info
+    from nemo_retriever.common.version import get_version_info
 
     version = get_version_info()
     runners = history.get_runners()

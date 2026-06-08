@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from nemo_retriever.llm.types import RetrieverStrategy
+    from nemo_retriever.models.llm.types import RetrieverStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +62,9 @@ def run_eval_sweep(
         ``"FAIL"``), ``output_path`` (or ``error``), and ``eval_results``
         (the full evaluation dict when status is PASS).
     """
-    from nemo_retriever.llm.clients import LLMJudge, LiteLLMClient
-    from nemo_retriever.evaluation.orchestrator import QAEvalPipeline
-    from nemo_retriever.evaluation.retrievers import FileRetriever
+    from nemo_retriever.models.llm.clients import LLMJudge, LiteLLMClient
+    from nemo_retriever.tools.evaluation.orchestrator import QAEvalPipeline
+    from nemo_retriever.tools.evaluation.retrievers import FileRetriever
 
     models = config["models"]
     evaluations = config["evaluations"]
@@ -102,7 +102,7 @@ def run_eval_sweep(
         gen_model_cfg = models[gen_name]
         judge_model_cfg = models[judge_name]
 
-        from nemo_retriever.evaluation.config import check_unresolved_env
+        from nemo_retriever.tools.evaluation.config import check_unresolved_env
 
         check_unresolved_env(gen_model_cfg.get("api_key"), "api_key", f"generator '{gen_name}'")
         check_unresolved_env(judge_model_cfg.get("api_key"), "api_key", f"judge '{judge_name}'")

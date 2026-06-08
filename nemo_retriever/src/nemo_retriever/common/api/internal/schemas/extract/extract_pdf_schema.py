@@ -9,7 +9,7 @@ from typing import Tuple
 
 from pydantic import model_validator, ConfigDict, BaseModel, Field
 
-from nemo_retriever.api.internal.schemas.mixins import LowercaseProtocolMixin
+from nemo_retriever.common.api.internal.schemas.mixins import LowercaseProtocolMixin
 
 logger = logging.getLogger(__name__)
 

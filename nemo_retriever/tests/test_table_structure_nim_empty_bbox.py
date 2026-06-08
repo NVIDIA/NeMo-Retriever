@@ -65,13 +65,13 @@ class TestIsNimBoundingBoxesResponse:
     bounding_boxes" from "response is not NIM-shaped"."""
 
     def test_returns_true_for_empty_bounding_boxes_dict(self) -> None:
-        from nemo_retriever.table.shared import _is_nim_bounding_boxes_response
+        from nemo_retriever.common.modality.table.shared import _is_nim_bounding_boxes_response
 
         # The NIM's canonical "no detections" response.
         assert _is_nim_bounding_boxes_response({"index": 0, "bounding_boxes": {}})
 
     def test_returns_true_for_populated_bounding_boxes(self) -> None:
-        from nemo_retriever.table.shared import _is_nim_bounding_boxes_response
+        from nemo_retriever.common.modality.table.shared import _is_nim_bounding_boxes_response
 
         payload = {
             "index": 0,
@@ -82,7 +82,7 @@ class TestIsNimBoundingBoxesResponse:
         assert _is_nim_bounding_boxes_response(payload)
 
     def test_returns_false_for_non_dict(self) -> None:
-        from nemo_retriever.table.shared import _is_nim_bounding_boxes_response
+        from nemo_retriever.common.modality.table.shared import _is_nim_bounding_boxes_response
 
         assert not _is_nim_bounding_boxes_response(None)
         assert not _is_nim_bounding_boxes_response([])
@@ -90,13 +90,13 @@ class TestIsNimBoundingBoxesResponse:
         assert not _is_nim_bounding_boxes_response(0)
 
     def test_returns_false_for_dict_without_bounding_boxes(self) -> None:
-        from nemo_retriever.table.shared import _is_nim_bounding_boxes_response
+        from nemo_retriever.common.modality.table.shared import _is_nim_bounding_boxes_response
 
         # Legacy in-process model output — no ``bounding_boxes`` key.
         assert not _is_nim_bounding_boxes_response({"boxes": [], "labels": [], "scores": []})
 
     def test_returns_false_when_bounding_boxes_is_not_a_dict(self) -> None:
-        from nemo_retriever.table.shared import _is_nim_bounding_boxes_response
+        from nemo_retriever.common.modality.table.shared import _is_nim_bounding_boxes_response
 
         # Malformed shape — treat as "not a NIM response" so the caller
         # can fall through to the legacy parser.
@@ -111,17 +111,17 @@ class TestParseNimBoundingBoxesEmpty:
     that lets callers distinguish them."""
 
     def test_empty_bounding_boxes_parses_to_empty_list(self) -> None:
-        from nemo_retriever.table.shared import _parse_nim_bounding_boxes
+        from nemo_retriever.common.modality.table.shared import _parse_nim_bounding_boxes
 
         assert _parse_nim_bounding_boxes({"index": 0, "bounding_boxes": {}}) == []
 
     def test_non_bbox_response_parses_to_empty_list(self) -> None:
-        from nemo_retriever.table.shared import _parse_nim_bounding_boxes
+        from nemo_retriever.common.modality.table.shared import _parse_nim_bounding_boxes
 
         assert _parse_nim_bounding_boxes({"prediction": [1, 2, 3]}) == []
 
     def test_populated_bbox_response_parses_to_detections(self) -> None:
-        from nemo_retriever.table.shared import _parse_nim_bounding_boxes
+        from nemo_retriever.common.modality.table.shared import _parse_nim_bounding_boxes
 
         payload = {
             "index": 0,
@@ -277,9 +277,9 @@ class TestTableStructureNimEmptyBboxEndToEnd:
     crop."""
 
     def test_empty_nim_response_does_not_raise_in_torchless_image(self) -> None:
-        from nemo_retriever.nim import nim as nim_module
+        from nemo_retriever.models.nim import nim as nim_module
         from nemo_retriever.table import shared as table_shared
-        from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
+        from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
         df = _make_page_df_with_table()
 
@@ -315,9 +315,9 @@ class TestTableStructureNimEmptyBboxEndToEnd:
         assert "table" in result.columns
 
     def test_empty_nim_response_does_not_call_prediction_to_detections(self) -> None:
-        from nemo_retriever.nim import nim as nim_module
+        from nemo_retriever.models.nim import nim as nim_module
         from nemo_retriever.table import shared as table_shared
-        from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
+        from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
         df = _make_page_df_with_table()
         empty_payload = [{"index": 0, "bounding_boxes": {}}]
@@ -343,9 +343,9 @@ class TestTableStructureNimEmptyBboxEndToEnd:
         """When the response truly isn't NIM-shaped, the legacy parser
         is still invoked — so the fix only suppresses the fallback for
         responses that look like NIM bounding-box envelopes."""
-        from nemo_retriever.nim import nim as nim_module
+        from nemo_retriever.models.nim import nim as nim_module
         from nemo_retriever.table import shared as table_shared
-        from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
+        from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
         df = _make_page_df_with_table()
         # Legacy in-process shape (a dict-of-tensors-style payload, but

@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.utils import ray_resource_hueristics as _rrh
-from nemo_retriever.utils.ray_resource_hueristics import ClusterResources, Resources
+from nemo_retriever.common.ray_resource_hueristics import ClusterResources, Resources
 
 
 def _available_gpu_count(resources: ClusterResources | Resources) -> int:

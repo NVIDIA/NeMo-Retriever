@@ -19,14 +19,14 @@ import pypdfium2 as pdfium
 from PIL import Image
 from pypdfium2 import PdfImage
 
-from nemo_retriever.api.internal.enums.common import ContentDescriptionEnum, DocumentTypeEnum
-from nemo_retriever.api.internal.enums.common import ContentTypeEnum
-from nemo_retriever.api.internal.schemas.meta.metadata_schema import NearbyObjectsSchema
-from nemo_retriever.api.internal.enums.common import TableFormatEnum
-from nemo_retriever.api.internal.schemas.meta.metadata_schema import validate_metadata
-from nemo_retriever.api.util.converters import datetools
-from nemo_retriever.api.util.detectors.language import detect_language
-from nemo_retriever.api.util.exception_handlers.pdf import pdfium_exception_handler
+from nemo_retriever.common.api.internal.enums.common import ContentDescriptionEnum, DocumentTypeEnum
+from nemo_retriever.common.api.internal.enums.common import ContentTypeEnum
+from nemo_retriever.common.api.internal.schemas.meta.metadata_schema import NearbyObjectsSchema
+from nemo_retriever.common.api.internal.enums.common import TableFormatEnum
+from nemo_retriever.common.api.internal.schemas.meta.metadata_schema import validate_metadata
+from nemo_retriever.common.api.util.converters import datetools
+from nemo_retriever.common.api.util.detectors.language import detect_language
+from nemo_retriever.common.api.util.exception_handlers.pdf import pdfium_exception_handler
 
 
 @dataclass

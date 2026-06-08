@@ -30,8 +30,8 @@ from nemo_retriever.service.config import (
     ServiceConfig,
     SinksConfig,
 )
-from nemo_retriever.service.models.pipeline_spec import PipelineSpec
-from nemo_retriever.service.policy import PolicyError, validate_pipeline_spec
+from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
+from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.service.services.pipeline_executor import (
     _materialize_sidecar_bytes,
     _resolve_sidecar_in_spec,
@@ -386,8 +386,8 @@ def test_client_uploads_sidecar_csv_and_replaces_with_id(
     app_with_sidecars: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """End-to-end: ServiceIngestor.vdb_upload(meta_dataframe=path) → POST → id substituted."""
-    from nemo_retriever.params import VdbUploadParams
-    from nemo_retriever.service_ingestor import ServiceIngestor
+    from nemo_retriever.common.params import VdbUploadParams
+    from nemo_retriever.service.service_ingestor import ServiceIngestor
 
     # Stub urllib.request.urlopen to drive the request through the TestClient.
     import urllib.request

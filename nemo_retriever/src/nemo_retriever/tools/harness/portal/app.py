@@ -36,9 +36,9 @@ from pydantic import BaseModel
 
 from apscheduler.triggers.cron import CronTrigger
 
-from nemo_retriever.harness import history
-from nemo_retriever.harness import scheduler as sched_module
-from nemo_retriever.harness.config import VALID_EVALUATION_MODES
+from nemo_retriever.tools.harness import history
+from nemo_retriever.tools.harness import scheduler as sched_module
+from nemo_retriever.tools.harness.config import VALID_EVALUATION_MODES
 
 mimetypes.add_type("text/javascript", ".jsx")
 
@@ -179,7 +179,7 @@ def _init_mcp_server() -> None:
         _scan_nemo_retriever_package()
         import nemo_retriever.harness.portal.mcp_tools  # noqa: F401 — triggers @portal_tool registrations
 
-        from nemo_retriever.harness.portal.mcp_server import register_resources, register_tools_from_registry
+        from nemo_retriever.tools.harness.portal.mcp_server import register_resources, register_tools_from_registry
 
         register_tools_from_registry()
         register_resources()
@@ -192,7 +192,7 @@ _combined_lifespan = _lifespan
 try:
     from fastmcp.utilities.lifespan import combine_lifespans
 
-    from nemo_retriever.harness.portal.mcp_server import build_mcp_app
+    from nemo_retriever.tools.harness.portal.mcp_server import build_mcp_app
 
     _mcp_asgi_app = build_mcp_app()
     _combined_lifespan = combine_lifespans(_lifespan, _mcp_asgi_app.lifespan)
@@ -483,7 +483,7 @@ async def index():
 
 @app.get("/api/version")
 async def get_version():
-    from nemo_retriever.version import get_version_info
+    from nemo_retriever.common.version import get_version_info
 
     return get_version_info()
 
@@ -829,7 +829,7 @@ async def get_run_lancedb_info(run_id: int):
     if not uri:
         return {"available": False, "uri": None, "row_count": 0}
     try:
-        from nemo_retriever.vdb.lancedb_read import lancedb_row_count
+        from nemo_retriever.common.vdb.lancedb_read import lancedb_row_count
 
         count = int(lancedb_row_count(uri, LANCEDB_TABLE))
         return {"available": True, "uri": uri, "row_count": count, "table": LANCEDB_TABLE}
@@ -857,7 +857,7 @@ async def run_retrieval_query(run_id: int, req: RetrievalQueryRequest):
         tc = raw.get("test_config") or {}
         embed_model = tc.get("embed_model_name", "nvidia/llama-nemotron-embed-1b-v2")
 
-        from nemo_retriever.retriever import Retriever
+        from nemo_retriever.graph.retriever import Retriever
 
         retriever = Retriever(
             vdb_kwargs={
@@ -1164,7 +1164,7 @@ async def test_embed_model(req: EmbedTestRequest):
     try:
         import time as _time
 
-        from nemo_retriever.model import create_local_embedder
+        from nemo_retriever.models import create_local_embedder
 
         prefixed = [f"{req.prefix}{t}" for t in req.texts] if req.prefix else list(req.texts)
         t0 = _time.perf_counter()
@@ -1220,7 +1220,7 @@ async def test_rerank_model(req: RerankTestRequest):
     try:
         import time as _time
 
-        from nemo_retriever.model.local.nemotron_rerank_v2 import NemotronRerankV2
+        from nemo_retriever.models.local.nemotron_rerank_v2 import NemotronRerankV2
 
         t0 = _time.perf_counter()
         reranker = NemotronRerankV2(model_name=req.model_id)
@@ -1277,8 +1277,8 @@ async def test_ocr_model(req: OCRTestRequest):
     try:
         import time as _time
 
-        from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2
-        from nemo_retriever.ocr.config import resolve_ocr_v2_lang
+        from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
+        from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_lang
 
         t0 = _time.perf_counter()
         lang = resolve_ocr_v2_lang("v2", req.ocr_lang)
@@ -1327,7 +1327,7 @@ async def test_parse_model(req: ParseTestRequest):
 
         from PIL import Image
 
-        from nemo_retriever.model.local.nemotron_parse_v1_2 import NemotronParseV12
+        from nemo_retriever.models.local.nemotron_parse_v1_2 import NemotronParseV12
 
         img_data = req.image_b64
         if "," in img_data:
@@ -1396,17 +1396,17 @@ async def test_detect_model(req: DetectTestRequest):
         t0 = _time.perf_counter()
 
         if req.model_id == "page_element_v3":
-            from nemo_retriever.model.local.nemotron_page_elements_v3 import NemotronPageElementsV3
+            from nemo_retriever.models.local.nemotron_page_elements_v3 import NemotronPageElementsV3
 
             model = NemotronPageElementsV3()
             label_names = ["table", "chart", "title", "infographic", "text", "header_footer"]
         elif req.model_id == "table_structure_v1":
-            from nemo_retriever.model.local.nemotron_table_structure_v1 import NemotronTableStructureV1
+            from nemo_retriever.models.local.nemotron_table_structure_v1 import NemotronTableStructureV1
 
             model = NemotronTableStructureV1()
             label_names = ["cell", "merged_cell", "row", "column"]
         elif req.model_id == "graphic_elements_v1":
-            from nemo_retriever.model.local.nemotron_graphic_elements_v1 import NemotronGraphicElementsV1
+            from nemo_retriever.models.local.nemotron_graphic_elements_v1 import NemotronGraphicElementsV1
 
             model = NemotronGraphicElementsV1()
             label_names = [
@@ -2065,7 +2065,7 @@ def _trigger_matrix_jobs_sync(
 
     Returns ``(job_ids, matrix_run_id)``.
     """
-    from nemo_retriever.harness.scheduler import match_runner
+    from nemo_retriever.tools.harness.scheduler import match_runner
 
     pinned_sha, pinned_ref = _resolve_git_override(req_ref, req_commit)
     matrix_run_id = str(uuid.uuid4())
@@ -3116,7 +3116,7 @@ async def test_slack_notification():
     }
 
     try:
-        from nemo_retriever.harness.slack import post_slack_payload
+        from nemo_retriever.tools.harness.slack import post_slack_payload
 
         post_slack_payload(payload, webhook_url)
     except ImportError:
@@ -3247,7 +3247,7 @@ async def update_portal_settings(req: PortalSettingsUpdateRequest):
 @app.get("/api/mcp/tools")
 async def list_mcp_tools():
     """Return all registered MCP tools with their enabled/disabled status."""
-    from nemo_retriever.harness.portal.mcp_registry import get_tool_registry
+    from nemo_retriever.tools.harness.portal.mcp_registry import get_tool_registry
 
     registry = get_tool_registry()
     disabled_raw = history.get_portal_setting("mcp_disabled_tools") or "[]"

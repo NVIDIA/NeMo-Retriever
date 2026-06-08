@@ -12,13 +12,13 @@ from typing import Any, Dict, List  # noqa: F401
 
 import pandas as pd
 
-from nemo_retriever.params import TextChunkParams
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.common.params import TextChunkParams
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 
-from nemo_retriever.txt.split import txt_bytes_to_chunks_df
+from nemo_retriever.common.modality.txt.split import txt_bytes_to_chunks_df
 
 
 @designer_component(
@@ -45,7 +45,7 @@ class TextChunkCPUActor(AbstractOperator, CPUOperator):
         return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        from nemo_retriever.txt.split import split_df
+        from nemo_retriever.common.modality.txt.split import split_df
 
         if not isinstance(data, pd.DataFrame) or data.empty:
             return data

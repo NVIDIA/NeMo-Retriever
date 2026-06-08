@@ -11,20 +11,20 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, cast
 
 import pandas as pd
 
-from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
-from nemo_retriever.retriever_graph_utils import (
+from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.graph.retriever_utils import (
     filter_retrieval_kwargs,
     rerank_long_dataframe_to_hits,
 )
-from nemo_retriever.vdb.lancedb_schema import normalize_content_type
-from nemo_retriever.vdb.operators import RetrieveVdbOperator
-from nemo_retriever.vdb.records import RetrievalHit
-from nemo_retriever.vdb.sidecar_metadata import parse_hit_content_metadata
+from nemo_retriever.common.vdb.lancedb_schema import normalize_content_type
+from nemo_retriever.operators.vdb import RetrieveVdbOperator
+from nemo_retriever.common.vdb.records import RetrievalHit
+from nemo_retriever.common.vdb.sidecar_metadata import parse_hit_content_metadata
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from nemo_retriever.llm.types import (
+    from nemo_retriever.models.llm.types import (
         AnswerJudge,
         AnswerResult,
         LLMClient,
@@ -191,8 +191,8 @@ class Retriever:
             raise ValueError("run_mode must be 'local' or 'service'")
 
     def _merge_embed_params(self, extra: Optional[dict[str, Any]] = None) -> Any:
-        from nemo_retriever.model import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
-        from nemo_retriever.params import EmbedParams
+        from nemo_retriever.models import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
+        from nemo_retriever.common.params import EmbedParams
 
         base: dict[str, Any] = {
             "model_name": VL_EMBED_MODEL,
@@ -229,9 +229,9 @@ class Retriever:
         return int(self._merge_rerank_actor_kwargs().get("refine_factor", 4))
 
     def _build_default_graph(self, *, embed_extra: Optional[dict[str, Any]] = None) -> Any:
-        from nemo_retriever.rerank.rerank import NemotronRerankActor
-        from nemo_retriever.text_embed.cpu_operator import _BatchEmbedCPUActor
-        from nemo_retriever.text_embed.operators import _BatchEmbedActor
+        from nemo_retriever.operators.rerank import NemotronRerankActor
+        from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
+        from nemo_retriever.operators.embed.operators import _BatchEmbedActor
 
         embed_params = self._merge_embed_params(embed_extra)
         if self.run_mode == "service":
@@ -418,7 +418,7 @@ class Retriever:
         vdb_kwargs: Optional[dict[str, Any]] = None,
         embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> "RetrievalResult":
-        from nemo_retriever.llm.types import RetrievalResult
+        from nemo_retriever.models.llm.types import RetrievalResult
 
         hits = self.query(query, top_k=top_k, vdb_kwargs=vdb_kwargs, embed_kwargs=embed_kwargs)
 
@@ -437,7 +437,7 @@ class Retriever:
         vdb_kwargs: Optional[dict[str, Any]] = None,
         embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> list["RetrievalResult"]:
-        from nemo_retriever.llm.types import RetrievalResult
+        from nemo_retriever.models.llm.types import RetrievalResult
 
         query_texts = [str(q) for q in queries]
         if not query_texts:
@@ -463,7 +463,7 @@ class Retriever:
         vdb_kwargs: Optional[dict[str, Any]] = None,
         embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> "AnswerResult":
-        from nemo_retriever.llm.types import AnswerResult
+        from nemo_retriever.models.llm.types import AnswerResult
 
         if judge is not None and reference is None:
             raise ValueError("judge requires reference")
@@ -508,7 +508,7 @@ class Retriever:
     ) -> None:
         from concurrent.futures import ThreadPoolExecutor
 
-        from nemo_retriever.evaluation.scoring import (
+        from nemo_retriever.tools.evaluation.scoring import (
             answer_in_context,
             classify_failure,
             token_f1,
@@ -604,7 +604,7 @@ class RetrieverPipelineBuilder:
         Raises:
             ValueError: If neither ``llm`` nor ``model`` is provided.
         """
-        from nemo_retriever.evaluation.generation import QAGenerationOperator
+        from nemo_retriever.tools.evaluation.generation import QAGenerationOperator
 
         if llm is None and model is None:
             raise ValueError("generate() requires either llm= or model=")
@@ -631,7 +631,7 @@ class RetrieverPipelineBuilder:
 
     def score(self) -> "RetrieverPipelineBuilder":
         """Append a :class:`ScoringOperator` step (Tier 1 + Tier 2)."""
-        from nemo_retriever.evaluation.scoring_operator import ScoringOperator
+        from nemo_retriever.tools.evaluation.scoring_operator import ScoringOperator
 
         self._steps.append(ScoringOperator())
         return self
@@ -654,7 +654,7 @@ class RetrieverPipelineBuilder:
         Raises:
             ValueError: If neither ``judge`` nor ``model`` is provided.
         """
-        from nemo_retriever.evaluation.judging import JudgingOperator
+        from nemo_retriever.tools.evaluation.judging import JudgingOperator
 
         if judge is None and model is None:
             raise ValueError("judge() requires either judge= or model=")
@@ -705,7 +705,7 @@ class RetrieverPipelineBuilder:
         """
         import pandas as pd
 
-        from nemo_retriever.evaluation.live_retrieval import LiveRetrievalOperator
+        from nemo_retriever.tools.evaluation.live_retrieval import LiveRetrievalOperator
 
         if isinstance(queries, str):
             query_list = [queries]

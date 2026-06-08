@@ -2,6 +2,11 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from nemo_retriever.caption.caption import CaptionActor, CaptionCPUActor, CaptionGPUActor, caption_images
+from nemo_retriever.operators.extract.caption.caption import (
+    CaptionActor,
+    CaptionCPUActor,
+    CaptionGPUActor,
+    caption_images,
+)
 
 __all__ = ["CaptionActor", "CaptionCPUActor", "CaptionGPUActor", "caption_images"]

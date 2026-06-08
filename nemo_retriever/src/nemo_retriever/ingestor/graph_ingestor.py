@@ -12,8 +12,8 @@ passes it to a :class:`~nemo_retriever.graph.RayDataExecutor` or
 
 Usage::
 
-    from nemo_retriever.graph_ingestor import GraphIngestor
-    from nemo_retriever.params import ExtractParams, EmbedParams
+    from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+    from nemo_retriever.common.params import ExtractParams, EmbedParams
 
     result_ds = (
         GraphIngestor(run_mode="inprocess")
@@ -34,9 +34,9 @@ from io import BytesIO
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
-from nemo_retriever.branch_extraction import ExtractionBranchExecutor, merge_node_overrides
+from nemo_retriever.ingestor.branch_extraction import ExtractionBranchExecutor, merge_node_overrides
 from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph
-from nemo_retriever.ingest_manifest import (
+from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
     ResolvedExtractionInputs,
     build_input_manifest,
@@ -45,7 +45,7 @@ from nemo_retriever.ingest_manifest import (
     resolve_branch_extraction_inputs,
 )
 from nemo_retriever.ingestor import ingestor
-from nemo_retriever.params import (
+from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
     AudioVisualFuseParams,
@@ -63,15 +63,15 @@ from nemo_retriever.params import (
     SPLIT_CONFIG_VALID_KEYS,
     resolve_split_params,
 )
-from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
-from nemo_retriever.utils.input_files import (
+from nemo_retriever.models.hf_cache import collect_hf_runtime_env
+from nemo_retriever.common.input_files import (
     PDF_DOCUMENT_INPUT_TYPES,
     _is_explicit_glob_path,
     expand_input_file_patterns,
     input_type_for_path,
 )
-from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env, resolve_remote_api_key
-from nemo_retriever.utils.ray_resource_hueristics import gather_cluster_resources
+from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env, resolve_remote_api_key
+from nemo_retriever.common.ray_resource_hueristics import gather_cluster_resources
 
 
 _ERROR_FIELD_KEYS = ("error", "errors", "exception", "traceback", "failed")

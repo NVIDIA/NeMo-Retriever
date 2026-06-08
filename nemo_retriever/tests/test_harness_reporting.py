@@ -7,7 +7,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from nemo_retriever.harness.cli import app as harness_app
+from nemo_retriever.tools.harness.cli import app as harness_app
 
 RUNNER = CliRunner()
 

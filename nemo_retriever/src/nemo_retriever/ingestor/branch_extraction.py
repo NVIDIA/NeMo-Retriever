@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 from nemo_retriever.graph import InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides, build_graph, build_post_extract_graph
-from nemo_retriever.ingest_manifest import (
+from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
     ResolvedExtractionInputs,
     format_branch_summary,

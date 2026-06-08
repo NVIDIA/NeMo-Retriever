@@ -14,16 +14,16 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import pandas as pd
 import yaml
 
-from nemo_retriever.ingest_config import load_ingest_config_section
-from nemo_retriever.pdf.config import load_pdf_extractor_schema_from_dict
-from nemo_retriever.pdf.io import pdf_files_to_ledger_df
+from nemo_retriever.ingestor.config import load_ingest_config_section
+from nemo_retriever.common.modality.pdf.config import load_pdf_extractor_schema_from_dict
+from nemo_retriever.common.modality.pdf.io import pdf_files_to_ledger_df
 from rich.console import Console
 from tqdm import tqdm
 import typer
 
-from nemo_retriever.api.internal.extract.pdf.pdf_extractor import extract_primitives_from_pdf_internal
-from nemo_retriever.api.internal.schemas.extract.extract_pdf_schema import PDFExtractorSchema
-from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
+from nemo_retriever.common.api.internal.extract.pdf.pdf_extractor import extract_primitives_from_pdf_internal
+from nemo_retriever.common.api.internal.schemas.extract.extract_pdf_schema import PDFExtractorSchema
+from nemo_retriever.common.api.internal.primitives.tracing.tagging import traceable_func
 
 logger = logging.getLogger(__name__)
 

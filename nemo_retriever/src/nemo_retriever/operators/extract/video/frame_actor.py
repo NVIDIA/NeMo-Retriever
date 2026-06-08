@@ -20,15 +20,15 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from nemo_retriever.audio.media_interface import FFMPEG_DEPENDENCIES
-from nemo_retriever.audio.media_interface import MediaInterface
-from nemo_retriever.audio.media_interface import ensure_media_on_disk
-from nemo_retriever.audio.media_interface import is_ffmpeg_available
-from nemo_retriever.audio.media_interface import media_dependency_error_message
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.common.modality.audio.media_interface import FFMPEG_DEPENDENCIES
+from nemo_retriever.common.modality.audio.media_interface import MediaInterface
+from nemo_retriever.common.modality.audio.media_interface import ensure_media_on_disk
+from nemo_retriever.common.modality.audio.media_interface import is_ffmpeg_available
+from nemo_retriever.common.modality.audio.media_interface import media_dependency_error_message
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.params import VideoFrameParams
+from nemo_retriever.common.params import VideoFrameParams
 from nemo_retriever.video import _content_types as _CT
 
 logger = logging.getLogger(__name__)

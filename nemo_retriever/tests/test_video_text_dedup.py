@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from nemo_retriever.params import VideoFrameTextDedupParams
-from nemo_retriever.video.text_dedup import VideoFrameTextDedup
+from nemo_retriever.common.params import VideoFrameTextDedupParams
+from nemo_retriever.operators.extract.video.text_dedup import VideoFrameTextDedup
 
 
 def _frame_row(source: str, text: str, start: float, end: float, fps: float = 0.5) -> dict:

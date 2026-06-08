@@ -10,11 +10,11 @@ from typing import Any, Dict, Optional
 import typer
 from rich.console import Console
 
-from nemo_retriever.ingest_config import load_ingest_config_section
-from nemo_retriever.io.dataframe import read_dataframe, write_dataframe
+from nemo_retriever.ingestor.config import load_ingest_config_section
+from nemo_retriever.common.io.dataframe import read_dataframe, write_dataframe
 
-from nemo_retriever.infographic.config import load_infographic_extractor_schema_from_dict
-from nemo_retriever.infographic.processor import extract_infographic_data_from_primitives_df
+from nemo_retriever.common.modality.infographic.config import load_infographic_extractor_schema_from_dict
+from nemo_retriever.common.modality.infographic.processor import extract_infographic_data_from_primitives_df
 
 app = typer.Typer(help="Infographic extraction: enrich infographic primitives with OCR-derived table_content.")
 console = Console()

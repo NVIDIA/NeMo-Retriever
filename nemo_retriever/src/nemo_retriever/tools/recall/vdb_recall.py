@@ -12,7 +12,7 @@ import typer
 import pandas as pd  # noqa: F401
 from rich.console import Console
 
-from nemo_retriever.recall.core import (  # noqa: F401
+from nemo_retriever.tools.recall.core import (  # noqa: F401
     RecallConfig,
     evaluate_recall,
     retrieve_and_score,

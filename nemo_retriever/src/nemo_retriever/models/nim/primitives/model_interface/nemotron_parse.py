@@ -10,8 +10,8 @@ from typing import Dict
 from typing import List
 from typing import Optional
 
-from nemo_retriever.api.internal.primitives.nim import ModelInterface
-from nemo_retriever.api.util.image_processing.transforms import numpy_to_base64
+from nemo_retriever.common.api.internal.primitives.nim import ModelInterface
+from nemo_retriever.common.api.util.image_processing.transforms import numpy_to_base64
 
 ACCEPTED_TEXT_CLASSES = set(
     [

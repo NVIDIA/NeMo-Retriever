@@ -20,8 +20,8 @@ from typing import Tuple, Union
 import numpy as np
 import requests
 
-from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
-from nemo_retriever.api.util.string_processing import generate_url
+from nemo_retriever.common.api.internal.primitives.tracing.tagging import traceable_func
+from nemo_retriever.common.api.util.string_processing import generate_url
 
 
 logger = logging.getLogger(__name__)

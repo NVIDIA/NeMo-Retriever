@@ -26,19 +26,19 @@ from typing import Any
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.nim.nim import NIMClient
-from nemo_retriever.ocr.config import resolve_ocr_v2_lang
-from nemo_retriever.ocr.shared import (
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.models.nim.nim import NIMClient
+from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_lang
+from nemo_retriever.common.modality.ocr.shared import (
     concat_with_passthrough,
     full_image_ocr_df,
     split_ocrable_rows,
 )
-from nemo_retriever.params import RemoteRetryParams
+from nemo_retriever.common.params import RemoteRetryParams
 from nemo_retriever.video import _content_types as _CT
 
 _OCRABLE_CONTENT_TYPES = ("", _CT.VIDEO_FRAME)
@@ -63,7 +63,7 @@ class VideoFrameOCRGPUActor(AbstractOperator, GPUOperator):
 
     def _ensure_model(self) -> None:
         if self._model is None:
-            from nemo_retriever.model.local import NemotronOCRV2
+            from nemo_retriever.models.local import NemotronOCRV2
 
             self._model = NemotronOCRV2(lang=resolve_ocr_v2_lang(self._ocr_version, self._ocr_lang))
 

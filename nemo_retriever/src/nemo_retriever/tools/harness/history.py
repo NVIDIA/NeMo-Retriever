@@ -2543,7 +2543,7 @@ def _post_alert_to_slack(
 ) -> None:
     """Post an alert notification to Slack. Errors are logged, never raised."""
     try:
-        from nemo_retriever.harness.slack import post_slack_payload
+        from nemo_retriever.tools.harness.slack import post_slack_payload
 
         payload = _build_alert_slack_payload(run, rule, event, portal_base_url)
         post_slack_payload(payload, webhook_url)
@@ -2636,7 +2636,7 @@ def backfill_from_artifacts(artifacts_root: Path | None = None, db_path: str | N
 
     Returns the number of runs imported.
     """
-    from nemo_retriever.harness.artifacts import DEFAULT_ARTIFACTS_ROOT
+    from nemo_retriever.tools.harness.artifacts import DEFAULT_ARTIFACTS_ROOT
 
     root = artifacts_root or DEFAULT_ARTIFACTS_ROOT
     if not root.exists():

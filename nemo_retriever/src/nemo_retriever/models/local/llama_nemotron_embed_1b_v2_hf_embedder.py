@@ -17,8 +17,8 @@ from typing import List, Optional, Sequence
 
 import torch
 
-from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
-from nemo_retriever.utils.hf_model_registry import get_hf_revision
+from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.models.hf_model_registry import get_hf_revision
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
     def _ensure_loaded(self) -> None:
         if self._model is not None:
             return
-        from nemo_retriever.model import _DEFAULT_EMBED_MODEL
+        from nemo_retriever.models import _DEFAULT_EMBED_MODEL
         from transformers import AutoModel, AutoTokenizer
 
         model_id = self.model_id or _DEFAULT_EMBED_MODEL

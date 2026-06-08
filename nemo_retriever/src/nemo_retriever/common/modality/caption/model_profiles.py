@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Literal
 
-from nemo_retriever.utils.hf_model_registry import get_hf_revision
+from nemo_retriever.models.hf_model_registry import get_hf_revision
 
 CaptionTarget = Literal["local", "remote"]
 

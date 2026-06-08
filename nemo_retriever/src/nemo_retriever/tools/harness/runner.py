@@ -392,7 +392,7 @@ with open(sys.argv[1]) as f:
     args = json.load(f)
 
 try:
-    from nemo_retriever.harness.run import _run_entry
+    from nemo_retriever.tools.harness.run import _run_entry
     kwargs = dict(
         run_name=args.get("run_name"),
         config_file=args.get("config_file"),
@@ -450,8 +450,8 @@ try:
             return 0
 
     import ray
-    from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
-    from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
+    from nemo_retriever.models.hf_cache import collect_hf_runtime_env
+    from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env
 
     effective_ray = ray_address or os.environ.get("RAY_ADDRESS")
     is_local = effective_ray in ("auto", "local", None, "")
@@ -1413,7 +1413,7 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
                         "return_code": proc.returncode,
                     }
             else:
-                from nemo_retriever.harness.run import _run_entry
+                from nemo_retriever.tools.harness.run import _run_entry
 
                 result = _run_entry(
                     run_name=None,
@@ -1516,7 +1516,7 @@ def _execute_job_on_runner(base_url: str, job: dict[str, Any], runner_id: int = 
                 }
         else:
             # ---- Fallback: run in the current process ----
-            from nemo_retriever.harness.run import _run_entry
+            from nemo_retriever.tools.harness.run import _run_entry
 
             result = _run_entry(
                 run_name=None,
@@ -1722,7 +1722,7 @@ def runner_start_command(
     if dataset_cache_dir:
         DATASET_CACHE_DIR = Path(dataset_cache_dir)
 
-    from nemo_retriever.harness.run import _collect_run_metadata
+    from nemo_retriever.tools.harness.run import _collect_run_metadata
 
     meta = _collect_run_metadata()
     runner_name = name or meta.get("host", "unknown")

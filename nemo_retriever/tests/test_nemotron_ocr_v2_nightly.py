@@ -42,7 +42,7 @@ def _install_ocr_import_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
 def _install_upstream_ocr_v2_stub(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
     captured_kwargs: list[dict[str, object]] = []
 
-    from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2 as _WrapperOCRV2
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2 as _WrapperOCRV2
 
     class _NemotronOCRV2:
         def __init__(self, **kwargs: object) -> None:
@@ -107,7 +107,7 @@ def test_local_ocr_v2_wrapper_uses_original_namespace_and_package_lang_selectors
 def test_local_ocr_v2_wrapper_rejects_invalid_lang_selector(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_ocr_import_stubs(monkeypatch)
 
-    from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
 
     with pytest.raises(ValueError, match=r"Invalid lang selector 'v3'"):
         NemotronOCRV2(lang="v3")
@@ -122,7 +122,7 @@ def test_local_ocr_v2_wrapper_defaults_to_package_multi_selector(
     _install_ocr_import_stubs(monkeypatch)
     captured_kwargs = _install_upstream_ocr_v2_stub(monkeypatch)
 
-    from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
 
     NemotronOCRV2()
 
@@ -140,7 +140,7 @@ def test_local_ocr_v2_wrapper_accepts_package_lang_selectors_and_passes_them_thr
     _install_ocr_import_stubs(monkeypatch)
     captured_kwargs = _install_upstream_ocr_v2_stub(monkeypatch)
 
-    from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
 
     NemotronOCRV2(lang=selector)
 
@@ -151,7 +151,7 @@ def test_local_ocr_v2_wrapper_passes_package_lang_selector_with_model_dir(monkey
     _install_ocr_import_stubs(monkeypatch)
     captured_kwargs = _install_upstream_ocr_v2_stub(monkeypatch)
 
-    from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
 
     NemotronOCRV2(model_dir="/models/ocr", lang="english")
 

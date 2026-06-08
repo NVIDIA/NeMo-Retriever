@@ -24,17 +24,17 @@ import traceback
 import numpy as np
 import pandas as pd
 
-from nemo_retriever.parse.nemotron_parse_postprocessing import (
+from nemo_retriever.common.modality.parse.nemotron_parse_postprocessing import (
     extract_classes_bboxes,
     postprocess_text as _postprocess_element_text,
 )
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.nim.chat_completions import invoke_chat_completions_images
-from nemo_retriever.nim.nim import NIMClient, invoke_image_inference_batches
-from nemo_retriever.params import RemoteRetryParams
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.models.nim.chat_completions import invoke_chat_completions_images
+from nemo_retriever.models.nim.nim import NIMClient, invoke_image_inference_batches
+from nemo_retriever.common.params import RemoteRetryParams
 
 try:
     from PIL import Image
@@ -463,7 +463,7 @@ class NemotronParseGPUActor(AbstractOperator, GPUOperator):
     def _ensure_model(self) -> None:
         """Load the local vLLM model on first use (i.e. on the worker, not the driver)."""
         if self._model is None and not self._invoke_url:
-            from nemo_retriever.model.local import NemotronParseV12
+            from nemo_retriever.models.local import NemotronParseV12
 
             self._model = NemotronParseV12(task_prompt=self._task_prompt)
 

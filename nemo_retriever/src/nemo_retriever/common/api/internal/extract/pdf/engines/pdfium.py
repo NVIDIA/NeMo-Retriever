@@ -24,22 +24,22 @@ import numpy as np
 import pandas as pd
 import pypdfium2 as libpdfium
 
-from nemo_retriever.api.internal.enums.common import ContentTypeEnum
-from nemo_retriever.api.internal.primitives.nim.default_values import YOLOX_MAX_BATCH_SIZE
-from nemo_retriever.api.internal.primitives.nim.model_interface.yolox import (
+from nemo_retriever.common.api.internal.enums.common import ContentTypeEnum
+from nemo_retriever.common.api.internal.primitives.nim.default_values import YOLOX_MAX_BATCH_SIZE
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.yolox import (
     YOLOX_PAGE_IMAGE_PREPROC_WIDTH,
     YOLOX_PAGE_IMAGE_PREPROC_HEIGHT,
     YoloxPageElementsModelInterface,
     YOLOX_PAGE_IMAGE_FORMAT,
 )
-from nemo_retriever.api.internal.schemas.extract.extract_pdf_schema import PDFiumConfigSchema
-from nemo_retriever.api.internal.enums.common import TableFormatEnum, TextTypeEnum, AccessLevelEnum
-from nemo_retriever.api.internal.primitives.nim.model_interface.yolox import (
+from nemo_retriever.common.api.internal.schemas.extract.extract_pdf_schema import PDFiumConfigSchema
+from nemo_retriever.common.api.internal.enums.common import TableFormatEnum, TextTypeEnum, AccessLevelEnum
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.yolox import (
     YOLOX_PAGE_DEFAULT_VERSION,
     YOLOX_PAGE_CLASS_LABELS,
     get_yolox_page_version,
 )
-from nemo_retriever.api.util.metadata.aggregators import (
+from nemo_retriever.common.api.util.metadata.aggregators import (
     construct_image_metadata_from_base64,
     construct_image_metadata_from_pdf_image,
     extract_pdf_metadata,
@@ -47,15 +47,15 @@ from nemo_retriever.api.util.metadata.aggregators import (
     construct_page_element_metadata,
     CroppedImageWithContent,
 )
-from nemo_retriever.api.util.nim import create_inference_client
-from nemo_retriever.api.util.pdf.pdfium import (
+from nemo_retriever.common.api.util.nim import create_inference_client
+from nemo_retriever.common.api.util.pdf.pdfium import (
     extract_nested_simple_images_from_pdfium_page,
     extract_image_like_objects_from_pdfium_page,
     is_scanned_page,
     pdfium_pages_to_numpy,
 )
-from nemo_retriever.api.util.image_processing import scale_image_to_encoding_size
-from nemo_retriever.api.util.image_processing.transforms import numpy_to_base64, crop_image
+from nemo_retriever.common.api.util.image_processing import scale_image_to_encoding_size
+from nemo_retriever.common.api.util.image_processing.transforms import numpy_to_base64, crop_image
 
 logger = logging.getLogger(__name__)
 

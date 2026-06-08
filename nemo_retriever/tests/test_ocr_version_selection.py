@@ -22,9 +22,9 @@ from pydantic import ValidationError
 
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.ocr import config as ocr_config
-from nemo_retriever.ocr.config import OCRLang, OCRVersion, resolve_ocr_v2_lang, resolve_ocr_v2_model_dir
-from nemo_retriever.ocr.ocr import OCRActor, resolve_ocr_archetype
-from nemo_retriever.params import (
+from nemo_retriever.common.modality.ocr.config import OCRLang, OCRVersion, resolve_ocr_v2_lang, resolve_ocr_v2_model_dir
+from nemo_retriever.operators.extract.ocr.ocr import OCRActor, resolve_ocr_archetype
+from nemo_retriever.common.params import (
     AudioChunkParams,
     AudioVisualFuseParams,
     EmbedParams,
@@ -32,8 +32,8 @@ from nemo_retriever.params import (
     VideoFrameParams,
     VideoFrameTextDedupParams,
 )
-from nemo_retriever.utils.ray_resource_hueristics import Resources
-from nemo_retriever.video.ocr_actor import VideoFrameOCRActor
+from nemo_retriever.common.ray_resource_hueristics import Resources
+from nemo_retriever.operators.extract.video.ocr_actor import VideoFrameOCRActor
 
 
 def _linear_nodes(graph):
@@ -170,7 +170,7 @@ def test_graph_forwards_v2_ocr_lang_selector() -> None:
 
 
 def test_video_graph_forwards_v2_ocr_lang_selector(monkeypatch) -> None:
-    from nemo_retriever.graph.abstract_operator import AbstractOperator
+    from nemo_retriever.operators.abstract_operator import AbstractOperator
 
     class _GraphOnlyVideoSplitActor(AbstractOperator):
         def preprocess(self, data, **kwargs):
@@ -202,7 +202,7 @@ def test_video_graph_forwards_v2_ocr_lang_selector(monkeypatch) -> None:
 
 def test_video_inprocess_pipeline_forwards_v2_ocr_lang_selector(monkeypatch) -> None:
     from nemo_retriever.graph import multi_type_extract_operator as multi_type_module
-    from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
     import pandas as pd
 
     captured_kwargs: list[tuple[str, dict]] = []
@@ -293,8 +293,8 @@ def test_invalid_ocr_version_raises_validation_error() -> None:
 
 def test_table_structure_actor_receives_ocr_selectors(monkeypatch) -> None:
     """The in-process pipeline must forward OCR selectors to OCR-using stages."""
-    from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
-    from nemo_retriever.utils.ray_resource_hueristics import Resources
+    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
+    from nemo_retriever.common.ray_resource_hueristics import Resources
     import pandas as pd
 
     captured_kwargs: list[tuple[str, dict]] = []

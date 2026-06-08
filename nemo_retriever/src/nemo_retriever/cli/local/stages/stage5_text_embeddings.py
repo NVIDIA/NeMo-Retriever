@@ -16,7 +16,7 @@ are handled by `nemo_retriever.text_embed.stage`, including local-HF fallback op
 when an embedding endpoint is not configured.
 """
 
-from nemo_retriever.text_embed.stage import app as app
+from nemo_retriever.cli.text_embed.stage import app as app
 
 
 def main() -> None:

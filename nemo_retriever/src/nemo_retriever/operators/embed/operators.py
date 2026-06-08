@@ -9,8 +9,8 @@ from __future__ import annotations
 from typing import Any
 
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.text_embed.runtime import embed_text_main_text_embed
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.models.inference.runtime import embed_text_main_text_embed
 
 __all__ = ["_BatchEmbedActor", "embed_text_main_text_embed"]
 
@@ -33,13 +33,13 @@ class _BatchEmbedActor(ArchetypeOperator):
 
     @classmethod
     def cpu_variant_class(cls):
-        from nemo_retriever.text_embed.cpu_operator import _BatchEmbedCPUActor
+        from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
 
         return _BatchEmbedCPUActor
 
     @classmethod
     def gpu_variant_class(cls):
-        from nemo_retriever.text_embed.gpu_operator import _BatchEmbedActor as _BatchEmbedGPUActor
+        from nemo_retriever.operators.embed.gpu_operator import _BatchEmbedActor as _BatchEmbedGPUActor
 
         return _BatchEmbedGPUActor
 
@@ -49,11 +49,11 @@ class _BatchEmbedActor(ArchetypeOperator):
 
 def __getattr__(name: str):
     if name == "_BatchEmbedCPUActor":
-        from nemo_retriever.text_embed.cpu_operator import _BatchEmbedCPUActor
+        from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
 
         return _BatchEmbedCPUActor
     if name == "_BatchEmbedGPUActor":
-        from nemo_retriever.text_embed.gpu_operator import _BatchEmbedActor as _BatchEmbedGPUActor
+        from nemo_retriever.operators.embed.gpu_operator import _BatchEmbedActor as _BatchEmbedGPUActor
 
         return _BatchEmbedGPUActor
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

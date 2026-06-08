@@ -9,7 +9,7 @@ from pydantic import ConfigDict, BaseModel, Field, model_validator, field_valida
 
 from typing import Optional
 
-from nemo_retriever.api.util.logging.configuration import LogLevel
+from nemo_retriever.common.api.util.logging.configuration import LogLevel
 
 logger = logging.getLogger(__name__)
 

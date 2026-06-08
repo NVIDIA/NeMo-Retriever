@@ -20,13 +20,13 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import typer
 
-from nemo_retriever.audio.asr_actor import apply_asr_to_df
-from nemo_retriever.audio.asr_actor import asr_params_from_env
-from nemo_retriever.audio.chunk_actor import audio_path_to_chunks_df
-from nemo_retriever.audio.media_interface import is_media_available
-from nemo_retriever.audio.media_interface import media_dependency_error_message
-from nemo_retriever.params import ASRParams
-from nemo_retriever.params import AudioChunkParams
+from nemo_retriever.operators.extract.audio.asr_actor import apply_asr_to_df
+from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
+from nemo_retriever.operators.extract.audio.chunk_actor import audio_path_to_chunks_df
+from nemo_retriever.common.modality.audio.media_interface import is_media_available
+from nemo_retriever.common.modality.audio.media_interface import media_dependency_error_message
+from nemo_retriever.common.params import ASRParams
+from nemo_retriever.common.params import AudioChunkParams
 
 logger = logging.getLogger(__name__)
 

@@ -18,7 +18,7 @@ from typing import Optional
 import typer
 
 from nemo_retriever.table import stage as table_stage
-from nemo_retriever.io.stage_files import build_stage_output_path, find_stage_inputs
+from nemo_retriever.common.io.stage_files import build_stage_output_path, find_stage_inputs
 
 app = typer.Typer(help="Stage 3: table extractor (wrapper around `nemo_retriever.table.stage`).")
 

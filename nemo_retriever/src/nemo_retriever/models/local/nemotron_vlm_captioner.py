@@ -11,7 +11,7 @@ from typing import Any, List, Optional
 
 from PIL import Image
 
-from nemo_retriever.caption.model_profiles import (
+from nemo_retriever.common.modality.caption.model_profiles import (
     CaptionTarget,
     caption_model_aliases,
     caption_model_revisions,
@@ -20,8 +20,8 @@ from nemo_retriever.caption.model_profiles import (
     resolve_caption_model_name as _resolve_caption_model_name,
     supported_caption_models_by_variant,
 )
-from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
-from nemo_retriever.model.model import BaseModel, ModelRunMode
+from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.models.model import BaseModel, ModelRunMode
 
 _DEFAULT_MAX_NUM_SEQS = 256
 
@@ -192,7 +192,7 @@ class NemotronVLMCaptioner(BaseModel):
         sampling_params = SamplingParams(**sp_kwargs)
         chat_kwargs = merge_request_extras(self._request_extras, extra_body or {})
         chat_kwargs.setdefault("use_tqdm", False)
-        from nemo_retriever.utils.nvtx import gpu_inference_range
+        from nemo_retriever.common.nvtx import gpu_inference_range
 
         with gpu_inference_range("NemotronVLMCaptioner", batch_size=len(conversations)):
             outputs = self._llm.chat(conversations, sampling_params=sampling_params, **chat_kwargs)

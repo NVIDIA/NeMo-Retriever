@@ -11,7 +11,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nemo_retriever.html.convert import (
+from nemo_retriever.common.modality.html.convert import (
     html_bytes_to_chunks_df,
     html_file_to_chunks_df,
     html_to_markdown,

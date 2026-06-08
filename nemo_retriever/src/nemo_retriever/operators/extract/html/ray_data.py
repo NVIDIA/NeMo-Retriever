@@ -12,13 +12,13 @@ from typing import Any, List
 
 import pandas as pd
 
-from nemo_retriever.params import HtmlChunkParams
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.common.params import HtmlChunkParams
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 
-from nemo_retriever.html.convert import html_bytes_to_chunks_df
+from nemo_retriever.common.modality.html.convert import html_bytes_to_chunks_df
 
 
 @designer_component(

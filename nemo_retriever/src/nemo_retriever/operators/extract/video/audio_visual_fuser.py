@@ -27,11 +27,11 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.ocr.shared import concat_with_passthrough
-from nemo_retriever.params import AudioVisualFuseParams
+from nemo_retriever.common.modality.ocr.shared import concat_with_passthrough
+from nemo_retriever.common.params import AudioVisualFuseParams
 from nemo_retriever.video import _content_types as _CT
 
 logger = logging.getLogger(__name__)

@@ -15,7 +15,7 @@ import lancedb
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from nemo_retriever.vdb.adt_vdb import VDB
+from nemo_retriever.common.vdb.adt_vdb import VDB
 
 
 logger = logging.getLogger(__name__)

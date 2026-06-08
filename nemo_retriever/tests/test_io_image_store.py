@@ -11,7 +11,7 @@ import sys
 import types
 from pathlib import Path
 
-from nemo_retriever.io.image_store import load_image_b64_from_uri, render_page_image_b64
+from nemo_retriever.common.io.image_store import load_image_b64_from_uri, render_page_image_b64
 
 
 class TestLoadImageB64FromUri:

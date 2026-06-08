@@ -23,7 +23,7 @@ from typing import Optional
 import typer
 
 from nemo_retriever.infographic import stage as infographic_stage
-from nemo_retriever.io.stage_files import build_stage_output_path, find_stage_inputs
+from nemo_retriever.common.io.stage_files import build_stage_output_path, find_stage_inputs
 
 app = typer.Typer(help="Stage 2: infographic extractor (wrapper around `nemo_retriever.infographic.stage`).")
 

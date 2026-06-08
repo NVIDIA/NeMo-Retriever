@@ -17,7 +17,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Pure helpers from main_text_embed (no transitive-import issues)
 # ---------------------------------------------------------------------------
-from nemo_retriever.text_embed.main_text_embed import (
+from nemo_retriever.models.inference.main_text_embed import (
     _format_image_input_string,
     _format_text_image_pair_input_string,
     _image_from_row,
@@ -84,7 +84,10 @@ for _mod_name in _HEAVY_INTERNAL:
         sys.modules[_mod_name] = MagicMock()
         _injected.append(_mod_name)
 
-from nemo_retriever.graph.content_transforms import collapse_content_to_page_rows, explode_content_to_rows  # noqa: E402
+from nemo_retriever.common.modality.content_transforms import (
+    collapse_content_to_page_rows,
+    explode_content_to_rows,
+)  # noqa: E402
 
 # Clean up injected mocks so they don't poison imports in other test files.
 for _mod_name in _injected:

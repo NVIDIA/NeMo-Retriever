@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from typing import Any, List, Optional, Sequence
 
-from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
-from nemo_retriever.utils.hf_model_registry import get_hf_revision
-from nemo_retriever.model.model import BaseModel, ModelRunMode
+from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.models.hf_model_registry import get_hf_revision
+from nemo_retriever.models.model import BaseModel, ModelRunMode
 
 
-from nemo_retriever.model import VL_RERANK_MODEL
+from nemo_retriever.models import VL_RERANK_MODEL
 
 _DEFAULT_MODEL = VL_RERANK_MODEL
 _DEFAULT_MAX_LENGTH = 10240

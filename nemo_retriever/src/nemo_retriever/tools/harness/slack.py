@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from nemo_retriever.harness.artifacts import now_timestr
+from nemo_retriever.tools.harness.artifacts import now_timestr
 
 DEFAULT_USERNAME = "nemo_retriever Nightly"
 DEFAULT_ICON_EMOJI = ":satellite:"

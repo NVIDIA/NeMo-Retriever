@@ -16,7 +16,7 @@ rerank_hits
     vLLM / NIM ``/v1/ranking`` endpoint.
 """
 
-from nemo_retriever.rerank.rerank import (
+from nemo_retriever.operators.rerank import (
     NemotronRerankActor,
     NemotronRerankCPUActor,
     NemotronRerankGPUActor,

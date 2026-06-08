@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nemo_retriever.txt.split import split_text_by_tokens, txt_file_to_chunks_df, TextChunkParams
+from nemo_retriever.common.modality.txt.split import split_text_by_tokens, txt_file_to_chunks_df, TextChunkParams
 
 
 class _MockTokenizer:

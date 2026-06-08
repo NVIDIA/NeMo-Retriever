@@ -10,7 +10,7 @@ from typing import Any
 
 from typer.testing import CliRunner
 
-import nemo_retriever.adapters.cli.sdk_workflow as sdk_workflow
+import nemo_retriever.cli.sdk_workflow as sdk_workflow
 
 
 RUNNER = CliRunner()

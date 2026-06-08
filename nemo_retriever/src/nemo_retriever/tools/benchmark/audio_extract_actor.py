@@ -17,14 +17,14 @@ import pandas as pd
 import ray.data as rd
 import typer
 
-from nemo_retriever.audio.asr_actor import ASRActor
-from nemo_retriever.audio.asr_actor import asr_params_from_env
-from nemo_retriever.audio.chunk_actor import MediaChunkActor
-from nemo_retriever.audio.media_interface import is_media_available
-from nemo_retriever.audio.media_interface import media_dependency_error_message
-from nemo_retriever.params import AudioChunkParams
+from nemo_retriever.operators.extract.audio.asr_actor import ASRActor
+from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
+from nemo_retriever.operators.extract.audio.chunk_actor import MediaChunkActor
+from nemo_retriever.common.modality.audio.media_interface import is_media_available
+from nemo_retriever.common.modality.audio.media_interface import media_dependency_error_message
+from nemo_retriever.common.params import AudioChunkParams
 
-from nemo_retriever.utils.benchmark.common import (
+from nemo_retriever.tools.benchmark.common import (
     benchmark_sweep,
     maybe_init_ray,
     maybe_write_results_json,

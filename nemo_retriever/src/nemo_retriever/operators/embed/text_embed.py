@@ -21,10 +21,10 @@ import time
 import traceback
 
 import pandas as pd
-from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 
 try:
     import torch
@@ -199,7 +199,7 @@ class TextEmbedGPUActor(AbstractOperator, GPUOperator):
         normalize = bool(self.detect_kwargs.pop("normalize", True))
         max_length = self.detect_kwargs.pop("max_length", 4096)
 
-        from nemo_retriever.model import create_local_embedder
+        from nemo_retriever.models import create_local_embedder
 
         self._model = create_local_embedder(
             self.detect_kwargs.get("model_name"),

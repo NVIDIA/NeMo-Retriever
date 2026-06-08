@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import pandas as pd
 import torch
 
-from nemo_retriever.model.local.llama_nemotron_embed_1b_v2_hf_embedder import LlamaNemotronEmbed1BV2HFEmbedder
-from nemo_retriever.text_embed.runtime import _embed_group
+from nemo_retriever.models.local.llama_nemotron_embed_1b_v2_hf_embedder import LlamaNemotronEmbed1BV2HFEmbedder
+from nemo_retriever.models.inference.runtime import _embed_group
 
 
 class _FakeTokenizer:

@@ -10,7 +10,7 @@ from typing import Any
 from typing import Callable
 from typing import Dict
 
-from nemo_retriever.api.util.converters import datetools
+from nemo_retriever.common.api.util.converters import datetools
 
 logger = logging.getLogger(__name__)
 

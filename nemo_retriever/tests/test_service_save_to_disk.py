@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_retriever.service_ingestor import ServiceIngestor
+from nemo_retriever.service.service_ingestor import ServiceIngestor
 
 
 def test_save_to_disk_requires_output_directory() -> None:

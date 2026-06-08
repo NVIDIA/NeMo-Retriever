@@ -9,13 +9,13 @@ from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
 
-from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
-from nemo_retriever.api.internal.schemas.transform.transform_text_embedding_schema import TextEmbeddingSchema
-from nemo_retriever.api.internal.transform.embed_text import transform_create_text_embeddings_internal
+from nemo_retriever.common.api.internal.primitives.tracing.tagging import traceable_func
+from nemo_retriever.common.api.internal.schemas.transform.transform_text_embedding_schema import TextEmbeddingSchema
+from nemo_retriever.common.api.internal.transform.embed_text import transform_create_text_embeddings_internal
 
-from nemo_retriever.io.dataframe import validate_primitives_dataframe
-from nemo_retriever.text_embed.shared import _to_bool
-from nemo_retriever.vdb.lancedb_bulk import LanceDBConfig, write_embeddings_to_lancedb
+from nemo_retriever.common.io.dataframe import validate_primitives_dataframe
+from nemo_retriever.models.inference.shared import _to_bool
+from nemo_retriever.common.vdb.lancedb_bulk import LanceDBConfig, write_embeddings_to_lancedb
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ def maybe_inject_local_hf_embedder(task_config: Dict[str, Any], transform_config
     if has_endpoint or not use_local:
         return
 
-    from nemo_retriever.model import create_local_embedder, resolve_embed_model, is_vl_embed_model
+    from nemo_retriever.models import create_local_embedder, resolve_embed_model, is_vl_embed_model
 
     embed_model = resolve_embed_model(
         task_config.get("embed_model_name")

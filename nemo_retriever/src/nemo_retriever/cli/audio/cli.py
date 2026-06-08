@@ -15,7 +15,7 @@ are handled exactly the same as the stage commands (e.g. `extract`, `discover`).
 
 from __future__ import annotations
 
-from nemo_retriever.audio.stage import app as app
+from nemo_retriever.cli.audio.stage import app as app
 
 
 def main() -> None:

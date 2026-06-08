@@ -8,12 +8,12 @@ from typing import Any, Optional
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.nim.nim import NIMClient
-from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.ocr.config import resolve_ocr_v2_lang
-from nemo_retriever.chart.shared import graphic_elements_ocr_page_elements
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.models.nim.nim import NIMClient
+from nemo_retriever.common.params import RemoteRetryParams
+from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_lang
+from nemo_retriever.common.modality.chart.shared import graphic_elements_ocr_page_elements
 
 
 class GraphicElementsActor(AbstractOperator, GPUOperator):
@@ -52,14 +52,14 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
         if self._graphic_elements_invoke_url:
             self._graphic_elements_model = None
         else:
-            from nemo_retriever.model.local import NemotronGraphicElementsV1
+            from nemo_retriever.models.local import NemotronGraphicElementsV1
 
             self._graphic_elements_model = NemotronGraphicElementsV1()
 
         if self._ocr_invoke_url:
             self._ocr_model = None
         else:
-            from nemo_retriever.model.local import NemotronOCRV2
+            from nemo_retriever.models.local import NemotronOCRV2
 
             lang = resolve_ocr_v2_lang(ocr_version, ocr_lang)
             self._ocr_model = NemotronOCRV2(lang=lang)

@@ -11,10 +11,10 @@ from pathlib import Path
 from statistics import mean
 from typing import Any, Iterable
 
-from nemo_retriever.harness.artifacts import last_commit, write_session_summary
-from nemo_retriever.skill_eval.dataset import DatasetEntry
-from nemo_retriever.skill_eval.runner import CONDITIONS, TrialResult
-from nemo_retriever.skill_eval.score import recall_at_k
+from nemo_retriever.tools.harness.artifacts import last_commit, write_session_summary
+from nemo_retriever.tools.skill_eval.dataset import DatasetEntry
+from nemo_retriever.tools.skill_eval.runner import CONDITIONS, TrialResult
+from nemo_retriever.tools.skill_eval.score import recall_at_k
 
 METRIC_KS = (1, 5, 10)
 RECALL_KEYS = tuple(f"recall_{k}" for k in METRIC_KS)

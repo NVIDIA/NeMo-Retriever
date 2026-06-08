@@ -32,7 +32,7 @@ import pytest
 
 def _make_retriever():
     """Build a bare ``Retriever`` instance with all defaults."""
-    from nemo_retriever.retriever import Retriever
+    from nemo_retriever.graph.retriever import Retriever
 
     return Retriever()
 
@@ -52,13 +52,13 @@ def _fake_hits() -> list[dict]:
 
 def _fake_generation(answer: str = "RAG retrieves context and uses an LLM.", error: str | None = None):
     """Build a GenerationResult with the given answer / error."""
-    from nemo_retriever.llm.types import GenerationResult
+    from nemo_retriever.models.llm.types import GenerationResult
 
     return GenerationResult(answer=answer, latency_s=0.12, model="fake-llm/test", error=error)
 
 
 def _fake_judge_result(score: float | None = 1.0, reasoning: str = "correct and complete"):
-    from nemo_retriever.llm.types import JudgeResult
+    from nemo_retriever.models.llm.types import JudgeResult
 
     return JudgeResult(score=score, reasoning=reasoning, error=None)
 
@@ -68,14 +68,14 @@ class TestRetrieveProtocol:
 
     def test_retriever_satisfies_protocol(self):
         """isinstance check must pass via @runtime_checkable."""
-        from nemo_retriever.llm.types import RetrieverStrategy
+        from nemo_retriever.models.llm.types import RetrieverStrategy
 
         r = _make_retriever()
         assert isinstance(r, RetrieverStrategy)
 
     def test_retrieve_returns_result_shape(self):
         """``retrieve`` adapts ``.query()`` hits into a RetrievalResult."""
-        from nemo_retriever.llm.types import RetrievalResult
+        from nemo_retriever.models.llm.types import RetrievalResult
 
         r = _make_retriever()
         with patch.object(r, "query", return_value=_fake_hits()) as mock_query:
@@ -248,8 +248,8 @@ class TestLiveRetrievalOperator:
         regression back to the quadratic path.
         """
 
-        from nemo_retriever.evaluation.live_retrieval import LiveRetrievalOperator
-        from nemo_retriever.llm.types import RetrievalResult
+        from nemo_retriever.tools.evaluation.live_retrieval import LiveRetrievalOperator
+        from nemo_retriever.models.llm.types import RetrievalResult
 
         mock_retriever = MagicMock()
         mock_retriever.retrieve_batch.return_value = [
@@ -283,8 +283,8 @@ class TestLiveRetrievalOperator:
     def test_process_scales_to_ten_rows_with_single_call(self):
         """A 10-row frame still triggers exactly one ``retrieve_batch`` call."""
 
-        from nemo_retriever.evaluation.live_retrieval import LiveRetrievalOperator
-        from nemo_retriever.llm.types import RetrievalResult
+        from nemo_retriever.tools.evaluation.live_retrieval import LiveRetrievalOperator
+        from nemo_retriever.models.llm.types import RetrievalResult
 
         mock_retriever = MagicMock()
         mock_retriever.retrieve_batch.return_value = [
@@ -302,8 +302,8 @@ class TestLiveRetrievalOperator:
     def test_process_rejects_mismatched_batch_length(self):
         """Guard against a retrieve_batch that drops or duplicates rows."""
 
-        from nemo_retriever.evaluation.live_retrieval import LiveRetrievalOperator
-        from nemo_retriever.llm.types import RetrievalResult
+        from nemo_retriever.tools.evaluation.live_retrieval import LiveRetrievalOperator
+        from nemo_retriever.models.llm.types import RetrievalResult
 
         mock_retriever = MagicMock()
         mock_retriever.retrieve_batch.return_value = [
@@ -317,7 +317,7 @@ class TestLiveRetrievalOperator:
             op.process(df)
 
     def test_process_requires_dataframe(self):
-        from nemo_retriever.evaluation.live_retrieval import LiveRetrievalOperator
+        from nemo_retriever.tools.evaluation.live_retrieval import LiveRetrievalOperator
 
         op = LiveRetrievalOperator(MagicMock(), top_k=3)
         with pytest.raises(TypeError, match="requires a pandas.DataFrame"):
@@ -600,7 +600,7 @@ def _build_mock_operator(class_name: str, process_fn):
     ``EvalOperator`` so required-column validation does not fire, and
     simply override ``process``.
     """
-    from nemo_retriever.evaluation.eval_operator import EvalOperator
+    from nemo_retriever.tools.evaluation.eval_operator import EvalOperator
 
     class _Mock(EvalOperator):
         required_columns = ()

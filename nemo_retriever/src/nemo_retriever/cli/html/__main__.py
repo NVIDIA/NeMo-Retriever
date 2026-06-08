@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 import typer
 from rich.console import Console
-from nemo_retriever.params import HtmlChunkParams
+from nemo_retriever.common.params import HtmlChunkParams
 
 from nemo_retriever.html import html_file_to_chunks_df
 

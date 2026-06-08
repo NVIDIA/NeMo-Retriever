@@ -11,7 +11,7 @@ from typing import Any, ClassVar
 
 import pandas as pd
 
-from nemo_retriever.evaluation.eval_operator import EvalOperator
+from nemo_retriever.tools.evaluation.eval_operator import EvalOperator
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +65,8 @@ class RetrievalLoaderOperator(EvalOperator):
         if isinstance(data, pd.DataFrame) and not data.empty:
             return data
 
-        from nemo_retriever.evaluation.ground_truth import get_qa_dataset_loader, load_generic_csv
-        from nemo_retriever.evaluation.retrievers import FileRetriever
+        from nemo_retriever.tools.evaluation.ground_truth import get_qa_dataset_loader, load_generic_csv
+        from nemo_retriever.tools.evaluation.retrievers import FileRetriever
 
         source = self._ground_truth_csv
         try:

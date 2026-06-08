@@ -11,9 +11,9 @@ from urllib.parse import urlparse
 import glom
 import pandas as pd
 
-from nemo_retriever.api.internal.enums.common import ContentTypeEnum
-from nemo_retriever.api.internal.schemas.transform.transform_text_embedding_schema import TextEmbeddingSchema
-from nemo_retriever.api.util.nim import infer_microservice
+from nemo_retriever.common.api.internal.enums.common import ContentTypeEnum
+from nemo_retriever.common.api.internal.schemas.transform.transform_text_embedding_schema import TextEmbeddingSchema
+from nemo_retriever.common.api.util.nim import infer_microservice
 
 
 logger = logging.getLogger(__name__)

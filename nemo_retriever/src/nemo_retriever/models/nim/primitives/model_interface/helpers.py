@@ -9,9 +9,9 @@ import backoff
 import numpy as np
 import requests
 
-from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import multiprocessing_cache
-from nemo_retriever.api.util.image_processing.transforms import pad_image, normalize_image
-from nemo_retriever.api.util.string_processing import generate_url, remove_url_endpoints
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.decorators import multiprocessing_cache
+from nemo_retriever.common.api.util.image_processing.transforms import pad_image, normalize_image
+from nemo_retriever.common.api.util.string_processing import generate_url, remove_url_endpoints
 
 try:
     import cv2

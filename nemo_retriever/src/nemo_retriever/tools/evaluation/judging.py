@@ -10,9 +10,9 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, ClassVar, Optional
 
-from nemo_retriever.evaluation.eval_operator import EvalOperator
-from nemo_retriever.llm.clients import LLMJudge
-from nemo_retriever.llm.types import JudgeResult
+from nemo_retriever.tools.evaluation.eval_operator import EvalOperator
+from nemo_retriever.models.llm.clients import LLMJudge
+from nemo_retriever.models.llm.types import JudgeResult
 
 logger = logging.getLogger(__name__)
 

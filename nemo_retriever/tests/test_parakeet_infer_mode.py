@@ -9,11 +9,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nemo_retriever.api.internal.primitives.nim.model_interface.parakeet import (
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.parakeet import (
     ParakeetClient,
     resolve_audio_infer_mode,
 )
-from nemo_retriever.params import ASRParams
+from nemo_retriever.common.params import ASRParams
 
 
 @pytest.mark.parametrize(

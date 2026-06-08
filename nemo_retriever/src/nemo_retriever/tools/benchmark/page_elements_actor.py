@@ -12,7 +12,7 @@ import typer
 
 from nemo_retriever.page_elements import PageElementDetectionActor
 
-from nemo_retriever.utils.benchmark.common import (
+from nemo_retriever.tools.benchmark.common import (
     benchmark_sweep,
     make_seed_page_elements_row,
     maybe_init_ray,

@@ -9,15 +9,15 @@ from pathlib import Path
 from typing import Any, Literal, Sequence, cast
 import logging
 
-from nemo_retriever.ingest_manifest import (
+from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
     build_input_manifest,
     format_branch_summary,
     plan_extraction_branches,
 )
 from nemo_retriever.ingestor import Ingestor, create_ingestor
-from nemo_retriever.ocr.config import OCRLang, OCRVersion
-from nemo_retriever.params import (
+from nemo_retriever.common.modality.ocr.config import OCRLang, OCRVersion
+from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
     AudioVisualFuseParams,
@@ -33,16 +33,16 @@ from nemo_retriever.params import (
     VideoFrameParams,
     VideoFrameTextDedupParams,
 )
-from nemo_retriever.params.utils import normalize_embed_kwargs
-from nemo_retriever.retriever import Retriever
-from nemo_retriever.utils.input_files import (
+from nemo_retriever.common.params.utils import normalize_embed_kwargs
+from nemo_retriever.graph.retriever import Retriever
+from nemo_retriever.common.input_files import (
     AUTO_INPUT_EXTENSIONS,
     INPUT_TYPE_EXTENSIONS,
     expand_input_file_patterns,
     resolve_input_files,
 )
-from nemo_retriever.utils.remote_auth import resolve_remote_api_key
-from nemo_retriever.vdb.records import RetrievalHit
+from nemo_retriever.common.remote_auth import resolve_remote_api_key
+from nemo_retriever.common.vdb.records import RetrievalHit
 
 logger = logging.getLogger(__name__)
 
@@ -318,7 +318,7 @@ def _profile_extract_defaults(profile: IngestProfileValue) -> dict[str, Any]:
 def _build_asr_params(*, segment_audio: bool | None, needed: bool) -> ASRParams | None:
     if not needed and segment_audio is None:
         return None
-    from nemo_retriever.audio.asr_actor import asr_params_from_env
+    from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
 
     params = asr_params_from_env()
     if segment_audio is None:

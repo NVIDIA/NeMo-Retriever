@@ -65,7 +65,7 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from nemo_retriever.evaluation.orchestrator import QAEvalPipeline
+    from nemo_retriever.tools.evaluation.orchestrator import QAEvalPipeline
     from nemo_retriever.graph.pipeline_graph import Graph
 
 logger = logging.getLogger(__name__)
@@ -266,10 +266,10 @@ def build_eval_chain(
     Graph
         A chainable graph ready for ``.execute(None)``.
     """
-    from nemo_retriever.evaluation.generation import QAGenerationOperator
-    from nemo_retriever.evaluation.judging import JudgingOperator
-    from nemo_retriever.evaluation.retrieval_loader import RetrievalLoaderOperator
-    from nemo_retriever.evaluation.scoring_operator import ScoringOperator
+    from nemo_retriever.tools.evaluation.generation import QAGenerationOperator
+    from nemo_retriever.tools.evaluation.judging import JudgingOperator
+    from nemo_retriever.tools.evaluation.retrieval_loader import RetrievalLoaderOperator
+    from nemo_retriever.tools.evaluation.scoring_operator import ScoringOperator
 
     generators = config["generators"]
     if not generators:
@@ -353,9 +353,9 @@ def build_eval_pipeline(config: dict) -> "QAEvalPipeline":
         A fully configured pipeline ready for ``.evaluate(qa_pairs)``
         or ``.process(df)``.
     """
-    from nemo_retriever.llm.clients import LLMJudge, LiteLLMClient
-    from nemo_retriever.evaluation.orchestrator import QAEvalPipeline
-    from nemo_retriever.evaluation.retrievers import FileRetriever
+    from nemo_retriever.models.llm.clients import LLMJudge, LiteLLMClient
+    from nemo_retriever.tools.evaluation.orchestrator import QAEvalPipeline
+    from nemo_retriever.tools.evaluation.retrievers import FileRetriever
 
     generators = config["generators"]
     if not generators:

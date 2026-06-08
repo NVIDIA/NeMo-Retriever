@@ -4,9 +4,9 @@ from PIL import Image
 
 import nemo_retriever
 from nemo_retriever.graph.ingestor_runtime import build_graph
-from nemo_retriever.graph_ingestor import GraphIngestionError, GraphIngestor
+from nemo_retriever.ingestor.graph_ingestor import GraphIngestionError, GraphIngestor
 from nemo_retriever.ingestor import IngestorCreateParams, _merge_params, create_ingestor
-from nemo_retriever.params import (
+from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
     CaptionParams,

@@ -16,7 +16,7 @@ are handled by `nemo_retriever.recall.vdb_recall`, including a local-HF fallback
 when embedding HTTP/gRPC endpoints are not configured.
 """
 
-from nemo_retriever.recall.vdb_recall import app as app
+from nemo_retriever.tools.recall.vdb_recall import app as app
 
 
 def main() -> None:

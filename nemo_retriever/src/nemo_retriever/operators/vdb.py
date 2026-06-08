@@ -10,12 +10,12 @@ from typing import Any
 
 import pandas as pd
 
-from nemo_retriever.vdb.adt_vdb import VDB
-from nemo_retriever.vdb.factory import get_vdb_op_cls
+from nemo_retriever.common.vdb.adt_vdb import VDB
+from nemo_retriever.common.vdb.factory import get_vdb_op_cls
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.vdb.records import normalize_retrieval_results, to_client_vdb_records
-from nemo_retriever.vdb.sidecar_metadata import (
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.common.vdb.records import normalize_retrieval_results, to_client_vdb_records
+from nemo_retriever.common.vdb.sidecar_metadata import (
     apply_sidecar_metadata_to_client_batches,
     build_sidecar_lookup,
     materialize_sidecar_dataframe,
@@ -214,7 +214,7 @@ class RetrieveVdbOperator(AbstractOperator):
         return data
 
     def process(self, data: Any, **kwargs: Any) -> list[list[dict[str, Any]]]:
-        from nemo_retriever.retriever_graph_utils import filter_retrieval_kwargs
+        from nemo_retriever.graph.retriever_utils import filter_retrieval_kwargs
 
         retrieval_kwargs = {**self._retrieval_vdb_kwargs, **filter_retrieval_kwargs(kwargs)}
         if "hybrid" in retrieval_kwargs:
@@ -231,7 +231,7 @@ class RetrieveVdbOperator(AbstractOperator):
         query_texts = kwargs.get("query_texts")
         if not query_texts:
             return data
-        from nemo_retriever.retriever_graph_utils import hits_lists_to_rerank_dataframe
+        from nemo_retriever.graph.retriever_utils import hits_lists_to_rerank_dataframe
 
         if not isinstance(data, list):
             return data

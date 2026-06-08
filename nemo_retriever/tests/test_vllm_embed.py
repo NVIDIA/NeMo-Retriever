@@ -14,8 +14,8 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from nemo_retriever.text_embed.vllm import embed_multimodal_with_vllm_llm, embed_with_vllm_llm
-from nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder import LlamaNemotronEmbed1BV2Embedder
+from nemo_retriever.models.inference.vllm import embed_multimodal_with_vllm_llm, embed_with_vllm_llm
+from nemo_retriever.models.local.llama_nemotron_embed_1b_v2_embedder import LlamaNemotronEmbed1BV2Embedder
 
 
 def _make_output(embedding):
@@ -116,7 +116,7 @@ def _make_minimal_b64() -> str:
 
 def _make_vllm_vl_embedder():
     """Instantiate LlamaNemotronEmbedVL1BV2VLLMEmbedder without GPU init."""
-    from nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder import (
+    from nemo_retriever.models.local.llama_nemotron_embed_vl_1b_v2_embedder import (
         LlamaNemotronEmbedVL1BV2VLLMEmbedder,
     )
 
@@ -177,7 +177,7 @@ class TestCreateVllmLlm:
         # LLM is imported inside create_vllm_llm's body, so patch at its source
         with patch("vllm.LLM") as mock_llm_cls:
             mock_llm_cls.return_value = MagicMock()
-            from nemo_retriever.text_embed.vllm import create_vllm_llm
+            from nemo_retriever.models.inference.vllm import create_vllm_llm
 
             create_vllm_llm("some-model")
         _, kwargs = mock_llm_cls.call_args
@@ -186,7 +186,7 @@ class TestCreateVllmLlm:
     def test_limit_mm_per_prompt_forwarded_when_provided(self):
         with patch("vllm.LLM") as mock_llm_cls:
             mock_llm_cls.return_value = MagicMock()
-            from nemo_retriever.text_embed.vllm import create_vllm_llm
+            from nemo_retriever.models.inference.vllm import create_vllm_llm
 
             create_vllm_llm("some-model", limit_mm_per_prompt={"image": 1})
         _, kwargs = mock_llm_cls.call_args

@@ -8,10 +8,10 @@ from typing import Any
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.nim.nim import NIMClient
-from nemo_retriever.page_elements.shared import _error_payload, detect_page_elements_v3
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.models.nim.nim import NIMClient
+from nemo_retriever.common.modality.page_elements.shared import _error_payload, detect_page_elements_v3
 
 
 class PageElementDetectionCPUActor(AbstractOperator, CPUOperator):

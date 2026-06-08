@@ -29,10 +29,10 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.params import ASRParams
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.common.params import ASRParams
 
 
 def _to_chunk_relative_seconds(value: Any, chunk_duration_secs: float) -> Optional[float]:
@@ -166,7 +166,7 @@ def asr_params_from_env(
 
 
 try:
-    from nemo_retriever.api.internal.primitives.nim.model_interface.parakeet import (
+    from nemo_retriever.common.api.internal.primitives.nim.model_interface.parakeet import (
         create_audio_inference_client,
     )
 
@@ -338,13 +338,13 @@ class ASRActor(ArchetypeOperator):
 
     @classmethod
     def cpu_variant_class(cls) -> type[AbstractOperator]:
-        from nemo_retriever.audio.cpu_actor import ASRCPUActor
+        from nemo_retriever.operators.extract.audio.cpu_actor import ASRCPUActor
 
         return ASRCPUActor
 
     @classmethod
     def gpu_variant_class(cls) -> type[AbstractOperator]:
-        from nemo_retriever.audio.gpu_actor import ASRGPUActor
+        from nemo_retriever.operators.extract.audio.gpu_actor import ASRGPUActor
 
         return ASRGPUActor
 
@@ -395,11 +395,11 @@ def __getattr__(name: str):
     gpu_actor.py both import symbols from this module).
     """
     if name == "ASRCPUActor":
-        from nemo_retriever.audio.cpu_actor import ASRCPUActor
+        from nemo_retriever.operators.extract.audio.cpu_actor import ASRCPUActor
 
         return ASRCPUActor
     if name == "ASRGPUActor":
-        from nemo_retriever.audio.gpu_actor import ASRGPUActor
+        from nemo_retriever.operators.extract.audio.gpu_actor import ASRGPUActor
 
         return ASRGPUActor
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

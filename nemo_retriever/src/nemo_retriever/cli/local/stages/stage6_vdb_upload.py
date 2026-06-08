@@ -15,7 +15,7 @@ This module intentionally contains no configuration logic. It re-exports the
 are handled by `nemo_retriever.vdb.stage`.
 """
 
-from nemo_retriever.vdb.stage import app as app
+from nemo_retriever.common.vdb.stage import app as app
 
 
 def main() -> None:

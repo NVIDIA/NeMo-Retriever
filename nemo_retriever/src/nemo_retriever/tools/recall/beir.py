@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 import unicodedata
 
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.graph.retriever import Retriever
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ class BeirConfig:
     service_max_concurrent: int = 16
 
     def __post_init__(self) -> None:
-        from nemo_retriever.model import (
+        from nemo_retriever.models import (
             _LOCAL_QUERY_BACKENDS,
             _LOCAL_RERANKER_BACKENDS,
             normalize_backend,
@@ -791,7 +791,7 @@ def evaluate_lancedb_beir(
         doc_id_field=cfg.doc_id_field,
     )
     ks = tuple(sorted({int(k) for k in cfg.ks if int(k) > 0}))
-    from nemo_retriever.params.models import ModelRuntimeParams
+    from nemo_retriever.common.params.models import ModelRuntimeParams
 
     embed_kwargs: dict[str, Any] = {
         "model_name": str(cfg.embedding_model),

@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from nemo_retriever.evaluation.eval_operator import EvalOperator
-from nemo_retriever.evaluation.scoring import score_dataframe
+from nemo_retriever.tools.evaluation.eval_operator import EvalOperator
+from nemo_retriever.tools.evaluation.scoring import score_dataframe
 
 
 class ScoringOperator(EvalOperator):

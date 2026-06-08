@@ -18,16 +18,16 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from nemo_retriever.params import CaptionParams
-from nemo_retriever.params import DedupParams
-from nemo_retriever.params import EmbedParams
-from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import IngestExecuteParams
-from nemo_retriever.params import IngestorCreateParams
-from nemo_retriever.params import IngestorRunMode
-from nemo_retriever.params import StoreParams
-from nemo_retriever.params import VdbUploadParams
-from nemo_retriever.params import WebhookParams
+from nemo_retriever.common.params import CaptionParams
+from nemo_retriever.common.params import DedupParams
+from nemo_retriever.common.params import EmbedParams
+from nemo_retriever.common.params import ExtractParams
+from nemo_retriever.common.params import IngestExecuteParams
+from nemo_retriever.common.params import IngestorCreateParams
+from nemo_retriever.common.params import IngestorRunMode
+from nemo_retriever.common.params import StoreParams
+from nemo_retriever.common.params import VdbUploadParams
+from nemo_retriever.common.params import WebhookParams
 
 
 def _merge_params[T](params: T | None, kwargs: dict[str, Any]) -> T:
@@ -56,7 +56,7 @@ def create_ingestor(
         parsed = IngestorCreateParams(**merged)
 
     if run_mode == "service":
-        from nemo_retriever.service_ingestor import ServiceIngestor
+        from nemo_retriever.service.service_ingestor import ServiceIngestor
 
         service_kwargs: dict[str, Any] = {
             "base_url": parsed.base_url,
@@ -70,7 +70,7 @@ def create_ingestor(
     if run_mode not in {"batch", "inprocess"}:
         raise ValueError(f"create_ingestor supports run modes 'inprocess', 'batch', and 'service'; got {run_mode!r}.")
 
-    from nemo_retriever.graph_ingestor import GraphIngestor
+    from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
 
     return GraphIngestor(
         run_mode=run_mode,

@@ -8,10 +8,10 @@ from pathlib import Path
 
 import typer
 
-from nemo_retriever.harness.nightly import nightly_command
-from nemo_retriever.harness.reporting import compare_command, summary_command
-from nemo_retriever.harness.run import run_command, sweep_command
-from nemo_retriever.harness.runner import runner_start_command
+from nemo_retriever.tools.harness.nightly import nightly_command
+from nemo_retriever.tools.harness.reporting import compare_command, summary_command
+from nemo_retriever.tools.harness.run import run_command, sweep_command
+from nemo_retriever.tools.harness.runner import runner_start_command
 
 app = typer.Typer(help="Harness commands for benchmark orchestration.")
 app.command("run")(run_command)
@@ -43,7 +43,7 @@ def backfill_command(
     db_path: str | None = typer.Option(None, "--db", help="Path to history database."),
 ) -> None:
     """Import existing artifact results.json files into the history database."""
-    from nemo_retriever.harness.history import backfill_from_artifacts
+    from nemo_retriever.tools.harness.history import backfill_from_artifacts
 
     root = Path(artifacts_dir) if artifacts_dir else None
     count = backfill_from_artifacts(artifacts_root=root, db_path=db_path)

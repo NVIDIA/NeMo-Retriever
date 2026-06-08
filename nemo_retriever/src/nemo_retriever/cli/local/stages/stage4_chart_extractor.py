@@ -24,7 +24,7 @@ from typing import Optional
 import typer
 
 from nemo_retriever.chart import stage as chart_stage
-from nemo_retriever.io.stage_files import build_stage_output_path, find_stage_inputs
+from nemo_retriever.common.io.stage_files import build_stage_output_path, find_stage_inputs
 
 app = typer.Typer(help="Stage 4: chart extractor (wrapper around `nemo_retriever.chart.stage`).")
 

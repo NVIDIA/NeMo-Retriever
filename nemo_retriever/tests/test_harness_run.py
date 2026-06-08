@@ -5,18 +5,18 @@ from types import SimpleNamespace
 import pytest
 from typer.testing import CliRunner
 
-from nemo_retriever.harness.cli import app as harness_app
-from nemo_retriever.harness import artifacts as harness_artifacts
-from nemo_retriever.harness.artifacts import create_run_artifact_dir
-from nemo_retriever.harness.config import HarnessConfig
-from nemo_retriever.harness import run as harness_run
-from nemo_retriever.harness.run import _build_command, _evaluate_run_outcome, _normalize_recall_metric_key
+from nemo_retriever.tools.harness.cli import app as harness_app
+from nemo_retriever.tools.harness import artifacts as harness_artifacts
+from nemo_retriever.tools.harness.artifacts import create_run_artifact_dir
+from nemo_retriever.tools.harness.config import HarnessConfig
+from nemo_retriever.tools.harness import run as harness_run
+from nemo_retriever.tools.harness.run import _build_command, _evaluate_run_outcome, _normalize_recall_metric_key
 
 RUNNER = CliRunner()
 
 
 def test_embedded_ray_scripts_import_env_helpers_inside_try() -> None:
-    from nemo_retriever.harness.runner import _GRAPH_WRAPPER_SCRIPT
+    from nemo_retriever.tools.harness.runner import _GRAPH_WRAPPER_SCRIPT
 
     for script in (harness_run._GRAPH_RUNNER_SCRIPT, _GRAPH_WRAPPER_SCRIPT):
         before_try, after_try = script.split("\ntry:\n", 1)
@@ -928,7 +928,7 @@ def test_run_service_mode_uses_finalized_service_ingest_result_contract(monkeypa
         def ingest(self) -> FakeResult:
             return FakeResult()
 
-    import nemo_retriever.service_ingestor as service_ingestor
+    import nemo_retriever.service.service_ingestor as service_ingestor
 
     monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
     monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: [input_file])
@@ -983,7 +983,7 @@ def test_run_service_mode_counts_pdf_pages_not_completed_documents(monkeypatch, 
         def ingest(self) -> FakeResult:
             return FakeResult()
 
-    import nemo_retriever.service_ingestor as service_ingestor
+    import nemo_retriever.service.service_ingestor as service_ingestor
 
     monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
     monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: [input_file])
@@ -1044,7 +1044,7 @@ def test_run_service_mode_counts_failed_pdf_documents_as_pages(monkeypatch, tmp_
         def ingest(self) -> FakeResult:
             return FakeResult()
 
-    import nemo_retriever.service_ingestor as service_ingestor
+    import nemo_retriever.service.service_ingestor as service_ingestor
 
     monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
     monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: input_files)
@@ -1112,7 +1112,7 @@ def test_run_service_mode_does_not_reuse_page_count_for_unreadable_duplicate_bas
         def ingest(self) -> FakeResult:
             return FakeResult()
 
-    import nemo_retriever.service_ingestor as service_ingestor
+    import nemo_retriever.service.service_ingestor as service_ingestor
 
     input_files = [readable_pdf, unreadable_pdf]
     monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
@@ -1191,8 +1191,8 @@ def test_run_service_mode_evaluates_beir_recall_against_service(monkeypatch, tmp
             },
         )
 
-    import nemo_retriever.recall.beir as beir
-    import nemo_retriever.service_ingestor as service_ingestor
+    import nemo_retriever.tools.recall.beir as beir
+    import nemo_retriever.service.service_ingestor as service_ingestor
 
     monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
     monkeypatch.setattr(beir, "evaluate_service_beir", _fake_evaluate_service_beir)
@@ -1754,7 +1754,7 @@ def test_managed_service_mode_does_not_mutate_source_config(monkeypatch, tmp_pat
             "artifacts": {"runtime_metrics_dir": str((_artifact_dir / "runtime_metrics").resolve())},
         }
 
-    import nemo_retriever.harness.helm_manager as helm_manager
+    import nemo_retriever.tools.harness.helm_manager as helm_manager
 
     monkeypatch.setattr(helm_manager, "HelmServiceManager", FakeHelmServiceManager)
     monkeypatch.setattr(harness_run, "_run_service_mode", _fake_run_service_mode)

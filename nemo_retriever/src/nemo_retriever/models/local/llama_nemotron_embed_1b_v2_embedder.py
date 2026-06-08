@@ -10,8 +10,8 @@ from typing import Any, List, Optional, Sequence
 
 import torch
 
-from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
-from nemo_retriever.utils.hf_model_registry import get_hf_revision
+from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.models.hf_model_registry import get_hf_revision
 
 
 def _l2_normalize(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
@@ -60,8 +60,8 @@ class LlamaNemotronEmbed1BV2Embedder:
     def _ensure_loaded(self) -> None:
         if self._llm is not None:
             return
-        from nemo_retriever.model import _DEFAULT_EMBED_MODEL
-        from nemo_retriever.text_embed.vllm import create_vllm_llm
+        from nemo_retriever.models import _DEFAULT_EMBED_MODEL
+        from nemo_retriever.models.inference.vllm import create_vllm_llm
 
         configure_global_hf_cache_base(self.hf_cache_dir)
         model_id = self.model_id or _DEFAULT_EMBED_MODEL
@@ -96,7 +96,7 @@ class LlamaNemotronEmbed1BV2Embedder:
         ``prefix`` is prepended to every string before encoding (default ``passage: ``).
         """
         self._ensure_loaded()
-        from nemo_retriever.text_embed.vllm import embed_with_vllm_llm
+        from nemo_retriever.models.inference.vllm import embed_with_vllm_llm
 
         texts_list = [str(t) for t in texts if str(t).strip()]
         if not texts_list:
@@ -113,7 +113,7 @@ class LlamaNemotronEmbed1BV2Embedder:
     def embed_queries(self, texts: Sequence[str], *, batch_size: int = 64) -> torch.Tensor:
         """Embed query strings. Returns CPU tensor ``[N, D]``."""
         self._ensure_loaded()
-        from nemo_retriever.text_embed.vllm import embed_with_vllm_llm
+        from nemo_retriever.models.inference.vllm import embed_with_vllm_llm
 
         texts_list = [str(t) for t in texts if str(t).strip()]
         if not texts_list:

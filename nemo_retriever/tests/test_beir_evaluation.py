@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from nemo_retriever.pipeline import __main__ as pipeline_main
-from nemo_retriever.recall.beir import (
+from nemo_retriever.cli.pipeline import __main__ as pipeline_main
+from nemo_retriever.tools.recall.beir import (
     BeirConfig,
     BeirDataset,
     BO767_ANNOTATIONS_PATH,
@@ -156,8 +156,8 @@ def test_resolve_beir_dataset_options_does_not_guess_unknown_dataset() -> None:
 
 
 def test_pipeline_beir_evaluation_keeps_custom_dataset_doc_id_default(monkeypatch) -> None:
-    import nemo_retriever.model as model_module
-    import nemo_retriever.recall.beir as beir_module
+    import nemo_retriever.models as model_module
+    import nemo_retriever.tools.recall.beir as beir_module
 
     captured: dict[str, BeirConfig] = {}
 
@@ -207,8 +207,8 @@ def test_pipeline_beir_evaluation_keeps_custom_dataset_doc_id_default(monkeypatc
 
 
 def test_pipeline_beir_evaluation_resolves_known_dataset_name(monkeypatch) -> None:
-    import nemo_retriever.model as model_module
-    import nemo_retriever.recall.beir as beir_module
+    import nemo_retriever.models as model_module
+    import nemo_retriever.tools.recall.beir as beir_module
 
     captured: dict[str, BeirConfig] = {}
 

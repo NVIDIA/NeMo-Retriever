@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import typer
 
-from nemo_retriever.utils.benchmark import (
+from nemo_retriever.tools.benchmark import (
     all_actor,
     audio_extract_actor,
     extract_actor,

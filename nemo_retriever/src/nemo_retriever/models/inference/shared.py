@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from nemo_retriever.params import EmbedParams
+from nemo_retriever.common.params import EmbedParams
 
 
 def _to_bool(v: object, default: bool = False) -> bool:

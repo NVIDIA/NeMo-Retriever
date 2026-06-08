@@ -3,15 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from nemo_retriever.params import ASRParams
-from nemo_retriever.params import AudioChunkParams
-from nemo_retriever.params import CaptionParams
-from nemo_retriever.params import DedupParams
-from nemo_retriever.params import EmbedParams
-from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import HtmlChunkParams
-from nemo_retriever.params import TextChunkParams
-from nemo_retriever.params import VdbUploadParams
+from nemo_retriever.common.params import ASRParams
+from nemo_retriever.common.params import AudioChunkParams
+from nemo_retriever.common.params import CaptionParams
+from nemo_retriever.common.params import DedupParams
+from nemo_retriever.common.params import EmbedParams
+from nemo_retriever.common.params import ExtractParams
+from nemo_retriever.common.params import HtmlChunkParams
+from nemo_retriever.common.params import TextChunkParams
+from nemo_retriever.common.params import VdbUploadParams
 
 
 @dataclass(frozen=True)

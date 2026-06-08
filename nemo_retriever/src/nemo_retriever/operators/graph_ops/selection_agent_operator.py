@@ -15,9 +15,9 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.nim.chat_completions import invoke_chat_completion_step
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.models.nim.chat_completions import invoke_chat_completion_step
 
 logger = logging.getLogger(__name__)
 

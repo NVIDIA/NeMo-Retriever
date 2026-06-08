@@ -5,7 +5,7 @@
 
 Usage::
 
-    from nemo_retriever.utils.nvtx import gpu_inference_range
+    from nemo_retriever.common.nvtx import gpu_inference_range
 
     with gpu_inference_range("NemotronOCRv1", batch_size=8):
         result = self._model(input_data)

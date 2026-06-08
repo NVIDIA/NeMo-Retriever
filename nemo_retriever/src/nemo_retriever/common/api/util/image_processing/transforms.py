@@ -12,7 +12,7 @@ import numpy as np
 from io import BytesIO
 from PIL import Image
 
-from nemo_retriever.api.util.converters import bytetools
+from nemo_retriever.common.api.util.converters import bytetools
 
 try:
     import cv2

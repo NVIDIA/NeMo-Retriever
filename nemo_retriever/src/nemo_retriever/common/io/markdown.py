@@ -15,7 +15,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-from nemo_retriever.io.dataframe import read_dataframe
+from nemo_retriever.common.io.dataframe import read_dataframe
 
 _DOCUMENT_TITLE = "Extracted Content"
 _UNKNOWN_PAGE = -1
@@ -322,7 +322,7 @@ def _read_parquet_for_markdown(path: Path) -> pd.DataFrame:
     Selecting only the relevant columns avoids multi-GB memory spikes.
     """
     import pyarrow.parquet as pq
-    from nemo_retriever.io.dataframe import _arrow_table_to_pandas_via_pylist
+    from nemo_retriever.common.io.dataframe import _arrow_table_to_pandas_via_pylist
 
     pf = pq.ParquetFile(path)
     available = set(pf.schema_arrow.names)

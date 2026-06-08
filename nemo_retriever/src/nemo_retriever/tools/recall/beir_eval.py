@@ -76,9 +76,9 @@ class BEIREvaluatorActor:
 
         Returns the ``summary_dict`` produced by ``print_run_summary``.
         """
-        from nemo_retriever.model import resolve_embed_model
-        from nemo_retriever.recall.beir import BeirConfig, evaluate_lancedb_beir
-        from nemo_retriever.utils.detection_summary import print_run_summary
+        from nemo_retriever.models import resolve_embed_model
+        from nemo_retriever.tools.recall.beir import BeirConfig, evaluate_lancedb_beir
+        from nemo_retriever.common.detection_summary import print_run_summary
 
         resolved_model = resolve_embed_model(self.embedding_model)
 

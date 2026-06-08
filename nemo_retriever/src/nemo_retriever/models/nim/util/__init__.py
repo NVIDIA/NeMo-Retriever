@@ -9,11 +9,11 @@ from typing import Any, Tuple, Optional
 import re
 import logging
 
-from nemo_retriever.api.internal.primitives.nim import NimClient
-from nemo_retriever.api.internal.primitives.nim.model_interface.text_embedding import EmbeddingModelInterface
-from nemo_retriever.api.internal.primitives.nim.nim_client import get_nim_client_manager
-from nemo_retriever.api.internal.primitives.nim.nim_model_interface import ModelInterface
-from nemo_retriever.api.util.string_processing import ensure_openai_embeddings_http_url
+from nemo_retriever.common.api.internal.primitives.nim import NimClient
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.text_embedding import EmbeddingModelInterface
+from nemo_retriever.common.api.internal.primitives.nim.nim_client import get_nim_client_manager
+from nemo_retriever.common.api.internal.primitives.nim.nim_model_interface import ModelInterface
+from nemo_retriever.common.api.util.string_processing import ensure_openai_embeddings_http_url
 
 logger = logging.getLogger(__name__)
 

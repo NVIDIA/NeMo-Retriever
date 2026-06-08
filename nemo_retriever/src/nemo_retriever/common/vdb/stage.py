@@ -10,7 +10,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 
-from nemo_retriever.vdb.lancedb_bulk import LanceDBConfig, write_text_embeddings_dir_to_lancedb
+from nemo_retriever.common.vdb.lancedb_bulk import LanceDBConfig, write_text_embeddings_dir_to_lancedb
 
 console = Console()
 app = typer.Typer(help="VDB stage: upload stage5 embeddings to LanceDB.")

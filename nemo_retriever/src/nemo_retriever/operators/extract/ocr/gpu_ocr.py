@@ -8,12 +8,12 @@ from typing import Any
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.nim.nim import NIMClient
-from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.ocr.config import resolve_ocr_v2_lang
-from nemo_retriever.ocr.shared import Image, _error_payload, ocr_page_elements
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.models.nim.nim import NIMClient
+from nemo_retriever.common.params import RemoteRetryParams
+from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_lang
+from nemo_retriever.common.modality.ocr.shared import Image, _error_payload, ocr_page_elements
 
 
 class OCRActor(AbstractOperator, GPUOperator):
@@ -51,7 +51,7 @@ class OCRActor(AbstractOperator, GPUOperator):
                 max_pool_workers=int(self._remote_retry.remote_max_pool_workers),
             )
         else:
-            from nemo_retriever.model.local import NemotronOCRV2
+            from nemo_retriever.models.local import NemotronOCRV2
 
             lang = resolve_ocr_v2_lang(
                 str(self.ocr_kwargs.get("ocr_version", "v2")),

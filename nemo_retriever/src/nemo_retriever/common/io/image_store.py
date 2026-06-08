@@ -41,7 +41,7 @@ def render_page_image_b64(pdf_path: str, page_number: int, *, dpi: int = 300) ->
     try:
         import pypdfium2 as pdfium
 
-        from nemo_retriever.pdf.extract import _render_page_to_base64
+        from nemo_retriever.operators.extract.pdf.extract import _render_page_to_base64
 
         doc = pdfium.PdfDocument(pdf_path)
         try:

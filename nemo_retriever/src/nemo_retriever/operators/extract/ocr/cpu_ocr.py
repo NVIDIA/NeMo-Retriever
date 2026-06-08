@@ -8,12 +8,12 @@ from typing import Any
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.nim.nim import NIMClient
-from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.ocr.shared import _error_payload
-from nemo_retriever.ocr.shared import ocr_page_elements
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.models.nim.nim import NIMClient
+from nemo_retriever.common.params import RemoteRetryParams
+from nemo_retriever.common.modality.ocr.shared import _error_payload
+from nemo_retriever.common.modality.ocr.shared import ocr_page_elements
 
 
 class OCRCPUActor(AbstractOperator, CPUOperator):

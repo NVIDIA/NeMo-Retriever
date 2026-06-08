@@ -9,11 +9,11 @@ from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
 
-from nemo_retriever.api.internal.extract.image.chart_extractor import extract_chart_data_from_image_internal
-from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
-from nemo_retriever.api.internal.schemas.extract.extract_chart_schema import ChartExtractorSchema
+from nemo_retriever.common.api.internal.extract.image.chart_extractor import extract_chart_data_from_image_internal
+from nemo_retriever.common.api.internal.primitives.tracing.tagging import traceable_func
+from nemo_retriever.common.api.internal.schemas.extract.extract_chart_schema import ChartExtractorSchema
 
-from nemo_retriever.io.dataframe import validate_primitives_dataframe
+from nemo_retriever.common.io.dataframe import validate_primitives_dataframe
 
 logger = logging.getLogger(__name__)
 

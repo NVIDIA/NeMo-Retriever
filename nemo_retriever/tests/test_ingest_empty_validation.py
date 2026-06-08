@@ -4,7 +4,7 @@
 
 import pytest
 
-from nemo_retriever.adapters.cli.sdk_workflow import _raise_for_empty_ingest
+from nemo_retriever.cli.sdk_workflow import _raise_for_empty_ingest
 
 
 def test_empty_ingest_validation_accepts_rows_on_overwrite() -> None:

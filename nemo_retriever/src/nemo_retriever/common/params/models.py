@@ -15,7 +15,7 @@ from upath import UPath
 from nemo_retriever.tabular_data.sql_database import SQLDatabase
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
 IngestorRunMode = Literal["inprocess", "batch", "service"]
 
@@ -414,7 +414,7 @@ class EmbedParams(_ParamsModel):
     @field_validator("local_ingest_embed_backend", mode="before")
     @classmethod
     def _validate_local_ingest_embed_backend(cls, v: str) -> str:
-        from nemo_retriever.model import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
+        from nemo_retriever.models import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
 
         return normalize_backend(
             str(v) if v is not None else None,

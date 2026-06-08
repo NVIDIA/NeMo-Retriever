@@ -8,7 +8,7 @@ Txt ingestion: tokenizer-based split and chunk DataFrame builder.
 Compatible with the same embed and LanceDB stages as PDF primitives.
 """
 
-from nemo_retriever.txt.split import (
+from nemo_retriever.common.modality.txt.split import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_OVERLAP_TOKENS,
     DEFAULT_TOKENIZER_MODEL_ID,

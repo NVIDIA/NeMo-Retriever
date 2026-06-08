@@ -4,8 +4,8 @@
 
 """Unit tests for nemo_retriever.params.utils."""
 
-from nemo_retriever.params.models import EmbedParams
-from nemo_retriever.params.utils import (
+from nemo_retriever.common.params.models import EmbedParams
+from nemo_retriever.common.params.utils import (
     build_embed_kwargs,
     coerce_params,
     normalize_embed_kwargs,

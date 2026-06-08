@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from nemo_retriever.audio.cli import app
+from nemo_retriever.cli.audio.cli import app
 
 if __name__ == "__main__":
     app()

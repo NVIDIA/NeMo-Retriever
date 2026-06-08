@@ -18,9 +18,9 @@ import pytest
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
-import nemo_retriever.adapters.cli.sdk_workflow as sdk_workflow
-from nemo_retriever.graph_ingestor import GraphIngestor
-from nemo_retriever.params import (
+import nemo_retriever.cli.sdk_workflow as sdk_workflow
+from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
     AudioVisualFuseParams,

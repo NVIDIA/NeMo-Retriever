@@ -6,11 +6,11 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.nim.nim import NIMClient
-from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.ocr.shared import nemotron_parse_page_elements
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.models.nim.nim import NIMClient
+from nemo_retriever.common.params import RemoteRetryParams
+from nemo_retriever.common.modality.ocr.shared import nemotron_parse_page_elements
 
 
 class NemotronParseCPUActor(AbstractOperator, CPUOperator):

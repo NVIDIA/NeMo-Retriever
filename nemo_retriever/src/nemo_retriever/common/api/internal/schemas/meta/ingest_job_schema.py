@@ -7,8 +7,8 @@ from typing import Any, Dict, List, Optional, Union, Annotated
 
 from pydantic import Field, field_validator, model_validator
 
-from nemo_retriever.api.internal.schemas.meta.base_model_noext import BaseModelNoExt
-from nemo_retriever.api.internal.enums.common import ContentTypeEnum, TaskTypeEnum, DocumentTypeEnum
+from nemo_retriever.common.api.internal.schemas.meta.base_model_noext import BaseModelNoExt
+from nemo_retriever.common.api.internal.enums.common import ContentTypeEnum, TaskTypeEnum, DocumentTypeEnum
 
 # ------------------------------------------------------------------------------
 # Logging Configuration

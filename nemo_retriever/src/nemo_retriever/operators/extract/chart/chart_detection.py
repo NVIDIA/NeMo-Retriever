@@ -7,8 +7,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.chart.shared import _prediction_to_detections, graphic_elements_ocr_page_elements
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.common.modality.chart.shared import _prediction_to_detections, graphic_elements_ocr_page_elements
 from nemo_retriever.graph.designer import designer_component
 
 __all__ = [
@@ -48,13 +48,13 @@ class GraphicElementsActor(ArchetypeOperator):
 
     @classmethod
     def cpu_variant_class(cls):
-        from nemo_retriever.chart.cpu_actor import GraphicElementsCPUActor
+        from nemo_retriever.operators.extract.chart.cpu_actor import GraphicElementsCPUActor
 
         return GraphicElementsCPUActor
 
     @classmethod
     def gpu_variant_class(cls):
-        from nemo_retriever.chart.gpu_actor import GraphicElementsActor as GraphicElementsGPUActor
+        from nemo_retriever.operators.extract.chart.gpu_actor import GraphicElementsActor as GraphicElementsGPUActor
 
         return GraphicElementsGPUActor
 
@@ -72,11 +72,11 @@ class GraphicElementsActor(ArchetypeOperator):
 
 def __getattr__(name: str):
     if name == "GraphicElementsCPUActor":
-        from nemo_retriever.chart.cpu_actor import GraphicElementsCPUActor
+        from nemo_retriever.operators.extract.chart.cpu_actor import GraphicElementsCPUActor
 
         return GraphicElementsCPUActor
     if name == "GraphicElementsGPUActor":
-        from nemo_retriever.chart.gpu_actor import GraphicElementsActor as GraphicElementsGPUActor
+        from nemo_retriever.operators.extract.chart.gpu_actor import GraphicElementsActor as GraphicElementsGPUActor
 
         return GraphicElementsGPUActor
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

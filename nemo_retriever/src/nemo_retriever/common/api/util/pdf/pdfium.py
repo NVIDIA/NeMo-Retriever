@@ -18,20 +18,20 @@ import pypdfium2.raw as pdfium_c
 from numpy import dtype
 from numpy import ndarray
 
-from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
-from nemo_retriever.api.util.image_processing.clustering import (
+from nemo_retriever.common.api.internal.primitives.tracing.tagging import traceable_func
+from nemo_retriever.common.api.util.image_processing.clustering import (
     group_bounding_boxes,
     combine_groups_into_bboxes,
     remove_superset_bboxes,
 )
-from nemo_retriever.api.util.image_processing.transforms import (
+from nemo_retriever.common.api.util.image_processing.transforms import (
     pad_image,
     numpy_to_base64,
     crop_image,
     scale_numpy_image,
 )
-from nemo_retriever.api.util.metadata.aggregators import Base64Image
-from nemo_retriever.api.internal.primitives.nim.default_values import YOLOX_PAGE_IMAGE_FORMAT
+from nemo_retriever.common.api.util.metadata.aggregators import Base64Image
+from nemo_retriever.common.api.internal.primitives.nim.default_values import YOLOX_PAGE_IMAGE_FORMAT
 
 logger = logging.getLogger(__name__)
 

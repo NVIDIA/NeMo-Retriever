@@ -8,7 +8,7 @@ import asyncio
 import sys
 import types
 
-from nemo_retriever.harness import history
+from nemo_retriever.tools.harness import history
 
 
 def _install_fake_apscheduler(monkeypatch):
@@ -28,7 +28,7 @@ def _install_fake_apscheduler(monkeypatch):
 
 def test_update_managed_dataset_can_clear_ocr_lang_when_switching_to_v1(tmp_path, monkeypatch):
     _install_fake_apscheduler(monkeypatch)
-    from nemo_retriever.harness.portal.app import DatasetUpdateRequest, update_managed_dataset
+    from nemo_retriever.tools.harness.portal.app import DatasetUpdateRequest, update_managed_dataset
 
     db_path = str(tmp_path / "history.db")
     dataset_dir = tmp_path / "dataset"

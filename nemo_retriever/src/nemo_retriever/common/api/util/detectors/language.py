@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-from nemo_retriever.api.internal.enums.common import LanguageEnum
-from nemo_retriever.api.util.exception_handlers.detectors import langdetect_exception_handler
+from nemo_retriever.common.api.internal.enums.common import LanguageEnum
+from nemo_retriever.common.api.util.exception_handlers.detectors import langdetect_exception_handler
 
 
 @langdetect_exception_handler

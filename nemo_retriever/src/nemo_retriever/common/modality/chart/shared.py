@@ -12,9 +12,9 @@ import time
 import traceback
 
 import pandas as pd
-from nemo_retriever.nim.error_reporter import report_error
-from nemo_retriever.nim.nim import NIMClient, invoke_image_inference_batches
-from nemo_retriever.params import RemoteRetryParams
+from nemo_retriever.models.nim.error_reporter import report_error
+from nemo_retriever.models.nim.nim import NIMClient, invoke_image_inference_batches
+from nemo_retriever.common.params import RemoteRetryParams
 
 try:
     import numpy as np
@@ -32,7 +32,7 @@ except Exception:  # pragma: no cover
     Image = None  # type: ignore[assignment]
 
 try:
-    from nemo_retriever.api.internal.primitives.nim.model_interface.yolox import (
+    from nemo_retriever.common.api.internal.primitives.nim.model_interface.yolox import (
         YOLOX_GRAPHIC_MIN_SCORE,
     )
 except ImportError:
@@ -367,14 +367,14 @@ def graphic_elements_ocr_page_elements(
     pandas.DataFrame
         Original columns plus ``chart`` and ``graphic_elements_ocr_v1``.
     """
-    from nemo_retriever.ocr.ocr import (
+    from nemo_retriever.operators.extract.ocr.ocr import (
         _blocks_to_text,
         _crop_all_from_page,
         _extract_remote_ocr_item,
         _np_rgb_to_b64_png,
         _parse_ocr_result,
     )
-    from nemo_retriever.utils.table_and_chart import join_graphic_elements_and_ocr_output
+    from nemo_retriever.common.modality.table_and_chart import join_graphic_elements_and_ocr_output
 
     retry = remote_retry or RemoteRetryParams(
         remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),

@@ -13,14 +13,14 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nemo_retriever.audio.chunk_actor import CHUNK_COLUMNS
-from nemo_retriever.audio.chunk_actor import MediaChunkActor
-from nemo_retriever.audio.chunk_actor import audio_path_to_chunks_df
-from nemo_retriever.audio.media_interface import is_media_available
+from nemo_retriever.operators.extract.audio.chunk_actor import CHUNK_COLUMNS
+from nemo_retriever.operators.extract.audio.chunk_actor import MediaChunkActor
+from nemo_retriever.operators.extract.audio.chunk_actor import audio_path_to_chunks_df
+from nemo_retriever.common.modality.audio.media_interface import is_media_available
 from tests import _have_ffmpeg_binary
 from tests import _ffprobe_first_stream_type
 from tests import _make_test_mp4_with_av
-from nemo_retriever.params import AudioChunkParams
+from nemo_retriever.common.params import AudioChunkParams
 
 
 def _make_small_wav(path: Path, duration_sec: float = 0.5, sample_rate: int = 8000) -> None:

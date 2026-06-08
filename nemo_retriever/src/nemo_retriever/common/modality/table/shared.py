@@ -10,11 +10,11 @@ import time
 import traceback
 
 import pandas as pd
-from nemo_retriever.nim.error_reporter import report_error
-from nemo_retriever.params import RemoteRetryParams
+from nemo_retriever.models.nim.error_reporter import report_error
+from nemo_retriever.common.params import RemoteRetryParams
 
 if TYPE_CHECKING:
-    from nemo_retriever.nim.nim import NIMClient
+    from nemo_retriever.models.nim.nim import NIMClient
 
 try:
     import torch
@@ -22,7 +22,7 @@ except Exception:  # pragma: no cover
     torch = None  # type: ignore[assignment]
 
 try:
-    from nemo_retriever.api.internal.primitives.nim.model_interface.yolox import (
+    from nemo_retriever.common.api.internal.primitives.nim.model_interface.yolox import (
         YOLOX_TABLE_MIN_SCORE,
     )
 except ImportError:
@@ -252,7 +252,7 @@ def _render_structure_only_text(structure_dets: List[Dict[str, Any]], *, table_o
     output_format = str(table_output_format or "markdown").strip().lower()
 
     if output_format == "markdown" and counts["row"] > 0 and counts["column"] > 0:
-        from nemo_retriever.utils.table_and_chart import display_markdown
+        from nemo_retriever.common.modality.table_and_chart import display_markdown
 
         blank_matrix = [["" for _ in range(counts["column"])] for _ in range(counts["row"])]
         return display_markdown(blank_matrix, use_header=True)
@@ -317,8 +317,8 @@ def table_structure_ocr_page_elements(
           consumed by the OCR stage to join OCR text with structure detections.
         - ``table_structure_ocr_v1``: per-row timing/error metadata.
     """
-    from nemo_retriever.nim.nim import invoke_image_inference_batches
-    from nemo_retriever.ocr.ocr import _crop_all_from_page, _np_rgb_to_b64_png
+    from nemo_retriever.models.nim.nim import invoke_image_inference_batches
+    from nemo_retriever.operators.extract.ocr.ocr import _crop_all_from_page, _np_rgb_to_b64_png
 
     retry = remote_retry or RemoteRetryParams(
         remote_max_pool_workers=int(kwargs.get("remote_max_pool_workers", 16)),

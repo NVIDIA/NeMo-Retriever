@@ -15,9 +15,9 @@ from typing import Any, List, Literal, Optional
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.nim.chat_completions import invoke_chat_completions
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.models.nim.chat_completions import invoke_chat_completions
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
     Standalone use::
 
         import pandas as pd
-        from nemo_retriever.graph.subquery_operator import SubQueryGeneratorOperator
+        from nemo_retriever.operators.graph_ops.subquery_operator import SubQueryGeneratorOperator
 
         op = SubQueryGeneratorOperator(
             llm_model="nvidia/llama-3.3-nemotron-super-49b-v1",
@@ -152,7 +152,7 @@ class SubQueryGeneratorOperator(AbstractOperator, CPUOperator):
     Composing into a graph::
 
         from nemo_retriever.graph import InprocessExecutor
-        from nemo_retriever.graph.subquery_operator import SubQueryGeneratorOperator
+        from nemo_retriever.operators.graph_ops.subquery_operator import SubQueryGeneratorOperator
 
         graph = (
             SubQueryGeneratorOperator(llm_model="gpt-4o", max_subqueries=4)

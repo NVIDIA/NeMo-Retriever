@@ -14,7 +14,7 @@ import pytest
 
 from tests import _have_media_dependencies_for_jpeg_video_pipeline
 from tests import _make_test_mp4_with_av
-from nemo_retriever.params import (
+from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
     AudioVisualFuseParams,
@@ -24,7 +24,7 @@ from nemo_retriever.params import (
 
 
 def test_run_video_pipeline_forces_audio_demux_chunk_params_without_ffmpeg() -> None:
-    from nemo_retriever.graph.multi_type_extract_operator import _MultiTypeExtractBase
+    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import _MultiTypeExtractBase
 
     op = _MultiTypeExtractBase(
         extraction_mode="auto",
@@ -73,7 +73,7 @@ def test_run_video_pipeline_emits_audio_frame_and_scene_rows(tmp_path: Path) -> 
     fixture = tmp_path / "fixture.mp4"
     _make_test_mp4_with_av(fixture, duration_sec=5)
 
-    from nemo_retriever.graph.multi_type_extract_operator import _MultiTypeExtractBase
+    from nemo_retriever.operators.graph_ops.multi_type_extract_operator import _MultiTypeExtractBase
 
     # Build a base operator with a remote-ocr URL so VideoFrameOCRActor
     # resolves to its CPU (NIM) variant.

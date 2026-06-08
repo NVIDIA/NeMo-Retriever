@@ -11,12 +11,12 @@ from typing import Any, Dict, List, Optional
 import traceback
 
 import pandas as pd
-from nemo_retriever.nim.error_reporter import report_error
-from nemo_retriever.params import PdfSplitParams
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.models.nim.error_reporter import report_error
+from nemo_retriever.common.params import PdfSplitParams
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 
 try:
     import pypdfium2 as pdfium

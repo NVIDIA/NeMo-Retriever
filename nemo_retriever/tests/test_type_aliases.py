@@ -5,10 +5,10 @@
 from importlib import import_module
 from typing import get_args
 
-import nemo_retriever.params as params_module
-from nemo_retriever.model.model import ModelRunMode
-from nemo_retriever.params import EmbedParams
-from nemo_retriever.params import IngestorRunMode
+import nemo_retriever.common.params as params_module
+from nemo_retriever.models.model import ModelRunMode
+from nemo_retriever.common.params import EmbedParams
+from nemo_retriever.common.params import IngestorRunMode
 
 
 def test_run_mode_type_aliases_are_domain_specific() -> None:

@@ -28,19 +28,19 @@ import pandas as pd
 
 from pathlib import Path
 
-from nemo_retriever.audio.chunk_actor import _chunk_one
-from nemo_retriever.audio.media_interface import FFMPEG_DEPENDENCIES
-from nemo_retriever.audio.media_interface import MediaInterface
-from nemo_retriever.audio.media_interface import ensure_media_on_disk
-from nemo_retriever.audio.media_interface import is_ffmpeg_available
-from nemo_retriever.audio.media_interface import is_media_available
-from nemo_retriever.audio.media_interface import media_dependency_error_message
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.operators.extract.audio.chunk_actor import _chunk_one
+from nemo_retriever.common.modality.audio.media_interface import FFMPEG_DEPENDENCIES
+from nemo_retriever.common.modality.audio.media_interface import MediaInterface
+from nemo_retriever.common.modality.audio.media_interface import ensure_media_on_disk
+from nemo_retriever.common.modality.audio.media_interface import is_ffmpeg_available
+from nemo_retriever.common.modality.audio.media_interface import is_media_available
+from nemo_retriever.common.modality.audio.media_interface import media_dependency_error_message
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.params import AudioChunkParams, VideoFrameParams
+from nemo_retriever.common.params import AudioChunkParams, VideoFrameParams
 from nemo_retriever.video import _content_types as _CT
-from nemo_retriever.video.frame_actor import _extract_one, dedup_video_frames
+from nemo_retriever.operators.extract.video.frame_actor import _extract_one, dedup_video_frames
 
 logger = logging.getLogger(__name__)
 

@@ -10,9 +10,9 @@ from typing import Any
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.params import TabularExtractParams
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.common.params import TabularExtractParams
 
 
 class TabularSchemaExtractOp(AbstractOperator, CPUOperator):

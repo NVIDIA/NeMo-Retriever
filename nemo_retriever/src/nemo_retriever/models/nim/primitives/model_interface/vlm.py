@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional, Tuple, List
 
 import logging
 
-from nemo_retriever.api.internal.primitives.nim import ModelInterface
+from nemo_retriever.common.api.internal.primitives.nim import ModelInterface
 
 logger = logging.getLogger(__name__)
 

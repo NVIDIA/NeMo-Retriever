@@ -24,9 +24,9 @@ _logger = logging.getLogger(__name__)
 
 import numpy as np
 import pandas as pd
-from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.nim.nim import NIMClient, invoke_image_inference_batches
-from nemo_retriever.utils.table_and_chart import (
+from nemo_retriever.common.params import RemoteRetryParams
+from nemo_retriever.models.nim.nim import NIMClient, invoke_image_inference_batches
+from nemo_retriever.common.modality.table_and_chart import (
     join_graphic_elements_and_ocr_output,
     join_table_structure_and_ocr_output,
 )

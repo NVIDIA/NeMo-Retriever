@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 
 from nemo_retriever.graph import InprocessExecutor, StoreOperator, UDFOperator
-from nemo_retriever.params import StoreParams
+from nemo_retriever.common.params import StoreParams
 
 
 def _make_tiny_png_b64(width: int = 4, height: int = 4, color=(255, 0, 0)) -> str:
@@ -208,7 +208,7 @@ class TestStoreOperatorInGraph:
             StoreParams(public_base_url="https://cdn.example.com")
 
     def test_explode_does_not_reload_stored_uri_for_embedding(self, monkeypatch):
-        from nemo_retriever.graph.content_transforms import explode_content_to_rows
+        from nemo_retriever.common.modality.content_transforms import explode_content_to_rows
 
         def _fail_load(uri):
             raise AssertionError(f"content transform attempted to reload stored image URI: {uri}")
@@ -227,7 +227,7 @@ class TestStoreOperatorInGraph:
         assert result.iloc[0]["_stored_image_uri"] == "file:///page.png"
 
     def test_collapse_does_not_reload_stored_uri_for_embedding(self, monkeypatch):
-        from nemo_retriever.graph.content_transforms import collapse_content_to_page_rows
+        from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
 
         def _fail_load(uri):
             raise AssertionError(f"content transform attempted to reload stored image URI: {uri}")

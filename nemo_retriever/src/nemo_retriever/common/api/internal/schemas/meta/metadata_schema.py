@@ -13,7 +13,7 @@ from typing import Union
 
 from pydantic import field_validator, model_validator, Field
 
-from nemo_retriever.api.internal.enums.common import (
+from nemo_retriever.common.api.internal.enums.common import (
     AccessLevelEnum,
     ContentTypeEnum,
     TextTypeEnum,
@@ -23,8 +23,8 @@ from nemo_retriever.api.internal.enums.common import (
     DocumentTypeEnum,
     TaskTypeEnum,
 )
-from nemo_retriever.api.internal.schemas.meta.base_model_noext import BaseModelNoExt
-from nemo_retriever.api.util.converters import datetools
+from nemo_retriever.common.api.internal.schemas.meta.base_model_noext import BaseModelNoExt
+from nemo_retriever.common.api.util.converters import datetools
 
 logger = logging.getLogger(__name__)
 

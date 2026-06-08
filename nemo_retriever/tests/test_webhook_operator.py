@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.webhook_operator import (
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.graph_ops.webhook_operator import (
     WebhookNotifyOperator,
     _dataframe_to_records,
     _serialize_value,

@@ -176,7 +176,7 @@ class MediaDependencyAvailabilityTests(TestCase):
 
     def test_video_frame_loader_does_not_require_ffprobe(self) -> None:
         from nemo_retriever.audio import media_interface
-        from nemo_retriever.params import VideoFrameParams
+        from nemo_retriever.common.params import VideoFrameParams
         from nemo_retriever.video import frame_actor
 
         def fake_which(name: str) -> str | None:
@@ -206,8 +206,8 @@ class MediaDependencyAvailabilityTests(TestCase):
 
     def test_video_split_frame_only_does_not_require_ffprobe(self) -> None:
         from nemo_retriever.audio import media_interface
-        from nemo_retriever.params import AudioChunkParams, VideoFrameParams
-        from nemo_retriever.video.split import VideoSplitActor
+        from nemo_retriever.common.params import AudioChunkParams, VideoFrameParams
+        from nemo_retriever.operators.extract.video.split import VideoSplitActor
 
         def fake_which(name: str) -> str | None:
             return f"/usr/bin/{name}" if name == "ffmpeg" else None

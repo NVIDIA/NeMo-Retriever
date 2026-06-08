@@ -12,9 +12,9 @@ import time
 import traceback
 
 import pandas as pd
-from nemo_retriever.nim.nim import NIMClient, invoke_page_elements_batches
-from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.page_elements.local import (
+from nemo_retriever.models.nim.nim import NIMClient, invoke_page_elements_batches
+from nemo_retriever.common.params import RemoteRetryParams
+from nemo_retriever.common.modality.page_elements.local import (
     YOLOX_PAGE_V3_CLASS_LABELS,
     YOLOX_PAGE_V3_FINAL_SCORE,
     postprocess_page_elements_v3,

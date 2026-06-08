@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.page_elements.shared import detect_page_elements_v3
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.common.modality.page_elements.shared import detect_page_elements_v3
 from nemo_retriever.graph.designer import designer_component
 
 __all__ = [
@@ -31,13 +31,15 @@ class PageElementDetectionActor(ArchetypeOperator):
 
     @classmethod
     def cpu_variant_class(cls):
-        from nemo_retriever.page_elements.cpu_actor import PageElementDetectionCPUActor
+        from nemo_retriever.operators.extract.page_elements.cpu_actor import PageElementDetectionCPUActor
 
         return PageElementDetectionCPUActor
 
     @classmethod
     def gpu_variant_class(cls):
-        from nemo_retriever.page_elements.gpu_actor import PageElementDetectionActor as PageElementDetectionGPUActor
+        from nemo_retriever.operators.extract.page_elements.gpu_actor import (
+            PageElementDetectionActor as PageElementDetectionGPUActor,
+        )
 
         return PageElementDetectionGPUActor
 
@@ -47,11 +49,13 @@ class PageElementDetectionActor(ArchetypeOperator):
 
 def __getattr__(name: str):
     if name == "PageElementDetectionCPUActor":
-        from nemo_retriever.page_elements.cpu_actor import PageElementDetectionCPUActor
+        from nemo_retriever.operators.extract.page_elements.cpu_actor import PageElementDetectionCPUActor
 
         return PageElementDetectionCPUActor
     if name == "PageElementDetectionGPUActor":
-        from nemo_retriever.page_elements.gpu_actor import PageElementDetectionActor as PageElementDetectionGPUActor
+        from nemo_retriever.operators.extract.page_elements.gpu_actor import (
+            PageElementDetectionActor as PageElementDetectionGPUActor,
+        )
 
         return PageElementDetectionGPUActor
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

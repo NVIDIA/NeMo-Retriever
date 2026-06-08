@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import typer
 
-from nemo_retriever.recall import vdb_recall
+from nemo_retriever.tools.recall import vdb_recall
 
 app = typer.Typer(help="Recall utilities (query -> embed -> vector DB search).")
 app.add_typer(vdb_recall.app, name="vdb-recall")

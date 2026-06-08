@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_retriever.params.models import HtmlChunkParams
-from nemo_retriever.params.models import TextChunkParams
-from nemo_retriever.params.models import TextChunkParamsByType
+from nemo_retriever.common.params.models import HtmlChunkParams
+from nemo_retriever.common.params.models import TextChunkParams
+from nemo_retriever.common.params.models import TextChunkParamsByType
 
 
 def _as_text_params(obj: Any) -> TextChunkParams | None:

@@ -19,9 +19,9 @@ consumers can use scoring without installing the ``[llm]`` extra::
     pip install nemo-retriever[llm]     # SDK + batch eval
 """
 
-from nemo_retriever.evaluation.eval_operator import EvalOperator
-from nemo_retriever.evaluation.scoring import score_dataframe
-from nemo_retriever.llm.types import (
+from nemo_retriever.tools.evaluation.eval_operator import EvalOperator
+from nemo_retriever.tools.evaluation.scoring import score_dataframe
+from nemo_retriever.models.llm.types import (
     AnswerJudge,
     GenerationResult,
     JudgeResult,

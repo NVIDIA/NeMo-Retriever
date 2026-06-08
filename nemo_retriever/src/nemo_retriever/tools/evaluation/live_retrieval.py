@@ -9,10 +9,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from nemo_retriever.evaluation.eval_operator import EvalOperator
+from nemo_retriever.tools.evaluation.eval_operator import EvalOperator
 
 if TYPE_CHECKING:
-    from nemo_retriever.retriever import Retriever
+    from nemo_retriever.graph.retriever import Retriever
 
 logger = logging.getLogger(__name__)
 

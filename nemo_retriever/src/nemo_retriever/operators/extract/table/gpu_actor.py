@@ -8,12 +8,12 @@ from typing import Any, Optional
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.nim.nim import NIMClient
-from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.ocr.config import resolve_ocr_v2_lang
-from nemo_retriever.table.shared import table_structure_ocr_page_elements
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.models.nim.nim import NIMClient
+from nemo_retriever.common.params import RemoteRetryParams
+from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_lang
+from nemo_retriever.common.modality.table.shared import table_structure_ocr_page_elements
 
 
 class TableStructureActor(AbstractOperator, GPUOperator):
@@ -52,14 +52,14 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         if self._table_structure_invoke_url:
             self._table_structure_model = None
         else:
-            from nemo_retriever.model.local import NemotronTableStructureV1
+            from nemo_retriever.models.local import NemotronTableStructureV1
 
             self._table_structure_model = NemotronTableStructureV1()
 
         if self._ocr_invoke_url:
             self._ocr_model = None
         else:
-            from nemo_retriever.model.local import NemotronOCRV2
+            from nemo_retriever.models.local import NemotronOCRV2
 
             lang = resolve_ocr_v2_lang(ocr_version, ocr_lang)
             self._ocr_model = NemotronOCRV2(lang=lang)

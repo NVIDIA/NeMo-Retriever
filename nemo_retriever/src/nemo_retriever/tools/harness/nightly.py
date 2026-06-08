@@ -9,10 +9,10 @@ from pathlib import Path
 
 import typer
 
-from nemo_retriever.harness.artifacts import write_session_summary
-from nemo_retriever.harness.config import DEFAULT_NIGHTLY_CONFIG_PATH, load_nightly_config
-from nemo_retriever.harness.run import _normalize_tags, execute_runs
-from nemo_retriever.harness.slack import load_replay_report, load_session_report, post_report_to_slack
+from nemo_retriever.tools.harness.artifacts import write_session_summary
+from nemo_retriever.tools.harness.config import DEFAULT_NIGHTLY_CONFIG_PATH, load_nightly_config
+from nemo_retriever.tools.harness.run import _normalize_tags, execute_runs
+from nemo_retriever.tools.harness.slack import load_replay_report, load_session_report, post_report_to_slack
 
 
 def _maybe_post_to_slack(

@@ -85,7 +85,7 @@ def resolve_split_params(
     ``HtmlChunkParams`` instance (passed through verbatim), ``None``, or
     ``False``.
     """
-    from nemo_retriever.params.models import HtmlChunkParams, TextChunkParams
+    from nemo_retriever.common.params.models import HtmlChunkParams, TextChunkParams
 
     cfg = split_config or {}
     unknown = set(cfg) - SPLIT_CONFIG_VALID_KEYS

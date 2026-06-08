@@ -9,8 +9,8 @@ from typing import Any, Dict, Optional, List, Tuple, Set
 
 import pandas as pd
 
-from nemo_retriever.api.internal.enums.common import ContentTypeEnum
-from nemo_retriever.api.internal.schemas.mutate.mutate_image_dedup_schema import ImageDedupSchema
+from nemo_retriever.common.api.internal.enums.common import ContentTypeEnum
+from nemo_retriever.common.api.internal.schemas.mutate.mutate_image_dedup_schema import ImageDedupSchema
 
 logger = logging.getLogger(__name__)
 

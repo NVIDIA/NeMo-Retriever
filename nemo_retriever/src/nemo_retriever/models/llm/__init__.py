@@ -10,8 +10,8 @@ external deps).  ``LiteLLMClient`` and ``LLMJudge`` are lazy-loaded so
 that lightweight consumers can use the type contracts without
 installing ``litellm``::
 
-    from nemo_retriever.llm import RetrieverStrategy, RetrievalResult  # cheap
-    from nemo_retriever.llm import LiteLLMClient  # imports litellm on first use
+    from nemo_retriever.models.llm import RetrieverStrategy, RetrievalResult  # cheap
+    from nemo_retriever.models.llm import LiteLLMClient  # imports litellm on first use
 
 Credentials
 -----------
@@ -35,7 +35,7 @@ Protocols + result dataclasses + concrete clients + re-exported params
 models listed here are the supported integration points.
 """
 
-from nemo_retriever.llm.types import (
+from nemo_retriever.models.llm.types import (
     AnswerJudge,
     AnswerResult,
     GenerationResult,
@@ -44,7 +44,7 @@ from nemo_retriever.llm.types import (
     RetrievalResult,
     RetrieverStrategy,
 )
-from nemo_retriever.params.models import LLMInferenceParams, LLMRemoteClientParams
+from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
 
 _LAZY_IMPORTS = {
     "LiteLLMClient": "nemo_retriever.llm.clients.litellm",

@@ -16,12 +16,12 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.audio.chunk_actor import _chunk_one
-from nemo_retriever.audio.media_interface import MediaInterface
+from nemo_retriever.operators.extract.audio.chunk_actor import _chunk_one
+from nemo_retriever.common.modality.audio.media_interface import MediaInterface
 from tests import _have_ffmpeg_binary
-from nemo_retriever.graph_ingestor import GraphIngestor
-from nemo_retriever.params import ASRParams
-from nemo_retriever.params import AudioChunkParams
+from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+from nemo_retriever.common.params import ASRParams
+from nemo_retriever.common.params import AudioChunkParams
 
 
 def _make_small_wav(path: Path, duration_sec: float = 0.5, sample_rate: int = 8000) -> None:
@@ -121,7 +121,7 @@ def test_inprocess_audio_pipeline_local_asr_mocked(tmp_path: Path):
     After the ASR CPU/GPU split, the archetype only picks the GPU variant when a
     GPU is detected, so we mock ``gather_local_resources`` to advertise one.
     """
-    from nemo_retriever.utils.ray_resource_hueristics import Resources
+    from nemo_retriever.common.ray_resource_hueristics import Resources
 
     wav = tmp_path / "small.wav"
     _make_small_wav(wav, duration_sec=0.5)

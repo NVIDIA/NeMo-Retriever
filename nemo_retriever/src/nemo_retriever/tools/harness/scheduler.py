@@ -15,7 +15,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from nemo_retriever.harness import history
+from nemo_retriever.tools.harness import history
 
 logger = logging.getLogger(__name__)
 

@@ -18,33 +18,33 @@ import pandas as pd
 from nemo_retriever.audio import ASRActor
 from nemo_retriever.audio import MediaChunkActor
 from nemo_retriever.audio import asr_params_from_env
-from nemo_retriever.chart.chart_detection import GraphicElementsActor
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.html.ray_data import HtmlSplitActor
-from nemo_retriever.image.ray_data import ImageLoadActor
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.extract.chart.chart_detection import GraphicElementsActor
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.extract.html.ray_data import HtmlSplitActor
+from nemo_retriever.operators.extract.image.ray_data import ImageLoadActor
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph.operator_resolution import resolve_operator_class
-from nemo_retriever.ocr.ocr import resolve_ocr_archetype
-from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
-from nemo_retriever.params import ASRParams
-from nemo_retriever.params import AudioChunkParams
-from nemo_retriever.params import CaptionParams
-from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import HtmlChunkParams
-from nemo_retriever.params import PdfSplitParams
-from nemo_retriever.params import AudioVisualFuseParams
-from nemo_retriever.params import TextChunkParams
-from nemo_retriever.params import VideoFrameParams
-from nemo_retriever.params import VideoFrameTextDedupParams
-from nemo_retriever.params import resolve_split_params
-from nemo_retriever.parse.nemotron_parse import NemotronParseActor
-from nemo_retriever.pdf.extract import PDFExtractionActor
-from nemo_retriever.pdf.split import PDFSplitActor
-from nemo_retriever.table.table_detection import TableStructureActor
-from nemo_retriever.txt.ray_data import TextChunkCPUActor, TxtSplitActor
-from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor
+from nemo_retriever.operators.extract.ocr.ocr import resolve_ocr_archetype
+from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionActor
+from nemo_retriever.common.params import ASRParams
+from nemo_retriever.common.params import AudioChunkParams
+from nemo_retriever.common.params import CaptionParams
+from nemo_retriever.common.params import ExtractParams
+from nemo_retriever.common.params import HtmlChunkParams
+from nemo_retriever.common.params import PdfSplitParams
+from nemo_retriever.common.params import AudioVisualFuseParams
+from nemo_retriever.common.params import TextChunkParams
+from nemo_retriever.common.params import VideoFrameParams
+from nemo_retriever.common.params import VideoFrameTextDedupParams
+from nemo_retriever.common.params import resolve_split_params
+from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor
+from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor
+from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
+from nemo_retriever.operators.extract.table.table_detection import TableStructureActor
+from nemo_retriever.operators.extract.txt.ray_data import TextChunkCPUActor, TxtSplitActor
+from nemo_retriever.common.modality.convert.to_pdf import DocToPdfConversionActor
 from nemo_retriever.video import AudioVisualFuser
 from nemo_retriever.video import VideoFrameActor
 from nemo_retriever.video import VideoFrameOCRActor
@@ -52,7 +52,7 @@ from nemo_retriever.video import VideoFrameTextDedup
 from nemo_retriever.video import dedup_video_frames
 from nemo_retriever.video import video_asr_audio_chunk_params
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.utils.input_files import INPUT_TYPE_EXTENSIONS
+from nemo_retriever.common.input_files import INPUT_TYPE_EXTENSIONS
 from nemo_retriever.utils import ray_resource_hueristics as _rrh
 
 logger = logging.getLogger(__name__)

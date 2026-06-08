@@ -15,7 +15,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from nemo_retriever.harness.config import HarnessConfig, NEMO_RETRIEVER_ROOT
+from nemo_retriever.tools.harness.config import HarnessConfig, NEMO_RETRIEVER_ROOT
 
 
 logger = logging.getLogger(__name__)

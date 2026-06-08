@@ -16,9 +16,9 @@ import logging
 import time
 from typing import Any, Optional
 
-from nemo_retriever.llm.text_utils import strip_think_tags
-from nemo_retriever.llm.types import GenerationResult
-from nemo_retriever.params.models import LLMInferenceParams, LLMRemoteClientParams
+from nemo_retriever.models.llm.text_utils import strip_think_tags
+from nemo_retriever.models.llm.types import GenerationResult
+from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
 
 logger = logging.getLogger(__name__)
 

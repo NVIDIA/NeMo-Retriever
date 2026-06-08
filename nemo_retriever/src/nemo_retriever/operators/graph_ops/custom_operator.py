@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.graph.designer import designer_component
 
 

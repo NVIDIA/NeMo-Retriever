@@ -30,7 +30,7 @@ try:
 except ModuleNotFoundError:
     wavfile = None  # type: ignore[assignment]
 
-from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
+from nemo_retriever.common.api.internal.primitives.tracing.tagging import traceable_func
 
 try:
     import librosa

@@ -19,8 +19,8 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_retriever.evaluation.retrievers import FileRetriever
-from nemo_retriever.llm.types import RetrievalResult
+from nemo_retriever.tools.evaluation.retrievers import FileRetriever
+from nemo_retriever.models.llm.types import RetrievalResult
 
 _SAMPLE_QUERIES: dict[str, dict] = {
     "What is the range of the 767?": {
@@ -180,7 +180,7 @@ def test_from_lancedb_save_path_sets_file_path(tmp_path: Path) -> None:
 def test_query_lancedb_constructs_vdb_backed_retriever(monkeypatch) -> None:
     import importlib
 
-    from nemo_retriever.export import query_lancedb
+    from nemo_retriever.common.io.export import query_lancedb
 
     captured_kwargs: dict[str, object] = {}
 

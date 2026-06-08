@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.nim.probe import probe_endpoint
-from nemo_retriever.params import EmbedParams
-from nemo_retriever.text_embed.runtime import embed_text_main_text_embed
-from nemo_retriever.text_embed.shared import build_embed_kwargs
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.models.nim.probe import probe_endpoint
+from nemo_retriever.common.params import EmbedParams
+from nemo_retriever.models.inference.runtime import embed_text_main_text_embed
+from nemo_retriever.models.inference.shared import build_embed_kwargs
 
 
 class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):

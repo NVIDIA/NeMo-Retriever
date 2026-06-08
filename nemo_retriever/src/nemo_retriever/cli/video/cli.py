@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from nemo_retriever.video.stage import app as app
+from nemo_retriever.cli.video.stage import app as app
 
 
 def main() -> None:

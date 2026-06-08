@@ -13,13 +13,13 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.audio.asr_actor import DEFAULT_NGC_ASR_FUNCTION_ID
+from nemo_retriever.operators.extract.audio.asr_actor import DEFAULT_NGC_ASR_FUNCTION_ID
 from tests import _have_ffmpeg_binary
-from nemo_retriever.audio.stage import _audio_extraction_json_path
-from nemo_retriever.audio.stage import _run_extract_one
-from nemo_retriever.audio.stage import extract
-from nemo_retriever.params import ASRParams
-from nemo_retriever.params import AudioChunkParams
+from nemo_retriever.cli.audio.stage import _audio_extraction_json_path
+from nemo_retriever.cli.audio.stage import _run_extract_one
+from nemo_retriever.cli.audio.stage import extract
+from nemo_retriever.common.params import ASRParams
+from nemo_retriever.common.params import AudioChunkParams
 
 
 def _make_small_wav(path: Path, duration_sec: float = 0.5, sample_rate: int = 8000) -> None:

@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from nemo_retriever.harness.cli import main
+from nemo_retriever.tools.harness.cli import main
 
 
 if __name__ == "__main__":

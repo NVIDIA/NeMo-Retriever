@@ -20,14 +20,14 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from nemo_retriever.audio.asr_actor import (
+from nemo_retriever.operators.extract.audio.asr_actor import (
     _ASRActorBase,
     _concat_with_passthrough,
     _split_audio_rows,
 )
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.params import ASRParams
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.common.params import ASRParams
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class ASRGPUActor(_ASRActorBase, AbstractOperator, GPUOperator):
     def __init__(self, params: ASRParams | None = None) -> None:
         super().__init__(params=params)
         self._params = params or ASRParams()
-        from nemo_retriever.model.local import ParakeetCTC1B1ASR
+        from nemo_retriever.models.local import ParakeetCTC1B1ASR
 
         self._model = ParakeetCTC1B1ASR()
 

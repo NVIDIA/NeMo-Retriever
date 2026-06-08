@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.params import EmbedParams
-from nemo_retriever.text_embed.runtime import embed_text_main_text_embed
-from nemo_retriever.text_embed.shared import build_embed_kwargs, _to_bool
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.common.params import EmbedParams
+from nemo_retriever.models.inference.runtime import embed_text_main_text_embed
+from nemo_retriever.models.inference.shared import build_embed_kwargs, _to_bool
 
 
 class _BatchEmbedActor(AbstractOperator, GPUOperator):
@@ -39,7 +39,7 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
         ingest_backend = (self._kwargs.get("local_ingest_embed_backend") or "vllm").strip().lower()
         hf_cache = str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None
 
-        from nemo_retriever.model import create_local_embedder
+        from nemo_retriever.models import create_local_embedder
 
         hf_device = str(self._kwargs["local_hf_device"]) if self._kwargs.get("local_hf_device") else None
         self._model = create_local_embedder(

@@ -17,11 +17,11 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from nemo_retriever.audio.asr_actor import ASRActor
-from nemo_retriever.audio.asr_actor import DEFAULT_NGC_ASR_FUNCTION_ID
-from nemo_retriever.audio.asr_actor import apply_asr_to_df
-from nemo_retriever.audio.asr_actor import asr_params_from_env
-from nemo_retriever.params import ASRParams
+from nemo_retriever.operators.extract.audio.asr_actor import ASRActor
+from nemo_retriever.operators.extract.audio.asr_actor import DEFAULT_NGC_ASR_FUNCTION_ID
+from nemo_retriever.operators.extract.audio.asr_actor import apply_asr_to_df
+from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
+from nemo_retriever.common.params import ASRParams
 
 
 NVCF_GRPC_ENDPOINT = "grpc.nvcf.nvidia.com:443"
@@ -34,7 +34,7 @@ def test_strip_pad_from_transcript():
     local_mod = sys.modules.get("nemo_retriever.model.local")
     if local_mod is not None and not hasattr(local_mod, "__path__"):
         sys.modules.pop("nemo_retriever.model.local", None)
-    from nemo_retriever.model.local.parakeet_ctc_1_1b_asr import _strip_pad_from_transcript
+    from nemo_retriever.models.local.parakeet_ctc_1_1b_asr import _strip_pad_from_transcript
 
     assert _strip_pad_from_transcript("") == ""
     assert _strip_pad_from_transcript("  ") == ""
@@ -200,7 +200,7 @@ def test_apply_asr_to_df_segment_audio():
 def test_local_asr_does_not_call_get_client():
     """After the CPU/GPU split the local-Parakeet path is :class:`ASRGPUActor`,
     which must never touch the remote ``_get_client`` factory."""
-    from nemo_retriever.audio.gpu_actor import ASRGPUActor
+    from nemo_retriever.operators.extract.audio.gpu_actor import ASRGPUActor
 
     mock_model = MagicMock()
     mock_model.transcribe_with_segments.return_value = [("mocked local transcript", [])]
@@ -275,7 +275,7 @@ def test_asr_params_from_env_without_endpoint_drops_nvidia_auth(monkeypatch):
 
 
 def test_asr_cpu_actor_defaults_with_only_nvidia_auth_populate_remote_defaults(monkeypatch):
-    from nemo_retriever.audio.cpu_actor import ASRCPUActor
+    from nemo_retriever.operators.extract.audio.cpu_actor import ASRCPUActor
 
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
     monkeypatch.delenv("AUDIO_GRPC_ENDPOINT", raising=False)
@@ -299,7 +299,7 @@ def test_local_asr_apply_asr_to_df():
     ``gather_local_resources`` source — every dispatch site (executor,
     archetype, resolver, multi-type op) reads through that one attribute.
     """
-    from nemo_retriever.utils.ray_resource_hueristics import Resources
+    from nemo_retriever.common.ray_resource_hueristics import Resources
 
     mock_model = MagicMock()
     mock_model.transcribe_with_segments.return_value = [("apply local text", [])]

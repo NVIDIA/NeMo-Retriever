@@ -8,12 +8,12 @@ from typing import Any, Callable, Dict
 
 import pandas as pd
 
-from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
-from nemo_retriever.chart.processor import extract_chart_data_from_primitives_df
-from nemo_retriever.infographic.processor import extract_infographic_data_from_primitives_df
-from nemo_retriever.table.processor import extract_table_data_from_primitives_df
-from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
-from nemo_retriever.text_embed.processor import embed_text_from_primitives_df
+from nemo_retriever.operators.extract.chart.chart_detection import graphic_elements_ocr_page_elements
+from nemo_retriever.common.modality.chart.processor import extract_chart_data_from_primitives_df
+from nemo_retriever.common.modality.infographic.processor import extract_infographic_data_from_primitives_df
+from nemo_retriever.common.modality.table.processor import extract_table_data_from_primitives_df
+from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
+from nemo_retriever.models.inference.processor import embed_text_from_primitives_df
 
 StageHandler = Callable[..., Any]
 

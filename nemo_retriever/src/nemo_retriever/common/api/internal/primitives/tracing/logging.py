@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from nemo_retriever.api.internal.primitives.ingest_control_message import IngestControlMessage
+from nemo_retriever.common.api.internal.primitives.ingest_control_message import IngestControlMessage
 
 
 class TaskResultStatus(Enum):

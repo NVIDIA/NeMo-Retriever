@@ -22,7 +22,7 @@ from importlib.resources import files as pkg_files
 from pathlib import Path
 from typing import Any
 
-from nemo_retriever.skill_eval.dataset import DatasetEntry
+from nemo_retriever.tools.skill_eval.dataset import DatasetEntry
 
 logger = logging.getLogger(__name__)
 

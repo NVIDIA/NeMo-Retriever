@@ -7,9 +7,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict
 
-from nemo_retriever.config_utils import endpoints_from_yaml
+from nemo_retriever.common.config_utils import endpoints_from_yaml
 
-from nemo_retriever.api.internal.schemas.extract.extract_table_schema import TableExtractorSchema
+from nemo_retriever.common.api.internal.schemas.extract.extract_table_schema import TableExtractorSchema
 
 
 def load_table_extractor_schema_from_dict(cfg: Dict[str, Any]) -> TableExtractorSchema:

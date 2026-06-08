@@ -11,16 +11,16 @@ from typing import Any
 from typing import Dict
 from typing import List
 from typing import Optional
-from nemo_retriever.api.util.logging.sanitize import sanitize_for_logging
+from nemo_retriever.common.api.util.logging.sanitize import sanitize_for_logging
 
 import pandas as pd
-from nemo_retriever.api.internal.extract.pdf.engines import adobe_extractor
-from nemo_retriever.api.internal.extract.pdf.engines import llama_parse_extractor
-from nemo_retriever.api.internal.extract.pdf.engines import nemotron_parse_extractor
-from nemo_retriever.api.internal.extract.pdf.engines import pdfium_extractor
-from nemo_retriever.api.internal.extract.pdf.engines import tika_extractor
-from nemo_retriever.api.internal.extract.pdf.engines import unstructured_io_extractor
-from nemo_retriever.api.util.exception_handlers.decorators import unified_exception_handler
+from nemo_retriever.common.api.internal.extract.pdf.engines import adobe_extractor
+from nemo_retriever.common.api.internal.extract.pdf.engines import llama_parse_extractor
+from nemo_retriever.common.api.internal.extract.pdf.engines import nemotron_parse_extractor
+from nemo_retriever.common.api.internal.extract.pdf.engines import pdfium_extractor
+from nemo_retriever.common.api.internal.extract.pdf.engines import tika_extractor
+from nemo_retriever.common.api.internal.extract.pdf.engines import unstructured_io_extractor
+from nemo_retriever.common.api.util.exception_handlers.decorators import unified_exception_handler
 
 # Import extraction functions for different engines.
 

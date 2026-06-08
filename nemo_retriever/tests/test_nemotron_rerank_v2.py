@@ -99,8 +99,8 @@ def _patch_heavy_deps(monkeypatch):
 
 
 def test_prompt_template_format():
-    from nemo_retriever.rerank.rerank import _rerank_via_endpoint  # noqa: F401 — just ensure importable
-    from nemo_retriever.model.local.nemotron_rerank_v2 import _prompt_template
+    from nemo_retriever.operators.rerank import _rerank_via_endpoint  # noqa: F401 — just ensure importable
+    from nemo_retriever.models.local.nemotron_rerank_v2 import _prompt_template
 
     result = _prompt_template("What is ML?", "Machine learning is a branch of AI.")
     assert "question:What is ML?" in result
@@ -117,7 +117,7 @@ class TestNemotronRerankV2Properties:
 
     def _make_instance(self, model_name: str = "nvidia/llama-nemotron-rerank-1b-v2") -> object:
         """Instantiate NemotronRerankV2 with all heavy ops mocked out."""
-        from nemo_retriever.model.local import nemotron_rerank_v2 as mod
+        from nemo_retriever.models.local import nemotron_rerank_v2 as mod
 
         with (
             patch.object(mod, "configure_global_hf_cache_base"),
@@ -156,7 +156,7 @@ class TestNemotronRerankV2Properties:
         assert obj.model_name == "my-org/my-reranker"
 
     def test_default_model_loads_with_pinned_revision(self):
-        from nemo_retriever.model.local import nemotron_rerank_v2 as mod
+        from nemo_retriever.models.local import nemotron_rerank_v2 as mod
 
         with (
             patch.object(mod, "configure_global_hf_cache_base"),
@@ -195,7 +195,7 @@ class TestNemotronRerankV2Score:
 
     @pytest.fixture()
     def reranker(self):
-        from nemo_retriever.model.local import nemotron_rerank_v2 as mod
+        from nemo_retriever.models.local import nemotron_rerank_v2 as mod
 
         with (
             patch.object(mod, "configure_global_hf_cache_base"),
@@ -428,7 +428,7 @@ class TestRerankHits:
 
 class TestRerankViaEndpoint:
     def test_posts_to_ranking_url(self):
-        from nemo_retriever.rerank.rerank import _rerank_via_endpoint
+        from nemo_retriever.operators.rerank import _rerank_via_endpoint
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {
@@ -458,7 +458,7 @@ class TestRerankViaEndpoint:
         assert scores == [0.9, 0.3]
 
     def test_scores_aligned_with_input_order(self):
-        from nemo_retriever.rerank.rerank import _rerank_via_endpoint
+        from nemo_retriever.operators.rerank import _rerank_via_endpoint
 
         # Server returns results in reversed order
         mock_resp = MagicMock()
@@ -483,7 +483,7 @@ class TestRerankViaEndpoint:
         assert scores[2] == 0.1  # index 2
 
     def test_authorization_header_sent_when_api_key_provided(self):
-        from nemo_retriever.rerank.rerank import _rerank_via_endpoint
+        from nemo_retriever.operators.rerank import _rerank_via_endpoint
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"rankings": [{"index": 0, "logit": 1.0}]}
@@ -501,7 +501,7 @@ class TestRerankViaEndpoint:
         assert headers["Authorization"] == "Bearer my-secret-key"
 
     def test_trailing_slash_on_endpoint_normalized(self):
-        from nemo_retriever.rerank.rerank import _rerank_via_endpoint
+        from nemo_retriever.operators.rerank import _rerank_via_endpoint
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"rankings": [{"index": 0, "logit": 0.5}]}
@@ -514,7 +514,7 @@ class TestRerankViaEndpoint:
         assert url == "http://localhost:8000/v1/ranking"
 
     def test_top_n_not_in_payload_when_not_specified(self):
-        from nemo_retriever.rerank.rerank import _rerank_via_endpoint
+        from nemo_retriever.operators.rerank import _rerank_via_endpoint
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"rankings": [{"index": 0, "logit": 0.5}]}
@@ -536,7 +536,7 @@ class TestNemotronRerankActor:
     """Test the Ray Data-compatible actor."""
 
     def test_cpu_actor_defaults_to_hosted_text_endpoint(self, monkeypatch):
-        from nemo_retriever.rerank.rerank import NemotronRerankCPUActor
+        from nemo_retriever.operators.rerank import NemotronRerankCPUActor
 
         monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
         monkeypatch.delenv("NGC_API_KEY", raising=False)
@@ -550,7 +550,7 @@ class TestNemotronRerankActor:
         )
 
     def test_cpu_actor_defaults_to_hosted_vl_endpoint(self, monkeypatch):
-        from nemo_retriever.rerank.rerank import NemotronRerankCPUActor
+        from nemo_retriever.operators.rerank import NemotronRerankCPUActor
 
         monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
         monkeypatch.delenv("NGC_API_KEY", raising=False)
@@ -562,7 +562,7 @@ class TestNemotronRerankActor:
         )
 
     def test_cpu_actor_default_endpoint_requires_api_key(self, monkeypatch):
-        from nemo_retriever.rerank.rerank import NemotronRerankCPUActor
+        from nemo_retriever.operators.rerank import NemotronRerankCPUActor
 
         monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
         monkeypatch.delenv("NGC_API_KEY", raising=False)
@@ -571,7 +571,7 @@ class TestNemotronRerankActor:
             NemotronRerankCPUActor()
 
     def test_actor_with_rerank_invoke_url_skips_local_model(self):
-        from nemo_retriever.rerank.rerank import NemotronRerankCPUActor
+        from nemo_retriever.operators.rerank import NemotronRerankCPUActor
 
         actor = NemotronRerankCPUActor(rerank_invoke_url="http://localhost:8000")
         assert actor._model is None
@@ -579,7 +579,7 @@ class TestNemotronRerankActor:
 
     def test_actor_call_scores_dataframe(self):
         import pandas as pd
-        from nemo_retriever.rerank.rerank import NemotronRerankActor
+        from nemo_retriever.operators.rerank import NemotronRerankActor
 
         actor = NemotronRerankActor(rerank_invoke_url="http://localhost:8000")
 
@@ -600,7 +600,7 @@ class TestNemotronRerankActor:
 
     def test_actor_call_sorts_descending_by_default(self):
         import pandas as pd
-        from nemo_retriever.rerank.rerank import NemotronRerankActor
+        from nemo_retriever.operators.rerank import NemotronRerankActor
 
         actor = NemotronRerankActor(rerank_invoke_url="http://localhost:8000")
         df = pd.DataFrame({"query": ["q", "q"], "text": ["low relevance", "high relevance"]})
@@ -626,7 +626,7 @@ class TestNemotronRerankActor:
 
     def test_actor_call_batches_remote_rows_by_query(self):
         import pandas as pd
-        from nemo_retriever.rerank.rerank import NemotronRerankActor
+        from nemo_retriever.operators.rerank import NemotronRerankActor
 
         actor = NemotronRerankActor(rerank_invoke_url="http://localhost:8000", sort_results=False)
         df = pd.DataFrame(
@@ -660,7 +660,7 @@ class TestNemotronRerankActor:
 
     def test_rerank_batch_raises_when_endpoint_score_count_mismatches(self):
         import pandas as pd
-        from nemo_retriever.rerank.rerank import _rerank_batch
+        from nemo_retriever.operators.rerank import _rerank_batch
 
         df = pd.DataFrame({"query": ["q", "q"], "text": ["doc A", "doc B"]})
 
@@ -674,7 +674,7 @@ class TestNemotronRerankActor:
         import logging
 
         import pandas as pd
-        from nemo_retriever.rerank.rerank import _rerank_batch
+        from nemo_retriever.operators.rerank import _rerank_batch
 
         caplog.set_level(logging.WARNING, logger="nemo_retriever.rerank.rerank")
         df = pd.DataFrame({"query": [["q"], ["q"]], "text": ["doc A", "doc B"]})
@@ -689,7 +689,7 @@ class TestNemotronRerankActor:
 
     def test_actor_call_returns_error_payload_on_exception(self):
         import pandas as pd
-        from nemo_retriever.rerank.rerank import NemotronRerankActor
+        from nemo_retriever.operators.rerank import NemotronRerankActor
 
         actor = NemotronRerankActor(rerank_invoke_url="http://localhost:8000")
         df = pd.DataFrame({"query": ["q"], "text": ["doc"]})
@@ -705,7 +705,7 @@ class TestNemotronRerankActor:
 
     def test_actor_custom_score_column_name(self):
         import pandas as pd
-        from nemo_retriever.rerank.rerank import NemotronRerankActor
+        from nemo_retriever.operators.rerank import NemotronRerankActor
 
         actor = NemotronRerankActor(rerank_invoke_url="http://localhost:8000", score_column="my_score")
         df = pd.DataFrame({"query": ["q"], "text": ["doc"]})

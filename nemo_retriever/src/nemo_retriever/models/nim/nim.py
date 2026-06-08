@@ -289,7 +289,7 @@ class NIMClient:
         max_429_retries: int = 5,
     ) -> List[str]:
         """Concurrent chat completions using the persistent thread pool."""
-        from nemo_retriever.nim.chat_completions import extract_chat_completion_text
+        from nemo_retriever.models.nim.chat_completions import extract_chat_completion_text
 
         if not messages_list:
             return []

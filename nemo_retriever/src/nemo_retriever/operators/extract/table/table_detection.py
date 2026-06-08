@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.table.shared import table_structure_ocr_page_elements
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.common.modality.table.shared import table_structure_ocr_page_elements
 from nemo_retriever.graph.designer import designer_component
 
 __all__ = [
@@ -33,13 +33,13 @@ class TableStructureActor(ArchetypeOperator):
 
     @classmethod
     def cpu_variant_class(cls):
-        from nemo_retriever.table.cpu_actor import TableStructureCPUActor
+        from nemo_retriever.operators.extract.table.cpu_actor import TableStructureCPUActor
 
         return TableStructureCPUActor
 
     @classmethod
     def gpu_variant_class(cls):
-        from nemo_retriever.table.gpu_actor import TableStructureActor as TableStructureGPUActor
+        from nemo_retriever.operators.extract.table.gpu_actor import TableStructureActor as TableStructureGPUActor
 
         return TableStructureGPUActor
 
@@ -57,11 +57,11 @@ class TableStructureActor(ArchetypeOperator):
 
 def __getattr__(name: str):
     if name == "TableStructureCPUActor":
-        from nemo_retriever.table.cpu_actor import TableStructureCPUActor
+        from nemo_retriever.operators.extract.table.cpu_actor import TableStructureCPUActor
 
         return TableStructureCPUActor
     if name == "TableStructureGPUActor":
-        from nemo_retriever.table.gpu_actor import TableStructureActor as TableStructureGPUActor
+        from nemo_retriever.operators.extract.table.gpu_actor import TableStructureActor as TableStructureGPUActor
 
         return TableStructureGPUActor
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

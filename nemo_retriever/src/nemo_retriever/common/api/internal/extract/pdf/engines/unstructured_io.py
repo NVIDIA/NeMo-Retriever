@@ -39,13 +39,13 @@ except ImportError:
     BackoffStrategy = None
     RetryConfig = None
 
-from nemo_retriever.api.internal.enums.common import AccessLevelEnum, DocumentTypeEnum
-from nemo_retriever.api.internal.enums.common import ContentTypeEnum
-from nemo_retriever.api.internal.enums.common import ContentDescriptionEnum
-from nemo_retriever.api.internal.enums.common import TableFormatEnum
-from nemo_retriever.api.internal.enums.common import TextTypeEnum
-from nemo_retriever.api.internal.schemas.meta.metadata_schema import validate_metadata
-from nemo_retriever.api.util.metadata.aggregators import extract_pdf_metadata, construct_text_metadata
+from nemo_retriever.common.api.internal.enums.common import AccessLevelEnum, DocumentTypeEnum
+from nemo_retriever.common.api.internal.enums.common import ContentTypeEnum
+from nemo_retriever.common.api.internal.enums.common import ContentDescriptionEnum
+from nemo_retriever.common.api.internal.enums.common import TableFormatEnum
+from nemo_retriever.common.api.internal.enums.common import TextTypeEnum
+from nemo_retriever.common.api.internal.schemas.meta.metadata_schema import validate_metadata
+from nemo_retriever.common.api.util.metadata.aggregators import extract_pdf_metadata, construct_text_metadata
 
 logger = logging.getLogger(__name__)
 

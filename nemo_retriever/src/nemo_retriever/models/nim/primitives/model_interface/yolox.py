@@ -17,14 +17,14 @@ import numpy as np
 import json
 import pandas as pd
 
-from nemo_retriever.api.internal.primitives.nim import ModelInterface
-from nemo_retriever.api.internal.primitives.nim.default_values import YOLOX_PAGE_IMAGE_FORMAT
-from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import global_cache
-from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import lock
-from nemo_retriever.api.internal.primitives.nim.model_interface.decorators import multiprocessing_cache
-from nemo_retriever.api.internal.primitives.nim.model_interface.helpers import get_model_name
-from nemo_retriever.api.util.image_processing import scale_image_to_encoding_size
-from nemo_retriever.api.util.image_processing.transforms import numpy_to_base64
+from nemo_retriever.common.api.internal.primitives.nim import ModelInterface
+from nemo_retriever.common.api.internal.primitives.nim.default_values import YOLOX_PAGE_IMAGE_FORMAT
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.decorators import global_cache
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.decorators import lock
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.decorators import multiprocessing_cache
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.helpers import get_model_name
+from nemo_retriever.common.api.util.image_processing import scale_image_to_encoding_size
+from nemo_retriever.common.api.util.image_processing.transforms import numpy_to_base64
 
 logger = logging.getLogger(__name__)
 
@@ -476,7 +476,7 @@ class YoloxPageElementsModelInterface(YoloxModelInterfaceBase):
 
             try:
                 # Import path used by nemo_retriever stages.
-                from nemo_retriever.model.local.nemotron_page_elements_v3 import NemotronPageElementsV3  # type: ignore
+                from nemo_retriever.models.local.nemotron_page_elements_v3 import NemotronPageElementsV3  # type: ignore
             except Exception as e:  # pragma: no cover
                 raise RuntimeError(
                     "Local YOLOX backend requested but 'nemo-retriever' package is not importable. "

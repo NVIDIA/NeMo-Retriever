@@ -18,8 +18,8 @@ continue to work unchanged after the module-to-package refactor.
 
 from __future__ import annotations
 
-from nemo_retriever.llm.clients.judge import LLMJudge
-from nemo_retriever.llm.clients.litellm import LiteLLMClient, _build_rag_prompt
+from nemo_retriever.models.llm.clients.judge import LLMJudge
+from nemo_retriever.models.llm.clients.litellm import LiteLLMClient, _build_rag_prompt
 
 _REGISTRY: dict[str, type] = {}
 

@@ -2,6 +2,6 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from nemo_retriever.skill_eval.cli import app
+from nemo_retriever.tools.skill_eval.cli import app
 
 __all__ = ["app"]

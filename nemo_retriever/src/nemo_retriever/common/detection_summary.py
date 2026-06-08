@@ -122,7 +122,7 @@ def iter_dataframe_rows(df):
 def collect_detection_summary_from_lancedb(uri: str, table_name: str) -> Optional[Dict[str, Any]]:
     """Collect detection summary from a LanceDB table."""
     try:
-        from nemo_retriever.vdb.lancedb_read import iter_lancedb_rows
+        from nemo_retriever.common.vdb.lancedb_read import iter_lancedb_rows
 
         return compute_detection_summary(iter_lancedb_rows(uri, table_name))
     except Exception:

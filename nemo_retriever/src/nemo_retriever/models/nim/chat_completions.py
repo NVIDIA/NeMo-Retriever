@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence
 
-from nemo_retriever.nim.nim import _parse_invoke_urls, _post_with_retries
+from nemo_retriever.models.nim.nim import _parse_invoke_urls, _post_with_retries
 
 
 def extract_chat_completion_text(response_json: Any) -> str:
@@ -69,7 +69,7 @@ def invoke_chat_completions(
 
     Returns one extracted text string per entry in *messages_list*, in order.
     """
-    from nemo_retriever.nim.nim import NIMClient
+    from nemo_retriever.models.nim.nim import NIMClient
 
     client = NIMClient(max_pool_workers=max_pool_workers)
     try:
@@ -170,7 +170,7 @@ def invoke_chat_completions_images(
     Builds an OpenAI-format ``image_url`` message for each image and
     delegates to :func:`invoke_chat_completions`.
     """
-    from nemo_retriever.nim.nim import NIMClient
+    from nemo_retriever.models.nim.nim import NIMClient
 
     client = NIMClient(max_pool_workers=max_pool_workers)
     try:

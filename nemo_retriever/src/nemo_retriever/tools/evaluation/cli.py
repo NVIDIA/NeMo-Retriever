@@ -231,9 +231,9 @@ def run_qa_sweep_from_config_dict(cfg: dict) -> int:
     Used by ``retriever eval run`` and by ``retriever pipeline run`` when
     ``--evaluation-mode=qa`` so the LLM sweep stays in one implementation.
     """
-    from nemo_retriever.evaluation.ground_truth import get_qa_dataset_loader
-    from nemo_retriever.evaluation.retrievers import FileRetriever
-    from nemo_retriever.evaluation.runner import run_eval_sweep
+    from nemo_retriever.tools.evaluation.ground_truth import get_qa_dataset_loader
+    from nemo_retriever.tools.evaluation.retrievers import FileRetriever
+    from nemo_retriever.tools.evaluation.runner import run_eval_sweep
 
     if os.environ.get("LITELLM_DEBUG", "0").strip() in ("1", "true", "yes"):
         import litellm
@@ -345,7 +345,7 @@ def run_cmd(
         raise typer.Exit(code=1)
 
     if config:
-        from nemo_retriever.evaluation.config import load_eval_config
+        from nemo_retriever.tools.evaluation.config import load_eval_config
 
         cfg = load_eval_config(str(config))
     else:
@@ -385,7 +385,7 @@ def export_cmd(
     """Export LanceDB retrieval results to FileRetriever JSON."""
     import csv as csv_mod
 
-    from nemo_retriever.export import export_retrieval_json
+    from nemo_retriever.common.io.export import export_retrieval_json
 
     queries: list[dict] = []
     with open(query_csv, newline="", encoding="utf-8") as f:
@@ -430,7 +430,7 @@ def build_page_index_cmd(
     output: Path = typer.Option(..., "--output", help="Output JSON path for the page index."),
 ) -> None:
     """Build a page-level markdown index from extraction Parquets."""
-    from nemo_retriever.io.markdown import build_page_index
+    from nemo_retriever.common.io.markdown import build_page_index
 
     typer.echo(f"Parquet dir: {parquet_dir}")
     typer.echo(f"Output:      {output}")

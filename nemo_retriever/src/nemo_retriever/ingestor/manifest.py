@@ -10,7 +10,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from nemo_retriever.params import (
+from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
     AudioVisualFuseParams,
@@ -20,7 +20,7 @@ from nemo_retriever.params import (
     VideoFrameParams,
     VideoFrameTextDedupParams,
 )
-from nemo_retriever.utils.input_files import _is_explicit_glob_path, input_type_for_path
+from nemo_retriever.common.input_files import _is_explicit_glob_path, input_type_for_path
 
 
 _AUDIO_SPLIT_INTERVAL = 500000

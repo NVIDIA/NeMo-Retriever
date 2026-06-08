@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, List, Optional, Union
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 
 
 def _ensure_node(obj: Union["Node", "Graph", AbstractOperator]) -> "Node":

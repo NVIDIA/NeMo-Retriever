@@ -16,8 +16,8 @@ import ray
 import ray.data as rd
 import typer
 
-from nemo_retriever.pdf.extract import PDFExtractionActor
-from nemo_retriever.pdf.split import split_pdf_batch
+from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor
+from nemo_retriever.operators.extract.pdf.split import split_pdf_batch
 
 
 @dataclass(frozen=True)

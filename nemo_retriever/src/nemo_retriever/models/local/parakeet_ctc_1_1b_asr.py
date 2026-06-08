@@ -21,10 +21,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-from nemo_retriever.utils.nvtx import gpu_inference_range
+from nemo_retriever.common.nvtx import gpu_inference_range
 
-from nemo_retriever.utils.hf_cache import configure_global_hf_cache_base
-from nemo_retriever.utils.hf_model_registry import get_hf_revision
+from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.models.hf_model_registry import get_hf_revision
 
 
 logger = logging.getLogger(__name__)

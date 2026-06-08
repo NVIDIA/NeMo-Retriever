@@ -21,7 +21,7 @@ from typing import Any, Mapping
 
 import pandas as pd
 
-from nemo_retriever.params.models import MetaJoinKey
+from nemo_retriever.common.params.models import MetaJoinKey
 
 logger = logging.getLogger(__name__)
 

@@ -56,11 +56,11 @@ from typing import Any, Optional, TextIO
 import pandas as pd
 import typer
 
-from nemo_retriever.adapters.cli.sdk_workflow import execute_ingest_plan, resolve_ingest_plan
+from nemo_retriever.cli.sdk_workflow import execute_ingest_plan, resolve_ingest_plan
 from nemo_retriever.audio import asr_params_from_env
-from nemo_retriever.graph_ingestor import GraphIngestor
-from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
-from nemo_retriever.params import (
+from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.common.params import (
     AudioChunkParams,
     AudioVisualFuseParams,
     CaptionParams,
@@ -73,9 +73,9 @@ from nemo_retriever.params import (
     VideoFrameParams,
     VideoFrameTextDedupParams,
 )
-from nemo_retriever.params.models import BatchTuningParams
-from nemo_retriever.utils.input_files import resolve_input_patterns
-from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+from nemo_retriever.common.params.models import BatchTuningParams
+from nemo_retriever.common.input_files import resolve_input_patterns
+from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -498,7 +498,7 @@ def _service_extraction_mode(input_type: str) -> str:
 
 def _service_text_chunk_dict(text_chunk_params: TextChunkParams) -> dict[str, Any]:
     """Serialize text-chunk knobs allowed by the service split_config policy."""
-    from nemo_retriever.service.policy import _DEFAULT_ALLOWED_SPLIT_KEYS
+    from nemo_retriever.common.policy import _DEFAULT_ALLOWED_SPLIT_KEYS
 
     raw = text_chunk_params.model_dump(exclude_none=True)
     return {key: value for key, value in raw.items() if key in _DEFAULT_ALLOWED_SPLIT_KEYS}
@@ -703,7 +703,7 @@ def _build_ingestor(
         logger.warning("Ignoring --store-actors because --store-images-uri was not provided.")
 
     if run_mode == "service":
-        from nemo_retriever.service_ingestor import ServiceIngestor
+        from nemo_retriever.service.service_ingestor import ServiceIngestor
 
         resolved_files: list[str] = []
         for pattern in file_patterns:
@@ -830,7 +830,7 @@ def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], 
 def _count_uploadable_vdb_records(records: list[dict[str, Any]]) -> int:
     """Count records that will survive conversion into the client VDB record contract."""
 
-    from nemo_retriever.vdb.records import to_client_vdb_records
+    from nemo_retriever.common.vdb.records import to_client_vdb_records
 
     return sum(len(batch) for batch in to_client_vdb_records(records))
 
@@ -875,13 +875,13 @@ def _run_evaluation(
     if evaluation_mode == "none":
         return "None", 0.0, {}, None, False
 
-    from nemo_retriever.model import resolve_embed_model
+    from nemo_retriever.models import resolve_embed_model
 
     embed_model = resolve_embed_model(str(embed_model_name))
     eval_vdb_kwargs = dict(vdb_kwargs or {})
 
     if evaluation_mode == "beir":
-        from nemo_retriever.recall.beir import BeirConfig, resolve_beir_dataset_options
+        from nemo_retriever.tools.recall.beir import BeirConfig, resolve_beir_dataset_options
 
         beir_options = resolve_beir_dataset_options(
             dataset_name=beir_dataset_name,
@@ -926,13 +926,13 @@ def _run_evaluation(
 
         evaluation_start = time.perf_counter()
         if run_mode == "service" and service_url:
-            from nemo_retriever.recall.beir import evaluate_service_beir
+            from nemo_retriever.tools.recall.beir import evaluate_service_beir
 
             beir_dataset, _raw_hits, _run, metrics = evaluate_service_beir(cfg)
         else:
             if str(vdb_op).strip().lower() != "lancedb":
                 raise ValueError("--evaluation-mode=beir currently requires --vdb-op=lancedb")
-            from nemo_retriever.recall.beir import evaluate_lancedb_beir
+            from nemo_retriever.tools.recall.beir import evaluate_lancedb_beir
 
             beir_dataset, _raw_hits, _run, metrics = evaluate_lancedb_beir(cfg)
         return "BEIR", time.perf_counter() - evaluation_start, metrics, len(beir_dataset.query_ids), True
@@ -949,7 +949,7 @@ def _run_evaluation(
         logger.warning("Query CSV not found at %s; skipping audio recall evaluation.", query_csv_path)
         return "Audio Recall", 0.0, {}, None, False
 
-    from nemo_retriever.recall.core import RecallConfig, retrieve_and_score
+    from nemo_retriever.tools.recall.core import RecallConfig, retrieve_and_score
 
     recall_cfg = RecallConfig(
         vdb_op=str(vdb_op),
@@ -1458,7 +1458,7 @@ def run(
 
     if quiet:
         # Imported lazily to avoid a cycle (main.py lazy-imports this module).
-        from nemo_retriever.adapters.cli.main import _silence_noisy_libraries
+        from nemo_retriever.cli.main import _silence_noisy_libraries
 
         _silence_noisy_libraries()
     log_handle, original_stdout, original_stderr = _configure_logging(log_file, debug=bool(debug))
@@ -1796,7 +1796,7 @@ def run(
             return execute_ingest_plan(ingest_plan, **local_execute_kwargs).result
 
         if quiet:
-            from nemo_retriever.adapters.cli.main import _quiet_capture
+            from nemo_retriever.cli.main import _quiet_capture
 
             with _quiet_capture():
                 raw_result = _run_ingest()
@@ -1844,7 +1844,7 @@ def run(
             logger.info("Wrote extraction Parquet for intermediate use: %s", out_path)
 
         if detection_summary_file is not None:
-            from nemo_retriever.utils.detection_summary import (
+            from nemo_retriever.common.detection_summary import (
                 collect_detection_summary_from_df,
                 write_detection_summary,
             )
@@ -1863,8 +1863,8 @@ def run(
             return
 
         if evaluation_mode == "qa":
-            from nemo_retriever.evaluation.cli import run_qa_sweep_from_config_dict
-            from nemo_retriever.evaluation.config import load_eval_config
+            from nemo_retriever.tools.evaluation.cli import run_qa_sweep_from_config_dict
+            from nemo_retriever.tools.evaluation.config import load_eval_config
 
             assert eval_config is not None
             cfg = load_eval_config(str(eval_config))
@@ -1906,7 +1906,7 @@ def run(
 
                 ray.shutdown()
 
-            from nemo_retriever.utils.detection_summary import print_run_summary
+            from nemo_retriever.common.detection_summary import print_run_summary
 
             print_run_summary(
                 processed_pages=num_rows,
@@ -2021,7 +2021,7 @@ def run(
 
             ray.shutdown()
 
-        from nemo_retriever.utils.detection_summary import print_run_summary
+        from nemo_retriever.common.detection_summary import print_run_summary
 
         print_run_summary(
             processed_pages=num_rows,

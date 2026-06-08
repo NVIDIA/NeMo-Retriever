@@ -6,6 +6,6 @@
 Benchmark commands for measuring actor-stage throughput.
 """
 
-from nemo_retriever.utils.benchmark.__main__ import app
+from nemo_retriever.tools.benchmark.__main__ import app
 
 __all__ = ["app"]

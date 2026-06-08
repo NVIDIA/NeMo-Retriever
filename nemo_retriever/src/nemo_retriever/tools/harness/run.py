@@ -23,7 +23,7 @@ from typing import Any
 
 import typer
 
-from nemo_retriever.harness.artifacts import (
+from nemo_retriever.tools.harness.artifacts import (
     create_run_artifact_dir,
     create_session_dir,
     last_commit,
@@ -31,15 +31,15 @@ from nemo_retriever.harness.artifacts import (
     write_json,
     write_session_summary,
 )
-from nemo_retriever.harness.config import (
+from nemo_retriever.tools.harness.config import (
     DEFAULT_NIGHTLY_CONFIG_PATH,
     HarnessConfig,
     TUNING_FIELDS,
     load_harness_config,
     load_nightly_config,
 )
-from nemo_retriever.harness.parsers import StreamMetrics
-from nemo_retriever.utils.input_files import resolve_input_files
+from nemo_retriever.tools.harness.parsers import StreamMetrics
+from nemo_retriever.common.input_files import resolve_input_files
 
 
 ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
@@ -789,7 +789,7 @@ def _run_single(
 
     if not skip_local_history:
         try:
-            from nemo_retriever.harness.history import record_run as _record_history
+            from nemo_retriever.tools.harness.history import record_run as _record_history
 
             _record_history(result_payload, artifact_dir)
         except Exception:
@@ -828,8 +828,8 @@ try:
             return 0
 
     import ray
-    from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
-    from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
+    from nemo_retriever.models.hf_cache import collect_hf_runtime_env
+    from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env
 
     effective_ray = ray_address or os.environ.get("RAY_ADDRESS")
     is_local = effective_ray in ("auto", "local", None, "")
@@ -1101,7 +1101,7 @@ def _run_graph_pipeline(
 
     if not skip_local_history:
         try:
-            from nemo_retriever.harness.history import record_run as _record_history
+            from nemo_retriever.tools.harness.history import record_run as _record_history
 
             _record_history(result_payload, artifact_dir)
         except Exception:
@@ -1123,7 +1123,7 @@ def _service_beir_dataset_name(cfg: HarnessConfig) -> str:
 def _run_service_beir_evaluation(cfg: HarnessConfig) -> tuple[float, dict[str, float], int]:
     import time as _time
 
-    from nemo_retriever.recall.beir import BeirConfig, evaluate_service_beir, resolve_beir_dataset_options
+    from nemo_retriever.tools.recall.beir import BeirConfig, evaluate_service_beir, resolve_beir_dataset_options
 
     beir_options = resolve_beir_dataset_options(
         dataset_name=_service_beir_dataset_name(cfg),
@@ -1171,7 +1171,7 @@ def _run_service_mode(
     """
     import time as _time
 
-    from nemo_retriever.service_ingestor import ServiceIngestor
+    from nemo_retriever.service.service_ingestor import ServiceIngestor
 
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -1369,7 +1369,7 @@ def _run_service_mode(
 
     if not skip_local_history:
         try:
-            from nemo_retriever.harness.history import record_run as _record_history
+            from nemo_retriever.tools.harness.history import record_run as _record_history
 
             _record_history(result_payload, artifact_dir)
         except Exception:
@@ -1392,7 +1392,7 @@ def _run_managed_service_mode(
     tags: list[str] | None = None,
     skip_local_history: bool = False,
 ) -> dict[str, Any]:
-    from nemo_retriever.harness.helm_manager import HelmServiceManager
+    from nemo_retriever.tools.harness.helm_manager import HelmServiceManager
 
     manager = HelmServiceManager(cfg)
     start_error: str | None = None
@@ -1460,7 +1460,7 @@ def _run_managed_service_mode(
         write_json(artifact_dir / "results.json", result)
         if not skip_local_history:
             try:
-                from nemo_retriever.harness.history import record_run as _record_history
+                from nemo_retriever.tools.harness.history import record_run as _record_history
 
                 _record_history(result, artifact_dir)
             except Exception:

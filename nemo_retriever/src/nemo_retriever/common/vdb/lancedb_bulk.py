@@ -16,8 +16,8 @@ from typing import Any, Dict, List, Optional, Sequence
 import lancedb
 import pandas as pd
 
-from nemo_retriever.vdb.lancedb import LanceDB
-from nemo_retriever.vdb.lancedb_schema import build_lancedb_row, infer_vector_dim, lancedb_schema
+from nemo_retriever.common.vdb.lancedb import LanceDB
+from nemo_retriever.common.vdb.lancedb_schema import build_lancedb_row, infer_vector_dim, lancedb_schema
 
 logger = logging.getLogger(__name__)
 

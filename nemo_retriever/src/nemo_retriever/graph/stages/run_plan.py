@@ -8,9 +8,9 @@ from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 
-from nemo_retriever.application.pipeline.contracts import StageContract, validate_stage_input
+from nemo_retriever.graph.stages.contracts import StageContract, validate_stage_input
 
-from nemo_retriever.application.pipeline.stage_registry import STAGE_REGISTRY
+from nemo_retriever.graph.stages.stage_registry import STAGE_REGISTRY
 
 
 def run_stage_plan(

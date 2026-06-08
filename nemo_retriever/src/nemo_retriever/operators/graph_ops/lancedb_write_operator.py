@@ -18,8 +18,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class LanceDBWriteOperator(AbstractOperator, CPUOperator):
             return
 
         import lancedb as _ldb
-        from nemo_retriever.vdb.lancedb_schema import lancedb_schema
+        from nemo_retriever.common.vdb.lancedb_schema import lancedb_schema
 
         ldb_path = Path(self._uri)
         ldb_path.mkdir(parents=True, exist_ok=True)
@@ -99,7 +99,7 @@ class LanceDBWriteOperator(AbstractOperator, CPUOperator):
         return data
 
     def process(self, data: Any, **kwargs: Any) -> Any:
-        from nemo_retriever.vdb.lancedb_schema import build_lancedb_rows, infer_vector_dim
+        from nemo_retriever.common.vdb.lancedb_schema import build_lancedb_rows, infer_vector_dim
 
         rows = build_lancedb_rows(
             data,

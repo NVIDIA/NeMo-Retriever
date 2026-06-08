@@ -11,16 +11,16 @@ batch and inprocess ingestion run modes.
 
 from __future__ import annotations
 
-from nemo_retriever.audio.asr_actor import ASRActor
-from nemo_retriever.audio.asr_actor import asr_params_from_env
-from nemo_retriever.audio.cpu_actor import ASRCPUActor
-from nemo_retriever.audio.gpu_actor import ASRGPUActor
-from nemo_retriever.audio.chunk_actor import MediaChunkActor
-from nemo_retriever.audio.media_interface import MediaInterface
-from nemo_retriever.params import ASRParams
-from nemo_retriever.params import AudioChunkParams
+from nemo_retriever.operators.extract.audio.asr_actor import ASRActor
+from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
+from nemo_retriever.operators.extract.audio.cpu_actor import ASRCPUActor
+from nemo_retriever.operators.extract.audio.gpu_actor import ASRGPUActor
+from nemo_retriever.operators.extract.audio.chunk_actor import MediaChunkActor
+from nemo_retriever.common.modality.audio.media_interface import MediaInterface
+from nemo_retriever.common.params import ASRParams
+from nemo_retriever.common.params import AudioChunkParams
 
-from nemo_retriever.audio.cli import app
+from nemo_retriever.cli.audio.cli import app
 
 __all__ = [
     "ASRActor",

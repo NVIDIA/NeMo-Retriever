@@ -10,12 +10,12 @@ from typing import Any, Optional
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.nim.nim import NIMClient
-from nemo_retriever.nim.probe import probe_endpoint
-from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.chart.shared import graphic_elements_ocr_page_elements
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.models.nim.nim import NIMClient
+from nemo_retriever.models.nim.probe import probe_endpoint
+from nemo_retriever.common.params import RemoteRetryParams
+from nemo_retriever.common.modality.chart.shared import graphic_elements_ocr_page_elements
 
 logger = logging.getLogger(__name__)
 

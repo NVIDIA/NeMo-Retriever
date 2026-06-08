@@ -11,19 +11,19 @@ from typing import Any, Dict, List, Tuple
 import pandas as pd
 from PIL import Image
 
-from nemo_retriever.caption.model_profiles import (
+from nemo_retriever.common.modality.caption.model_profiles import (
     get_caption_model_profile,
     merge_request_extras,
     resolve_caption_model_name,
 )
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.ocr.ocr import _crop_b64_image_by_norm_bbox
-from nemo_retriever.params import CaptionParams
-from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.extract.ocr.ocr import _crop_b64_image_by_norm_bbox
+from nemo_retriever.common.params import CaptionParams
+from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
 _DEFAULT_MODEL_NAME = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
 _DEFAULT_REMOTE_ENDPOINT_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
@@ -50,7 +50,7 @@ def _image_meets_min_size(b64: str) -> bool:
 
 
 def _create_local_model(kwargs: dict) -> "Any":
-    from nemo_retriever.model.local import NemotronVLMCaptioner
+    from nemo_retriever.models.local import NemotronVLMCaptioner
 
     return NemotronVLMCaptioner(
         model_path=kwargs.get("model_name", _DEFAULT_MODEL_NAME),
@@ -173,8 +173,8 @@ def _build_prompt_with_context(base_prompt: str, context_text: str) -> str:
 
 def _create_remote_client(endpoint_url: str, api_key: str | None) -> Any:
     """Create a reusable NIM inference client for a remote VLM endpoint."""
-    from nemo_retriever.api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
-    from nemo_retriever.api.util.nim import create_inference_client
+    from nemo_retriever.common.api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
+    from nemo_retriever.common.api.util.nim import create_inference_client
 
     return create_inference_client(
         model_interface=VLMModelInterface(),
@@ -197,7 +197,7 @@ def _caption_batch_remote(
     request_extras: Dict[str, Any] | None = None,
 ) -> List[str]:
     """Send a batch of images to a remote VLM endpoint and return captions."""
-    from nemo_retriever.api.util.image_processing.transforms import scale_image_to_encoding_size
+    from nemo_retriever.common.api.util.image_processing.transforms import scale_image_to_encoding_size
 
     scaled = [scale_image_to_encoding_size(b64)[0] for b64 in base64_images]
 
@@ -208,7 +208,7 @@ def _caption_batch_remote(
     if system_prompt:
         data["system_prompt"] = system_prompt
 
-    from nemo_retriever.params.models import LLMInferenceParams
+    from nemo_retriever.common.params.models import LLMInferenceParams
 
     sampling_kwargs = LLMInferenceParams(
         temperature=temperature,

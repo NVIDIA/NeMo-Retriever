@@ -19,14 +19,14 @@ import time
 import traceback
 
 import pandas as pd
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.params import RemoteRetryParams
-from nemo_retriever.nim.nim import NIMClient, invoke_image_inference_batches
-from nemo_retriever.utils.remote_auth import resolve_remote_api_key
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.common.params import RemoteRetryParams
+from nemo_retriever.models.nim.nim import NIMClient, invoke_image_inference_batches
+from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
 _DEFAULT_INFOGRAPHIC_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1"
 
@@ -782,7 +782,7 @@ class InfographicDetectionGPUActor(AbstractOperator, GPUOperator):
                 "InfographicDetectionGPUActor does not support remote endpoint execution. "
                 "Use InfographicDetectionCPUActor instead."
             )
-        from nemo_retriever.model.local import NemotronGraphicElementsV1
+        from nemo_retriever.models.local import NemotronGraphicElementsV1
 
         self._model = NemotronGraphicElementsV1()
 

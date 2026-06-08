@@ -11,8 +11,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.graph.retriever import Retriever
 
 logger = logging.getLogger(__name__)
 AUDIO_MATCH_TOLERANCE_SECS = 2.0
@@ -55,7 +55,7 @@ class RecallConfig:
     embed_modality: str = "text"
 
     def __post_init__(self) -> None:
-        from nemo_retriever.model import (
+        from nemo_retriever.models import (
             _LOCAL_QUERY_BACKENDS,
             _LOCAL_RERANKER_BACKENDS,
             normalize_backend,
@@ -480,7 +480,7 @@ def retrieve_and_score(
             "Use embedding_http_endpoint or an http(s) embedding_endpoint."
         )
 
-    from nemo_retriever.params.models import ModelRuntimeParams
+    from nemo_retriever.common.params.models import ModelRuntimeParams
 
     embed_kwargs: dict[str, Any] = {
         "model_name": query_embedder,

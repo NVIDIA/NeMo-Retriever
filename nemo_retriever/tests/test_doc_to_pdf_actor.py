@@ -7,8 +7,12 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor, convert_to_pdf_bytes, convert_batch_to_pdf
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.common.modality.convert.to_pdf import (
+    DocToPdfConversionActor,
+    convert_to_pdf_bytes,
+    convert_batch_to_pdf,
+)
 
 
 class TestConvertToPdfBytes:

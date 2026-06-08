@@ -11,8 +11,8 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 
 
 class RRFAggregatorOperator(AbstractOperator, CPUOperator):
@@ -58,7 +58,7 @@ class RRFAggregatorOperator(AbstractOperator, CPUOperator):
     ::
 
         import pandas as pd
-        from nemo_retriever.graph.rrf_aggregator_operator import RRFAggregatorOperator
+        from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
 
         op = RRFAggregatorOperator(k=60)
         df = pd.DataFrame({

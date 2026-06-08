@@ -48,7 +48,7 @@ from typing import (
     Union,
 )
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 
 
@@ -216,8 +216,8 @@ def format_graph_tree(
 
     def _resource_marker(node: Node) -> str:
         try:
-            from nemo_retriever.graph.cpu_operator import CPUOperator
-            from nemo_retriever.graph.gpu_operator import GPUOperator
+            from nemo_retriever.operators.cpu_operator import CPUOperator
+            from nemo_retriever.operators.gpu_operator import GPUOperator
 
             if isinstance(node.operator, GPUOperator):
                 return " [GPU]"

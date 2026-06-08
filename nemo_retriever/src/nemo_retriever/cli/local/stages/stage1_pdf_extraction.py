@@ -17,7 +17,7 @@ are handled exactly the same as:
   `retriever pdf ...`
 """
 
-from nemo_retriever.pdf.stage import app as app
+from nemo_retriever.cli.pdf.stage import app as app
 
 
 def main() -> None:

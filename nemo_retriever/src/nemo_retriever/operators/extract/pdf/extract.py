@@ -15,7 +15,7 @@ try:
 except ImportError:
     cv2 = None
 
-from nemo_retriever.api.util.pdf.pdfium import (
+from nemo_retriever.common.api.util.pdf.pdfium import (
     convert_bitmap_to_corrected_numpy,
     extract_image_like_objects_from_pdfium_page,
     is_scanned_page as _is_scanned_page,
@@ -23,11 +23,11 @@ from nemo_retriever.api.util.pdf.pdfium import (
 
 import pandas as pd
 
-from nemo_retriever.nim.error_reporter import report_error
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.models.nim.error_reporter import report_error
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 
 try:
     import pypdfium2 as pdfium

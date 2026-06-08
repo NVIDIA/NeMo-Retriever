@@ -5,8 +5,8 @@
 
 import logging
 
-from nemo_retriever.api.internal.enums.common import StatusEnum, TaskTypeEnum
-from nemo_retriever.api.internal.schemas.meta.metadata_schema import validate_metadata
+from nemo_retriever.common.api.internal.enums.common import StatusEnum, TaskTypeEnum
+from nemo_retriever.common.api.internal.schemas.meta.metadata_schema import validate_metadata
 
 logger = logging.getLogger(__name__)
 

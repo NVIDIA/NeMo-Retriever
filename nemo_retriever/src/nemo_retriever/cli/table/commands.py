@@ -10,12 +10,15 @@ from typing import Any, Dict, Optional
 import typer
 from rich.console import Console
 
-from nemo_retriever.ingest_config import load_ingest_config_section
-from nemo_retriever.io.dataframe import read_dataframe, write_dataframe
+from nemo_retriever.ingestor.config import load_ingest_config_section
+from nemo_retriever.common.io.dataframe import read_dataframe, write_dataframe
 
-from nemo_retriever.table.config import load_table_extractor_schema_from_dict, load_table_structure_ocr_config_from_dict
-from nemo_retriever.table.processor import extract_table_data_from_primitives_df
-from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
+from nemo_retriever.common.modality.table.config import (
+    load_table_extractor_schema_from_dict,
+    load_table_structure_ocr_config_from_dict,
+)
+from nemo_retriever.common.modality.table.processor import extract_table_data_from_primitives_df
+from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
 app = typer.Typer(help="Table extraction: enrich table primitives with structure-aware table content.")
 console = Console()
@@ -114,7 +117,7 @@ def run_structure_ocr(
     ts_url = stage_cfg.table_structure_invoke_url
     ts_model = None
     if not ts_url:
-        from nemo_retriever.model.local import NemotronTableStructureV1
+        from nemo_retriever.models.local import NemotronTableStructureV1
 
         ts_model = NemotronTableStructureV1()
 

@@ -15,19 +15,19 @@ from typing import Tuple
 import numpy as np
 import pandas as pd
 
-from nemo_retriever.api.internal.schemas.meta.ingest_job_schema import IngestTaskTableExtraction
-from nemo_retriever.api.internal.enums.common import TableFormatEnum
-from nemo_retriever.api.internal.primitives.nim.model_interface.ocr import PaddleOCRModelInterface
-from nemo_retriever.api.internal.primitives.nim.model_interface.ocr import NemoRetrieverOCRModelInterface
-from nemo_retriever.api.internal.primitives.nim.model_interface.ocr import get_ocr_model_name
-from nemo_retriever.api.internal.primitives.nim import NimClient
-from nemo_retriever.api.internal.schemas.extract.extract_table_schema import TableExtractorSchema
-from nemo_retriever.api.util.image_processing.table_and_chart import join_yolox_table_structure_and_ocr_output
-from nemo_retriever.api.util.image_processing.table_and_chart import convert_ocr_response_to_psuedo_markdown
-from nemo_retriever.api.internal.primitives.nim.model_interface.yolox import YoloxTableStructureModelInterface
-from nemo_retriever.api.util.image_processing.transforms import base64_to_numpy
-from nemo_retriever.api.util.nim import create_inference_client
-from nemo_retriever.ocr.config import resolve_ocr_v2_model_dir
+from nemo_retriever.common.api.internal.schemas.meta.ingest_job_schema import IngestTaskTableExtraction
+from nemo_retriever.common.api.internal.enums.common import TableFormatEnum
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.ocr import PaddleOCRModelInterface
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.ocr import NemoRetrieverOCRModelInterface
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.ocr import get_ocr_model_name
+from nemo_retriever.common.api.internal.primitives.nim import NimClient
+from nemo_retriever.common.api.internal.schemas.extract.extract_table_schema import TableExtractorSchema
+from nemo_retriever.common.api.util.image_processing.table_and_chart import join_yolox_table_structure_and_ocr_output
+from nemo_retriever.common.api.util.image_processing.table_and_chart import convert_ocr_response_to_psuedo_markdown
+from nemo_retriever.common.api.internal.primitives.nim.model_interface.yolox import YoloxTableStructureModelInterface
+from nemo_retriever.common.api.util.image_processing.transforms import base64_to_numpy
+from nemo_retriever.common.api.util.nim import create_inference_client
+from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_model_dir
 
 logger = logging.getLogger(__name__)
 
@@ -373,8 +373,8 @@ def _local_nemotron_ocr_boxes_texts(
 
     # Lazy import to avoid hard dependency when running pure API package.
     try:
-        from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2  # type: ignore
-        from nemo_retriever.ocr.config import resolve_ocr_v2_lang
+        from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2  # type: ignore
+        from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_lang
     except Exception as e:
         raise RuntimeError(
             "Local table OCR fallback requires the `nemo-retriever` package to be importable "
@@ -534,7 +534,7 @@ def _local_nemotron_table_structure_cell_predictions(
 
     # Lazy import to avoid hard dependency when running pure API package.
     try:
-        from nemo_retriever.model.local.nemotron_table_structure_v1 import NemotronTableStructureV1  # type: ignore
+        from nemo_retriever.models.local.nemotron_table_structure_v1 import NemotronTableStructureV1  # type: ignore
     except Exception as e:
         raise RuntimeError(
             "Local table-structure fallback requires the `nemo-retriever` package to be importable "

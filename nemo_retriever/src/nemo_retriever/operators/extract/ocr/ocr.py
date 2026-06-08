@@ -7,11 +7,11 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Any
 
-from nemo_retriever.nim.nim import invoke_image_inference_batches
+from nemo_retriever.models.nim.nim import invoke_image_inference_batches
 from nemo_retriever.graph.designer import designer_component
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.ocr import shared as _shared
-from nemo_retriever.ocr.shared import (
+from nemo_retriever.common.modality.ocr.shared import (
     _blocks_to_pseudo_markdown,
     _blocks_to_text,
     _crop_all_from_page,
@@ -76,13 +76,13 @@ class OCRActor(ArchetypeOperator):
 
     @classmethod
     def cpu_variant_class(cls):
-        from nemo_retriever.ocr.cpu_ocr import OCRCPUActor
+        from nemo_retriever.operators.extract.ocr.cpu_ocr import OCRCPUActor
 
         return OCRCPUActor
 
     @classmethod
     def gpu_variant_class(cls):
-        from nemo_retriever.ocr.gpu_ocr import OCRActor as OCRGPUActor
+        from nemo_retriever.operators.extract.ocr.gpu_ocr import OCRActor as OCRGPUActor
 
         return OCRGPUActor
 
@@ -114,29 +114,29 @@ def resolve_ocr_archetype(extract_params: Any) -> type:
 
 def __getattr__(name: str):
     if name == "OCRCPUActor":
-        from nemo_retriever.ocr.cpu_ocr import OCRCPUActor
+        from nemo_retriever.operators.extract.ocr.cpu_ocr import OCRCPUActor
 
         return OCRCPUActor
     if name == "OCRGPUActor":
-        from nemo_retriever.ocr.gpu_ocr import OCRActor as OCRGPUActor
+        from nemo_retriever.operators.extract.ocr.gpu_ocr import OCRActor as OCRGPUActor
 
         return OCRGPUActor
     if name == "OCRV2Actor":
         return OCRActor
     if name == "OCRV2CPUActor":
-        from nemo_retriever.ocr.cpu_ocr import OCRV2CPUActor
+        from nemo_retriever.operators.extract.ocr.cpu_ocr import OCRV2CPUActor
 
         return OCRV2CPUActor
     if name == "OCRV2GPUActor":
-        from nemo_retriever.ocr.gpu_ocr import OCRV2Actor as OCRV2GPUActor
+        from nemo_retriever.operators.extract.ocr.gpu_ocr import OCRV2Actor as OCRV2GPUActor
 
         return OCRV2GPUActor
     if name == "NemotronParseCPUActor":
-        from nemo_retriever.ocr.cpu_parse import NemotronParseCPUActor
+        from nemo_retriever.operators.extract.ocr.cpu_parse import NemotronParseCPUActor
 
         return NemotronParseCPUActor
     if name == "NemotronParseGPUActor":
-        from nemo_retriever.ocr.gpu_parse import NemotronParseActor as NemotronParseGPUActor
+        from nemo_retriever.operators.extract.ocr.gpu_parse import NemotronParseActor as NemotronParseGPUActor
 
         return NemotronParseGPUActor
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
