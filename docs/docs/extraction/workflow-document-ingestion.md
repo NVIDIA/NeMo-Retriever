@@ -42,7 +42,7 @@ ingestor = (
     .embed()
 )
 
-chunks = ingestor.ingest()  # ``ray.data.Dataset`` in ``batch``; ``pandas.DataFrame`` in ``inprocess``
+result = ingestor.ingest()  # ``ray.data.Dataset`` in ``batch``; ``pandas.DataFrame`` in ``inprocess``
 ```
 
 Run the above with your working directory at the repository root (so `data/multimodal_test.pdf` resolves), or adjust `documents` to the absolute path of the test PDF.
