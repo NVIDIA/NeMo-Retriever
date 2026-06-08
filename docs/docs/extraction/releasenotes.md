@@ -64,6 +64,7 @@ Highlights for the 26.05 release include:
 
 ### Packaging and platform
 
+- GA PyPI install: `uv pip install nemo-retriever==26.5.0` (see the library [quickstart](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05/nemo_retriever#setup-your-environment))
 - Optional install extras (`[local]`, `[multimedia]`, `[llm]`, `[tabular]`, `[nemotron-parse]`, `[service]`, and others), including slim remote/NIM-only installs on Mac and Windows  
 
 ### Helm chart
