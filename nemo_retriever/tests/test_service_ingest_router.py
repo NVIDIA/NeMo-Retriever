@@ -138,7 +138,6 @@ def traced_app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: l
         _reset_tracing_for_tests()
 
 
-
 @pytest.fixture
 def traced_gateway_app(monkeypatch: pytest.MonkeyPatch):
     """Build a traced gateway app so dashboard job APIs are mounted."""
@@ -162,6 +161,7 @@ def traced_gateway_app(monkeypatch: pytest.MonkeyPatch):
             yield client, exported
     finally:
         _reset_tracing_for_tests()
+
 
 def _make_pdf_bytes() -> bytes:
     """Return a 1-byte non-PDF payload — the worker is stubbed so content doesn't matter."""
@@ -442,6 +442,35 @@ def test_create_job_with_tracing_returns_trace_id_body_header_and_snapshot(
     assert exported_spans
 
 
+def test_create_job_with_tracing_uses_inbound_traceparent(
+    traced_app_with_stub_pool: tuple[TestClient, list[Any]],
+) -> None:
+    client, exported_spans = traced_app_with_stub_pool
+
+    with tracing.start_span("client.parent"):
+        inbound_trace_id = tracing.current_trace_id_hex()
+        carrier = dict(tracing.inject_trace_context())
+    assert inbound_trace_id is not None
+
+    resp = client.post(
+        "/v1/ingest/job",
+        headers=carrier,
+        json={"expected_documents": 1, "label": "trace-parent"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["trace_id"] == inbound_trace_id
+    assert resp.headers["x-trace-id"] == inbound_trace_id
+
+    ingest_span = next(span for span in exported_spans if span.name == "ingest.job")
+    assert f"{ingest_span.context.trace_id:032x}" == inbound_trace_id
+
+    snapshot = client.get(f"/v1/ingest/job/{body['job_id']}")
+    assert snapshot.status_code == 200, snapshot.text
+    assert snapshot.json()["trace_id"] == inbound_trace_id
+
+
 def test_job_upload_routes_emit_accept_spans(
     traced_app_with_stub_pool: tuple[TestClient, list[Any]],
     captured_items: list[WorkItem],
@@ -571,6 +600,7 @@ def test_dashboard_job_views_include_trace_id(traced_gateway_app: tuple[TestClie
     assert detail.status_code == 200, detail.text
     assert detail.json()["trace_id"] == trace_id
     assert exported_spans
+
 
 def test_create_job_retain_results_persisted_on_aggregate(app_with_stub_pool: TestClient) -> None:
     from nemo_retriever.service.services.job_tracker import get_job_tracker

@@ -562,10 +562,12 @@ async def create_job(request: Request, response: Response, body: JobCreateReques
         raise HTTPException(status_code=503, detail="Job tracker not available")
     job_id = uuid.uuid4().hex
     trace_id: str | None = None
+    inbound_trace_context = _trace_context_from_request_or_job(request, None)
     try:
         with tracing.start_span(
             "ingest.job",
             kind=SpanKind.SERVER,
+            context=_safe_extract_trace_context(inbound_trace_context),
             attributes={
                 "service.role": _role(request),
                 "job.expected_documents": body.expected_documents,

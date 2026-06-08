@@ -36,7 +36,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable
+from typing import Any, AsyncIterator, Callable, NamedTuple
 
 import httpx
 from rich.progress import (
@@ -63,6 +63,11 @@ _TRANSIENT_ERRORS: tuple[type[Exception], ...] = (
     httpx.ConnectTimeout,
     httpx.ReadTimeout,
 )
+
+
+class _CreatedJob(NamedTuple):
+    job_id: str
+    trace_id: str | None = None
 
 
 # ------------------------------------------------------------------
@@ -217,8 +222,8 @@ class RetrieverServiceClient:
         expected_documents: int,
         label: str | None = None,
         retain_results: bool = False,
-    ) -> str:
-        """Open a server-side job aggregate and return the assigned ``job_id``.
+    ) -> _CreatedJob:
+        """Open a server-side job aggregate and return its client-visible metadata.
 
         Every upload made through this client must reference a job (J3+).
         We open one job per ``ingest_documents`` / ``aingest_documents_stream``
@@ -256,7 +261,11 @@ class RetrieverServiceClient:
         job_id = body.get("job_id")
         if not job_id:
             raise RuntimeError(f"Job creation returned no job_id: {body!r}")
-        return job_id
+        trace_id = body.get("trace_id")
+        return _CreatedJob(
+            job_id=job_id,
+            trace_id=trace_id if isinstance(trace_id, str) and trace_id else None,
+        )
 
     # ------------------------------------------------------------------
     # Upload
@@ -567,7 +576,8 @@ class RetrieverServiceClient:
             limits=pool_limits,
             headers=self._auth_headers,
         ) as client:
-            job_id = await self._create_job(client, expected_documents=len(files))
+            created_job = await self._create_job(client, expected_documents=len(files))
+            job_id = created_job.job_id
             upload_sem = asyncio.Semaphore(self._max_concurrency)
             upload_failures: list[tuple[str, str]] = []
 
@@ -670,16 +680,20 @@ class RetrieverServiceClient:
             limits=pool_limits,
             headers=self._auth_headers,
         ) as client:
-            job_id = await self._create_job(
+            created_job = await self._create_job(
                 client,
                 expected_documents=len(files),
                 retain_results=retain_results,
             )
-            yield {
+            job_id = created_job.job_id
+            event: dict[str, Any] = {
                 "event": "job_created",
                 "job_id": job_id,
                 "expected_documents": len(files),
             }
+            if created_job.trace_id is not None:
+                event["trace_id"] = created_job.trace_id
+            yield event
             upload_sem = asyncio.Semaphore(self._max_concurrency)
 
             async def _upload_one_file(fpath: Path) -> None:
