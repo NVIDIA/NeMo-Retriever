@@ -30,7 +30,7 @@ from nemo_retriever.cli.sdk_workflow import (
     query_documents,
 )
 from nemo_retriever.common.vdb.records import RetrievalHit
-from nemo_retriever.common.version import get_version_info
+from nemo_retriever.version import get_version_info
 
 logger = logging.getLogger(__name__)
 

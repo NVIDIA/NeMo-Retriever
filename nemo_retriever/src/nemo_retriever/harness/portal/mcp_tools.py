@@ -299,7 +299,7 @@ def list_schedules() -> list[dict[str, Any]]:
 )
 def get_portal_status() -> dict[str, Any]:
     """Get portal health and version information."""
-    from nemo_retriever.common.version import get_version_info
+    from nemo_retriever.version import get_version_info
 
     version = get_version_info()
     runners = history.get_runners()

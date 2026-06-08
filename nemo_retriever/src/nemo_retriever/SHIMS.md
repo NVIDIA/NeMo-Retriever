@@ -16,7 +16,6 @@ cleanup pass deletes every old module listed here, then deletes this file.
 | `nemo_retriever.io.stage_files` | `nemo_retriever.common.io.stage_files` | PR1-common |
 | `nemo_retriever.export` | `nemo_retriever.common.io.export` | PR1-common |
 | `nemo_retriever.config_utils` | `nemo_retriever.common.config_utils` | PR1-common |
-| `nemo_retriever.version` | `nemo_retriever.common.version` | PR1-common |
 | `nemo_retriever.utils.input_files` | `nemo_retriever.common.input_files` | PR1-common |
 | `nemo_retriever.utils.remote_auth` | `nemo_retriever.common.remote_auth` | PR1-common |
 | `nemo_retriever.utils.nvtx` | `nemo_retriever.common.nvtx` | PR1-common |

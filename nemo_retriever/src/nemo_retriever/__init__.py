@@ -41,7 +41,7 @@ def __getattr__(name: str):
 
         return create_ingestor
     if name in {"__version__", "get_version", "get_version_info"}:
-        from nemo_retriever.common.version import __version__, get_version, get_version_info
+        from nemo_retriever.version import __version__, get_version, get_version_info
 
         return {
             "__version__": __version__,

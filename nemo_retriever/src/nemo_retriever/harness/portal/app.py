@@ -483,7 +483,7 @@ async def index():
 
 @app.get("/api/version")
 async def get_version():
-    from nemo_retriever.common.version import get_version_info
+    from nemo_retriever.version import get_version_info
 
     return get_version_info()
 
