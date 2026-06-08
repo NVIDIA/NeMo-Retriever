@@ -157,7 +157,6 @@ class CandidatePreparationAgent(BaseAgent):
         additional_tables = dedupe_merge_relevant_tables(additional_tables)[:10]
         relevant_tables.extend(additional_tables)
 
-        relevant_tables = dedupe_merge_relevant_tables(relevant_tables)[:20]
         self.logger.info(
             "Found %d relevant tables (after dedupe, capped at 20): %s",
             len(relevant_tables),
