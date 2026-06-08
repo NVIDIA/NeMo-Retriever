@@ -221,7 +221,7 @@ class TestBuildDocument:
 
 class TestCreateLocalRerankerBackend:
     def test_default_backend_dispatches_to_vllm(self):
-        with patch("nemo_retriever.model.local.nemotron_rerank_vl_v2.NemotronRerankVLV2VLLM") as MockVLLM:
+        with patch("nemo_retriever.models.local.nemotron_rerank_vl_v2.NemotronRerankVLV2VLLM") as MockVLLM:
             MockVLLM.return_value = MagicMock()
             from nemo_retriever.models import create_local_reranker
 
@@ -230,7 +230,7 @@ class TestCreateLocalRerankerBackend:
             assert result is MockVLLM.return_value
 
     def test_vllm_backend_explicit(self):
-        with patch("nemo_retriever.model.local.nemotron_rerank_vl_v2.NemotronRerankVLV2VLLM") as MockVLLM:
+        with patch("nemo_retriever.models.local.nemotron_rerank_vl_v2.NemotronRerankVLV2VLLM") as MockVLLM:
             MockVLLM.return_value = MagicMock()
             from nemo_retriever.models import create_local_reranker
 
@@ -239,7 +239,7 @@ class TestCreateLocalRerankerBackend:
             assert result is MockVLLM.return_value
 
     def test_hf_backend(self):
-        with patch("nemo_retriever.model.local.nemotron_rerank_vl_v2_hf.NemotronRerankVLV2") as MockTF:
+        with patch("nemo_retriever.models.local.nemotron_rerank_vl_v2_hf.NemotronRerankVLV2") as MockTF:
             MockTF.return_value = MagicMock()
             from nemo_retriever.models import create_local_reranker
 
@@ -248,7 +248,7 @@ class TestCreateLocalRerankerBackend:
             assert result is MockTF.return_value
 
     def test_text_only_model_ignores_backend(self):
-        with patch("nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2") as MockText:
+        with patch("nemo_retriever.models.local.nemotron_rerank_v2.NemotronRerankV2") as MockText:
             MockText.return_value = MagicMock()
             from nemo_retriever.models import create_local_reranker
 
@@ -257,7 +257,7 @@ class TestCreateLocalRerankerBackend:
             assert result is MockText.return_value
 
     def test_gpu_memory_utilization_passed_to_vllm(self):
-        with patch("nemo_retriever.model.local.nemotron_rerank_vl_v2.NemotronRerankVLV2VLLM") as MockVLLM:
+        with patch("nemo_retriever.models.local.nemotron_rerank_vl_v2.NemotronRerankVLV2VLLM") as MockVLLM:
             MockVLLM.return_value = MagicMock()
             from nemo_retriever.models import create_local_reranker
 

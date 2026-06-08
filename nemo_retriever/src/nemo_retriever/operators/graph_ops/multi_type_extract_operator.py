@@ -53,7 +53,7 @@ from nemo_retriever.video import dedup_video_frames
 from nemo_retriever.video import video_asr_audio_chunk_params
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.common.input_files import INPUT_TYPE_EXTENSIONS
-from nemo_retriever.utils import ray_resource_hueristics as _rrh
+from nemo_retriever.common import ray_resource_hueristics as _rrh
 
 logger = logging.getLogger(__name__)
 

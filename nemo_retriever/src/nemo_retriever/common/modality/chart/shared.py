@@ -32,7 +32,7 @@ except Exception:  # pragma: no cover
     Image = None  # type: ignore[assignment]
 
 try:
-    from nemo_retriever.common.api.internal.primitives.nim.model_interface.yolox import (
+    from nemo_retriever.models.nim.primitives.model_interface.yolox import (
         YOLOX_GRAPHIC_MIN_SCORE,
     )
 except ImportError:

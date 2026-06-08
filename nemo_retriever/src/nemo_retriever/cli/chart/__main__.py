@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import typer
 
-from nemo_retriever.chart import commands
+from nemo_retriever.cli.chart import commands
 
 app = typer.Typer(help="Chart Extraction")
 app.add_typer(commands.app, name="stage")

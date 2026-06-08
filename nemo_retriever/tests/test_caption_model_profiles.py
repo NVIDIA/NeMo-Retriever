@@ -48,7 +48,7 @@ def _reload_model_profiles_with_fake_revision_lookup(monkeypatch, fake_get_hf_re
     import nemo_retriever.caption as caption_pkg
     import nemo_retriever.models.hf_model_registry as hf_model_registry
 
-    module_name = "nemo_retriever.caption.model_profiles"
+    module_name = "nemo_retriever.common.modality.caption.model_profiles"
     original_module = sys.modules.get(module_name, _MISSING)
     original_parent_attr = caption_pkg.__dict__.get("model_profiles", _MISSING)
 

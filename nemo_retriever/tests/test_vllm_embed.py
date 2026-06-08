@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for nemo_retriever.text_embed.vllm (no vLLM install required)."""
+"""Unit tests for nemo_retriever.models.inference.vllm (no vLLM install required)."""
 
 import base64
 import io
@@ -208,7 +208,7 @@ class TestVLLMEmbedderImages:
 
     def test_calls_multimodal_helper(self):
         b64 = _make_minimal_b64()
-        with patch("nemo_retriever.text_embed.vllm.embed_multimodal_with_vllm_llm") as mock_mm:
+        with patch("nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm") as mock_mm:
             mock_mm.return_value = [[0.6, 0.8]]
             self.embedder.embed_images([b64])
         mock_mm.assert_called_once()
@@ -222,7 +222,7 @@ class TestVLLMEmbedderImages:
         b64 = _make_minimal_b64()
         captured = []
         with patch(
-            "nemo_retriever.text_embed.vllm.embed_multimodal_with_vllm_llm",
+            "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
             side_effect=lambda dicts, llm, **kw: captured.extend(dicts) or [[0.1, 0.2]],
         ):
             self.embedder.embed_images([b64])
@@ -232,7 +232,7 @@ class TestVLLMEmbedderImages:
     def test_output_is_l2_normalized(self):
         b64 = _make_minimal_b64()
         with patch(
-            "nemo_retriever.text_embed.vllm.embed_multimodal_with_vllm_llm",
+            "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
             return_value=[[3.0, 4.0]],
         ):
             result = self.embedder.embed_images([b64])
@@ -242,7 +242,7 @@ class TestVLLMEmbedderImages:
     def test_no_valid_embeddings_returns_empty_tensor(self):
         b64 = _make_minimal_b64()
         with patch(
-            "nemo_retriever.text_embed.vllm.embed_multimodal_with_vllm_llm",
+            "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
             return_value=[[]],
         ):
             result = self.embedder.embed_images([b64])
@@ -271,14 +271,14 @@ class TestLlamaNemotronEmbed1BV2Embedder:
         assert result[1].tolist() == [0.0, 0.0]
 
     def test_embed_uses_passage_prefix_by_default(self):
-        with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[0.6, 0.8]]) as mock_fn:
+        with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[0.6, 0.8]]) as mock_fn:
             self.embedder.embed(["hello"])
         assert mock_fn.call_args[1].get("prefix") == "passage: "
         assert "use_activation" not in mock_fn.call_args[1]
         assert mock_fn.call_args[1].get("normalize") is True
 
     def test_embed_queries_uses_query_prefix(self):
-        with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[0.6, 0.8]]) as mock_fn:
+        with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[0.6, 0.8]]) as mock_fn:
             self.embedder.embed_queries(["hello"])
         assert mock_fn.call_args[1].get("prefix") == "query: "
         assert "use_activation" not in mock_fn.call_args[1]
@@ -297,14 +297,14 @@ class TestLlamaNemotronEmbed1BV2Embedder:
 class TestLlamaNemotronEmbed1BV2EmbedderNormalization:
     def test_output_is_l2_normalized_by_default(self):
         embedder = _make_text_embedder()
-        with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]):
+        with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]):
             result = embedder.embed(["text"])
         assert abs(float(torch.norm(result, dim=-1).item()) - 1.0) < 1e-5
 
     def test_output_unnormalized_when_normalize_false(self):
         embedder = _make_text_embedder()
         embedder.normalize = False
-        with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]) as mock_fn:
+        with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]) as mock_fn:
             result = embedder.embed(["text"])
         assert mock_fn.call_args[1].get("normalize") is False
         assert abs(float(result[0][0].item()) - 3.0) < 1e-5
@@ -312,7 +312,7 @@ class TestLlamaNemotronEmbed1BV2EmbedderNormalization:
     def test_query_output_unnormalized_when_normalize_false(self):
         embedder = _make_text_embedder()
         embedder.normalize = False
-        with patch("nemo_retriever.text_embed.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]) as mock_fn:
+        with patch("nemo_retriever.models.inference.vllm.embed_with_vllm_llm", return_value=[[3.0, 4.0]]) as mock_fn:
             result = embedder.embed_queries(["text"])
         assert mock_fn.call_args[1].get("normalize") is False
         assert abs(float(result[0][0].item()) - 3.0) < 1e-5
@@ -333,7 +333,7 @@ class TestVLLMEmbedderTextImage:
     def test_calls_multimodal_helper(self):
         b64 = _make_minimal_b64()
         with patch(
-            "nemo_retriever.text_embed.vllm.embed_multimodal_with_vllm_llm",
+            "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
             return_value=[[0.6, 0.8]],
         ) as mock_mm:
             self.embedder.embed_text_image(["hello"], [b64])
@@ -343,7 +343,7 @@ class TestVLLMEmbedderTextImage:
         b64 = _make_minimal_b64()
         captured = []
         with patch(
-            "nemo_retriever.text_embed.vllm.embed_multimodal_with_vllm_llm",
+            "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
             side_effect=lambda dicts, llm, **kw: captured.extend(dicts) or [[0.1, 0.2]],
         ):
             self.embedder.embed_text_image(["my document text"], [b64])
@@ -354,7 +354,7 @@ class TestVLLMEmbedderTextImage:
         b64 = _make_minimal_b64()
         captured = []
         with patch(
-            "nemo_retriever.text_embed.vllm.embed_multimodal_with_vllm_llm",
+            "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
             side_effect=lambda dicts, llm, **kw: captured.extend(dicts) or [[0.1, 0.2]],
         ):
             self.embedder.embed_text_image(["text a", "text b"], [b64, ""])
@@ -363,7 +363,7 @@ class TestVLLMEmbedderTextImage:
     def test_output_is_l2_normalized(self):
         b64 = _make_minimal_b64()
         with patch(
-            "nemo_retriever.text_embed.vllm.embed_multimodal_with_vllm_llm",
+            "nemo_retriever.models.inference.vllm.embed_multimodal_with_vllm_llm",
             return_value=[[3.0, 4.0]],
         ):
             result = self.embedder.embed_text_image(["text"], [b64])

@@ -39,7 +39,7 @@ from nemo_retriever.common.modality.ocr.shared import (
     split_ocrable_rows,
 )
 from nemo_retriever.common.params import RemoteRetryParams
-from nemo_retriever.video import _content_types as _CT
+from nemo_retriever.common.modality.video import _content_types as _CT
 
 _OCRABLE_CONTENT_TYPES = ("", _CT.VIDEO_FRAME)
 

@@ -3,9 +3,9 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from nemo_retriever.tools.harness import app as harness_app
-from nemo_retriever.tools.harness import nightly as harness_nightly
-from nemo_retriever.tools.harness.slack import build_slack_payload, load_replay_report, load_session_report
+from nemo_retriever.harness import app as harness_app
+from nemo_retriever.harness import nightly as harness_nightly
+from nemo_retriever.harness.slack import build_slack_payload, load_replay_report, load_session_report
 
 RUNNER = CliRunner()
 

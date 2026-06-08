@@ -31,7 +31,7 @@ from nemo_retriever.common.api.util.image_processing.transforms import (
     scale_numpy_image,
 )
 from nemo_retriever.common.api.util.metadata.aggregators import Base64Image
-from nemo_retriever.common.api.internal.primitives.nim.default_values import YOLOX_PAGE_IMAGE_FORMAT
+from nemo_retriever.models.nim.primitives.default_values import YOLOX_PAGE_IMAGE_FORMAT
 
 logger = logging.getLogger(__name__)
 

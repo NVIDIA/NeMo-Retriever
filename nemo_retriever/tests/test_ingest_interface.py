@@ -189,10 +189,10 @@ def test_extract_default_direct_images_materialize_page_image(monkeypatch, tmp_p
         raise AssertionError("direct image extraction routed through PDFSplitActor")
 
     monkeypatch.setattr(
-        "nemo_retriever.graph.multi_type_extract_operator._MultiTypeExtractBase._run_detection_pipeline",
+        "nemo_retriever.operators.graph_ops.multi_type_extract_operator._MultiTypeExtractBase._run_detection_pipeline",
         passthrough_detection,
     )
-    monkeypatch.setattr("nemo_retriever.pdf.split.PDFSplitActor.run", fail_pdf_split)
+    monkeypatch.setattr("nemo_retriever.operators.extract.pdf.split.PDFSplitActor.run", fail_pdf_split)
 
     result = (
         create_ingestor(run_mode="inprocess")

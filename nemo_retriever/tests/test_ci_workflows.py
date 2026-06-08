@@ -207,7 +207,7 @@ def test_dev_compose_helpers_are_feature_scoped():
     assert "docker-compose" not in docker_doc_text.lower()
 
     skill_eval_config = (
-        REPO_ROOT / "nemo_retriever" / "src" / "nemo_retriever" / "skill_eval" / "configs" / "skill_eval.yaml"
+        REPO_ROOT / "nemo_retriever" / "src" / "nemo_retriever" / "tools" / "skill_eval" / "configs" / "skill_eval.yaml"
     ).read_text(encoding="utf-8")
     assert "nemo_retriever/dev/compose/judge.compose.yaml" in skill_eval_config
 

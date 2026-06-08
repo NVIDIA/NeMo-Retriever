@@ -166,7 +166,7 @@ def asr_params_from_env(
 
 
 try:
-    from nemo_retriever.common.api.internal.primitives.nim.model_interface.parakeet import (
+    from nemo_retriever.models.nim.primitives.model_interface.parakeet import (
         create_audio_inference_client,
     )
 

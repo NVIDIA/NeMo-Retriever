@@ -237,7 +237,7 @@ def test_build_graph_resolves_endpoint_configured_nodes_to_cpu_variants(
 
 
 def test_build_graph_keeps_partial_graphic_endpoint_on_gpu_for_local_ocr(caplog) -> None:
-    caplog.set_level(logging.WARNING, logger="nemo_retriever.chart.chart_detection")
+    caplog.set_level(logging.WARNING, logger="nemo_retriever.operators.extract.chart.chart_detection")
     graph = build_graph(
         extract_params=ExtractParams(
             method="ocr",
@@ -438,12 +438,12 @@ def test_graph_ingestor_autodetects_no_gpu_for_batch_overrides(monkeypatch) -> N
         available_resources=Resources(cpu_count=16, gpu_count=0),
     )
 
-    monkeypatch.setattr("nemo_retriever.graph_ingestor.build_graph", lambda **kwargs: Graph())
+    monkeypatch.setattr("nemo_retriever.ingestor.graph_ingestor.build_graph", lambda **kwargs: Graph())
     monkeypatch.setattr(
-        "nemo_retriever.graph_ingestor.batch_tuning_to_node_overrides", _fake_batch_tuning_to_node_overrides
+        "nemo_retriever.ingestor.graph_ingestor.batch_tuning_to_node_overrides", _fake_batch_tuning_to_node_overrides
     )
-    monkeypatch.setattr("nemo_retriever.graph_ingestor.gather_cluster_resources", lambda ray: cluster)
-    monkeypatch.setattr("nemo_retriever.graph_ingestor.RayDataExecutor", _FakeExecutor)
+    monkeypatch.setattr("nemo_retriever.ingestor.graph_ingestor.gather_cluster_resources", lambda ray: cluster)
+    monkeypatch.setattr("nemo_retriever.ingestor.graph_ingestor.RayDataExecutor", _FakeExecutor)
     monkeypatch.setattr("ray.is_initialized", _FakeRay.is_initialized)
 
     ingestor = GraphIngestor(run_mode="batch", documents=["/tmp/input.pdf"])

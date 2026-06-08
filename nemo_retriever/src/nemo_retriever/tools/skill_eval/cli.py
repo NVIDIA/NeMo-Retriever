@@ -18,8 +18,8 @@ from typing import Any, Optional
 import typer
 import yaml
 
-from nemo_retriever.tools.harness.artifacts import create_session_dir, last_commit
-from nemo_retriever.tools.harness.config import REPO_ROOT
+from nemo_retriever.harness.artifacts import create_session_dir, last_commit
+from nemo_retriever.harness.config import REPO_ROOT
 from nemo_retriever.tools.skill_eval.dataset import DatasetEntry, load_config, load_eval_manifest
 from nemo_retriever.tools.skill_eval.report import overall_recall, write_summary
 from nemo_retriever.tools.skill_eval.runner import (

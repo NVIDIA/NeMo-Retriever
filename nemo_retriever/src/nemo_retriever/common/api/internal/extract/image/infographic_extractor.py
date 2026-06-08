@@ -12,13 +12,13 @@ from typing import Tuple
 
 import pandas as pd
 
-from nemo_retriever.common.api.internal.primitives.nim import NimClient
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.ocr import PaddleOCRModelInterface
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.ocr import NemoRetrieverOCRModelInterface
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.ocr import get_ocr_model_name
+from nemo_retriever.models.nim.primitives import NimClient
+from nemo_retriever.models.nim.primitives.model_interface.ocr import PaddleOCRModelInterface
+from nemo_retriever.models.nim.primitives.model_interface.ocr import NemoRetrieverOCRModelInterface
+from nemo_retriever.models.nim.primitives.model_interface.ocr import get_ocr_model_name
 from nemo_retriever.common.api.internal.schemas.extract.extract_infographic_schema import InfographicExtractorSchema
 from nemo_retriever.common.api.util.image_processing.transforms import base64_to_numpy
-from nemo_retriever.common.api.util.nim import create_inference_client
+from nemo_retriever.models.nim.util import create_inference_client
 from nemo_retriever.common.api.util.image_processing.table_and_chart import reorder_boxes
 from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_model_dir
 

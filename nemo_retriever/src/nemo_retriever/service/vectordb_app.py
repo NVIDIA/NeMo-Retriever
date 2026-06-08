@@ -153,7 +153,7 @@ class VectorDBState:
 
     def embed_queries(self, texts: list[str]) -> list[list[float]]:
         """Embed query texts using the configured NIM endpoint."""
-        from nemo_retriever.common.api.util.nim import infer_microservice
+        from nemo_retriever.models.nim.util import infer_microservice
 
         embeddings = infer_microservice(
             texts,

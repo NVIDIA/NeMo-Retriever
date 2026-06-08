@@ -5,25 +5,25 @@ from types import SimpleNamespace
 import pytest
 from typer.testing import CliRunner
 
-from nemo_retriever.tools.harness.cli import app as harness_app
-from nemo_retriever.tools.harness import artifacts as harness_artifacts
-from nemo_retriever.tools.harness.artifacts import create_run_artifact_dir
-from nemo_retriever.tools.harness.config import HarnessConfig
-from nemo_retriever.tools.harness import run as harness_run
-from nemo_retriever.tools.harness.run import _build_command, _evaluate_run_outcome, _normalize_recall_metric_key
+from nemo_retriever.harness.cli import app as harness_app
+from nemo_retriever.harness import artifacts as harness_artifacts
+from nemo_retriever.harness.artifacts import create_run_artifact_dir
+from nemo_retriever.harness.config import HarnessConfig
+from nemo_retriever.harness import run as harness_run
+from nemo_retriever.harness.run import _build_command, _evaluate_run_outcome, _normalize_recall_metric_key
 
 RUNNER = CliRunner()
 
 
 def test_embedded_ray_scripts_import_env_helpers_inside_try() -> None:
-    from nemo_retriever.tools.harness.runner import _GRAPH_WRAPPER_SCRIPT
+    from nemo_retriever.harness.runner import _GRAPH_WRAPPER_SCRIPT
 
     for script in (harness_run._GRAPH_RUNNER_SCRIPT, _GRAPH_WRAPPER_SCRIPT):
         before_try, after_try = script.split("\ntry:\n", 1)
-        assert "from nemo_retriever.utils.hf_cache import collect_hf_runtime_env" not in before_try
-        assert "from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env" not in before_try
-        assert "from nemo_retriever.utils.hf_cache import collect_hf_runtime_env" in after_try
-        assert "from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env" in after_try
+        assert "from nemo_retriever.models.hf_cache import collect_hf_runtime_env" not in before_try
+        assert "from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env" not in before_try
+        assert "from nemo_retriever.models.hf_cache import collect_hf_runtime_env" in after_try
+        assert "from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env" in after_try
 
 
 def test_evaluate_run_outcome_passes_when_process_succeeds_and_recall_present() -> None:
@@ -1754,7 +1754,7 @@ def test_managed_service_mode_does_not_mutate_source_config(monkeypatch, tmp_pat
             "artifacts": {"runtime_metrics_dir": str((_artifact_dir / "runtime_metrics").resolve())},
         }
 
-    import nemo_retriever.tools.harness.helm_manager as helm_manager
+    import nemo_retriever.harness.helm_manager as helm_manager
 
     monkeypatch.setattr(helm_manager, "HelmServiceManager", FakeHelmServiceManager)
     monkeypatch.setattr(harness_run, "_run_service_mode", _fake_run_service_mode)

@@ -18,13 +18,13 @@ from nemo_retriever.common.api.internal.schemas.extract.extract_chart_schema imp
 from nemo_retriever.common.api.internal.schemas.meta.ingest_job_schema import IngestTaskChartExtraction
 from nemo_retriever.common.api.util.image_processing.table_and_chart import join_yolox_graphic_elements_and_ocr_output
 from nemo_retriever.common.api.util.image_processing.table_and_chart import process_yolox_graphic_elements
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.ocr import PaddleOCRModelInterface
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.ocr import NemoRetrieverOCRModelInterface
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.ocr import get_ocr_model_name
-from nemo_retriever.common.api.internal.primitives.nim import NimClient
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.yolox import YoloxGraphicElementsModelInterface
+from nemo_retriever.models.nim.primitives.model_interface.ocr import PaddleOCRModelInterface
+from nemo_retriever.models.nim.primitives.model_interface.ocr import NemoRetrieverOCRModelInterface
+from nemo_retriever.models.nim.primitives.model_interface.ocr import get_ocr_model_name
+from nemo_retriever.models.nim.primitives import NimClient
+from nemo_retriever.models.nim.primitives.model_interface.yolox import YoloxGraphicElementsModelInterface
 from nemo_retriever.common.api.util.image_processing.transforms import base64_to_numpy
-from nemo_retriever.common.api.util.nim import create_inference_client
+from nemo_retriever.models.nim.util import create_inference_client
 from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_model_dir
 
 PADDLE_MIN_WIDTH = 32

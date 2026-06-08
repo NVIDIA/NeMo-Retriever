@@ -22,7 +22,7 @@ from nemo_retriever.common.input_files import (
     raise_input_path_not_found,
 )
 from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env
-from nemo_retriever.utils import ray_resource_hueristics as _rrh
+from nemo_retriever.common import ray_resource_hueristics as _rrh
 from nemo_retriever.common.ray_resource_hueristics import (
     gather_cluster_resources,
     NEMOTRON_PARSE_BATCH_SIZE,

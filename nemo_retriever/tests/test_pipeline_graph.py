@@ -538,7 +538,7 @@ class TestGraphExecute:
     def test_execute_resolves_archetypes_locally(self, monkeypatch):
         resources = Resources(cpu_count=8, gpu_count=0)
         monkeypatch.setattr(
-            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
             lambda: resources,
         )
 
@@ -676,7 +676,7 @@ class TestMultiTypeExtractOperator:
         from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
 
         monkeypatch.setattr(
-            "nemo_retriever.graph.multi_type_extract_operator.asr_params_from_env",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.asr_params_from_env",
             lambda: ASRParams(segment_audio=True),
         )
 
@@ -755,7 +755,7 @@ class TestMultiTypeExtractOperator:
     def test_auto_mode_logs_and_skips_unsupported_extension_in_file_list(self, caplog):
         op = MultiTypeExtractOperator(extraction_mode="auto")
 
-        with caplog.at_level(logging.WARNING, logger="nemo_retriever.graph.multi_type_extract_operator"):
+        with caplog.at_level(logging.WARNING, logger="nemo_retriever.operators.graph_ops.multi_type_extract_operator"):
             grouped = op.preprocess(["/folder/known.txt", "/folder/unknown.xyz"])
 
         assert grouped["text"] == ["/folder/known.txt"]
@@ -772,7 +772,7 @@ class TestMultiTypeExtractOperator:
         op = MultiTypeExtractCPUActor(extraction_mode="auto")
         batch = pd.DataFrame({"path": ["/folder/unknown.xyz"], "bytes": [b"unsupported"]})
 
-        with caplog.at_level(logging.WARNING, logger="nemo_retriever.graph.multi_type_extract_operator"):
+        with caplog.at_level(logging.WARNING, logger="nemo_retriever.operators.graph_ops.multi_type_extract_operator"):
             result = op.process(batch)
 
         assert isinstance(result, pd.DataFrame)
@@ -819,9 +819,11 @@ class TestMultiTypeExtractOperator:
             calls.append((operator_class.__name__, resources))
             return _IdentityStage
 
-        monkeypatch.setattr("nemo_retriever.graph.multi_type_extract_operator.resolve_operator_class", _fake_resolve)
         monkeypatch.setattr(
-            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.resolve_operator_class", _fake_resolve
+        )
+        monkeypatch.setattr(
+            "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
             lambda: Resources(cpu_count=8, gpu_count=1),
         )
 
@@ -864,11 +866,11 @@ class TestMultiTypeExtractOperator:
                 return data
 
         monkeypatch.setattr(
-            "nemo_retriever.graph.multi_type_extract_operator.DocToPdfConversionActor.run",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.DocToPdfConversionActor.run",
             lambda self, data: data,
         )
         monkeypatch.setattr(
-            "nemo_retriever.graph.multi_type_extract_operator.PDFSplitActor.run",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.PDFSplitActor.run",
             lambda self, data: data,
         )
 
@@ -876,9 +878,11 @@ class TestMultiTypeExtractOperator:
             calls.append((operator_class.__name__, resources))
             return _IdentityStage
 
-        monkeypatch.setattr("nemo_retriever.graph.multi_type_extract_operator.resolve_operator_class", _fake_resolve)
         monkeypatch.setattr(
-            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.resolve_operator_class", _fake_resolve
+        )
+        monkeypatch.setattr(
+            "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
             lambda: Resources(cpu_count=8, gpu_count=1),
         )
 

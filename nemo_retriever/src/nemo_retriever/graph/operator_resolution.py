@@ -7,7 +7,7 @@ from __future__ import annotations
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
-from nemo_retriever.utils import ray_resource_hueristics as _rrh
+from nemo_retriever.common import ray_resource_hueristics as _rrh
 from nemo_retriever.common.ray_resource_hueristics import ClusterResources, Resources
 
 

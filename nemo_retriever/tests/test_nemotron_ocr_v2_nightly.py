@@ -90,7 +90,7 @@ def test_local_extra_accepts_stable_ocr_2_and_newer_dev_releases() -> None:
 
 
 def test_local_ocr_v2_wrapper_uses_original_namespace_and_package_lang_selectors() -> None:
-    source = (PROJECT_ROOT / "src" / "nemo_retriever" / "model" / "local" / "nemotron_ocr_v2.py").read_text(
+    source = (PROJECT_ROOT / "src" / "nemo_retriever" / "models" / "local" / "nemotron_ocr_v2.py").read_text(
         encoding="utf-8"
     )
 

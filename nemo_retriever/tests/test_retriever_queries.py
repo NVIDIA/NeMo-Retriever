@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for the graph-based :class:`~nemo_retriever.retriever.Retriever` query surface."""
+"""Unit tests for the graph-based :class:`~nemo_retriever.graph.retriever.Retriever` query surface."""
 
 from __future__ import annotations
 

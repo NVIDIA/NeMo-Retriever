@@ -64,7 +64,7 @@ def test_build_queries_by_id_warns_when_all_queries_filtered(caplog) -> None:
         {"query_id": 2, "query": "bonjour", "language": "fr"},
     ]
 
-    with caplog.at_level("WARNING", logger="nemo_retriever.recall.beir"):
+    with caplog.at_level("WARNING", logger="nemo_retriever.tools.recall.beir"):
         query_ids, queries = build_queries_by_id(rows, query_language="en")
 
     assert query_ids == []
@@ -78,7 +78,7 @@ def test_build_queries_by_id_warns_when_all_queries_filtered(caplog) -> None:
 def test_build_queries_by_id_warning_logs_normalized_query_language(caplog) -> None:
     rows = [{"query_id": 1, "query": "hello", "language": "english"}]
 
-    with caplog.at_level("WARNING", logger="nemo_retriever.recall.beir"):
+    with caplog.at_level("WARNING", logger="nemo_retriever.tools.recall.beir"):
         query_ids, queries = build_queries_by_id(rows, query_language="Français")
 
     assert query_ids == []
@@ -551,7 +551,7 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
     )
 
     monkeypatch.setattr(
-        "nemo_retriever.recall.beir.load_beir_dataset",
+        "nemo_retriever.tools.recall.beir.load_beir_dataset",
         lambda *args, **kwargs: dataset,
     )
 
@@ -601,7 +601,7 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
             assert queries == ["what is a qubit?"]
             return [[{"pdf_basename": "doc_a", "source_id": "/tmp/doc_a.pdf"}]]
 
-    monkeypatch.setattr("nemo_retriever.recall.beir.Retriever", _FakeRetriever)
+    monkeypatch.setattr("nemo_retriever.tools.recall.beir.Retriever", _FakeRetriever)
 
     cfg = BeirConfig(
         lancedb_uri="/tmp/lancedb",

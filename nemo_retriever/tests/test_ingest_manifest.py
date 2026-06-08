@@ -85,7 +85,7 @@ def test_manifest_branch_specs_resolve_default_params(monkeypatch, tmp_path) -> 
     video = tmp_path / "scene.mp4"
     audio.write_bytes(b"audio")
     video.write_bytes(b"video")
-    monkeypatch.setattr("nemo_retriever.ingest_manifest._default_asr_params", lambda: ASRParams(segment_audio=False))
+    monkeypatch.setattr("nemo_retriever.ingestor.manifest._default_asr_params", lambda: ASRParams(segment_audio=False))
 
     branches = plan_extraction_branches(build_input_manifest([str(video), str(audio)]))
     by_family = {branch.family: branch for branch in branches}
@@ -251,7 +251,9 @@ def test_dry_run_secret_redaction_covers_common_credential_names() -> None:
 def test_ingest_plan_auto_builds_audio_params(monkeypatch, tmp_path) -> None:
     audio = tmp_path / "clip.wav"
     audio.write_bytes(b"audio")
-    monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
+    monkeypatch.setattr(
+        "nemo_retriever.operators.extract.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False)
+    )
 
     plan = resolve_ingest_plan([str(audio)], segment_audio=True)
 
@@ -267,7 +269,9 @@ def test_ingest_plan_auto_builds_audio_params(monkeypatch, tmp_path) -> None:
 def test_ingest_plan_preserves_env_asr_segment_audio_when_cli_unset(monkeypatch, tmp_path) -> None:
     audio = tmp_path / "clip.wav"
     audio.write_bytes(b"audio")
-    monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=True))
+    monkeypatch.setattr(
+        "nemo_retriever.operators.extract.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=True)
+    )
 
     plan = resolve_ingest_plan([str(audio)])
 
@@ -278,7 +282,9 @@ def test_ingest_plan_preserves_env_asr_segment_audio_when_cli_unset(monkeypatch,
 def test_ingest_plan_auto_builds_video_params(monkeypatch, tmp_path) -> None:
     video = tmp_path / "scene.mp4"
     video.write_bytes(b"video")
-    monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
+    monkeypatch.setattr(
+        "nemo_retriever.operators.extract.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False)
+    )
 
     plan = resolve_ingest_plan([str(video)])
 
@@ -302,7 +308,9 @@ def test_ingest_plan_auto_allows_mixed_supported_branches(monkeypatch, tmp_path)
     pdf.write_bytes(b"pdf")
     audio.write_bytes(b"audio")
     video.write_bytes(b"video")
-    monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
+    monkeypatch.setattr(
+        "nemo_retriever.operators.extract.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False)
+    )
 
     plan = resolve_ingest_plan([str(pdf), str(audio), str(video)])
 
@@ -356,8 +364,8 @@ def test_inprocess_branch_execution_unions_schemas_and_runs_post_once(monkeypatc
         post_calls.append(kwargs)
         return _graph_with(_PostOperator())
 
-    monkeypatch.setattr("nemo_retriever.branch_extraction.build_graph", fake_build_graph)
-    monkeypatch.setattr("nemo_retriever.branch_extraction.build_post_extract_graph", fake_post_graph)
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_graph", fake_build_graph)
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_post_extract_graph", fake_post_graph)
 
     result = (
         GraphIngestor(run_mode="inprocess", show_progress=False)
@@ -390,8 +398,8 @@ def test_text_html_branch_execution_skips_content_reshape_before_embed(monkeypat
         post_calls.append(kwargs)
         return _graph_with(_PostOperator())
 
-    monkeypatch.setattr("nemo_retriever.branch_extraction.build_graph", fake_build_graph)
-    monkeypatch.setattr("nemo_retriever.branch_extraction.build_post_extract_graph", fake_post_graph)
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_graph", fake_build_graph)
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_post_extract_graph", fake_post_graph)
 
     GraphIngestor(run_mode="inprocess", show_progress=False).files([str(text), str(html)]).extract().embed().ingest()
 
@@ -466,9 +474,9 @@ def test_batch_branch_execution_uses_dataset_union(monkeypatch, tmp_path) -> Non
             return pd.DataFrame({"done": [True]})
 
     monkeypatch.setattr(GraphIngestor, "_ensure_batch_runtime", lambda self: (None, FakeCluster()))
-    monkeypatch.setattr("nemo_retriever.branch_extraction.RayDataExecutor", FakeExecutor)
-    monkeypatch.setattr("nemo_retriever.branch_extraction.build_graph", lambda **_kwargs: Graph())
-    monkeypatch.setattr("nemo_retriever.branch_extraction.build_post_extract_graph", lambda **_kwargs: Graph())
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.RayDataExecutor", FakeExecutor)
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_graph", lambda **_kwargs: Graph())
+    monkeypatch.setattr("nemo_retriever.ingestor.branch_extraction.build_post_extract_graph", lambda **_kwargs: Graph())
 
     result = GraphIngestor(run_mode="batch").files([str(pdf), str(image)]).extract().ingest()
 

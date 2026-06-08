@@ -74,7 +74,7 @@ def test_video_audio_separate_true_on_video_warns_and_outputs_audio_chunks(tmp_p
     fixture = tmp_path / "fixture.mp4"
     _make_test_mp4_with_av(fixture, duration_sec=2)
 
-    caplog.set_level(logging.WARNING, logger="nemo_retriever.audio.media_interface")
+    caplog.set_level(logging.WARNING, logger="nemo_retriever.common.modality.audio.media_interface")
     params = AudioChunkParams(
         split_type="time",
         split_interval=10,

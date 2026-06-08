@@ -190,7 +190,7 @@ class TestModelRegistration:
         assert is_vl_rerank_model("") is False
 
     def test_create_local_reranker_dispatches_to_vl(self):
-        with (patch("nemo_retriever.model.local.nemotron_rerank_vl_v2_hf.NemotronRerankVLV2") as MockVL,):
+        with (patch("nemo_retriever.models.local.nemotron_rerank_vl_v2_hf.NemotronRerankVLV2") as MockVL,):
             MockVL.return_value = MagicMock()
             from nemo_retriever.models import create_local_reranker
 
@@ -199,7 +199,7 @@ class TestModelRegistration:
             assert result is MockVL.return_value
 
     def test_create_local_reranker_dispatches_to_text(self):
-        with (patch("nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2") as MockText,):
+        with (patch("nemo_retriever.models.local.nemotron_rerank_v2.NemotronRerankV2") as MockText,):
             MockText.return_value = MagicMock()
             from nemo_retriever.models import create_local_reranker
 
@@ -226,7 +226,7 @@ class TestRerankHitsVL:
             {"text": "doc2", "stored_image_uri": "file:///tmp/img2.png"},
         ]
 
-        with patch("nemo_retriever.io.image_store.load_image_b64_from_uri") as mock_load:
+        with patch("nemo_retriever.common.io.image_store.load_image_b64_from_uri") as mock_load:
             mock_load.side_effect = ["b64_data_1", "b64_data_2"]
             out = rerank_hits("q", hits, model=model, modality="text_image")
 

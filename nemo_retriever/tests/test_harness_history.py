@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from nemo_retriever.tools.harness import history
+from nemo_retriever.harness import history
 
 
 def test_managed_dataset_persists_ocr_lang(tmp_path):

@@ -32,7 +32,7 @@ from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.common.modality.ocr.shared import concat_with_passthrough
 from nemo_retriever.common.params import AudioVisualFuseParams
-from nemo_retriever.video import _content_types as _CT
+from nemo_retriever.common.modality.video import _content_types as _CT
 
 logger = logging.getLogger(__name__)
 

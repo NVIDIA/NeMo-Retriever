@@ -50,9 +50,9 @@ def test_caption_images_skips_already_captioned():
     assert result.iloc[0]["images"][0]["text"] == "done"
 
 
-@patch("nemo_retriever.pdf.extract.extract_image_like_objects_from_pdfium_page")
+@patch("nemo_retriever.operators.extract.pdf.extract.extract_image_like_objects_from_pdfium_page")
 def test_pdf_extraction_populates_images(mock_extract):
-    _ext = pytest.importorskip("nemo_retriever.pdf.extract")
+    _ext = pytest.importorskip("nemo_retriever.operators.extract.pdf.extract")
     pdfium = pytest.importorskip("pypdfium2")
 
     mock_img = MagicMock(image=_make_test_png_b64(), bbox=(10, 20, 100, 200), max_width=612, max_height=792)
@@ -253,7 +253,7 @@ class TestCaptionImageParamThreading:
         assert call_kwargs["top_p"] is None
         assert call_kwargs["max_tokens"] == 1024
 
-    @patch("nemo_retriever.caption.caption._create_remote_client")
+    @patch("nemo_retriever.operators.extract.caption.caption._create_remote_client")
     def test_top_p_and_max_tokens_forwarded_to_remote(self, mock_create_client):
         from nemo_retriever.operators.extract.caption.caption import caption_images
 
@@ -273,7 +273,7 @@ class TestCaptionImageParamThreading:
         assert infer_kwargs["max_tokens"] == 256
         assert infer_kwargs["temperature"] == 1.0
 
-    @patch("nemo_retriever.caption.caption._create_remote_client")
+    @patch("nemo_retriever.operators.extract.caption.caption._create_remote_client")
     def test_remote_omits_top_p_when_none(self, mock_create_client):
         from nemo_retriever.operators.extract.caption.caption import caption_images
 
@@ -301,7 +301,7 @@ def test_caption_params_accepts_extra_body():
 
 
 def test_vlm_model_interface_forwards_request_extras():
-    from nemo_retriever.common.api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
+    from nemo_retriever.models.nim.primitives.model_interface.vlm import VLMModelInterface
 
     interface = VLMModelInterface()
     payloads, batch_data = interface.format_input(
@@ -329,7 +329,7 @@ def test_vlm_model_interface_forwards_request_extras():
 
 
 def test_vlm_model_interface_extra_body_overrides_payload_fields():
-    from nemo_retriever.common.api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
+    from nemo_retriever.models.nim.primitives.model_interface.vlm import VLMModelInterface
 
     interface = VLMModelInterface()
     payloads, _batch_data = interface.format_input(
@@ -350,7 +350,7 @@ def test_vlm_model_interface_extra_body_overrides_payload_fields():
     assert payloads[0]["chat_template_kwargs"] == {"enable_thinking": True}
 
 
-@patch("nemo_retriever.caption.caption._create_remote_client")
+@patch("nemo_retriever.operators.extract.caption.caption._create_remote_client")
 def test_remote_omni_uses_hosted_model_and_profile_extras(mock_create_client):
     from nemo_retriever.operators.extract.caption.caption import caption_images
 
@@ -370,7 +370,7 @@ def test_remote_omni_uses_hosted_model_and_profile_extras(mock_create_client):
     assert infer_kwargs["chat_template_kwargs"] == {"enable_thinking": False}
 
 
-@patch("nemo_retriever.caption.caption._create_remote_client")
+@patch("nemo_retriever.operators.extract.caption.caption._create_remote_client")
 def test_caption_cpu_actor_default_extra_body_does_not_repack_profile_extras(mock_create_client):
     from nemo_retriever.operators.extract.caption.caption import CaptionCPUActor
     from nemo_retriever.common.params import CaptionParams
@@ -393,7 +393,7 @@ def test_caption_cpu_actor_default_extra_body_does_not_repack_profile_extras(moc
     assert "extra_body" not in infer_kwargs
 
 
-@patch("nemo_retriever.caption.caption._create_remote_client")
+@patch("nemo_retriever.operators.extract.caption.caption._create_remote_client")
 def test_caption_cpu_actor_defaults_to_hosted_endpoint_when_api_key_is_configured(mock_create_client):
     from nemo_retriever.operators.extract.caption.caption import CaptionCPUActor
     from nemo_retriever.common.params import CaptionParams
@@ -412,7 +412,7 @@ def test_caption_cpu_actor_defaults_to_hosted_endpoint_when_api_key_is_configure
     assert infer_kwargs["model_name"] == "nvidia/nemotron-nano-12b-v2-vl"
 
 
-@patch("nemo_retriever.caption.caption._create_remote_client")
+@patch("nemo_retriever.operators.extract.caption.caption._create_remote_client")
 def test_caption_cpu_actor_default_endpoint_reads_api_key_from_runtime_env(mock_create_client, monkeypatch):
     from nemo_retriever.operators.extract.caption.caption import CaptionCPUActor
     from nemo_retriever.common.params import CaptionParams
@@ -448,7 +448,7 @@ def test_caption_cpu_actor_default_endpoint_requires_api_key(monkeypatch):
         CaptionCPUActor(CaptionParams())
 
 
-@patch("nemo_retriever.caption.caption._create_remote_client")
+@patch("nemo_retriever.operators.extract.caption.caption._create_remote_client")
 def test_remote_omni_user_extra_body_overrides_profile_defaults(mock_create_client):
     from nemo_retriever.operators.extract.caption.caption import caption_images
 
@@ -499,9 +499,9 @@ def test_caption_batch_remote_request_extras_override_sampling_defaults():
     assert infer_kwargs["chat_template_kwargs"] == {"enable_thinking": False}
 
 
-@patch("nemo_retriever.caption.caption._create_remote_client")
+@patch("nemo_retriever.operators.extract.caption.caption._create_remote_client")
 def test_remote_extra_body_arbitrary_keys_reach_formatted_payload(mock_create_client):
-    from nemo_retriever.common.api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
+    from nemo_retriever.models.nim.primitives.model_interface.vlm import VLMModelInterface
     from nemo_retriever.operators.extract.caption.caption import caption_images
 
     formatted_payloads = []
@@ -546,9 +546,9 @@ def test_remote_extra_body_arbitrary_keys_reach_formatted_payload(mock_create_cl
     }
 
 
-@patch("nemo_retriever.caption.caption._create_remote_client")
+@patch("nemo_retriever.operators.extract.caption.caption._create_remote_client")
 def test_remote_omni_partial_extra_body_preserves_profile_defaults_in_formatted_payload(mock_create_client):
-    from nemo_retriever.common.api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
+    from nemo_retriever.models.nim.primitives.model_interface.vlm import VLMModelInterface
     from nemo_retriever.operators.extract.caption.caption import caption_images
 
     formatted_payloads = []
@@ -578,7 +578,7 @@ def test_remote_omni_partial_extra_body_preserves_profile_defaults_in_formatted_
     assert user_extra_body == {"chat_template_kwargs": {"reasoning_budget": 32}}
 
 
-@patch("nemo_retriever.caption.caption._create_remote_client")
+@patch("nemo_retriever.operators.extract.caption.caption._create_remote_client")
 def test_unknown_remote_model_passes_through_without_profile_extras(mock_create_client):
     from nemo_retriever.operators.extract.caption.caption import caption_images
 
@@ -598,7 +598,7 @@ def test_unknown_remote_model_passes_through_without_profile_extras(mock_create_
 
 
 def test_caption_images_threads_resolved_local_model_name_to_loader(monkeypatch):
-    from nemo_retriever.caption import caption as caption_module
+    from nemo_retriever.operators.extract.caption import caption as caption_module
 
     created_kwargs = []
 
@@ -623,7 +623,7 @@ def test_caption_images_threads_resolved_local_model_name_to_loader(monkeypatch)
 
 
 def test_caption_images_local_cache_keys_by_resolved_loader_kwargs(monkeypatch):
-    from nemo_retriever.caption import caption as caption_module
+    from nemo_retriever.operators.extract.caption import caption as caption_module
 
     created_kwargs = []
 

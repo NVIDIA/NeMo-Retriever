@@ -21,7 +21,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from nemo_retriever.tools.harness.config import _read_yaml_mapping
+from nemo_retriever.harness.config import _read_yaml_mapping
 
 
 class GroundTruthPage(BaseModel):

@@ -12,7 +12,7 @@ This lets us assert:
 * policy denials produce HTTP 403 / 501 responses;
 * ``/v1/ingest/pipeline-config`` exposes the ``allowed_overrides`` block.
 
-The stub work-fn never imports ``nemo_retriever.graph_ingestor`` so the test
+The stub work-fn never imports ``nemo_retriever.ingestor.graph_ingestor`` so the test
 runs without any GPU / Ray dependencies.
 """
 

@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from nemo_retriever.audio import asr_actor as _asr_actor
+from nemo_retriever.operators.extract.audio import asr_actor as _asr_actor
 from nemo_retriever.operators.extract.audio.asr_actor import (
     DEFAULT_NGC_ASR_FUNCTION_ID,
     DEFAULT_NGC_ASR_GRPC_ENDPOINT,

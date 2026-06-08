@@ -14,10 +14,10 @@ from typing import Tuple
 import backoff
 import numpy as np
 
-from nemo_retriever.common.api.internal.primitives.nim import ModelInterface
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.decorators import global_cache
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.decorators import lock
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.helpers import preprocess_image_for_paddle
+from nemo_retriever.models.nim.primitives import ModelInterface
+from nemo_retriever.models.nim.primitives.model_interface.decorators import global_cache
+from nemo_retriever.models.nim.primitives.model_interface.decorators import lock
+from nemo_retriever.models.nim.primitives.model_interface.helpers import preprocess_image_for_paddle
 from nemo_retriever.common.api.util.image_processing.transforms import base64_to_numpy
 
 DEFAULT_OCR_MODEL_NAME = "scene_text_ensemble"

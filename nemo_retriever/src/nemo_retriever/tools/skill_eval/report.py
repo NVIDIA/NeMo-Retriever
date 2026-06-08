@@ -11,7 +11,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Any, Iterable
 
-from nemo_retriever.tools.harness.artifacts import last_commit, write_session_summary
+from nemo_retriever.harness.artifacts import last_commit, write_session_summary
 from nemo_retriever.tools.skill_eval.dataset import DatasetEntry
 from nemo_retriever.tools.skill_eval.runner import CONDITIONS, TrialResult
 from nemo_retriever.tools.skill_eval.score import recall_at_k

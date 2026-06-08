@@ -69,7 +69,7 @@ def test_hf_query_embedder_warns_when_query_truncated(caplog) -> None:
     embedder, _tokenizer = _make_loaded_embedder()
     embedder.query_max_length = 3
 
-    with caplog.at_level("WARNING", logger="nemo_retriever.model.local.llama_nemotron_embed_1b_v2_hf_embedder"):
+    with caplog.at_level("WARNING", logger="nemo_retriever.models.local.llama_nemotron_embed_1b_v2_hf_embedder"):
         embedder.embed_queries(["one two three four"], batch_size=1)
 
     assert "Truncating 1/1 HF query embeddings to query_max_length=3 tokens" in caplog.text

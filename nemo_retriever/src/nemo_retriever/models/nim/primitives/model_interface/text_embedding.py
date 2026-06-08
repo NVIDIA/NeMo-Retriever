@@ -4,7 +4,7 @@
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from nemo_retriever.common.api.internal.primitives.nim import ModelInterface
+from nemo_retriever.models.nim.primitives import ModelInterface
 import numpy as np
 
 

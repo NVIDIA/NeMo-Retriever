@@ -158,9 +158,9 @@ class TestPredictionToDetectionsTorchOptional:
     @pytest.mark.parametrize(
         "module_path",
         [
-            "nemo_retriever.table.shared",
-            "nemo_retriever.chart.shared",
-            "nemo_retriever.infographic.infographic_detection",
+            "nemo_retriever.common.modality.table.shared",
+            "nemo_retriever.common.modality.chart.shared",
+            "nemo_retriever.common.modality.infographic.infographic_detection",
         ],
     )
     def test_empty_nim_response_returns_empty_without_torch(self, module_path: str) -> None:
@@ -177,9 +177,9 @@ class TestPredictionToDetectionsTorchOptional:
     @pytest.mark.parametrize(
         "module_path",
         [
-            "nemo_retriever.table.shared",
-            "nemo_retriever.chart.shared",
-            "nemo_retriever.infographic.infographic_detection",
+            "nemo_retriever.common.modality.table.shared",
+            "nemo_retriever.common.modality.chart.shared",
+            "nemo_retriever.common.modality.infographic.infographic_detection",
         ],
     )
     def test_dict_with_only_index_returns_empty_without_torch(self, module_path: str) -> None:
@@ -196,9 +196,9 @@ class TestPredictionToDetectionsTorchOptional:
     @pytest.mark.parametrize(
         "module_path",
         [
-            "nemo_retriever.table.shared",
-            "nemo_retriever.chart.shared",
-            "nemo_retriever.infographic.infographic_detection",
+            "nemo_retriever.common.modality.table.shared",
+            "nemo_retriever.common.modality.chart.shared",
+            "nemo_retriever.common.modality.infographic.infographic_detection",
         ],
     )
     def test_none_input_returns_empty_without_torch(self, module_path: str) -> None:
@@ -211,9 +211,9 @@ class TestPredictionToDetectionsTorchOptional:
     @pytest.mark.parametrize(
         "module_path",
         [
-            "nemo_retriever.table.shared",
-            "nemo_retriever.chart.shared",
-            "nemo_retriever.infographic.infographic_detection",
+            "nemo_retriever.common.modality.table.shared",
+            "nemo_retriever.common.modality.chart.shared",
+            "nemo_retriever.common.modality.infographic.infographic_detection",
         ],
     )
     def test_payload_with_boxes_still_requires_torch(self, module_path: str) -> None:
@@ -278,7 +278,7 @@ class TestTableStructureNimEmptyBboxEndToEnd:
 
     def test_empty_nim_response_does_not_raise_in_torchless_image(self) -> None:
         from nemo_retriever.models.nim import nim as nim_module
-        from nemo_retriever.table import shared as table_shared
+        from nemo_retriever.common.modality.table import shared as table_shared
         from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
         df = _make_page_df_with_table()
@@ -287,7 +287,7 @@ class TestTableStructureNimEmptyBboxEndToEnd:
         # invocation returns the canonical "no detections" payload.
         # ``invoke_image_inference_batches`` is imported locally inside
         # ``table_structure_ocr_page_elements`` so we must patch it on
-        # its source module (``nemo_retriever.nim.nim``), not on the
+        # its source module (``nemo_retriever.models.nim.nim``), not on the
         # caller.
         empty_payload = [{"index": 0, "bounding_boxes": {}}]
 
@@ -316,7 +316,7 @@ class TestTableStructureNimEmptyBboxEndToEnd:
 
     def test_empty_nim_response_does_not_call_prediction_to_detections(self) -> None:
         from nemo_retriever.models.nim import nim as nim_module
-        from nemo_retriever.table import shared as table_shared
+        from nemo_retriever.common.modality.table import shared as table_shared
         from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
         df = _make_page_df_with_table()
@@ -344,7 +344,7 @@ class TestTableStructureNimEmptyBboxEndToEnd:
         is still invoked — so the fix only suppresses the fallback for
         responses that look like NIM bounding-box envelopes."""
         from nemo_retriever.models.nim import nim as nim_module
-        from nemo_retriever.table import shared as table_shared
+        from nemo_retriever.common.modality.table import shared as table_shared
         from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
         df = _make_page_df_with_table()

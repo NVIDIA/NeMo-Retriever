@@ -44,7 +44,7 @@ def test_audio_stage_extract_one_mocked_asr(tmp_path: Path):
     mock_client = MagicMock()
     mock_client.infer.return_value = ([], "mock transcript for stage test")
 
-    with patch("nemo_retriever.audio.asr_actor._get_client", return_value=mock_client):
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client", return_value=mock_client):
         df = _run_extract_one(str(wav), chunk_params, asr_params)
 
     assert not df.empty
@@ -63,7 +63,7 @@ def test_audio_stage_extract_cli_writes_sidecar(tmp_path: Path):
     mock_client = MagicMock()
     mock_client.infer.return_value = ([], "cli mock transcript")
 
-    with patch("nemo_retriever.audio.asr_actor._get_client", return_value=mock_client):
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client", return_value=mock_client):
         extract(
             input_dir=tmp_path,
             glob="*.wav",
@@ -122,8 +122,8 @@ def test_audio_stage_extract_cli_grpc_endpoint_preserves_env_auth(monkeypatch, t
     monkeypatch.delenv("AUDIO_FUNCTION_ID", raising=False)
 
     with (
-        patch("nemo_retriever.audio.stage.is_media_available", return_value=True),
-        patch("nemo_retriever.audio.stage._run_extract_one", side_effect=fake_run_extract_one),
+        patch("nemo_retriever.cli.audio.stage.is_media_available", return_value=True),
+        patch("nemo_retriever.cli.audio.stage._run_extract_one", side_effect=fake_run_extract_one),
     ):
         extract(
             input_dir=tmp_path,

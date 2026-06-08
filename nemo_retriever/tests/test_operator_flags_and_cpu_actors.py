@@ -156,7 +156,7 @@ class TestPageElementDetectionCPUActor:
         df = pd.DataFrame({"page_image": ["x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.page_elements.cpu_actor.detect_page_elements_v3")
+    @patch("nemo_retriever.operators.extract.page_elements.cpu_actor.detect_page_elements_v3")
     def test_process(self, mock_fn):
         from nemo_retriever.operators.extract.page_elements.cpu_actor import PageElementDetectionCPUActor
 
@@ -194,7 +194,7 @@ class TestGraphicElementsCPUActor:
         assert actor._graphic_elements_invoke_url == "http://custom1"
         assert actor._ocr_invoke_url == "http://custom2"
 
-    @patch("nemo_retriever.chart.cpu_actor.graphic_elements_ocr_page_elements")
+    @patch("nemo_retriever.operators.extract.chart.cpu_actor.graphic_elements_ocr_page_elements")
     def test_process(self, mock_fn):
         from nemo_retriever.operators.extract.chart.cpu_actor import GraphicElementsCPUActor
 
@@ -213,7 +213,7 @@ class TestTableStructureCPUActor:
         assert issubclass(TableStructureCPUActor, CPUOperator)
         assert not issubclass(TableStructureCPUActor, GPUOperator)
 
-    @patch("nemo_retriever.table.cpu_actor.probe_endpoint")
+    @patch("nemo_retriever.operators.extract.table.cpu_actor.probe_endpoint")
     def test_uses_default_table_url_without_default_ocr_endpoint(self, mock_probe):
         from nemo_retriever.operators.extract.table.cpu_actor import TableStructureCPUActor
 
@@ -234,7 +234,7 @@ class TestTableStructureCPUActor:
         actor = TableStructureCPUActor(table_structure_invoke_url="http://custom1")
         assert actor._table_structure_invoke_url == "http://custom1"
 
-    @patch("nemo_retriever.table.cpu_actor.probe_endpoint")
+    @patch("nemo_retriever.operators.extract.table.cpu_actor.probe_endpoint")
     def test_custom_table_url_does_not_default_ocr_endpoint(self, mock_probe):
         from nemo_retriever.operators.extract.table.cpu_actor import TableStructureCPUActor
 
@@ -249,7 +249,7 @@ class TestTableStructureCPUActor:
             api_key=None,
         )
 
-    @patch("nemo_retriever.table.cpu_actor.probe_endpoint")
+    @patch("nemo_retriever.operators.extract.table.cpu_actor.probe_endpoint")
     def test_explicit_ocr_url_is_probed(self, mock_probe):
         from nemo_retriever.operators.extract.table.cpu_actor import TableStructureCPUActor
 
@@ -274,7 +274,7 @@ class TestTableStructureCPUActor:
             api_key=None,
         )
 
-    @patch("nemo_retriever.table.cpu_actor.table_structure_ocr_page_elements")
+    @patch("nemo_retriever.operators.extract.table.cpu_actor.table_structure_ocr_page_elements")
     def test_process(self, mock_fn):
         from nemo_retriever.operators.extract.table.cpu_actor import TableStructureCPUActor
 
@@ -326,7 +326,7 @@ class TestOCRCPUActor:
         assert actor._model is None
         assert actor.ocr_kwargs["invoke_url"] == "http://custom"
 
-    @patch("nemo_retriever.ocr.cpu_ocr.ocr_page_elements")
+    @patch("nemo_retriever.operators.extract.ocr.cpu_ocr.ocr_page_elements")
     def test_process(self, mock_fn):
         from nemo_retriever.operators.extract.ocr.cpu_ocr import OCRCPUActor
 
@@ -359,7 +359,7 @@ class TestNemotronParseCPUActor:
         assert actor._model is None
         assert actor._invoke_url == "http://custom"
 
-    @patch("nemo_retriever.ocr.cpu_parse.nemotron_parse_page_elements")
+    @patch("nemo_retriever.operators.extract.ocr.cpu_parse.nemotron_parse_page_elements")
     def test_process(self, mock_fn):
         from nemo_retriever.operators.extract.ocr.cpu_parse import NemotronParseCPUActor
 
@@ -398,7 +398,7 @@ class TestBatchEmbedCPUActor:
         assert actor._model is None
         assert actor._kwargs["embedding_endpoint"] == "http://fake"
 
-    @patch("nemo_retriever.text_embed.cpu_operator.embed_text_main_text_embed")
+    @patch("nemo_retriever.operators.embed.cpu_operator.embed_text_main_text_embed")
     def test_process(self, mock_fn):
         from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
 

@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for nemo_retriever.params.utils."""
+"""Unit tests for nemo_retriever.common.params.utils."""
 
 from nemo_retriever.common.params.models import EmbedParams
 from nemo_retriever.common.params.utils import (

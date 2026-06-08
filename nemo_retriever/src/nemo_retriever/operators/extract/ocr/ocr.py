@@ -10,7 +10,7 @@ from typing import Any
 from nemo_retriever.models.nim.nim import invoke_image_inference_batches
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
-from nemo_retriever.ocr import shared as _shared
+from nemo_retriever.common.modality.ocr import shared as _shared
 from nemo_retriever.common.modality.ocr.shared import (
     _blocks_to_pseudo_markdown,
     _blocks_to_text,

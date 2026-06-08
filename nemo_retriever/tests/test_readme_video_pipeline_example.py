@@ -33,7 +33,7 @@ from nemo_retriever.common.params import (
     VideoFrameTextDedupParams,
 )
 from nemo_retriever.video import VideoSplitActor
-from nemo_retriever.video import _content_types as _CT
+from nemo_retriever.common.modality.video import _content_types as _CT
 
 
 def _collect_node_names(graph: Graph) -> list[str]:

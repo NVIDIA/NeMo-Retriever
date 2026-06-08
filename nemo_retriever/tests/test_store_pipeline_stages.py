@@ -137,7 +137,7 @@ class TestStoreOperatorInGraph:
             calls.append((path, mode, kwargs))
             return _Writer()
 
-        monkeypatch.setattr("nemo_retriever.graph.store_operator.fsspec.open", _fake_open)
+        monkeypatch.setattr("nemo_retriever.operators.graph_ops.store_operator.fsspec.open", _fake_open)
 
         params = StoreParams(
             storage_uri="s3://bucket/prefix",
@@ -174,7 +174,7 @@ class TestStoreOperatorInGraph:
             calls.append(path)
             return _Writer()
 
-        monkeypatch.setattr("nemo_retriever.graph.store_operator.fsspec.open", _fake_open)
+        monkeypatch.setattr("nemo_retriever.operators.graph_ops.store_operator.fsspec.open", _fake_open)
 
         result = StoreOperator(params=StoreParams(storage_uri="memory://stored")).process(df)
 
@@ -185,7 +185,7 @@ class TestStoreOperatorInGraph:
         assert calls[0] == f"memory://stored/{hashlib.sha1(raw).hexdigest()}.png"
 
     def test_embedding_preserves_image_b64_for_post_embed_store(self, monkeypatch):
-        from nemo_retriever.text_embed import runtime
+        from nemo_retriever.models.inference import runtime
 
         b64 = _make_tiny_png_b64()
         df = _make_embedded_df(b64)
@@ -213,7 +213,7 @@ class TestStoreOperatorInGraph:
         def _fail_load(uri):
             raise AssertionError(f"content transform attempted to reload stored image URI: {uri}")
 
-        monkeypatch.setattr("nemo_retriever.io.image_store.load_image_b64_from_uri", _fail_load)
+        monkeypatch.setattr("nemo_retriever.common.io.image_store.load_image_b64_from_uri", _fail_load)
 
         df = pd.DataFrame(
             {
@@ -232,7 +232,7 @@ class TestStoreOperatorInGraph:
         def _fail_load(uri):
             raise AssertionError(f"content transform attempted to reload stored image URI: {uri}")
 
-        monkeypatch.setattr("nemo_retriever.io.image_store.load_image_b64_from_uri", _fail_load)
+        monkeypatch.setattr("nemo_retriever.common.io.image_store.load_image_b64_from_uri", _fail_load)
 
         df = pd.DataFrame(
             {

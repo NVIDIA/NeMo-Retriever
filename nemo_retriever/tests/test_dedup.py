@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for nemo_retriever.dedup.dedup."""
+"""Unit tests for nemo_retriever.operators.dedup."""
 
 import pandas as pd
 

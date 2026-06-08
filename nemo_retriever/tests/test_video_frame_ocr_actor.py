@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for nemo_retriever.video.ocr_actor."""
+"""Unit tests for nemo_retriever.operators.extract.video.ocr_actor."""
 
 from __future__ import annotations
 

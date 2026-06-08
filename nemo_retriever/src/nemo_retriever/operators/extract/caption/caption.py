@@ -173,8 +173,8 @@ def _build_prompt_with_context(base_prompt: str, context_text: str) -> str:
 
 def _create_remote_client(endpoint_url: str, api_key: str | None) -> Any:
     """Create a reusable NIM inference client for a remote VLM endpoint."""
-    from nemo_retriever.common.api.internal.primitives.nim.model_interface.vlm import VLMModelInterface
-    from nemo_retriever.common.api.util.nim import create_inference_client
+    from nemo_retriever.models.nim.primitives.model_interface.vlm import VLMModelInterface
+    from nemo_retriever.models.nim.util import create_inference_client
 
     return create_inference_client(
         model_interface=VLMModelInterface(),

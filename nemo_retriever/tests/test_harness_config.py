@@ -5,14 +5,14 @@ from pathlib import Path
 import pytest
 from fastapi import HTTPException
 
-import nemo_retriever.tools.harness.config as harness_config
-from nemo_retriever.tools.harness.config import (
+import nemo_retriever.harness.config as harness_config
+from nemo_retriever.harness.config import (
     HarnessConfig,
     load_harness_config,
     load_nightly_config,
     load_runs_config,
 )
-from nemo_retriever.tools.harness.portal.app import (
+from nemo_retriever.harness.portal.app import (
     DatasetUpdateRequest,
     _validate_dataset_evaluation_mode,
     update_managed_dataset,
@@ -100,7 +100,7 @@ def test_portal_update_omitted_evaluation_mode_does_not_validate_existing_invali
     monkeypatch: pytest.MonkeyPatch,
     existing_evaluation_mode: str,
 ) -> None:
-    import nemo_retriever.tools.harness.portal.app as portal_app
+    import nemo_retriever.harness.portal.app as portal_app
 
     monkeypatch.setattr(
         portal_app.history,

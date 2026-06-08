@@ -5,7 +5,7 @@
 """
 Unit tests for NemotronRerankV2 and the rerank module helpers.
 
-All heavy dependencies (torch, transformers, nemo_retriever.utils.hf_cache)
+All heavy dependencies (torch, transformers, nemo_retriever.models.hf_cache)
 are stubbed via sys.modules injection so no GPU or model download is required.
 """
 
@@ -84,9 +84,9 @@ def _patch_heavy_deps(monkeypatch):
     monkeypatch.setitem(sys.modules, "transformers", transformers_stub)
 
     # Stub hf_cache so configure_global_hf_cache_base() is a no-op.
-    hf_cache_mod = ModuleType("nemo_retriever.utils.hf_cache")
+    hf_cache_mod = ModuleType("nemo_retriever.models.hf_cache")
     hf_cache_mod.configure_global_hf_cache_base = MagicMock()
-    monkeypatch.setitem(sys.modules, "nemo_retriever.utils.hf_cache", hf_cache_mod)
+    monkeypatch.setitem(sys.modules, "nemo_retriever.models.hf_cache", hf_cache_mod)
 
     # Also stub the parent model module so BaseModel import works.
     # We bypass by importing NemotronRerankV2 after patching.
@@ -665,7 +665,7 @@ class TestNemotronRerankActor:
         df = pd.DataFrame({"query": ["q", "q"], "text": ["doc A", "doc B"]})
 
         with (
-            patch("nemo_retriever.rerank.rerank._rerank_via_endpoint", return_value=[0.2]),
+            patch("nemo_retriever.operators.rerank._rerank_via_endpoint", return_value=[0.2]),
             pytest.raises(RuntimeError, match="score alignment is broken"),
         ):
             _rerank_batch(df, rerank_invoke_url="http://localhost:8000", sort_results=False)
@@ -676,10 +676,10 @@ class TestNemotronRerankActor:
         import pandas as pd
         from nemo_retriever.operators.rerank import _rerank_batch
 
-        caplog.set_level(logging.WARNING, logger="nemo_retriever.rerank.rerank")
+        caplog.set_level(logging.WARNING, logger="nemo_retriever.operators.rerank")
         df = pd.DataFrame({"query": [["q"], ["q"]], "text": ["doc A", "doc B"]})
 
-        with patch("nemo_retriever.rerank.rerank._rerank_via_endpoint", side_effect=[[0.2], [0.7]]) as mock_rerank:
+        with patch("nemo_retriever.operators.rerank._rerank_via_endpoint", side_effect=[[0.2], [0.7]]) as mock_rerank:
             out = _rerank_batch(df, rerank_invoke_url="http://localhost:8000", sort_results=False)
 
         assert mock_rerank.call_count == 2

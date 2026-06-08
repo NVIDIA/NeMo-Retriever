@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from nemo_retriever.tools.harness.config import HarnessConfig
-from nemo_retriever.tools.harness.helm_manager import HelmServiceManager
+from nemo_retriever.harness.config import HarnessConfig
+from nemo_retriever.harness.helm_manager import HelmServiceManager
 
 
 def _managed_cfg(tmp_path: Path, **overrides) -> HarnessConfig:
@@ -86,7 +86,7 @@ def test_service_discovery_uses_component_label_selector(monkeypatch, tmp_path: 
         calls.append(cmd)
         return SimpleNamespace(returncode=0, stdout="service/nrl-smoke-nemo-retriever\n", stderr="")
 
-    import nemo_retriever.tools.harness.helm_manager as helm_manager
+    import nemo_retriever.harness.helm_manager as helm_manager
 
     monkeypatch.setattr(helm_manager.subprocess, "run", fake_run)
 
@@ -112,7 +112,7 @@ def test_readiness_polling_does_not_swallow_unexpected_errors(monkeypatch, tmp_p
     cfg = _managed_cfg(tmp_path)
     manager = HelmServiceManager(cfg)
 
-    import nemo_retriever.tools.harness.helm_manager as helm_manager
+    import nemo_retriever.harness.helm_manager as helm_manager
 
     monkeypatch.setattr(
         helm_manager.urllib.request,
@@ -170,7 +170,7 @@ def test_stop_uninstalls_release_when_port_forward_signal_is_denied(monkeypatch,
     manager.port_forward_processes = [fake_proc]
     calls: dict[str, object] = {}
 
-    import nemo_retriever.tools.harness.helm_manager as helm_manager
+    import nemo_retriever.harness.helm_manager as helm_manager
 
     monkeypatch.setattr(helm_manager.os, "getpgid", lambda _pid: 67890)
 
@@ -205,7 +205,7 @@ def test_optional_nimcache_wait_uses_completed_condition(monkeypatch, tmp_path: 
             return SimpleNamespace(returncode=1, stdout="", stderr="not found")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    import nemo_retriever.tools.harness.helm_manager as helm_manager
+    import nemo_retriever.harness.helm_manager as helm_manager
 
     monkeypatch.setattr(manager, "find_services_by_component", lambda _component: [])
     monkeypatch.setattr(helm_manager.subprocess, "run", fake_run)

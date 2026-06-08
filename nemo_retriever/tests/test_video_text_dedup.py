@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for nemo_retriever.video.text_dedup.VideoFrameTextDedup."""
+"""Unit tests for nemo_retriever.operators.extract.video.text_dedup.VideoFrameTextDedup."""
 
 from __future__ import annotations
 

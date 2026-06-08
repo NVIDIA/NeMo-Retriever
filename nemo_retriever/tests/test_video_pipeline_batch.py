@@ -39,9 +39,9 @@ def test_run_video_pipeline_forces_audio_demux_chunk_params_without_ffmpeg() -> 
         av_fuse_params=AudioVisualFuseParams(enabled=False),
     )
 
-    with patch("nemo_retriever.graph.multi_type_extract_operator.MediaChunkActor") as MockChunk, patch(
-        "nemo_retriever.graph.multi_type_extract_operator.ASRActor"
-    ) as MockASR, patch("nemo_retriever.graph.multi_type_extract_operator.VideoFrameActor") as MockFrames:
+    with patch("nemo_retriever.operators.graph_ops.multi_type_extract_operator.MediaChunkActor") as MockChunk, patch(
+        "nemo_retriever.operators.graph_ops.multi_type_extract_operator.ASRActor"
+    ) as MockASR, patch("nemo_retriever.operators.graph_ops.multi_type_extract_operator.VideoFrameActor") as MockFrames:
         MockChunk.return_value.run.return_value = pd.DataFrame([{"path": "audio_chunk.mp3"}])
         MockASR.return_value.run.return_value = pd.DataFrame(
             [{"source_path": "/tmp/video.mp4", "text": "speech", "metadata": {"_content_type": "audio"}}]
@@ -114,9 +114,9 @@ def test_run_video_pipeline_emits_audio_frame_and_scene_rows(tmp_path: Path) -> 
     # Mock the NIM client's batched call so all five frames return distinct OCR text.
     fake_responses = [[{"text_prediction": {"text": f"frame_text_{i}"}}] for i in range(5)]
 
-    with patch("nemo_retriever.graph.multi_type_extract_operator.MediaChunkActor") as MockChunk, patch(
-        "nemo_retriever.graph.multi_type_extract_operator.ASRActor"
-    ) as MockASR, patch("nemo_retriever.video.ocr_actor.NIMClient") as MockNIM:
+    with patch("nemo_retriever.operators.graph_ops.multi_type_extract_operator.MediaChunkActor") as MockChunk, patch(
+        "nemo_retriever.operators.graph_ops.multi_type_extract_operator.ASRActor"
+    ) as MockASR, patch("nemo_retriever.operators.extract.video.ocr_actor.NIMClient") as MockNIM:
         MockChunk.return_value.run.return_value = pd.DataFrame()
         MockASR.return_value.run.return_value = fake_asr_df
         nim_instance = MagicMock()

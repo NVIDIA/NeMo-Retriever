@@ -430,9 +430,9 @@ class TestPipelineBuilder:
         with patch.object(r, "queries", return_value=[hits]):
             # Mock out the three EvalOperator classes that the builder imports
             # lazily so we can assert which ones were appended and executed.
-            with patch("nemo_retriever.evaluation.generation.QAGenerationOperator") as mock_gen_cls, patch(
-                "nemo_retriever.evaluation.scoring_operator.ScoringOperator"
-            ) as mock_score_cls, patch("nemo_retriever.evaluation.judging.JudgingOperator") as mock_judge_cls:
+            with patch("nemo_retriever.tools.evaluation.generation.QAGenerationOperator") as mock_gen_cls, patch(
+                "nemo_retriever.tools.evaluation.scoring_operator.ScoringOperator"
+            ) as mock_score_cls, patch("nemo_retriever.tools.evaluation.judging.JudgingOperator") as mock_judge_cls:
                 # Configure each mocked operator to pass the DataFrame through
                 # with a sentinel column so we can verify each step ran.
                 def _gen_process(df, **_):
@@ -473,9 +473,9 @@ class TestPipelineBuilder:
         r = _make_retriever()
 
         with patch.object(r, "queries", return_value=[_fake_hits()]):
-            with patch("nemo_retriever.evaluation.generation.QAGenerationOperator") as mock_gen_cls, patch(
-                "nemo_retriever.evaluation.scoring_operator.ScoringOperator"
-            ) as mock_score_cls, patch("nemo_retriever.evaluation.judging.JudgingOperator") as mock_judge_cls:
+            with patch("nemo_retriever.tools.evaluation.generation.QAGenerationOperator") as mock_gen_cls, patch(
+                "nemo_retriever.tools.evaluation.scoring_operator.ScoringOperator"
+            ) as mock_score_cls, patch("nemo_retriever.tools.evaluation.judging.JudgingOperator") as mock_judge_cls:
 
                 def _gen_process(df, **_):
                     out = df.copy()
@@ -507,7 +507,7 @@ class TestPipelineBuilder:
 
         r = _make_retriever()
 
-        with patch("nemo_retriever.evaluation.generation.QAGenerationOperator") as mock_gen_cls:
+        with patch("nemo_retriever.tools.evaluation.generation.QAGenerationOperator") as mock_gen_cls:
             mock_gen_cls.return_value = _build_mock_operator("QAGenerationOperator", lambda df, **_: df)
             llm = _build_fake_llm_client(top_p=0.7)
             r.pipeline().generate(llm)
@@ -524,7 +524,7 @@ class TestPipelineBuilder:
 
         r = _make_retriever()
 
-        with patch("nemo_retriever.evaluation.generation.QAGenerationOperator") as mock_gen_cls:
+        with patch("nemo_retriever.tools.evaluation.generation.QAGenerationOperator") as mock_gen_cls:
             mock_gen_cls.return_value = _build_mock_operator("QAGenerationOperator", lambda df, **_: df)
             llm = _build_fake_llm_client()
             r.pipeline().generate(llm)
@@ -546,7 +546,7 @@ class TestPipelineBuilder:
     def test_builder_reference_length_must_match(self):
         r = _make_retriever()
         llm = _build_fake_llm_client()
-        with patch("nemo_retriever.evaluation.generation.QAGenerationOperator"):
+        with patch("nemo_retriever.tools.evaluation.generation.QAGenerationOperator"):
             with pytest.raises(ValueError, match="reference length must match"):
                 r.pipeline().generate(llm).run(queries=["q1", "q2"], reference=["r1"])
 
@@ -564,7 +564,7 @@ class TestPipelineBuilder:
         hits = _fake_hits()
 
         with patch.object(r, "queries", return_value=[hits, hits, hits]):
-            with patch("nemo_retriever.evaluation.generation.QAGenerationOperator") as mock_gen_cls:
+            with patch("nemo_retriever.tools.evaluation.generation.QAGenerationOperator") as mock_gen_cls:
 
                 def _gen_process(df, **_):
                     out = df.copy()

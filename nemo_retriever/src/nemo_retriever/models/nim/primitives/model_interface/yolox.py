@@ -17,12 +17,12 @@ import numpy as np
 import json
 import pandas as pd
 
-from nemo_retriever.common.api.internal.primitives.nim import ModelInterface
-from nemo_retriever.common.api.internal.primitives.nim.default_values import YOLOX_PAGE_IMAGE_FORMAT
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.decorators import global_cache
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.decorators import lock
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.decorators import multiprocessing_cache
-from nemo_retriever.common.api.internal.primitives.nim.model_interface.helpers import get_model_name
+from nemo_retriever.models.nim.primitives import ModelInterface
+from nemo_retriever.models.nim.primitives.default_values import YOLOX_PAGE_IMAGE_FORMAT
+from nemo_retriever.models.nim.primitives.model_interface.decorators import global_cache
+from nemo_retriever.models.nim.primitives.model_interface.decorators import lock
+from nemo_retriever.models.nim.primitives.model_interface.decorators import multiprocessing_cache
+from nemo_retriever.models.nim.primitives.model_interface.helpers import get_model_name
 from nemo_retriever.common.api.util.image_processing import scale_image_to_encoding_size
 from nemo_retriever.common.api.util.image_processing.transforms import numpy_to_base64
 

@@ -82,7 +82,7 @@ def _stub_status_response(body: dict[str, Any]):
         def get(self, url: str) -> _FakeResp:
             return _FakeResp()
 
-    with patch("nemo_retriever.service_ingestor.httpx.Client", _FakeClient):
+    with patch("nemo_retriever.service.service_ingestor.httpx.Client", _FakeClient):
         yield captured
 
 

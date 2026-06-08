@@ -318,7 +318,12 @@ class TestTableStructureActor:
         from nemo_retriever.operators.extract.table.table_detection import TableStructureGPUActor
 
         # Patch model constructors to avoid loading real models.
-        with (patch("nemo_retriever.table.table_detection.TableStructureGPUActor.__init__", return_value=None),):
+        with (
+            patch(
+                "nemo_retriever.operators.extract.table.table_detection.TableStructureGPUActor.__init__",
+                return_value=None,
+            ),
+        ):
             actor = TableStructureGPUActor.__new__(TableStructureGPUActor)
             actor._table_structure_model = None
             actor._table_structure_invoke_url = ""
@@ -480,7 +485,7 @@ class TestOCRJoinsTableStructure:
         # which returns it as-is when it isn't a dict. So a length-1 list whose
         # sole element is the list of OCR predictions simulates one table crop.
         with patch(
-            "nemo_retriever.ocr.shared.invoke_image_inference_batches",
+            "nemo_retriever.common.modality.ocr.shared.invoke_image_inference_batches",
             return_value=[self._ocr_preds_abcd()],
         ):
             result = ocr_page_elements(
