@@ -43,6 +43,13 @@ from nemo_retriever.adapters.cli.ingest_workflow import (
     run_ingest_workflow,
 )
 from nemo_retriever.adapters.cli.query_workflow import query_documents
+from nemo_retriever.query.options import (
+    QueryEmbedOptions,
+    QueryRerankOptions,
+    QueryRequest,
+    QueryRetrievalOptions,
+    QueryStorageOptions,
+)
 from nemo_retriever.vdb.records import RetrievalHit
 from nemo_retriever.version import get_version_info
 
@@ -783,19 +790,29 @@ def query_command(
     try:
         with _quiet_capture():
             hits = query_documents(
-                query,
-                top_k=top_k,
-                candidate_k=candidate_k,
-                page_dedup=page_dedup,
-                content_types=content_types,
-                lancedb_uri=lancedb_uri,
-                table_name=table_name,
-                embed_invoke_url=embed_invoke_url,
-                embed_model_name=embed_model_name,
-                reranker_invoke_url=reranker_invoke_url,
-                reranker_model_name=reranker_model_name,
-                reranker_backend=reranker_backend,
-                rerank=rerank,
+                QueryRequest(
+                    query=query,
+                    retrieval=QueryRetrievalOptions(
+                        top_k=top_k,
+                        candidate_k=candidate_k,
+                        page_dedup=page_dedup,
+                        content_types=content_types,
+                    ),
+                    embed=QueryEmbedOptions(
+                        embed_invoke_url=embed_invoke_url,
+                        embed_model_name=embed_model_name,
+                    ),
+                    rerank=QueryRerankOptions(
+                        enabled=rerank,
+                        reranker_invoke_url=reranker_invoke_url,
+                        reranker_model_name=reranker_model_name,
+                        reranker_backend=reranker_backend,
+                    ),
+                    storage=QueryStorageOptions(
+                        lancedb_uri=lancedb_uri,
+                        table_name=table_name,
+                    ),
+                )
             )
     except _ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)
