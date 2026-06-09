@@ -9,14 +9,15 @@ For user-facing workflows, prefer ``retriever ingest`` and ``retriever query``.
 
 Examples::
 
-    # In-process mode (default; no Ray) for local extraction + embedding
-    retriever pipeline run /data/pdfs \\
-        --ocr-invoke-url http://localhost:9000/v1
-
-    # Batch mode (Ray) for large-scale throughput
+    # Batch mode (Ray) with PDF extraction + embedding
     retriever pipeline run /data/pdfs \\
         --run-mode batch \\
         --embed-invoke-url http://localhost:8000/v1
+
+    # In-process mode (no Ray) for quick local testing
+    retriever pipeline run /data/pdfs \\
+        --run-mode inprocess \\
+        --ocr-invoke-url http://localhost:9000/v1
 
     # Service mode (delegate to a running retriever service)
     retriever pipeline run /data/pdfs \\
@@ -50,19 +51,32 @@ import json
 import logging
 import os
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Optional, TextIO
 
 import pandas as pd
 import typer
 
-from nemo_retriever.adapters.cli.sdk_workflow import execute_ingest_plan, resolve_ingest_plan
-from nemo_retriever.audio import asr_params_from_env
-from nemo_retriever.graph_ingestor import GraphIngestor
+from nemo_retriever.ingest.execution import execute_ingest_plan
+from nemo_retriever.ingest.plan import (
+    IngestCaptionOptions,
+    IngestChunkOptions,
+    IngestDedupOptions,
+    IngestEmbedBatchOptions,
+    IngestEmbedOptions,
+    IngestExtractBatchOptions,
+    IngestExtractOptions,
+    IngestImageStoreOptions,
+    IngestMediaOptions,
+    IngestPlanRequest,
+    IngestRuntimeOptions,
+    IngestSourceOptions,
+    IngestStorageOptions,
+    resolve_ingest_plan,
+)
 from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.params import (
-    AudioChunkParams,
-    AudioVisualFuseParams,
     CaptionParams,
     DedupParams,
     EmbedParams,
@@ -70,8 +84,6 @@ from nemo_retriever.params import (
     StoreParams,
     TextChunkParams,
     VdbUploadParams,
-    VideoFrameParams,
-    VideoFrameTextDedupParams,
 )
 from nemo_retriever.params.models import BatchTuningParams
 from nemo_retriever.utils.input_files import resolve_input_patterns
@@ -109,7 +121,7 @@ _PANEL_SERVICE = "Service Mode"
 # bound to local execution (Ray actors, GPU placement), or never wired
 # through the service ingestor (VDB upload is handled server-side; audio
 # and video extract paths still run locally). Flags wired into the
-# service ``PipelineSpec`` by ``_build_ingestor`` — extract knobs, embed
+# service ``PipelineSpec`` by ``_build_service_ingestor`` — extract knobs, embed
 # granularity / modality, dedup threshold, caption behaviour, text chunk
 # config, ``--store-images-uri`` — are intentionally NOT in this list and
 # pass through to ``ServiceIngestor``; the server's
@@ -336,16 +348,16 @@ def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
 
 def _build_extract_params(
     *,
-    method: str,
-    dpi: int,
-    extract_text: bool,
-    extract_tables: bool,
-    extract_charts: bool,
-    extract_infographics: bool,
-    extract_page_as_image: bool,
-    use_page_elements: bool,
-    use_graphic_elements: bool,
-    use_table_structure: bool,
+    method: Optional[str],
+    dpi: Optional[int],
+    extract_text: Optional[bool],
+    extract_tables: Optional[bool],
+    extract_charts: Optional[bool],
+    extract_infographics: Optional[bool],
+    extract_page_as_image: Optional[bool],
+    use_page_elements: Optional[bool],
+    use_graphic_elements: Optional[bool],
+    use_table_structure: Optional[bool],
     table_output_format: Optional[str],
     extract_remote_api_key: Optional[str],
     page_elements_invoke_url: Optional[str],
@@ -408,7 +420,7 @@ def _build_extract_params(
             k: v
             for k, v in {
                 "method": method,
-                "dpi": int(dpi),
+                "dpi": int(dpi) if dpi is not None else None,
                 "extract_text": extract_text,
                 "extract_tables": extract_tables,
                 "extract_charts": extract_charts,
@@ -504,117 +516,26 @@ def _service_text_chunk_dict(text_chunk_params: TextChunkParams) -> dict[str, An
     return {key: value for key, value in raw.items() if key in _DEFAULT_ALLOWED_SPLIT_KEYS}
 
 
-def _attach_extract_stage(
+def _attach_service_extract_stage(
     ingestor: Any,
     *,
-    run_mode: str,
     input_type: str,
     extract_params: ExtractParams,
     enable_text_chunk: bool,
     text_chunk_params: TextChunkParams,
-    segment_audio: bool,
-    audio_split_type: str,
-    audio_split_interval: int,
-    video_extract_audio: bool,
-    video_extract_frames: bool,
-    video_frame_fps: float,
-    video_frame_dedup: bool,
-    video_frame_text_dedup: bool,
-    video_frame_text_dedup_max_dropped_frames: int,
-    video_av_fuse: bool,
 ) -> Any:
-    """Wire the extraction stage for local graph or remote service ingestors."""
-    if enable_text_chunk:
-        chunk_dict = (
-            _service_text_chunk_dict(text_chunk_params) if run_mode == "service" else text_chunk_params.model_dump()
-        )
-    else:
-        chunk_dict = None
-
-    if run_mode == "service":
-        if input_type == "image":
-            return ingestor.extract_image_files(
-                extract_params,
-                split_config={"image": chunk_dict} if chunk_dict else None,
-            )
-        return ingestor.extract(
-            extract_params,
-            split_config=_split_config_for_input_type(input_type, chunk_dict),
-            extraction_mode=_service_extraction_mode(input_type),
-        )
-
-    if not enable_text_chunk:
-        if input_type == "txt":
-            return ingestor.extract_txt(text_chunk_params)
-        if input_type == "html":
-            return ingestor.extract_html(text_chunk_params)
-        if input_type == "image":
-            return ingestor.extract_image_files(extract_params)
-        if input_type == "audio":
-            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
-            return ingestor.extract_audio(
-                params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
-                asr_params=asr_params,
-            )
-        if input_type == "video":
-            asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
-            return ingestor.extract_video(
-                params=AudioChunkParams(
-                    enabled=bool(video_extract_audio),
-                    split_type=audio_split_type,
-                    split_interval=int(audio_split_interval),
-                ),
-                asr_params=asr_params,
-                video_frame_params=VideoFrameParams(
-                    enabled=bool(video_extract_frames),
-                    fps=float(video_frame_fps),
-                    dedup=bool(video_frame_dedup),
-                ),
-                video_text_dedup_params=VideoFrameTextDedupParams(
-                    enabled=bool(video_frame_text_dedup),
-                    max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
-                ),
-                av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
-                extract_params=extract_params,
-            )
-        return ingestor.extract(extract_params)
-
-    if input_type == "txt":
-        return ingestor.extract_txt(text_chunk_params)
-    if input_type == "html":
-        return ingestor.extract_html(text_chunk_params)
+    """Wire the extraction stage for the remote service ingestor."""
+    chunk_dict = _service_text_chunk_dict(text_chunk_params) if enable_text_chunk else None
     if input_type == "image":
-        return ingestor.extract_image_files(extract_params, split_config={"image": chunk_dict})
-    if input_type == "audio":
-        asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
-        return ingestor.extract_audio(
-            params=AudioChunkParams(split_type=audio_split_type, split_interval=int(audio_split_interval)),
-            asr_params=asr_params,
-            split_config={"audio": chunk_dict},
+        return ingestor.extract_image_files(
+            extract_params,
+            split_config={"image": chunk_dict} if chunk_dict else None,
         )
-    if input_type == "video":
-        asr_params = asr_params_from_env().model_copy(update={"segment_audio": bool(segment_audio)})
-        return ingestor.extract_video(
-            params=AudioChunkParams(
-                enabled=bool(video_extract_audio),
-                split_type=audio_split_type,
-                split_interval=int(audio_split_interval),
-            ),
-            asr_params=asr_params,
-            video_frame_params=VideoFrameParams(
-                enabled=bool(video_extract_frames),
-                fps=float(video_frame_fps),
-                dedup=bool(video_frame_dedup),
-            ),
-            video_text_dedup_params=VideoFrameTextDedupParams(
-                enabled=bool(video_frame_text_dedup),
-                max_dropped_frames=int(video_frame_text_dedup_max_dropped_frames),
-            ),
-            av_fuse_params=AudioVisualFuseParams(enabled=bool(video_av_fuse)),
-            extract_params=extract_params,
-            split_config={"video": chunk_dict, "audio": chunk_dict},
-        )
-    return ingestor.extract(extract_params, split_config={"pdf": chunk_dict})
+    return ingestor.extract(
+        extract_params,
+        split_config=_split_config_for_input_type(input_type, chunk_dict),
+        extraction_mode=_service_extraction_mode(input_type),
+    )
 
 
 def _split_config_for_input_type(
@@ -651,11 +572,8 @@ def _parse_vdb_kwargs_json(vdb_kwargs_json: Optional[str]) -> dict[str, Any]:
     return {}
 
 
-def _build_ingestor(
+def _build_service_ingestor(
     *,
-    run_mode: str,
-    ray_address: Optional[str],
-    ray_log_to_driver: bool = True,
     file_patterns: list[str],
     input_type: str,
     extract_params: ExtractParams,
@@ -666,136 +584,60 @@ def _build_ingestor(
     enable_caption: bool,
     dedup_iou_threshold: float,
     caption_invoke_url: Optional[str],
-    caption_remote_api_key: Optional[str],
-    caption_model_name: str,
-    caption_device: Optional[str],
     caption_context_text_max_chars: int,
-    caption_gpu_memory_utilization: float,
-    caption_gpus_per_actor: Optional[float],
     caption_temperature: float,
     caption_top_p: Optional[float],
     caption_max_tokens: int,
     store_images_uri: Optional[str],
-    store_actors: Optional[int],
-    segment_audio: bool,
-    audio_split_type: str,
-    audio_split_interval: int,
-    video_extract_audio: bool,
-    video_extract_frames: bool,
-    video_frame_fps: float,
-    video_frame_dedup: bool,
-    video_frame_text_dedup: bool,
-    video_frame_text_dedup_max_dropped_frames: int,
-    video_av_fuse: bool,
     service_url: str = "http://localhost:7670",
     service_concurrency: int = 8,
     service_api_token: Optional[str] = None,
-    vdb_upload_params: Optional[VdbUploadParams] = None,
 ) -> Any:
-    """Construct an ingestor with all requested stages attached.
+    """Construct a remote-service ingestor with service-compatible stages."""
+    from nemo_retriever.service_ingestor import ServiceIngestor
 
-    For ``run_mode='service'`` returns a :class:`ServiceIngestor` backed by a
-    remote retriever service; otherwise returns a :class:`GraphIngestor` for
-    local ``batch`` or ``inprocess`` execution.
-    """
+    resolved_files: list[str] = []
+    for pattern in file_patterns:
+        resolved_files.extend(sorted(_glob.glob(pattern, recursive=True)))
+    if not resolved_files:
+        raise typer.BadParameter("No files matched the input patterns for service mode.")
 
-    if store_actors and store_images_uri is None:
-        logger.warning("Ignoring --store-actors because --store-images-uri was not provided.")
+    ingestor = ServiceIngestor(
+        base_url=service_url,
+        max_concurrency=service_concurrency,
+        api_token=service_api_token,
+    ).files(resolved_files)
 
-    if run_mode == "service":
-        from nemo_retriever.service_ingestor import ServiceIngestor
-
-        resolved_files: list[str] = []
-        for pattern in file_patterns:
-            resolved_files.extend(sorted(_glob.glob(pattern, recursive=True)))
-        if not resolved_files:
-            raise typer.BadParameter("No files matched the input patterns for service mode.")
-
-        ingestor = ServiceIngestor(
-            base_url=service_url,
-            max_concurrency=service_concurrency,
-            api_token=service_api_token,
-        ).files(resolved_files)
-    else:
-        node_overrides: dict[str, dict[str, Any]] = {}
-        if caption_gpus_per_actor is not None:
-            node_overrides["CaptionActor"] = {"num_gpus": caption_gpus_per_actor}
-
-        ingestor = GraphIngestor(
-            run_mode=run_mode,
-            ray_address=ray_address,
-            ray_log_to_driver=ray_log_to_driver,
-            node_overrides=node_overrides or None,
-        )
-        ingestor = ingestor.files(file_patterns)
-
-    ingestor = _attach_extract_stage(
+    ingestor = _attach_service_extract_stage(
         ingestor,
-        run_mode=run_mode,
         input_type=input_type,
         extract_params=extract_params,
         enable_text_chunk=enable_text_chunk,
         text_chunk_params=text_chunk_params,
-        segment_audio=segment_audio,
-        audio_split_type=audio_split_type,
-        audio_split_interval=audio_split_interval,
-        video_extract_audio=video_extract_audio,
-        video_extract_frames=video_extract_frames,
-        video_frame_fps=video_frame_fps,
-        video_frame_dedup=video_frame_dedup,
-        video_frame_text_dedup=video_frame_text_dedup,
-        video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
-        video_av_fuse=video_av_fuse,
     )
 
     if enable_dedup:
         ingestor = ingestor.dedup(DedupParams(iou_threshold=dedup_iou_threshold))
 
     if enable_caption:
-        if run_mode == "service":
-            if caption_invoke_url is not None:
-                logger.warning(
-                    "Ignoring --caption-invoke-url in service mode; the retriever service "
-                    "uses its operator-configured caption endpoint."
-                )
-            ingestor = ingestor.caption(
-                CaptionParams(
-                    context_text_max_chars=caption_context_text_max_chars,
-                    temperature=caption_temperature,
-                    top_p=caption_top_p,
-                    max_tokens=caption_max_tokens,
-                )
+        if caption_invoke_url is not None:
+            logger.warning(
+                "Ignoring --caption-invoke-url in service mode; the retriever service "
+                "uses its operator-configured caption endpoint."
             )
-        else:
-            ingestor = ingestor.caption(
-                CaptionParams(
-                    endpoint_url=caption_invoke_url,
-                    api_key=caption_remote_api_key,
-                    model_name=caption_model_name,
-                    device=caption_device,
-                    context_text_max_chars=caption_context_text_max_chars,
-                    gpu_memory_utilization=caption_gpu_memory_utilization,
-                    temperature=caption_temperature,
-                    top_p=caption_top_p,
-                    max_tokens=caption_max_tokens,
-                )
+        ingestor = ingestor.caption(
+            CaptionParams(
+                context_text_max_chars=caption_context_text_max_chars,
+                temperature=caption_temperature,
+                top_p=caption_top_p,
+                max_tokens=caption_max_tokens,
             )
+        )
 
     ingestor = ingestor.embed(embed_params)
 
     if store_images_uri is not None:
-        store_batch_tuning = BatchTuningParams()
-        if store_actors:
-            store_batch_tuning.store_workers = store_actors
-        ingestor = ingestor.store(
-            StoreParams(
-                storage_uri=store_images_uri,
-                batch_tuning=store_batch_tuning,
-            )
-        )
-
-    if vdb_upload_params is not None:
-        ingestor = ingestor.vdb_upload(vdb_upload_params)
+        ingestor = ingestor.store(StoreParams(storage_uri=store_images_uri))
 
     return ingestor
 
@@ -990,11 +832,13 @@ def run(
         path_type=Path,
     ),
     # --- I/O and execution ------------------------------------------------
+    # Default to in-process execution for small-document initial testing; batch
+    # remains explicit for Ray Data throughput runs.
     run_mode: str = typer.Option(
         "inprocess",
         "--run-mode",
         help=(
-            "Execution mode: 'inprocess' (pandas, no Ray, default), 'batch' (Ray Data), "
+            "Execution mode: 'inprocess' (pandas, no Ray), 'batch' (Ray Data), "
             "or 'service' (remote retriever service)."
         ),
         rich_help_panel=_PANEL_IO,
@@ -1023,25 +867,31 @@ def run(
         rich_help_panel=_PANEL_IO,
     ),
     # --- PDF / document extraction ---------------------------------------
-    method: str = typer.Option(
-        "pdfium", "--method", help="PDF text extraction method.", rich_help_panel=_PANEL_EXTRACT
+    method: Optional[str] = typer.Option(
+        None, "--method", help="PDF text extraction method.", rich_help_panel=_PANEL_EXTRACT
     ),
-    dpi: int = typer.Option(
-        300, "--dpi", min=72, help="Render DPI for PDF page images.", rich_help_panel=_PANEL_EXTRACT
+    dpi: Optional[int] = typer.Option(
+        None, "--dpi", min=72, help="Render DPI for PDF page images.", rich_help_panel=_PANEL_EXTRACT
     ),
-    extract_text: bool = typer.Option(True, "--extract-text/--no-extract-text", rich_help_panel=_PANEL_EXTRACT),
-    extract_tables: bool = typer.Option(True, "--extract-tables/--no-extract-tables", rich_help_panel=_PANEL_EXTRACT),
-    extract_charts: bool = typer.Option(True, "--extract-charts/--no-extract-charts", rich_help_panel=_PANEL_EXTRACT),
-    extract_infographics: bool = typer.Option(
-        False, "--extract-infographics/--no-extract-infographics", rich_help_panel=_PANEL_EXTRACT
+    extract_text: Optional[bool] = typer.Option(
+        None, "--extract-text/--no-extract-text", rich_help_panel=_PANEL_EXTRACT
     ),
-    extract_page_as_image: bool = typer.Option(
-        True,
+    extract_tables: Optional[bool] = typer.Option(
+        None, "--extract-tables/--no-extract-tables", rich_help_panel=_PANEL_EXTRACT
+    ),
+    extract_charts: Optional[bool] = typer.Option(
+        None, "--extract-charts/--no-extract-charts", rich_help_panel=_PANEL_EXTRACT
+    ),
+    extract_infographics: Optional[bool] = typer.Option(
+        None, "--extract-infographics/--no-extract-infographics", rich_help_panel=_PANEL_EXTRACT
+    ),
+    extract_page_as_image: Optional[bool] = typer.Option(
+        None,
         "--extract-page-as-image/--no-extract-page-as-image",
         rich_help_panel=_PANEL_EXTRACT,
     ),
-    use_page_elements: bool = typer.Option(
-        True,
+    use_page_elements: Optional[bool] = typer.Option(
+        None,
         "--use-page-elements/--no-use-page-elements",
         rich_help_panel=_PANEL_EXTRACT,
         help=(
@@ -1050,8 +900,8 @@ def run(
             "to force-skip for a faster text-only ingest."
         ),
     ),
-    use_graphic_elements: bool = typer.Option(False, "--use-graphic-elements", rich_help_panel=_PANEL_EXTRACT),
-    use_table_structure: bool = typer.Option(False, "--use-table-structure", rich_help_panel=_PANEL_EXTRACT),
+    use_graphic_elements: Optional[bool] = typer.Option(None, "--use-graphic-elements", rich_help_panel=_PANEL_EXTRACT),
+    use_table_structure: Optional[bool] = typer.Option(None, "--use-table-structure", rich_help_panel=_PANEL_EXTRACT),
     table_output_format: Optional[str] = typer.Option(None, "--table-output-format", rich_help_panel=_PANEL_EXTRACT),
     # --- Remote NIM endpoints --------------------------------------------
     api_key: Optional[str] = typer.Option(
@@ -1631,10 +1481,7 @@ def run(
                 embed_gpus_per_actor=embed_gpus_per_actor,
                 local_ingest_embed_backend=local_ingest_embed_backend,
             )
-            ingestor = _build_ingestor(
-                run_mode=run_mode,
-                ray_address=ray_address,
-                ray_log_to_driver=ray_log_to_driver,
+            ingestor = _build_service_ingestor(
                 file_patterns=file_patterns,
                 input_type=input_type,
                 extract_params=extract_params,
@@ -1645,56 +1492,18 @@ def run(
                 enable_caption=enable_caption,
                 dedup_iou_threshold=dedup_iou_threshold,
                 caption_invoke_url=caption_invoke_url,
-                caption_remote_api_key=caption_remote_api_key,
-                caption_model_name=caption_model_name,
-                caption_device=caption_device,
                 caption_context_text_max_chars=caption_context_text_max_chars,
-                caption_gpu_memory_utilization=caption_gpu_memory_utilization,
-                caption_gpus_per_actor=caption_gpus_per_actor,
                 caption_temperature=caption_temperature,
                 caption_top_p=caption_top_p,
                 caption_max_tokens=caption_max_tokens,
                 store_images_uri=store_images_uri,
-                store_actors=store_actors,
-                segment_audio=segment_audio,
-                audio_split_type=audio_split_type,
-                audio_split_interval=audio_split_interval,
-                video_extract_audio=video_extract_audio,
-                video_extract_frames=video_extract_frames,
-                video_frame_fps=video_frame_fps,
-                video_frame_dedup=video_frame_dedup,
-                video_frame_text_dedup=video_frame_text_dedup,
-                video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
-                video_av_fuse=video_av_fuse,
                 service_url=service_url,
                 service_concurrency=service_concurrency,
                 service_api_token=service_api_token,
-                vdb_upload_params=pipeline_vdb_upload,
             )
         else:
-            dedup_params = DedupParams(iou_threshold=dedup_iou_threshold) if enable_dedup else None
-            caption_params = None
-            if enable_caption:
-                caption_params = CaptionParams(
-                    endpoint_url=caption_invoke_url,
-                    api_key=caption_remote_api_key,
-                    model_name=caption_model_name,
-                    device=caption_device,
-                    context_text_max_chars=caption_context_text_max_chars,
-                    gpu_memory_utilization=caption_gpu_memory_utilization,
-                    temperature=caption_temperature,
-                    top_p=caption_top_p,
-                    max_tokens=caption_max_tokens,
-                )
-
-            store_params = None
             if store_actors and store_images_uri is None:
                 logger.warning("Ignoring --store-actors because --store-images-uri was not provided.")
-            if store_images_uri is not None:
-                store_batch_tuning = BatchTuningParams()
-                if store_actors:
-                    store_batch_tuning.store_workers = store_actors
-                store_params = StoreParams(storage_uri=store_images_uri, batch_tuning=store_batch_tuning)
 
             plan_lancedb_uri = str(
                 resolved_vdb_kwargs.get("uri") or resolved_vdb_kwargs.get("lancedb_uri") or "lancedb"
@@ -1703,85 +1512,124 @@ def run(
                 resolved_vdb_kwargs.get("table_name") or resolved_vdb_kwargs.get("lancedb_table") or "nv-ingest"
             )
             ingest_plan = resolve_ingest_plan(
-                [str(input_path)],
-                input_type=input_type,
-                run_mode=run_mode,
-                method=method,
-                dpi=dpi,
-                extract_text=extract_text,
-                extract_tables=extract_tables,
-                extract_charts=extract_charts,
-                extract_infographics=extract_infographics,
-                extract_page_as_image=extract_page_as_image,
-                use_page_elements=use_page_elements,
-                use_graphic_elements=use_graphic_elements,
-                use_table_structure=use_table_structure,
-                segment_audio=segment_audio,
-                audio_split_type=audio_split_type,
-                audio_split_interval=audio_split_interval,
-                video_extract_audio=video_extract_audio,
-                video_extract_frames=video_extract_frames,
-                video_frame_fps=video_frame_fps,
-                video_frame_dedup=video_frame_dedup,
-                video_frame_text_dedup=video_frame_text_dedup,
-                video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
-                video_av_fuse=video_av_fuse,
-                ray_address=ray_address,
-                ray_log_to_driver=ray_log_to_driver,
-                page_elements_invoke_url=page_elements_invoke_url,
-                ocr_invoke_url=ocr_invoke_url,
-                ocr_version=ocr_version,
-                ocr_lang=ocr_lang,
-                graphic_elements_invoke_url=graphic_elements_invoke_url,
-                table_structure_invoke_url=table_structure_invoke_url,
-                table_output_format=table_output_format,
-                extract_api_key=extract_remote_api_key,
-                embed_invoke_url=embed_invoke_url,
-                embed_model_name=embed_model_name,
-                embed_api_key=embed_remote_api_key,
-                local_ingest_embed_backend=local_ingest_embed_backend,
-                embed_modality=embed_modality,
-                text_elements_modality=text_elements_modality,
-                structured_elements_modality=structured_elements_modality,
-                embed_granularity=embed_granularity,
-                text_chunk=enable_text_chunk,
-                text_chunk_max_tokens=text_chunk_params.max_tokens if enable_text_chunk else None,
-                text_chunk_overlap_tokens=text_chunk_params.overlap_tokens if enable_text_chunk else None,
-                lancedb_uri=plan_lancedb_uri,
-                table_name=plan_table_name,
-                overwrite=bool(resolved_vdb_kwargs.get("overwrite", True)),
-                pdf_split_batch_size=pdf_split_batch_size,
-                pdf_extract_workers=pdf_extract_tasks or None,
-                pdf_extract_batch_size=pdf_extract_batch_size or None,
-                pdf_extract_cpus_per_task=pdf_extract_cpus_per_task or None,
-                page_elements_workers=page_elements_actors or None,
-                page_elements_batch_size=page_elements_batch_size or None,
-                page_elements_cpus_per_actor=page_elements_cpus_per_actor or None,
-                page_elements_gpus_per_actor=page_elements_gpus_per_actor,
-                ocr_workers=ocr_actors or None,
-                ocr_batch_size=ocr_batch_size or None,
-                ocr_cpus_per_actor=ocr_cpus_per_actor or None,
-                ocr_gpus_per_actor=ocr_gpus_per_actor,
-                nemotron_parse_workers=nemotron_parse_actors or None,
-                nemotron_parse_batch_size=nemotron_parse_batch_size or None,
-                nemotron_parse_gpus_per_actor=nemotron_parse_gpus_per_actor,
-                embed_workers=embed_actors or None,
-                embed_batch_size=embed_batch_size or None,
-                embed_cpus_per_actor=embed_cpus_per_actor or None,
-                embed_gpus_per_actor=embed_gpus_per_actor,
+                IngestPlanRequest(
+                    source=IngestSourceOptions(
+                        documents=[str(input_path)],
+                        input_type=input_type,
+                    ),
+                    runtime=IngestRuntimeOptions(
+                        run_mode=run_mode,
+                        ray_address=ray_address,
+                        ray_log_to_driver=ray_log_to_driver,
+                    ),
+                    extract=IngestExtractOptions(
+                        method=method,
+                        dpi=dpi,
+                        extract_text=extract_text,
+                        extract_tables=extract_tables,
+                        extract_charts=extract_charts,
+                        extract_infographics=extract_infographics,
+                        extract_page_as_image=extract_page_as_image,
+                        use_page_elements=use_page_elements,
+                        use_graphic_elements=use_graphic_elements,
+                        use_table_structure=use_table_structure,
+                        page_elements_invoke_url=page_elements_invoke_url,
+                        ocr_invoke_url=ocr_invoke_url,
+                        ocr_version=ocr_version,
+                        ocr_lang=ocr_lang,
+                        graphic_elements_invoke_url=graphic_elements_invoke_url,
+                        table_structure_invoke_url=table_structure_invoke_url,
+                        table_output_format=table_output_format,
+                        extract_api_key=extract_remote_api_key,
+                        batch=IngestExtractBatchOptions(
+                            pdf_split_batch_size=pdf_split_batch_size,
+                            pdf_extract_workers=pdf_extract_tasks or None,
+                            pdf_extract_batch_size=pdf_extract_batch_size or None,
+                            pdf_extract_cpus_per_task=pdf_extract_cpus_per_task or None,
+                            page_elements_workers=page_elements_actors or None,
+                            page_elements_batch_size=page_elements_batch_size or None,
+                            page_elements_cpus_per_actor=page_elements_cpus_per_actor or None,
+                            page_elements_gpus_per_actor=page_elements_gpus_per_actor,
+                            ocr_workers=ocr_actors or None,
+                            ocr_batch_size=ocr_batch_size or None,
+                            ocr_cpus_per_actor=ocr_cpus_per_actor or None,
+                            ocr_gpus_per_actor=ocr_gpus_per_actor,
+                            nemotron_parse_workers=nemotron_parse_actors or None,
+                            nemotron_parse_batch_size=nemotron_parse_batch_size or None,
+                            nemotron_parse_gpus_per_actor=nemotron_parse_gpus_per_actor,
+                        ),
+                    ),
+                    media=IngestMediaOptions(
+                        segment_audio=segment_audio,
+                        audio_split_type=audio_split_type,
+                        audio_split_interval=audio_split_interval,
+                        video_extract_audio=video_extract_audio,
+                        video_extract_frames=video_extract_frames,
+                        video_frame_fps=video_frame_fps,
+                        video_frame_dedup=video_frame_dedup,
+                        video_frame_text_dedup=video_frame_text_dedup,
+                        video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
+                        video_av_fuse=video_av_fuse,
+                    ),
+                    caption=IngestCaptionOptions(
+                        enabled=enable_caption,
+                        caption_invoke_url=caption_invoke_url if enable_caption else None,
+                        caption_api_key=caption_remote_api_key if enable_caption else None,
+                        caption_model_name=caption_model_name if enable_caption else None,
+                        caption_device=caption_device if enable_caption else None,
+                        caption_context_text_max_chars=caption_context_text_max_chars if enable_caption else None,
+                        caption_gpu_memory_utilization=(caption_gpu_memory_utilization if enable_caption else None),
+                        caption_temperature=caption_temperature if enable_caption else None,
+                        caption_top_p=caption_top_p if enable_caption else None,
+                        caption_max_tokens=caption_max_tokens if enable_caption else None,
+                    ),
+                    dedup=IngestDedupOptions(
+                        enabled=enable_dedup,
+                        iou_threshold=dedup_iou_threshold if enable_dedup else None,
+                    ),
+                    chunk=IngestChunkOptions(
+                        enabled=enable_text_chunk,
+                        text_chunk_max_tokens=text_chunk_params.max_tokens if enable_text_chunk else None,
+                        text_chunk_overlap_tokens=text_chunk_params.overlap_tokens if enable_text_chunk else None,
+                    ),
+                    embed=IngestEmbedOptions(
+                        embed_invoke_url=embed_invoke_url,
+                        embed_model_name=embed_model_name,
+                        embed_api_key=embed_remote_api_key,
+                        local_ingest_embed_backend=local_ingest_embed_backend,
+                        embed_modality=embed_modality,
+                        text_elements_modality=text_elements_modality,
+                        structured_elements_modality=structured_elements_modality,
+                        embed_granularity=embed_granularity,
+                        batch=IngestEmbedBatchOptions(
+                            embed_workers=embed_actors or None,
+                            embed_batch_size=embed_batch_size or None,
+                            embed_cpus_per_actor=embed_cpus_per_actor or None,
+                            embed_gpus_per_actor=embed_gpus_per_actor,
+                        ),
+                    ),
+                    image_store=IngestImageStoreOptions(
+                        images_uri=store_images_uri,
+                        workers=store_actors,
+                    ),
+                    storage=IngestStorageOptions(
+                        lancedb_uri=plan_lancedb_uri,
+                        table_name=plan_table_name,
+                        overwrite=bool(resolved_vdb_kwargs.get("overwrite", True)),
+                    ),
+                )
             )
-            create_overrides = None
+            execution_create_kwargs = dict(ingest_plan.create_kwargs)
             if caption_gpus_per_actor is not None:
-                create_overrides = {"node_overrides": {"CaptionActor": {"num_gpus": caption_gpus_per_actor}}}
+                execution_create_kwargs["node_overrides"] = {"CaptionActor": {"num_gpus": caption_gpus_per_actor}}
+            ingest_plan = replace(
+                ingest_plan,
+                create_kwargs=execution_create_kwargs,
+                vdb_params=pipeline_vdb_upload,
+            )
             local_execute_kwargs = {
-                "overwrite": bool(resolved_vdb_kwargs.get("overwrite", True)),
                 "verify_rows": False,
                 "raise_on_empty": False,
-                "create_kwargs": create_overrides,
-                "dedup_params": dedup_params,
-                "caption_params": caption_params,
-                "store_params": store_params,
-                "vdb_params": pipeline_vdb_upload,
             }
 
         # --- Execute ---------------------------------------------------
