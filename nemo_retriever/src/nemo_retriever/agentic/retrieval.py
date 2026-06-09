@@ -244,7 +244,14 @@ class AgenticRetriever:
         return _raw_hits_to_agentic_result([str(query_id) for query_id in query_ids], raw_hits)
 
     def _retrieve_for_agent(self, query_text: str, top_k: int) -> list[dict[str, Any]]:
-        """Retriever callback used by ``ReActAgentOperator``."""
+        """Retriever callback used by ``ReActAgentOperator``.
+
+        Retrieval is serialized across concurrent ReAct workers via ``self._lock``
+        because the shared ``Retriever`` is not assumed thread-safe. This caps the
+        retrieval hop at single-threaded throughput; it is intentional and not the
+        bottleneck, since per-query cost is dominated by the multi-step LLM calls,
+        which still run concurrently under ``num_concurrent > 1``.
+        """
 
         with self._lock:
             hits = self._retriever.query(str(query_text), top_k=int(top_k))

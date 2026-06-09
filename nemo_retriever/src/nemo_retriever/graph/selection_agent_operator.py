@@ -545,7 +545,8 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             assistant_turn: Dict[str, Any] = {"role": "assistant"}
             if msg.get("content"):
                 assistant_turn["content"] = msg["content"]
-                logger.info(
+                # Agent reasoning can quote document text/PII; keep content at DEBUG.
+                logger.debug(
                     "SelectionAgentOperator: step=%d assistant content=%r",
                     _step,
                     _preview_text(msg.get("content")),

@@ -9,6 +9,7 @@ from nemo_retriever.agentic.retrieval import (
     AgenticRetriever,
     build_beir_run_from_agentic_result,
     build_qrels,
+    run_agentic_beir_evaluation,
     run_agentic_recall_evaluation,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "AgenticRetriever",
     "build_beir_run_from_agentic_result",
     "build_qrels",
+    "run_agentic_beir_evaluation",
     "run_agentic_recall_evaluation",
 ]

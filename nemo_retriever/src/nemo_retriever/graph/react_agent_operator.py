@@ -629,7 +629,8 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             finish_reason = choice.get("finish_reason")
             tool_calls = msg.get("tool_calls") or []
             if msg.get("content"):
-                logger.info(
+                # Agent reasoning can quote document text/PII; keep content at DEBUG.
+                logger.debug(
                     "ReActAgentOperator: query=%s step=%d assistant content=%r",
                     query_id,
                     _step,
@@ -676,7 +677,8 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     continue
 
                 if fn_name == "think":
-                    logger.info(
+                    # Agent thoughts can quote document text/PII; keep content at DEBUG.
+                    logger.debug(
                         "ReActAgentOperator: query=%s step=%d think=%r",
                         query_id,
                         _step,
