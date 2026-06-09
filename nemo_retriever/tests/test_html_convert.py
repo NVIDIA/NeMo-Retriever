@@ -109,9 +109,7 @@ def test_html_bytes_to_chunks_df(tmp_path: Path, monkeypatch):
     assert df["text"].iloc[0].strip()
 
 
-def test_html_bytes_to_chunks_df_falls_back_when_markitdown_returns_empty(
-    tmp_path: Path, monkeypatch
-):
+def test_html_bytes_to_chunks_df_falls_back_when_markitdown_returns_empty(tmp_path: Path, monkeypatch):
     pytest.importorskip("markitdown")
     monkeypatch.setattr(
         "nemo_retriever.html.convert._get_txt_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
