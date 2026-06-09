@@ -1494,7 +1494,8 @@ def run(
         if evaluation_mode not in {"none", "audio_recall", "beir", "qa"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
         if retrieval_mode not in {"standard", "agentic"}:
-            raise ValueError(f"Unsupported --retrieval-mode: {retrieval_mode!r}")
+            logger.warning("Unsupported --retrieval-mode=%r; falling back to 'standard'.", retrieval_mode)
+            retrieval_mode = "standard"
         if retrieval_mode == "agentic" and evaluation_mode not in {"audio_recall", "beir"}:
             raise typer.BadParameter(
                 "--retrieval-mode=agentic is currently supported only with --evaluation-mode=audio_recall or "

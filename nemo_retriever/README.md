@@ -266,6 +266,8 @@ BEIR-style dataset:
 
 ```bash
 retriever pipeline run ./data \
+  --vdb-op lancedb \
+  --vdb-kwargs-json '{"uri":"<lancedb-uri>","table_name":"<table-name>"}' \
   --evaluation-mode beir \
   --retrieval-mode agentic \
   --beir-loader vidore_hf \
@@ -279,9 +281,10 @@ retriever pipeline run ./data \
 ```
 
 Common BEIR options are `--beir-split`, `--beir-query-language`, and
-`--beir-doc-id-field`. Agentic controls include `--agentic-react-max-steps`
-(default `50`), `--agentic-backend-top-k` (default `20`), and
-`--agentic-text-truncation` (`0` disables truncation),
+`--beir-doc-id-field`. Use `--vdb-kwargs-json` to point evaluation at the
+LanceDB URI and table for the indexed corpus. Agentic controls include
+`--agentic-react-max-steps` (default `50`), `--agentic-backend-top-k` (default
+`20`), and `--agentic-text-truncation` (`0` disables truncation),
 `--agentic-reasoning-effort`, and `--agentic-num-concurrent`. Throughput with
 high concurrency is bounded by the configured LLM endpoint.
 

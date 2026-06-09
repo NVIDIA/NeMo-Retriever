@@ -299,6 +299,25 @@ def test_pipeline_rejects_agentic_qa_mode():
     assert "--evaluation-mode=beir" in result.output
 
 
+def test_pipeline_invalid_retrieval_mode_falls_back_to_standard():
+    from nemo_retriever.pipeline.__main__ import app
+
+    result = CliRunner().invoke(
+        app,
+        [
+            ".",
+            "--evaluation-mode",
+            "qa",
+            "--retrieval-mode",
+            "unknown",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "falling back to 'standard'" in result.output
+    assert "--evaluation-mode=qa requires --eval-config" in result.output
+
+
 def test_pipeline_requires_agentic_llm_model():
     from nemo_retriever.pipeline.__main__ import app
 
