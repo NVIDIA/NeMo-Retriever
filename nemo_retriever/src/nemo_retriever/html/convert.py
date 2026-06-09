@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import io
 import tempfile
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -24,6 +25,46 @@ from ..txt.split import (
     split_text_by_tokens,
 )
 from ..txt.split import _get_tokenizer as _get_txt_tokenizer
+
+
+class _HTMLTextFallbackParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+        self._ignored_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() in {"script", "style", "noscript", "template"}:
+            self._ignored_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in {"script", "style", "noscript", "template"} and self._ignored_depth:
+            self._ignored_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._ignored_depth:
+            return
+        text = data.strip()
+        if text:
+            self.parts.append(text)
+
+
+def _html_plain_text_fallback(html_text: str) -> str:
+    parser = _HTMLTextFallbackParser()
+    parser.feed(html_text)
+    parser.close()
+    return "\n\n".join(parser.parts)
+
+
+def _is_existing_file_path(value: str) -> bool:
+    try:
+        return Path(value).is_file()
+    except OSError:
+        return False
+
+
+def _read_html_file(path: Union[str, Path]) -> str:
+    return Path(path).read_text(encoding="utf-8", errors="replace")
 
 
 def html_to_markdown(html_content: Union[str, bytes, Path]) -> str:
@@ -44,17 +85,23 @@ def html_to_markdown(html_content: Union[str, bytes, Path]) -> str:
 
     md = MarkItDown()
     if isinstance(html_content, Path):
-        html_content = str(html_content)
-    if isinstance(html_content, str):
-        if Path(html_content).is_file():
+        result = md.convert(str(html_content))
+        fallback_text = _read_html_file(html_content)
+    elif isinstance(html_content, str):
+        if _is_existing_file_path(html_content):
             result = md.convert(html_content)
+            fallback_text = _read_html_file(html_content)
         else:
             result = md.convert_stream(io.BytesIO(html_content.encode("utf-8", errors="replace")))
+            fallback_text = html_content
     elif isinstance(html_content, bytes):
         result = md.convert_stream(io.BytesIO(html_content))
+        fallback_text = html_content.decode("utf-8", errors="replace")
     else:
         result = md.convert(html_content)
-    return result.text_content or ""
+        fallback_text = str(html_content)
+    markdown_text = result.text_content or ""
+    return markdown_text if markdown_text.strip() else _html_plain_text_fallback(fallback_text)
 
 
 def html_file_to_chunks_df(
@@ -99,6 +146,8 @@ def html_file_to_chunks_df(
     md = MarkItDown()
     result = md.convert(path)
     markdown_text = result.text_content or ""
+    if not markdown_text.strip():
+        markdown_text = _html_plain_text_fallback(_read_html_file(path))
     return _markdown_to_chunks_df(
         markdown_text,
         path,
@@ -138,6 +187,8 @@ def html_bytes_to_chunks_df(
         markdown_text = result.text_content or ""
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+    if not markdown_text.strip():
+        markdown_text = _html_plain_text_fallback(content_bytes.decode("utf-8", errors="replace"))
     return _markdown_to_chunks_df(
         markdown_text,
         path,
