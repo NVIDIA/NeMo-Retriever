@@ -22,7 +22,9 @@ import pandas as pd
 
 from nemo_retriever.graph.abstract_operator import AbstractOperator
 from nemo_retriever.model import VL_EMBED_MODEL, VL_RERANK_MODEL
-from nemo_retriever.recall.beir import compute_beir_metrics
+from nemo_retriever.recall.beir import VALID_BEIR_DOC_ID_FIELDS, compute_beir_metrics
+from nemo_retriever.recall.beir import _extract_doc_id_from_hit as _beir_doc_id_from_hit
+from nemo_retriever.recall.beir import load_beir_dataset
 from nemo_retriever.recall.core import (
     _hit_to_audio_segment_key,
     _normalize_pdf_name,
@@ -32,14 +34,15 @@ from nemo_retriever.retriever import Retriever
 
 logger = logging.getLogger(__name__)
 
-AGENTIC_RETRIEVER_TOP_K = 20
+AGENTIC_RETRIEVER_TOP_K = 10
 AGENTIC_TARGET_TOP_K = 10
+AGENTIC_BACKEND_TOP_K = 20  # backend retrieve-pool depth. show-count stays AGENTIC_TARGET_TOP_K=10
 AGENTIC_SELECTION_TOP_K = 10
 AGENTIC_NUM_CONCURRENT = 1
-AGENTIC_TEXT_TRUNCATION = 2000
+AGENTIC_TEXT_TRUNCATION = 0
 AGENTIC_PARALLEL_TOOL_CALLS = False
 AGENTIC_RRF_K = 60
-AGENTIC_REACT_MAX_STEPS = 10
+AGENTIC_REACT_MAX_STEPS = 50
 
 
 class AgenticQueryInputOperator(AbstractOperator):
@@ -126,20 +129,38 @@ class AgenticRetrievalConfig:
     invoke_url: Optional[str] = None
     api_key: Optional[str] = None
     react_max_steps: int = AGENTIC_REACT_MAX_STEPS
+    text_truncation: int = AGENTIC_TEXT_TRUNCATION
+    num_concurrent: int = AGENTIC_NUM_CONCURRENT
+    # Forwarded verbatim as the OpenAI `reasoning_effort` field on every LLM
+    # call. Defaults to Path A's validated setting.
+    reasoning_effort: Optional[str] = "high"
+    # Backend retrieve-pool depth, Distinct from the per-call show count (AGENTIC_TARGET_TOP_K).
+    backend_top_k: int = AGENTIC_BACKEND_TOP_K
 
     def __post_init__(self) -> None:
         if not str(self.llm_model).strip():
             raise ValueError("Agentic retrieval requires a non-empty llm_model.")
         if int(self.react_max_steps) < 1:
             raise ValueError("react_max_steps must be >= 1.")
+        if int(self.text_truncation) < 0:
+            raise ValueError("text_truncation must be >= 0.")
 
 
 class AgenticRetriever:
     """Run graph-backed agentic retrieval over query IDs and query texts."""
 
-    def __init__(self, cfg: AgenticRetrievalConfig, *, match_mode: str = "pdf_page") -> None:
+    def __init__(
+        self,
+        cfg: AgenticRetrievalConfig,
+        *,
+        match_mode: str = "pdf_page",
+        doc_id_field: str | None = None,
+    ) -> None:
         self._cfg = cfg
         self._match_mode = str(match_mode)
+        self._doc_id_field = str(doc_id_field) if doc_id_field else None
+        if self._doc_id_field is not None and self._doc_id_field not in VALID_BEIR_DOC_ID_FIELDS:
+            raise ValueError(f"Unsupported doc_id_field: {self._doc_id_field}")
         self._retriever = Retriever(
             vdb_kwargs={
                 "vdb_op": str(cfg.vdb_op),
@@ -155,7 +176,7 @@ class AgenticRetriever:
                 "inference_batch_size": int(cfg.local_hf_batch_size),
                 "embed_inference_batch_size": int(cfg.local_hf_batch_size),
             },
-            top_k=AGENTIC_TOP_K,
+            top_k=AGENTIC_RETRIEVER_TOP_K,
             rerank=bool(cfg.reranker),
             rerank_kwargs={
                 "model_name": cfg.reranker or VL_RERANK_MODEL,
@@ -187,30 +208,39 @@ class AgenticRetriever:
                 invoke_url=_none_if_empty(self._cfg.invoke_url),
                 llm_model=str(self._cfg.llm_model),
                 retriever_fn=self._retrieve_for_agent,
-                retriever_top_k=AGENTIC_TOP_K,
-                target_top_k=AGENTIC_TOP_K,
+                retriever_top_k=AGENTIC_RETRIEVER_TOP_K,
+                target_top_k=AGENTIC_TARGET_TOP_K,
                 user_msg_type="with_results",
                 max_steps=int(self._cfg.react_max_steps),
+                extended_relevance=True,
                 api_key=_none_if_empty(self._cfg.api_key),
                 parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
-                num_concurrent=AGENTIC_NUM_CONCURRENT,
+                num_concurrent=int(self._cfg.num_concurrent),
+                reasoning_effort=self._cfg.reasoning_effort,
+                backend_top_k=self._cfg.backend_top_k,
             )
             >> RRFAggregatorOperator(k=AGENTIC_RRF_K)
             >> SelectionAgentOperator(
                 invoke_url=_none_if_empty(self._cfg.invoke_url),
                 llm_model=str(self._cfg.llm_model),
-                top_k=AGENTIC_TOP_K,
+                top_k=AGENTIC_SELECTION_TOP_K,
                 api_key=_none_if_empty(self._cfg.api_key),
                 parallel_tool_calls=AGENTIC_PARALLEL_TOOL_CALLS,
+                extended_relevance=True,  # match Path A
+                text_truncation=int(self._cfg.text_truncation),
+                reasoning_effort=self._cfg.reasoning_effort,
             )
             >> AgenticSelectionOutputOperator()
         )
         graph_retriever = Retriever(
             graph=pipeline,
-            top_k=AGENTIC_TOP_K,
+            top_k=AGENTIC_SELECTION_TOP_K,
             embed_kwargs={"text_column": "query_text"},
         )
-        raw_hits = graph_retriever.queries([str(query_text) for query_text in query_texts], top_k=AGENTIC_TOP_K)
+        raw_hits = graph_retriever.queries(
+            [str(query_text) for query_text in query_texts],
+            top_k=AGENTIC_SELECTION_TOP_K,
+        )
         return _raw_hits_to_agentic_result([str(query_id) for query_id in query_ids], raw_hits)
 
     def _retrieve_for_agent(self, query_text: str, top_k: int) -> list[dict[str, Any]]:
@@ -220,15 +250,24 @@ class AgenticRetriever:
             hits = self._retriever.query(str(query_text), top_k=int(top_k))
 
         docs: list[dict[str, Any]] = []
+        doc_id_field = getattr(self, "_doc_id_field", None)
         for hit in hits:
-            doc_id = _doc_id_for_match_mode(dict(hit), match_mode=self._match_mode)
+            hit_dict = dict(hit)
+            doc_id = (
+                _beir_doc_id_from_hit(hit_dict, doc_id_field=doc_id_field)
+                if doc_id_field is not None
+                else _doc_id_for_match_mode(hit_dict, match_mode=self._match_mode)
+            )
             if not doc_id:
                 continue
+            text = str(hit_dict.get("text", ""))
+            if int(self._cfg.text_truncation) > 0:
+                text = text[: int(self._cfg.text_truncation)]
             docs.append(
                 {
                     "doc_id": doc_id,
-                    "text": str(hit.get("text", ""))[:AGENTIC_TEXT_TRUNCATION],
-                    "score": _hit_score(hit),
+                    "text": text,
+                    "score": _hit_score(hit_dict),
                 }
             )
             if len(docs) >= int(top_k):
@@ -264,6 +303,52 @@ def run_agentic_recall_evaluation(
     run = build_beir_run_from_agentic_result(query_ids, result)
     metrics = compute_beir_metrics(qrels, run, ks=ks)
     return df_query, result, qrels, run, metrics
+
+
+def run_agentic_beir_evaluation(
+    *,
+    loader: str,
+    dataset_name: str,
+    cfg: AgenticRetrievalConfig,
+    split: str = "test",
+    query_language: str | None = None,
+    doc_id_field: str = "pdf_basename",
+    ks: Sequence[int] = (1, 3, 5, 10),
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, dict[str, int]], dict[str, dict[str, float]], dict[str, float]]:
+    """Run agentic retrieval using BEIR-style queries and qrels."""
+
+    beir_dataset = load_beir_dataset(
+        str(loader),
+        dataset_name=str(dataset_name),
+        split=str(split),
+        query_language=query_language,
+        doc_id_field=str(doc_id_field),
+    )
+
+    start = time.time()
+    result = AgenticRetriever(cfg, match_mode="pdf_page", doc_id_field=str(doc_id_field)).retrieve(
+        beir_dataset.query_ids,
+        beir_dataset.queries,
+    )
+    elapsed = time.time() - start
+    if elapsed > 0:
+        logger.info(
+            "Agentic BEIR retrieval time for %d queries: %.2f seconds (average %.2f queries/second)",
+            len(beir_dataset.query_ids),
+            elapsed,
+            len(beir_dataset.query_ids) / elapsed,
+        )
+
+    run = build_beir_run_from_agentic_result(beir_dataset.query_ids, result)
+    metrics = compute_beir_metrics(beir_dataset.qrels, run, ks=ks)
+    df_query = pd.DataFrame(
+        {
+            "query_id": beir_dataset.query_ids,
+            "query": beir_dataset.queries,
+            "golden_answer": [",".join(beir_dataset.qrels.get(qid, {}).keys()) for qid in beir_dataset.query_ids],
+        }
+    )
+    return df_query, result, beir_dataset.qrels, run, metrics
 
 
 def build_qrels(query_ids: Sequence[str], gold_keys: Sequence[str]) -> dict[str, dict[str, int]]:
@@ -303,18 +388,36 @@ def build_beir_run_from_agentic_result(
 
 def _raw_hits_to_agentic_result(query_ids: Sequence[str], raw_hits: Sequence[Sequence[dict[str, Any]]]) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
-    for query_id, hits in zip(query_ids, raw_hits):
+    # The agentic graph (AgenticQueryInputOperator) assigns POSITIONAL query_ids
+    # "0".."N-1" to its inputs, independent of the caller's real ids. Each hit
+    # therefore carries its positional index; map that back through `query_ids`
+    # to recover the caller's real id. This is robust to (a) ThreadPool
+    # completion-order reordering at num_concurrent>1, (b) queries that produced
+    # no rows (gaps don't shift anything), and (c) sharded offset ranges where the
+    # positional index != the caller's real id (e.g. query_ids=["1000".."1049"]).
+    # For a full sweep with sequential ids ("0".."N-1") this is a no-op vs the
+    # old positional zip.
+    n = len(query_ids)
+    for pos, hits in enumerate(raw_hits):
         for rank, hit in enumerate(hits, start=1):
+            raw_qid = hit.get("query_id")
+            if raw_qid is not None and str(raw_qid).isdigit() and int(raw_qid) < n:
+                qid = str(query_ids[int(raw_qid)])
+            elif pos < n:
+                qid = str(query_ids[pos])
+            else:
+                qid = str(raw_qid) if raw_qid is not None else ""
             rows.append(
                 {
-                    "query_id": str(query_id),
+                    "query_id": qid,
                     "doc_id": str(hit.get("doc_id") or hit.get("pdf_page") or ""),
                     "rank": int(hit.get("rank", rank)),
                     "message": str(hit.get("message", "")),
+                    "result_source": str(hit.get("result_source", "")),
                 }
             )
     if not rows:
-        return pd.DataFrame(columns=["query_id", "doc_id", "rank", "message"])
+        return pd.DataFrame(columns=["query_id", "doc_id", "rank", "message", "result_source"])
     return pd.DataFrame(rows)
 
 

@@ -259,6 +259,32 @@ hits = retriever.query(query)
 {'text': '| Table | 1 |\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |', 'metadata': '{"page_number": 1, "pdf_page": "multimodal_test_1", "page_elements_v3_num_detections": 9, "page_elements_v3_counts_by_label": {"table": 1, "chart": 1, "title": 3, "text": 4}, "ocr_table_detections": 1, "ocr_chart_detections": 1, "ocr_infographic_detections": 0}', 'source': '{"source_id": "/home/dev/projects/NeMo-Retriever/data/multimodal_test.pdf"}', 'page_number': 1, '_distance': 1.614684820175171}
 ```
 
+### Agentic BEIR evaluation
+
+The pipeline CLI can evaluate a LanceDB corpus with agentic retrieval against a
+BEIR-style dataset:
+
+```bash
+retriever pipeline run ./data \
+  --evaluation-mode beir \
+  --retrieval-mode agentic \
+  --beir-loader vidore_hf \
+  --beir-dataset-name vidore_v3_finance_en \
+  --beir-doc-id-field pdf_basename \
+  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --agentic-invoke-url http://<llm-endpoint>/v1/chat/completions \
+  --embed-invoke-url http://<embed-endpoint>/v1 \
+  --agentic-reasoning-effort high \
+  --agentic-num-concurrent 10
+```
+
+Common BEIR options are `--beir-split`, `--beir-query-language`, and
+`--beir-doc-id-field`. Agentic controls include `--agentic-react-max-steps`
+(default `50`), `--agentic-backend-top-k` (default `20`), and
+`--agentic-text-truncation` (`0` disables truncation),
+`--agentic-reasoning-effort`, and `--agentic-num-concurrent`. Throughput with
+high concurrency is bounded by the configured LLM endpoint.
+
 ###  Generate a query answer using an LLM
 The above retrieval results are often feedable directly to an LLM for answer generation.
 

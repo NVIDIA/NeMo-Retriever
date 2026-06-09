@@ -23,7 +23,7 @@ from nemo_retriever.nim.chat_completions import invoke_chat_completion_step
 logger = logging.getLogger(__name__)
 
 _LOG_PREVIEW_CHARS = 300
-_LOG_DOC_ID_LIMIT = 10
+_LOG_DOC_ID_LIMIT = 20
 
 
 def _preview_text(value: Any, *, limit: int = _LOG_PREVIEW_CHARS) -> str:
@@ -259,6 +259,7 @@ def _make_final_results_tool_spec(top_k: Optional[int]) -> Dict[str, Any]:
                     "doc_ids": {
                         "type": "array",
                         "items": {"type": "string"},
+                        "minItems": 1,
                         "description": (
                             "List of document IDs that are relevant to the user's query sorted descending "
                             "by their level of relevance to the user's query. I.e., the first document is "
@@ -410,6 +411,8 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         api_key: Optional[str] = None,
         max_tokens: Optional[int] = None,
         parallel_tool_calls: bool = True,
+        reasoning_effort: Optional[str] = None,
+        backend_top_k: Optional[int] = None,
     ) -> None:
         super().__init__()
         self._invoke_url = invoke_url or self._NVIDIA_BUILD_ENDPOINT
@@ -425,6 +428,17 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         self._api_key = api_key
         self._max_tokens = max_tokens
         self._parallel_tool_calls = parallel_tool_calls
+        self._reasoning_effort = reasoning_effort
+        self._backend_top_k = backend_top_k
+
+    def _build_extra_body(self) -> Optional[Dict[str, Any]]:
+        """Assemble per-call extra payload fields (parallel_tool_calls, reasoning_effort)."""
+        extra: Dict[str, Any] = {}
+        if not self._parallel_tool_calls:
+            extra["parallel_tool_calls"] = False
+        if self._reasoning_effort:
+            extra["reasoning_effort"] = self._reasoning_effort
+        return extra or None
 
     # ------------------------------------------------------------------
     # AbstractOperator interface
@@ -453,28 +467,32 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             qid, qtxt = query_rows[0]
             rows.extend(self._run_single_query(qid, qtxt, api_key))
         else:
+            # Collect per-query results keyed by query_id, then re-emit in the ORIGINAL
+            # input order. as_completed() yields futures in nondeterministic completion
+            # order; emitting in that order would make downstream groupby(sort=False)
+            # output order depend on which query finished first. Re-ordering here keeps
+            # the operator output deterministic regardless of concurrency.
+            results_by_qid: Dict[str, List[Dict[str, Any]]] = {}
             with ThreadPoolExecutor(max_workers=min(self._num_concurrent, len(query_rows))) as executor:
                 futures = {
                     executor.submit(self._run_single_query, qid, qtxt, api_key): (qid, qtxt) for qid, qtxt in query_rows
                 }
                 for future in as_completed(futures):
+                    qid, qtxt = futures[future]
                     try:
-                        rows.extend(future.result())
+                        results_by_qid[qid] = future.result()
                     except TimeoutError as exc:
-                        qid, qtxt = futures[future]
                         logger.warning("ReActAgentOperator: query %r timed out: %s", qid, exc, exc_info=True)
                     except RuntimeError as exc:
-                        qid, qtxt = futures[future]
                         logger.warning("ReActAgentOperator: query %r retries exhausted: %s", qid, exc, exc_info=True)
                     except requests.RequestException as exc:
-                        qid, qtxt = futures[future]
                         logger.warning("ReActAgentOperator: query %r HTTP error: %s", qid, exc, exc_info=True)
                     except (json.JSONDecodeError, ValueError) as exc:
-                        qid, qtxt = futures[future]
                         logger.warning("ReActAgentOperator: query %r data error: %s", qid, exc, exc_info=True)
                     except Exception as exc:  # catches unexpected worker errors not covered above
-                        qid, qtxt = futures[future]
                         logger.warning("ReActAgentOperator: query %r failed: %s", qid, exc, exc_info=True)
+            for qid, _qtxt in query_rows:
+                rows.extend(results_by_qid.get(qid, []))
 
         if not rows:
             return pd.DataFrame(columns=["query_id", "query_text", "step_idx", "doc_id", "text", "rank"])
@@ -562,7 +580,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     tools=tools,
                     tool_choice="auto",
                     max_tokens=self._max_tokens,
-                    extra_body={"parallel_tool_calls": False} if not self._parallel_tool_calls else None,
+                    extra_body=self._build_extra_body(),
                 )
             except TimeoutError as exc:
                 logger.warning(
@@ -705,16 +723,25 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                         raw_ids[:_LOG_DOC_ID_LIMIT] if isinstance(raw_ids, list) else raw_ids,
                         _preview_text(fn_args.get("message")),
                     )
-                    if isinstance(raw_ids, list) and raw_ids:
-                        final_doc_ids = [str(d) for d in raw_ids]
-                    tool_messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tc_id,
-                            "content": "The results have been successfully logged and the interaction ended.",
-                        }
-                    )
-                    loop_done = True
+                    validation_error = self._validate_final_results_args(fn_args)
+                    if validation_error is None:
+                        final_doc_ids = list(raw_ids)
+                        tool_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc_id,
+                                "content": "The results have been successfully logged and the interaction ended.",
+                            }
+                        )
+                        loop_done = True
+                    else:
+                        tool_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc_id,
+                                "content": f"Error: {validation_error}",
+                            }
+                        )
 
                 else:
                     tool_messages.append(
@@ -742,6 +769,11 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
     ) -> List[Dict[str, Any]]:
         """Call retriever_fn, over-fetching to ensure new results after dedup."""
         fetch_k = self._retriever_top_k + len(seen_doc_ids)
+        # Optional fixed ceiling on backend depth, matching Path A's --retriever-top-k
+        # cap. Once the agent has seen the whole capped pool, retrieves return no new
+        # docs, so the prompt stops growing (prevents context-window overflow).
+        if self._backend_top_k:
+            fetch_k = min(fetch_k, int(self._backend_top_k))
         try:
             raw = self._retriever_fn(query_text, fetch_k)
         except TimeoutError as exc:
@@ -758,21 +790,73 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             logger.warning("ReActAgentOperator: retriever_fn failed for query %r: %s", query_text, exc, exc_info=True)
             return []
 
-        # Filter already-seen and normalise keys. Track this batch separately
-        # so duplicate rows from the vector DB do not reduce the effective top-k.
+        # Walk the ranked results, normalising keys and de-duplicating within the
+        # batch. Already-seen docs are always re-presented as short stubs, matching
+        # Path A's retrieve_with_guarantees, and do not count toward top_k.
         results: List[Dict[str, Any]] = []
         batch_doc_ids: set[str] = set()
+        new_count = 0
         for item in raw:
             doc_id = str(item.get("doc_id", item.get("id", "")))
-            text = str(item.get("text", ""))
+            if not doc_id or doc_id in batch_doc_ids:
+                continue
             score = float(item.get("score", 0.0))
-            if doc_id and doc_id not in seen_doc_ids and doc_id not in batch_doc_ids:
-                results.append({"doc_id": doc_id, "text": text, "score": score})
+            if doc_id in seen_doc_ids:
                 batch_doc_ids.add(doc_id)
-            if len(results) >= self._retriever_top_k:
+                results.append(
+                    {
+                        "doc_id": doc_id,
+                        "text": (
+                            "This document was retrieved before. See the earlier retrieval "
+                            f"results for its content (id: {doc_id})."
+                        ),
+                        "score": score,
+                    }
+                )
+                continue
+            batch_doc_ids.add(doc_id)
+            results.append(
+                {
+                    "doc_id": doc_id,
+                    "text": str(item.get("text", "")),
+                    "score": score,
+                }
+            )
+            new_count += 1
+            if new_count >= self._retriever_top_k:
                 break
 
         return results
+
+    def _validate_final_results_args(self, fn_args: Dict[str, Any]) -> Optional[str]:
+        """Validate final_results tool args outside the prompt/schema."""
+        message = fn_args.get("message")
+        if not isinstance(message, str):
+            return f"`message` must be a string. Got `{type(message)}` type."
+
+        doc_ids = fn_args.get("doc_ids")
+        if not isinstance(doc_ids, list):
+            return f"`doc_ids` must be a list. Got `{type(doc_ids)}` type."
+        if len(doc_ids) == 0:
+            return "`doc_ids` cannot be empty. You must choose at least one relevant document."
+        if not all(isinstance(doc_id, str) for doc_id in doc_ids):
+            return "Items in `doc_ids` must be of type string (i.e., python's `str` type)."
+
+        search_successful = fn_args.get("search_successful")
+        if not isinstance(search_successful, str):
+            return f"`search_successful` must be a string. Got `{type(search_successful)}` type."
+        if search_successful not in {"true", "false", "partial"}:
+            return (
+                f"`search_successful` must be one of `true`, `false`, or `partial`. Got `{search_successful}` instead."
+            )
+
+        if self._enforce_top_k and len(doc_ids) != self._target_top_k:
+            return (
+                f"`doc_ids` must contain exactly {self._target_top_k} documents. "
+                f"But got {len(doc_ids)} document IDs instead."
+            )
+
+        return None
 
     def _resolve_api_key(self) -> Optional[str]:
         api_key = self._api_key
@@ -825,6 +909,8 @@ def _build_output_rows(
                     "step_idx": step_idx,
                     "doc_id": doc.get("doc_id", ""),
                     "text": doc.get("text", ""),
+                    "has_valid_final_results": final_doc_ids is not None,
+                    "is_final_result": False,
                     "rank": rank,
                 }
             )
@@ -855,6 +941,8 @@ def _build_output_rows(
                     "step_idx": final_step_idx,
                     "doc_id": doc_id,
                     "text": doc.get("text", ""),
+                    "has_valid_final_results": True,
+                    "is_final_result": True,
                     "rank": rank,
                 }
             )

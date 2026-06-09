@@ -102,6 +102,12 @@ class RRFAggregatorOperator(AbstractOperator, CPUOperator):
 
             rrf_scores: Dict[str, float] = defaultdict(float)
             first_text: Dict[str, str] = {}
+            react_final_rank: Dict[str, int] = {}
+            has_valid_final_results = (
+                bool(qgroup.get("has_valid_final_results", False).astype(bool).any())
+                if "has_valid_final_results" in qgroup.columns
+                else False
+            )
 
             # Process each step's ranked list
             for _step_idx, sgroup in qgroup.groupby("step_idx", sort=True):
@@ -112,6 +118,10 @@ class RRFAggregatorOperator(AbstractOperator, CPUOperator):
                     rrf_scores[doc_id] += 1.0 / (rank + k)
                     if doc_id not in first_text:
                         first_text[doc_id] = str(row["text"])
+                    if bool(row.get("is_final_result", False)):
+                        previous = react_final_rank.get(doc_id)
+                        if previous is None or rank < previous:
+                            react_final_rank[doc_id] = rank
 
             for doc_id, score in sorted(rrf_scores.items(), key=lambda kv: kv[1], reverse=True):
                 rows.append(
@@ -121,11 +131,23 @@ class RRFAggregatorOperator(AbstractOperator, CPUOperator):
                         "doc_id": doc_id,
                         "rrf_score": score,
                         "text": first_text.get(doc_id, ""),
+                        "has_valid_final_results": has_valid_final_results,
+                        "react_final_rank": react_final_rank.get(doc_id),
                     }
                 )
 
         if not rows:
-            return pd.DataFrame(columns=["query_id", "query_text", "doc_id", "rrf_score", "text"])
+            return pd.DataFrame(
+                columns=[
+                    "query_id",
+                    "query_text",
+                    "doc_id",
+                    "rrf_score",
+                    "text",
+                    "has_valid_final_results",
+                    "react_final_rank",
+                ]
+            )
 
         return pd.DataFrame(rows)
 

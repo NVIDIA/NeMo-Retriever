@@ -22,7 +22,7 @@ from nemo_retriever.nim.chat_completions import invoke_chat_completion_step
 logger = logging.getLogger(__name__)
 
 _LOG_PREVIEW_CHARS = 300
-_LOG_DOC_ID_LIMIT = 10
+_LOG_DOC_ID_LIMIT = 20
 
 
 def _preview_text(value: Any, *, limit: int = _LOG_PREVIEW_CHARS) -> str:
@@ -30,6 +30,7 @@ def _preview_text(value: Any, *, limit: int = _LOG_PREVIEW_CHARS) -> str:
     if len(text) <= limit:
         return text
     return text[:limit].rstrip() + "..."
+
 
 # ---------------------------------------------------------------------------
 # Prompt rendering  (verbatim content of 01_v0.j2, rendered via Python)
@@ -198,8 +199,10 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         text_truncation: int = 2000,
         parallel_tool_calls: bool = True,
         base_url: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> None:
         super().__init__()
+        self._reasoning_effort = reasoning_effort
         self._llm_model = llm_model
         self._top_k = top_k
         self._api_key = api_key
@@ -246,7 +249,16 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
 
         for query_id, group in data.groupby("query_id", sort=False):
             query_text = str(group["query_text"].iloc[0])
-            docs = [{"id": str(row["doc_id"]), "text": str(row["text"])} for _, row in group.iterrows()]
+            ordered_group = group
+            if "rrf_score" in group.columns:
+                ordered_group = group.sort_values("rrf_score", ascending=False)
+            docs = [
+                {
+                    "id": str(row["doc_id"]),
+                    "text": str(row["text"]),
+                }
+                for _, row in ordered_group.iterrows()
+            ]
             logger.info(
                 "SelectionAgentOperator: query=%s start candidates=%d unique_candidates=%d query=%r",
                 query_id,
@@ -254,26 +266,49 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 len({doc["id"] for doc in docs}),
                 _preview_text(query_text),
             )
-            result = self._select_documents(query_text, docs)
-            message = result.get("message", "")
+            preferred_doc_ids, message, result_source = self._preferred_doc_ids(ordered_group)
+            if preferred_doc_ids is None:
+                result = self._select_documents(query_text, docs)
+                message = result.get("message", "")
+                doc_ids = list(result.get("doc_ids", []))
+                result_source = "selection_agent"
+            else:
+                doc_ids = preferred_doc_ids
+            if not doc_ids:
+                if preferred_doc_ids is None:
+                    doc_ids = ordered_group["doc_id"].astype(str).drop_duplicates().head(int(self._top_k)).tolist()
+                    message = (
+                        f"{message} Falling back to top {len(doc_ids)} RRF-ranked candidates."
+                        if message
+                        else f"Falling back to top {len(doc_ids)} RRF-ranked candidates."
+                    )
+                    result_source = "candidate_ranking"
+                    logger.warning(
+                        "SelectionAgentOperator: query=%s selection failed; "
+                        "falling back to candidate ranking doc_ids=%s",
+                        query_id,
+                        doc_ids[:_LOG_DOC_ID_LIMIT],
+                    )
             logger.info(
-                "SelectionAgentOperator: query=%s selected=%s message=%r",
+                "SelectionAgentOperator: query=%s result_source=%s selected=%s message=%r",
                 query_id,
-                result.get("doc_ids", [])[:_LOG_DOC_ID_LIMIT],
+                result_source,
+                doc_ids[:_LOG_DOC_ID_LIMIT],
                 _preview_text(message),
             )
-            for rank, doc_id in enumerate(result.get("doc_ids", []), 1):
+            for rank, doc_id in enumerate(doc_ids, 1):
                 rows.append(
                     {
                         "query_id": query_id,
                         "doc_id": doc_id,
                         "rank": rank,
                         "message": message,
+                        "result_source": result_source,
                     }
                 )
 
         if not rows:
-            return pd.DataFrame(columns=["query_id", "doc_id", "rank", "message"])
+            return pd.DataFrame(columns=["query_id", "doc_id", "rank", "message", "result_source"])
 
         return pd.DataFrame(rows)
 
@@ -357,6 +392,38 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             },
         ]
 
+    def _preferred_doc_ids(self, ordered_group: pd.DataFrame) -> tuple[List[str] | None, str, str]:
+        """Apply retrieval-bench-style source priority before invoking selection."""
+        doc_ids = self._react_final_doc_ids(ordered_group)
+        if doc_ids is not None:
+            return doc_ids, "Using ReAct final_results.", "final_results"
+
+        if "rrf_score" in ordered_group.columns:
+            doc_ids = ordered_group["doc_id"].astype(str).drop_duplicates().head(int(self._top_k)).tolist()
+            if doc_ids:
+                return doc_ids, "Using RRF ranking.", "rrf"
+
+        return None, "", ""
+
+    def _react_final_doc_ids(self, ordered_group: pd.DataFrame) -> List[str] | None:
+        if "has_valid_final_results" in ordered_group.columns and not bool(
+            ordered_group["has_valid_final_results"].astype(bool).any()
+        ):
+            return None
+        if "react_final_rank" not in ordered_group.columns:
+            return None
+        final_rows = ordered_group[ordered_group["react_final_rank"].notna()].copy()
+        if final_rows.empty:
+            return [] if "has_valid_final_results" in ordered_group.columns else None
+        final_rows["react_final_rank"] = final_rows["react_final_rank"].astype(int)
+        doc_ids: List[str] = []
+        for doc_id in final_rows.sort_values("react_final_rank")["doc_id"].astype(str):
+            if doc_id and doc_id not in doc_ids:
+                doc_ids.append(doc_id)
+            if len(doc_ids) >= int(self._top_k):
+                break
+        return doc_ids
+
     def _build_user_message(self, query_text: str, docs: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Format query + candidate documents as a multi-part user message."""
         content: List[Dict[str, Any]] = [
@@ -372,8 +439,11 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             content.append({"type": "text", "text": f"Doc ID: {doc_id}"})
             text = doc.get("text", "").strip()
             if text:
-                truncated = text[: self._text_truncation]
-                if len(text) > self._text_truncation:
+                if self._text_truncation > 0:
+                    truncated = text[: self._text_truncation]
+                else:
+                    truncated = text
+                if self._text_truncation > 0 and len(text) > self._text_truncation:
                     truncated += "..."
                 content.append({"type": "text", "text": f"Doc Text: {truncated}"})
         return {"role": "user", "content": content}
@@ -406,6 +476,8 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         extra_body: Dict[str, Any] = {}
         if not self._parallel_tool_calls:
             extra_body["parallel_tool_calls"] = False
+        if self._reasoning_effort:
+            extra_body["reasoning_effort"] = self._reasoning_effort
 
         for _step in range(self._max_steps):
             logger.info(

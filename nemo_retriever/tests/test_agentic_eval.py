@@ -103,9 +103,10 @@ def test_build_beir_run_from_agentic_result_orders_by_rank():
 def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mock_selection_step):
     from nemo_retriever.agentic.retrieval import AgenticRetrievalConfig, AgenticRetriever
 
+    final_ids = ["doc_1"] + [f"extra_{i}" for i in range(9)]
     mock_react_step.return_value = _make_tool_call_response(
         "final_results",
-        {"doc_ids": ["doc_1"], "message": "done", "search_successful": "true"},
+        {"doc_ids": final_ids, "message": "done", "search_successful": "true"},
     )
     mock_selection_step.return_value = _make_tool_call_response(
         "log_selected_documents",
@@ -115,10 +116,10 @@ def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mo
     cfg = AgenticRetrievalConfig(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
     result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
 
-    assert list(result.columns) == ["query_id", "doc_id", "rank", "message"]
-    assert result["query_id"].tolist() == ["0"]
-    assert result["doc_id"].tolist() == ["doc_1"]
-    assert result["rank"].tolist() == [1]
+    assert list(result.columns) == ["query_id", "doc_id", "rank", "message", "result_source"]
+    assert result["query_id"].tolist() == ["0"] * 10
+    assert result["doc_id"].tolist()[0] == "doc_1"
+    assert result["rank"].tolist() == list(range(1, 11))
 
 
 @patch("nemo_retriever.graph.selection_agent_operator.invoke_chat_completion_step")
@@ -130,9 +131,10 @@ def test_run_agentic_recall_evaluation_computes_metrics(mock_react_step, mock_se
     query_csv = tmp_path / "queries.csv"
     pd.DataFrame({"query": ["find doc"], "pdf_page": ["doc_1"]}).to_csv(query_csv, index=False)
 
+    final_ids = ["doc_1"] + [f"extra_{i}" for i in range(9)]
     mock_react_step.return_value = _make_tool_call_response(
         "final_results",
-        {"doc_ids": ["doc_1"], "message": "done", "search_successful": "true"},
+        {"doc_ids": final_ids, "message": "done", "search_successful": "true"},
     )
     mock_selection_step.return_value = _make_tool_call_response(
         "log_selected_documents",
@@ -148,11 +150,124 @@ def test_run_agentic_recall_evaluation_computes_metrics(mock_react_step, mock_se
     )
 
     assert df_query["golden_answer"].tolist() == ["doc_1"]
-    assert result["doc_id"].tolist() == ["doc_1"]
+    assert result["doc_id"].tolist()[0] == "doc_1"
     assert qrels == {"0": {"doc_1": 1}}
-    assert run["0"]["doc_1"] == 1.0
+    assert run["0"]["doc_1"] == 10.0
     assert metrics["recall@1"] == 1.0
     assert metrics["ndcg@1"] == 1.0
+
+
+@patch("nemo_retriever.graph.selection_agent_operator.invoke_chat_completion_step")
+@patch("nemo_retriever.graph.react_agent_operator.invoke_chat_completion_step")
+@patch("nemo_retriever.agentic.retrieval.Retriever", FakeRetriever)
+def test_run_agentic_beir_evaluation_loads_queries_and_qrels(mock_react_step, mock_selection_step):
+    from nemo_retriever.agentic.retrieval import AgenticRetrievalConfig, run_agentic_beir_evaluation
+    from nemo_retriever.recall.beir import BeirDataset
+
+    final_ids = ["doc"] + [f"extra_{i}" for i in range(9)]
+    mock_react_step.return_value = _make_tool_call_response(
+        "final_results",
+        {"doc_ids": final_ids, "message": "done", "search_successful": "true"},
+    )
+    mock_selection_step.return_value = _make_tool_call_response(
+        "log_selected_documents",
+        {"doc_ids": ["doc"], "message": "doc is best"},
+    )
+
+    beir_dataset = BeirDataset(
+        dataset_name="vidore_v3_finance_en",
+        query_ids=["q1"],
+        queries=["find doc"],
+        qrels={"q1": {"doc": 1}},
+    )
+    cfg = AgenticRetrievalConfig(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
+
+    with patch("nemo_retriever.agentic.retrieval.load_beir_dataset", return_value=beir_dataset) as mock_loader:
+        df_query, result, qrels, run, metrics = run_agentic_beir_evaluation(
+            loader="vidore_hf",
+            dataset_name="vidore_v3_finance_en",
+            cfg=cfg,
+            doc_id_field="pdf_basename",
+            ks=(1, 5, 10),
+        )
+
+    mock_loader.assert_called_once()
+    assert df_query["query_id"].tolist() == ["q1"]
+    assert result["doc_id"].tolist()[0] == "doc"
+    assert qrels == {"q1": {"doc": 1}}
+    assert run["q1"]["doc"] == 10.0
+    assert metrics["recall@1"] == 1.0
+
+
+def test_pipeline_agentic_beir_wires_config_options():
+    from nemo_retriever.pipeline.__main__ import _run_agentic_evaluation
+
+    captured = {}
+
+    def fake_run_agentic_beir_evaluation(**kwargs):
+        captured.update(kwargs)
+        return (
+            pd.DataFrame({"query_id": ["q1"]}),
+            pd.DataFrame({"query_id": ["q1"], "doc_id": ["doc"], "rank": [1]}),
+            {"q1": {"doc": 1}},
+            {"q1": {"doc": 10.0}},
+            {"recall@1": 1.0},
+        )
+
+    with (
+        patch("nemo_retriever.model.resolve_embed_model", return_value="resolved-embed"),
+        patch(
+            "nemo_retriever.agentic.retrieval.run_agentic_beir_evaluation", side_effect=fake_run_agentic_beir_evaluation
+        ),
+    ):
+        label, _elapsed, metrics, query_count, ran = _run_agentic_evaluation(
+            evaluation_mode="beir",
+            vdb_op="lancedb",
+            vdb_kwargs={"uri": "db", "table_name": "tbl"},
+            embed_model_name="embed",
+            embed_invoke_url="http://embed/v1",
+            embed_remote_api_key="embed-key",
+            embed_modality="text",
+            query_csv=None,
+            recall_match_mode="pdf_page",
+            reranker=False,
+            reranker_model_name="reranker",
+            reranker_invoke_url=None,
+            reranker_api_key="",
+            local_reranker_backend="vllm",
+            local_hf_batch_size=4,
+            local_query_embed_backend="hf",
+            agentic_llm_model="llm",
+            agentic_invoke_url="http://llm/v1/chat/completions",
+            agentic_api_key="llm-key",
+            agentic_react_max_steps=51,
+            agentic_backend_top_k=23,
+            agentic_text_truncation=99,
+            agentic_reasoning_effort="high",
+            agentic_num_concurrent=7,
+            beir_loader="vidore_hf",
+            beir_dataset_name="vidore_v3_finance_en",
+            beir_split="test",
+            beir_query_language=None,
+            beir_doc_id_field="pdf_basename",
+            beir_k=[1, 5],
+        )
+
+    cfg = captured["cfg"]
+    assert label == "Agentic BEIR"
+    assert metrics["recall@1"] == 1.0
+    assert query_count == 1
+    assert ran is True
+    assert captured["loader"] == "vidore_hf"
+    assert captured["dataset_name"] == "vidore_v3_finance_en"
+    assert captured["doc_id_field"] == "pdf_basename"
+    assert captured["ks"] == (1, 5)
+    assert cfg.query_embedder == "resolved-embed"
+    assert cfg.react_max_steps == 51
+    assert cfg.backend_top_k == 23
+    assert cfg.text_truncation == 99
+    assert cfg.reasoning_effort == "high"
+    assert cfg.num_concurrent == 7
 
 
 def test_agentic_config_requires_llm_model():
@@ -180,7 +295,8 @@ def test_pipeline_rejects_agentic_qa_mode():
 
     assert result.exit_code != 0
     assert "--retrieval-mode=agentic is currently supported only with" in result.output
-    assert "--evaluation-mode=recall" in result.output
+    assert "--evaluation-mode=audio_recall" in result.output
+    assert "--evaluation-mode=beir" in result.output
 
 
 def test_pipeline_requires_agentic_llm_model():
@@ -191,7 +307,11 @@ def test_pipeline_requires_agentic_llm_model():
         [
             ".",
             "--evaluation-mode",
-            "recall",
+            "audio_recall",
+            "--input-type",
+            "audio",
+            "--recall-match-mode",
+            "audio_segment",
             "--retrieval-mode",
             "agentic",
         ],

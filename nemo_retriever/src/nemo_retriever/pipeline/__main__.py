@@ -688,7 +688,7 @@ def _run_evaluation(
     embed_invoke_url: Optional[str],
     embed_remote_api_key: Optional[str],
     embed_modality: str,
-    query_csv: Path,
+    query_csv: Optional[Path],
     recall_match_mode: str,
     audio_match_tolerance_secs: float,
     reranker: Optional[bool],
@@ -820,15 +820,16 @@ def _run_evaluation(
     return "Audio Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
 
 
-def _run_agentic_recall_evaluation(
+def _run_agentic_evaluation(
     *,
+    evaluation_mode: str,
     vdb_op: str,
     vdb_kwargs: dict[str, Any],
     embed_model_name: str,
     embed_invoke_url: Optional[str],
     embed_remote_api_key: Optional[str],
     embed_modality: str,
-    query_csv: Path,
+    query_csv: Optional[Path],
     recall_match_mode: str,
     reranker: Optional[bool],
     reranker_model_name: str,
@@ -841,15 +842,24 @@ def _run_agentic_recall_evaluation(
     agentic_invoke_url: Optional[str],
     agentic_api_key: Optional[str],
     agentic_react_max_steps: int,
+    agentic_backend_top_k: int,
+    agentic_text_truncation: int,
+    agentic_reasoning_effort: Optional[str],
+    agentic_num_concurrent: int,
+    beir_loader: Optional[str],
+    beir_dataset_name: Optional[str],
+    beir_split: str,
+    beir_query_language: Optional[str],
+    beir_doc_id_field: str,
+    beir_k: list[int],
 ) -> tuple[str, float, dict[str, float], Optional[int], bool]:
-    """Run recall evaluation using graph-backed agentic retrieval."""
+    """Run evaluation using graph-backed agentic retrieval."""
 
-    query_csv_path = Path(query_csv)
-    if not query_csv_path.exists():
-        logger.warning("Query CSV not found at %s; skipping agentic recall evaluation.", query_csv_path)
-        return "Agentic Recall", 0.0, {}, None, False
-
-    from nemo_retriever.agentic.retrieval import AgenticRetrievalConfig, run_agentic_recall_evaluation
+    from nemo_retriever.agentic.retrieval import (
+        AgenticRetrievalConfig,
+        run_agentic_beir_evaluation,
+        run_agentic_recall_evaluation,
+    )
     from nemo_retriever.model import resolve_embed_model
 
     embed_model = resolve_embed_model(str(embed_model_name))
@@ -871,23 +881,54 @@ def _run_agentic_recall_evaluation(
         invoke_url=agentic_invoke_url,
         api_key=agentic_api_key,
         react_max_steps=int(agentic_react_max_steps),
+        backend_top_k=int(agentic_backend_top_k),
+        text_truncation=int(agentic_text_truncation),
+        reasoning_effort=agentic_reasoning_effort,
+        num_concurrent=int(agentic_num_concurrent),
     )
     evaluation_start = time.perf_counter()
-    df_query, _result, _qrels, _run, metrics = run_agentic_recall_evaluation(
-        query_csv=query_csv_path,
-        cfg=cfg,
-        match_mode=recall_match_mode,
-        ks=(1, 5, 10),
-    )
-    logger.info("Agentic recall gold ids: %s", {qid: list(docs.keys()) for qid, docs in _qrels.items()})
-    logger.info("Agentic recall retrieved ids: %s", {qid: list(docs.keys())[:10] for qid, docs in _run.items()})
-    logger.info("Agentic recall result columns: %s", list(_result.columns))
+    if evaluation_mode == "beir":
+        if not beir_loader:
+            raise ValueError("--beir-loader is required when --evaluation-mode=beir")
+        if not beir_dataset_name:
+            raise ValueError("--beir-dataset-name is required when --evaluation-mode=beir")
+        df_query, _result, _qrels, _run, metrics = run_agentic_beir_evaluation(
+            loader=str(beir_loader),
+            dataset_name=str(beir_dataset_name),
+            cfg=cfg,
+            split=str(beir_split),
+            query_language=beir_query_language,
+            doc_id_field=str(beir_doc_id_field),
+            ks=tuple(beir_k) if beir_k else (1, 3, 5, 10),
+        )
+        evaluation_label = "Agentic BEIR"
+    elif evaluation_mode == "audio_recall":
+        if query_csv is None:
+            logger.warning("No query CSV configured; skipping agentic recall evaluation.")
+            return "Agentic Recall", 0.0, {}, None, False
+        query_csv_path = Path(query_csv)
+        if not query_csv_path.exists():
+            logger.warning("Query CSV not found at %s; skipping agentic recall evaluation.", query_csv_path)
+            return "Agentic Recall", 0.0, {}, None, False
+        df_query, _result, _qrels, _run, metrics = run_agentic_recall_evaluation(
+            query_csv=query_csv_path,
+            cfg=cfg,
+            match_mode=recall_match_mode,
+            ks=(1, 5, 10),
+        )
+        evaluation_label = "Agentic Recall"
+    else:
+        raise ValueError(f"Unsupported agentic evaluation mode: {evaluation_mode!r}")
+    logger.info("%s gold ids: %s", evaluation_label, {qid: list(docs.keys()) for qid, docs in _qrels.items()})
+    logger.info("%s retrieved ids: %s", evaluation_label, {qid: list(docs.keys())[:10] for qid, docs in _run.items()})
+    logger.info("%s result columns: %s", evaluation_label, list(_result.columns))
     if {"query_id", "doc_id", "rank"}.issubset(_result.columns):
         logger.info(
-            "Agentic recall top result rows:\n%s",
+            "%s top result rows:\n%s",
+            evaluation_label,
             _result[["query_id", "doc_id", "rank"]].head(20).to_string(index=False),
         )
-    return "Agentic Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
+    return evaluation_label, time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
 
 
 # ---------------------------------------------------------------------------
@@ -1297,8 +1338,8 @@ def run(
         help="Retrieval strategy for evaluation: 'standard' (default) or 'agentic' for recall evaluation.",
         rich_help_panel=_PANEL_EVAL,
     ),
-    query_csv: Path = typer.Option(
-        "./data/bo767_query_gt.csv",
+    query_csv: Optional[Path] = typer.Option(
+        Path("./data/bo767_query_gt.csv"),
         "--query-csv",
         path_type=Path,
         rich_help_panel=_PANEL_EVAL,
@@ -1361,10 +1402,37 @@ def run(
         rich_help_panel=_PANEL_EVAL,
     ),
     agentic_react_max_steps: int = typer.Option(
-        10,
+        50,
         "--agentic-react-max-steps",
         min=1,
         help="Maximum ReAct loop iterations per query for --retrieval-mode=agentic.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    agentic_backend_top_k: int = typer.Option(
+        20,
+        "--agentic-backend-top-k",
+        min=1,
+        help=("Backend retrieve-pool depth per agentic query, distinct from the per-call candidate show count."),
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    agentic_text_truncation: int = typer.Option(
+        0,
+        "--agentic-text-truncation",
+        min=0,
+        help="Maximum characters of each candidate text shown to agentic LLMs; 0 disables truncation.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    agentic_reasoning_effort: Optional[str] = typer.Option(
+        "high",
+        "--agentic-reasoning-effort",
+        help="OpenAI-compatible reasoning_effort value forwarded to agentic LLM calls.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    agentic_num_concurrent: int = typer.Option(
+        1,
+        "--agentic-num-concurrent",
+        min=1,
+        help="Maximum number of agentic queries to run concurrently.",
         rich_help_panel=_PANEL_EVAL,
     ),
     beir_loader: Optional[str] = typer.Option(None, "--beir-loader", rich_help_panel=_PANEL_EVAL),
@@ -1427,9 +1495,10 @@ def run(
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
         if retrieval_mode not in {"standard", "agentic"}:
             raise ValueError(f"Unsupported --retrieval-mode: {retrieval_mode!r}")
-        if retrieval_mode == "agentic" and evaluation_mode != "audio_recall":
+        if retrieval_mode == "agentic" and evaluation_mode not in {"audio_recall", "beir"}:
             raise typer.BadParameter(
-                "--retrieval-mode=agentic is currently supported only with --evaluation-mode=audio_recall."
+                "--retrieval-mode=agentic is currently supported only with --evaluation-mode=audio_recall or "
+                "--evaluation-mode=beir."
             )
         if evaluation_mode == "audio_recall":
             if input_type != "audio":
@@ -1442,11 +1511,18 @@ def run(
                 "Use the same file format as `retriever eval run --config` (dataset, retrieval, models, ...)."
             )
         resolved_agentic_llm_model = (agentic_llm_model or os.environ.get(AGENTIC_LLM_MODEL_ENV) or "").strip()
-        resolved_agentic_invoke_url = (agentic_invoke_url or os.environ.get(AGENTIC_INVOKE_URL_ENV) or "").strip() or None
+        resolved_agentic_invoke_url = (
+            agentic_invoke_url or os.environ.get(AGENTIC_INVOKE_URL_ENV) or ""
+        ).strip() or None
         if retrieval_mode == "agentic" and not resolved_agentic_llm_model:
             raise typer.BadParameter(
                 f"--retrieval-mode=agentic requires --agentic-llm-model or {AGENTIC_LLM_MODEL_ENV}."
             )
+        if evaluation_mode == "beir":
+            if not beir_loader:
+                raise typer.BadParameter("--beir-loader is required when --evaluation-mode=beir.")
+            if not beir_dataset_name:
+                raise typer.BadParameter("--beir-dataset-name is required when --evaluation-mode=beir.")
 
         if run_mode == "batch":
             # --quiet implies --no-ray-log-to-driver: Ray flushes worker stdout
@@ -1893,7 +1969,8 @@ def run(
 
         if retrieval_mode == "agentic":
             evaluation_label, evaluation_total_time, evaluation_metrics, evaluation_query_count, ran = (
-                _run_agentic_recall_evaluation(
+                _run_agentic_evaluation(
+                    evaluation_mode=evaluation_mode,
                     vdb_op=resolved_vdb_op,
                     vdb_kwargs=resolved_vdb_kwargs,
                     embed_model_name=embed_model_name,
@@ -1913,6 +1990,16 @@ def run(
                     agentic_invoke_url=resolved_agentic_invoke_url,
                     agentic_api_key=remote_api_key,
                     agentic_react_max_steps=agentic_react_max_steps,
+                    agentic_backend_top_k=agentic_backend_top_k,
+                    agentic_text_truncation=agentic_text_truncation,
+                    agentic_reasoning_effort=agentic_reasoning_effort,
+                    agentic_num_concurrent=agentic_num_concurrent,
+                    beir_loader=beir_loader,
+                    beir_dataset_name=beir_dataset_name,
+                    beir_split=beir_split,
+                    beir_query_language=beir_query_language,
+                    beir_doc_id_field=beir_doc_id_field,
+                    beir_k=beir_k,
                 )
             )
         else:
