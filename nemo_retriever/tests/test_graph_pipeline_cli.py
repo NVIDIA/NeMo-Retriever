@@ -425,16 +425,16 @@ def test_graph_pipeline_cli_allows_default_evaluation_for_pdf_inputs(tmp_path, m
     assert isinstance(fake_ingestor.file_patterns, list)
 
 
-def test_graph_pipeline_cli_rejects_invalid_recall_mode(tmp_path) -> None:
+def test_graph_pipeline_cli_rejects_invalid_evaluation_mode(tmp_path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
 
-    result = RUNNER.invoke(batch_pipeline.app, [str(dataset_dir), "--evaluation-mode", "recall"])
+    result = RUNNER.invoke(batch_pipeline.app, [str(dataset_dir), "--evaluation-mode", "bogus"])
 
     assert result.exit_code != 0
     assert result.exception is not None
-    assert "Unsupported --evaluation-mode: 'recall'" in str(result.exception)
+    assert "Unsupported --evaluation-mode: 'bogus'" in str(result.exception)
 
 
 def test_graph_pipeline_cli_rejects_audio_recall_for_pdf_inputs(tmp_path) -> None:

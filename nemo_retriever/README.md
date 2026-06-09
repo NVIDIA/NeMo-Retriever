@@ -259,34 +259,84 @@ hits = retriever.query(query)
 {'text': '| Table | 1 |\n| This | table | describes | some | animals, | and | some | activities | they | might | be | doing | in | specific |\n| locations. |\n| Animal | Activity | Place |\n| Giraffe | Driving | a | car | At | the | beach |\n| Lion | Putting | on | sunscreen | At | the | park |\n| Cat | Jumping | onto | a | laptop | In | a | home | office |\n| Dog | Chasing | a | squirrel | In | the | front | yard |\n| Chart | 1 |', 'metadata': '{"page_number": 1, "pdf_page": "multimodal_test_1", "page_elements_v3_num_detections": 9, "page_elements_v3_counts_by_label": {"table": 1, "chart": 1, "title": 3, "text": 4}, "ocr_table_detections": 1, "ocr_chart_detections": 1, "ocr_infographic_detections": 0}', 'source': '{"source_id": "/home/dev/projects/NeMo-Retriever/data/multimodal_test.pdf"}', 'page_number': 1, '_distance': 1.614684820175171}
 ```
 
-### Agentic BEIR evaluation
+### Agentic retrieval evaluation
 
-The pipeline CLI can evaluate a LanceDB corpus with agentic retrieval against a
-BEIR-style dataset:
+Agentic retrieval swaps the single dense-retrieval pass for an LLM-driven ReAct
+loop: the agent issues several retrieval sub-queries, fuses the candidates with
+reciprocal rank fusion, and selects a final ranking. You evaluate it the same way
+you evaluate standard retrieval — by scoring the ranked results against ground
+truth.
+
+`retriever pipeline run` ingests your corpus exactly as in
+[Ingest a test corpus (CLI)](#ingest-a-test-corpus-cli), then scores agentic
+retrieval against that ground truth. Add `--retrieval-mode agentic` and name the
+chat model the agent drives with `--agentic-llm-model`. The simplest form scores
+against your own query CSV (columns `query` and `golden_answer`), so no dataset
+loader is needed:
 
 ```bash
 retriever pipeline run ./data \
   --vdb-op lancedb \
-  --vdb-kwargs-json '{"uri":"<lancedb-uri>","table_name":"<table-name>"}' \
-  --evaluation-mode beir \
+  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
+  --evaluation-mode recall \
   --retrieval-mode agentic \
-  --beir-loader vidore_hf \
-  --beir-dataset-name vidore_v3_finance_en \
-  --beir-doc-id-field pdf_basename \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
-  --agentic-invoke-url http://<llm-endpoint>/v1/chat/completions \
-  --embed-invoke-url http://<embed-endpoint>/v1 \
-  --agentic-reasoning-effort high \
-  --agentic-num-concurrent 10
+  --query-csv ./queries.csv \
+  --recall-match-mode pdf_page \
+  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5
 ```
 
-Common BEIR options are `--beir-split`, `--beir-query-language`, and
-`--beir-doc-id-field`. Use `--vdb-kwargs-json` to point evaluation at the
-LanceDB URI and table for the indexed corpus. Agentic controls include
-`--agentic-react-max-steps` (default `50`), `--agentic-backend-top-k` (default
-`20`), and `--agentic-text-truncation` (`0` disables truncation),
-`--agentic-reasoning-effort`, and `--agentic-num-concurrent`. Throughput with
-high concurrency is bounded by the configured LLM endpoint.
+`--recall-match-mode` is `pdf_page` or `pdf_only`, depending on whether
+`golden_answer` names a page or a whole document.
+
+#### Optional extras
+
+- **Remote inference (no local GPU)** — drive the agent and embedder through NIM
+  endpoints instead of local models:
+  ```bash
+  --agentic-invoke-url http://<llm-endpoint>/v1/chat/completions \
+  --embed-invoke-url http://<embed-endpoint>/v1
+  ```
+- **BEIR-style datasets** — score against a registered benchmark instead of a
+  query CSV. HuggingFace-hosted sets (the `vidore_hf` loader) need the `datasets`
+  package, which the `benchmarks` extra provides:
+  ```bash
+  uv pip install "nemo-retriever[local,benchmarks]==26.05-RC1"
+  ```
+  ```bash
+  --evaluation-mode beir \
+  --beir-loader vidore_hf \
+  --beir-dataset-name <dataset-name> \
+  --beir-doc-id-field pdf_basename
+  ```
+  Built-in loaders include `vidore_hf` (HuggingFace download) and
+  `financebench_json`. `--beir-split` and `--beir-query-language` select the
+  split and language.
+- **Image + text corpora** — for page-image benchmarks, ingest rendered pages so
+  the agent retrieves over page images, matching the
+  [ViDoRe Harness Sweep](#vidore-harness-sweep):
+  ```bash
+  --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2 \
+  --embed-modality text_image \
+  --embed-granularity page \
+  --extract-page-as-image \
+  --extract-infographics
+  ```
+- **Tune the agent** — each flag controls a different stage of the loop:
+  - `--agentic-react-max-steps` (default `50`) — how many think → retrieve rounds
+    the agent may take per query before it has to answer.
+  - `--agentic-backend-top-k` (default `20`) — how many candidates each retrieval
+    call pulls from the vector DB (the pool the agent reasons over and fuses).
+  - `--agentic-text-truncation` (default `0`) — max characters of each candidate's
+    text shown to the agent; `0` sends the full text.
+  - `--agentic-reasoning-effort` (default `high`) — the OpenAI-compatible
+    reasoning depth (`low`/`medium`/`high`) requested per LLM call.
+  - `--agentic-num-concurrent` (default `1`) — how many queries are evaluated in
+    parallel, bounded by the LLM endpoint's throughput.
+- **Logging** — per-query agent progress is logged at `INFO` by default (`--quiet`
+  suppresses it, `--debug` adds detail). There is no default log file — output
+  goes to the console; pass `--log-file ./run.log` to also write it to a file.
+  Pass `--runtime-metrics-dir ./out` to write a JSON summary of the metrics and
+  timing alongside the run.
 
 ###  Generate a query answer using an LLM
 The above retrieval results are often feedable directly to an LLM for answer generation.

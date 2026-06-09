@@ -338,3 +338,113 @@ def test_pipeline_requires_agentic_llm_model():
 
     assert result.exit_code != 0
     assert "--retrieval-mode=agentic requires --agentic-llm-model" in result.output
+
+
+def test_pipeline_agentic_recall_wires_query_csv(tmp_path):
+    from nemo_retriever.pipeline.__main__ import _run_agentic_evaluation
+
+    captured = {}
+
+    def fake_run_agentic_recall_evaluation(**kwargs):
+        captured.update(kwargs)
+        return (
+            pd.DataFrame({"query_id": ["q1"]}),
+            pd.DataFrame({"query_id": ["q1"], "doc_id": ["doc"], "rank": [1]}),
+            {"q1": {"doc": 1}},
+            {"q1": {"doc": 10.0}},
+            {"recall@1": 1.0},
+        )
+
+    query_csv = tmp_path / "queries.csv"
+    query_csv.write_text("query,golden_answer\nwhat is x,doc\n", encoding="utf-8")
+
+    with (
+        patch("nemo_retriever.model.resolve_embed_model", return_value="resolved-embed"),
+        patch(
+            "nemo_retriever.agentic.retrieval.run_agentic_recall_evaluation",
+            side_effect=fake_run_agentic_recall_evaluation,
+        ),
+    ):
+        label, _elapsed, metrics, query_count, ran = _run_agentic_evaluation(
+            evaluation_mode="recall",
+            vdb_op="lancedb",
+            vdb_kwargs={"uri": "db", "table_name": "tbl"},
+            embed_model_name="embed",
+            embed_invoke_url="http://embed/v1",
+            embed_remote_api_key="embed-key",
+            embed_modality="text",
+            query_csv=query_csv,
+            recall_match_mode="pdf_page",
+            reranker=False,
+            reranker_model_name="reranker",
+            reranker_invoke_url=None,
+            reranker_api_key="",
+            local_reranker_backend="vllm",
+            local_hf_batch_size=4,
+            local_query_embed_backend="hf",
+            agentic_llm_model="llm",
+            agentic_invoke_url="http://llm/v1/chat/completions",
+            agentic_api_key="llm-key",
+            agentic_react_max_steps=50,
+            agentic_backend_top_k=20,
+            agentic_text_truncation=0,
+            agentic_reasoning_effort="high",
+            agentic_num_concurrent=1,
+            beir_loader=None,
+            beir_dataset_name=None,
+            beir_split="test",
+            beir_query_language=None,
+            beir_doc_id_field="pdf_basename",
+            beir_k=[1, 5, 10],
+        )
+
+    assert label == "Agentic Recall"
+    assert ran is True
+    assert metrics["recall@1"] == 1.0
+    assert query_count == 1
+    assert captured["query_csv"] == query_csv
+    assert captured["match_mode"] == "pdf_page"
+
+
+def test_pipeline_recall_agentic_requires_pdf_match_mode():
+    from nemo_retriever.pipeline.__main__ import app
+
+    # Default --recall-match-mode is audio_segment, which is invalid for recall.
+    result = CliRunner().invoke(
+        app,
+        [
+            ".",
+            "--evaluation-mode",
+            "recall",
+            "--retrieval-mode",
+            "agentic",
+            "--agentic-llm-model",
+            "test-model",
+            "--query-csv",
+            "queries.csv",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--evaluation-mode=recall requires" in result.output
+    assert "pdf_only" in result.output
+
+
+def test_pipeline_recall_requires_agentic():
+    from nemo_retriever.pipeline.__main__ import app
+
+    result = CliRunner().invoke(
+        app,
+        [
+            ".",
+            "--evaluation-mode",
+            "recall",
+            "--retrieval-mode",
+            "standard",
+            "--recall-match-mode",
+            "pdf_page",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--evaluation-mode=recall is currently supported only" in result.output

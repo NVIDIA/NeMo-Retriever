@@ -902,7 +902,7 @@ def _run_agentic_evaluation(
             ks=tuple(beir_k) if beir_k else (1, 3, 5, 10),
         )
         evaluation_label = "Agentic BEIR"
-    elif evaluation_mode == "audio_recall":
+    elif evaluation_mode in ("recall", "audio_recall"):
         if query_csv is None:
             logger.warning("No query CSV configured; skipping agentic recall evaluation.")
             return "Agentic Recall", 0.0, {}, None, False
@@ -1329,7 +1329,7 @@ def run(
     evaluation_mode: str = typer.Option(
         "none",
         "--evaluation-mode",
-        help="Post-ingest evaluation: none (default), audio_recall, beir, or qa.",
+        help="Post-ingest evaluation: none (default), recall, audio_recall, beir, or qa.",
         rich_help_panel=_PANEL_EVAL,
     ),
     retrieval_mode: str = typer.Option(
@@ -1491,21 +1491,34 @@ def run(
             _reject_service_incompatible_flags(ctx)
         if audio_split_type not in {"size", "time", "frame"}:
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
-        if evaluation_mode not in {"none", "audio_recall", "beir", "qa"}:
+        if evaluation_mode not in {"none", "audio_recall", "beir", "qa", "recall"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
         if retrieval_mode not in {"standard", "agentic"}:
             logger.warning("Unsupported --retrieval-mode=%r; falling back to 'standard'.", retrieval_mode)
             retrieval_mode = "standard"
-        if retrieval_mode == "agentic" and evaluation_mode not in {"audio_recall", "beir"}:
+        if retrieval_mode == "agentic" and evaluation_mode not in {"recall", "audio_recall", "beir"}:
             raise typer.BadParameter(
-                "--retrieval-mode=agentic is currently supported only with --evaluation-mode=audio_recall or "
-                "--evaluation-mode=beir."
+                "--retrieval-mode=agentic is currently supported only with --evaluation-mode=recall, "
+                "--evaluation-mode=audio_recall, or --evaluation-mode=beir."
             )
         if evaluation_mode == "audio_recall":
             if input_type != "audio":
                 raise ValueError("--evaluation-mode=audio_recall is only supported with --input-type=audio")
             if recall_match_mode != "audio_segment":
                 raise ValueError("--evaluation-mode=audio_recall requires --recall-match-mode=audio_segment")
+        if evaluation_mode == "recall":
+            # Generic agentic recall over a query CSV (no per-dataset BEIR loader needed).
+            # Standard retrieval's recall path is audio-only, so this mode is agentic-only.
+            if retrieval_mode != "agentic":
+                raise typer.BadParameter(
+                    "--evaluation-mode=recall is currently supported only with --retrieval-mode=agentic; "
+                    "use --evaluation-mode=beir or audio_recall for standard retrieval."
+                )
+            if recall_match_mode not in {"pdf_page", "pdf_only"}:
+                raise typer.BadParameter(
+                    "--evaluation-mode=recall requires --recall-match-mode=pdf_page or pdf_only "
+                    "(the query CSV's golden_answer column maps to PDF page/document IDs)."
+                )
         if evaluation_mode == "qa" and eval_config is None:
             raise typer.BadParameter(
                 "--evaluation-mode=qa requires --eval-config (QA sweep YAML/JSON). "
