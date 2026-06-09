@@ -20,7 +20,7 @@ retriever --help
 
 !!! tip
 
-    For CLI examples, see the [CLI section of the self-hosted quickstart](quickstart-guide.md#ingest_cli_example) or the [CLI companion notebook on the `26.03` branch](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/client/client_examples/examples/cli_client_usage.ipynb).
+    For CLI examples, refer to the [CLI section of the self-hosted quickstart](quickstart-guide.md#ingest_cli_example) or the [CLI companion notebook on the `release/25.3.0` branch](https://github.com/NVIDIA/NeMo-Retriever/blob/release/25.3.0/client/client_examples/examples/cli_client_usage.ipynb).
 
 
 ## Parameter Reference

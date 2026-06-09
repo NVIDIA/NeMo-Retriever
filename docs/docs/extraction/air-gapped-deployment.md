@@ -4,10 +4,10 @@ This guide consolidates what you need to run NeMo Retriever Library in a secured
 
 !!! note "Source of truth for versions"
 
-    Image repositories and default tags change between releases. Always verify pins against the Git branch that matches your stack (for 26.3.x self-hosted docs, use the NeMo Retriever **`26.03`** branch as the structural baseline):
+    Image repositories and default tags change between releases. Always verify pins against the Git branch that matches your stack (for 26.3.x self-hosted docs, check out the **`26.03`** branch that matches **26.3.0** in your environment; **`main`** moves forward for the current Helm chart under **`nemo_retriever/helm`**):
 
     - [NeMo Retriever `docker-compose.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/docker-compose.yaml) for self-hosted Compose
-    - [`helm/values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/values.yaml) and [`helm/README.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/README.md) for Kubernetes / Helm
+    - [`helm/values.yaml`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/values.yaml) and [`helm/README.md.gotmpl`](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/README.md.gotmpl) for Kubernetes / Helm
 
 ## End-to-end workflow
 
@@ -62,7 +62,7 @@ Again, take the exact repository and tag from your pinned `values.yaml` for 26.3
 
 ## Helm charts and packaging artifacts
 
-From a connected environment, download and version-control the chart archive you install, for example (see [NV-Ingest Helm README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/README.md)):
+From a connected environment, download and version-control the chart archive you install, for example (see [NV-Ingest Helm README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/README.md.gotmpl)):
 
 - `nv-ingest-26.3.0.tgz` from NGC Helm (`helm pull` with NGC credentials)
 

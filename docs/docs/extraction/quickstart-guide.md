@@ -12,7 +12,7 @@ Use the provided [docker-compose.yaml](https://github.com/NVIDIA/nv-ingest/blob/
     NIM containers on their first startup can take 10-15 minutes to pull and fully load models.
 
 
-If you prefer, you can run on Kubernetes by using [our Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/helm/README.md). Also, there are [additional environment variables](environment-config.md) you can configure.
+If you prefer, you can run on Kubernetes by using [our Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md). Also, there are [additional environment variables](environment-config.md) you can configure.
 
 a. Git clone the repo:
 
@@ -528,7 +528,7 @@ docker compose \
 
 ## Specify MIG slices for NIM models
 
-When you deploy NeMo Retriever Library with NIM models on MIG‑enabled GPUs, MIG device slices are requested and scheduled through the `values.yaml` file for the corresponding NIM microservice. For IBM Content-Aware Storage (CAS) deployments, this allows NeMo Retriever Library NIM pods to land only on nodes that expose the desired MIG profiles [raw.githubusercontent](https://raw.githubusercontent.com/NVIDIA/NeMo-Retriever/26.03/helm/README.md).
+When you deploy NeMo Retriever Library with NIM models on MIG‑enabled GPUs, MIG device slices are requested and scheduled through the `values.yaml` file for the corresponding NIM microservice. For IBM Content-Aware Storage (CAS) deployments, this allows NeMo Retriever Library NIM pods to land only on nodes that expose the desired MIG profiles [raw.githubusercontent](https://raw.githubusercontent.com/NVIDIA/NeMo-Retriever/main/nemo_retriever/helm/README.md).
 
 To target a specific MIG profile—for example, a 3g.20gb slice on an A100, which is a hardware-partitioned virtual GPU instance that gives your workload a fixed mid-sized share of the A100’s compute plus 20 GB of dedicated GPU memory and behaves like a smaller independent GPU—for a given NIM, configure the `resources` and `nodeSelector` under that NIM’s values path in `values.yaml`.
 
