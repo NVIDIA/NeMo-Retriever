@@ -61,6 +61,9 @@ from nemo_retriever.query.options import (
     QueryRerankOptions,
     QueryRequest,
     QueryRetrievalOptions,
+    QueryRunModeValue,
+    QueryRuntimeOptions,
+    QueryServiceOptions,
     QueryStorageOptions,
 )
 from nemo_retriever.vdb.records import RetrievalHit
@@ -158,6 +161,18 @@ _ROOT_SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
 )
 
 
+_QUERY_SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
+    ("--lancedb-uri", "lancedb_uri"),
+    ("--table-name", "table_name"),
+    ("--embed-invoke-url", "embed_invoke_url"),
+    ("--embed-model-name", "embed_model_name"),
+    ("--reranker-invoke-url", "reranker_invoke_url"),
+    ("--reranker-model-name", "reranker_model_name"),
+    ("--reranker-backend", "reranker_backend"),
+    ("--rerank/--no-rerank", "rerank"),
+)
+
+
 def _reject_root_service_incompatible_flags(ctx: typer.Context) -> None:
     user_set: list[str] = []
     for cli_flag, param_name in _ROOT_SERVICE_INCOMPATIBLE_FLAGS:
@@ -172,6 +187,22 @@ def _reject_root_service_incompatible_flags(ctx: typer.Context) -> None:
         "client and would be silently dropped: " + ", ".join(user_set) + ". "
         "Remove them, or use --run-mode batch/inprocess to apply them locally. "
         "Server-side pipeline configuration lives in retriever-service.yaml."
+    )
+
+
+def _reject_query_service_incompatible_flags(ctx: typer.Context) -> None:
+    user_set: list[str] = []
+    for cli_flag, param_name in _QUERY_SERVICE_INCOMPATIBLE_FLAGS:
+        source = ctx.get_parameter_source(param_name)
+        if getattr(source, "name", None) in {"COMMANDLINE", "ENVIRONMENT"}:
+            user_set.append(cli_flag)
+    if not user_set:
+        return
+    raise typer.BadParameter(
+        "--run-mode=service queries the retriever service's configured vector database; "
+        "the following flag(s) cannot be set on the client and would be silently dropped: "
+        + ", ".join(user_set)
+        + ". Remove them, or use --run-mode inprocess to query a local LanceDB table."
     )
 
 
@@ -900,7 +931,13 @@ def ingest_command(
 
 @app.command("query")
 def query_command(
+    ctx: typer.Context,
     query: str = typer.Argument(..., help="Query text."),
+    run_mode: QueryRunModeValue = typer.Option(
+        "inprocess",
+        "--run-mode",
+        help="Execution mode for query: inprocess (default) or service for a remote retriever service.",
+    ),
     top_k: int = typer.Option(10, "--top-k", min=1, help="Final number of hits to return."),
     candidate_k: int | None = typer.Option(
         None,
@@ -923,6 +960,20 @@ def query_command(
     ),
     lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
     table_name: str = typer.Option("nemo-retriever", "--table-name", help="LanceDB table name."),
+    service_url: str = typer.Option(
+        "http://localhost:7670",
+        "--service-url",
+        help="Base URL of the retriever service (used only when --run-mode=service).",
+    ),
+    service_api_token: str | None = typer.Option(
+        None,
+        "--service-api-token",
+        envvar="NEMO_RETRIEVER_API_TOKEN",
+        help=(
+            "Bearer token for authenticating with the retriever service "
+            "(used only when --run-mode=service). Falls back to $NEMO_RETRIEVER_API_TOKEN."
+        ),
+    ),
     embed_invoke_url: str | None = typer.Option(None, "--embed-invoke-url", help="Embedding NIM endpoint URL."),
     embed_model_name: str | None = typer.Option(
         None,
@@ -953,17 +1004,21 @@ def query_command(
         ),
     ),
 ) -> None:
-    if reranker_invoke_url is None:
-        reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
-    if embed_invoke_url is None:
-        embed_invoke_url = os.environ.get("EMBED_INVOKE_URL") or None
-    rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
-    _silence_noisy_libraries()
     try:
+        if run_mode == "service":
+            _reject_query_service_incompatible_flags(ctx)
+        else:
+            if reranker_invoke_url is None:
+                reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
+            if embed_invoke_url is None:
+                embed_invoke_url = os.environ.get("EMBED_INVOKE_URL") or None
+            rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
+        _silence_noisy_libraries()
         with _quiet_capture():
             hits = query_documents(
                 QueryRequest(
                     query=query,
+                    runtime=QueryRuntimeOptions(run_mode=run_mode),
                     retrieval=QueryRetrievalOptions(
                         top_k=top_k,
                         candidate_k=candidate_k,
@@ -983,6 +1038,10 @@ def query_command(
                     storage=QueryStorageOptions(
                         lancedb_uri=lancedb_uri,
                         table_name=table_name,
+                    ),
+                    service=QueryServiceOptions(
+                        service_url=service_url,
+                        service_api_token=service_api_token,
                     ),
                 )
             )

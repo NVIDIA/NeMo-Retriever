@@ -2,9 +2,9 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Async client for submitting documents to the retriever service.
+"""Client helpers for retriever service ingest and query calls.
 
-Uploads whole documents via ``POST /v1/ingest/job/{job_id}/document``
+Ingest uploads whole documents via ``POST /v1/ingest/job/{job_id}/document``
 (after opening a job aggregate with ``POST /v1/ingest/job``), tracks
 completion via the per-job ``GET /v1/ingest/job/{job_id}/events`` SSE
 stream (with ``POST /v1/ingest/status/batch`` bulk-poll fallback), and
@@ -176,7 +176,7 @@ class DocumentTracker:
 
 
 class RetrieverServiceClient:
-    """Submits documents to a running retriever service and tracks results.
+    """Submits documents to a running retriever service and queries its VectorDB endpoint.
 
     Opens a job aggregate with ``POST /v1/ingest/job`` (sized to the
     number of files), then uses ``POST /v1/ingest/job/{job_id}/document``
@@ -205,6 +205,42 @@ class RetrieverServiceClient:
     @property
     def _auth_headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._api_token}"} if self._api_token else {}
+
+    # ------------------------------------------------------------------
+    # Query
+    # ------------------------------------------------------------------
+
+    def query(self, query: str | list[str], *, top_k: int) -> list[list[dict[str, Any]]]:
+        """Search ingested documents through ``POST /v1/query``."""
+        url = f"{self._base_url}/v1/query"
+        payload: dict[str, Any] = {"query": query, "top_k": int(top_k)}
+        try:
+            with httpx.Client(
+                timeout=httpx.Timeout(300.0, connect=30.0),
+                headers=self._auth_headers,
+            ) as client:
+                resp = client.post(url, json=payload)
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"Service query failed: {type(exc).__name__}: {exc}") from exc
+
+        if resp.status_code >= 400:
+            detail = resp.text[:500] if resp.text else "(empty)"
+            raise RuntimeError(f"Service query failed: HTTP {resp.status_code}: {detail}")
+
+        try:
+            body = resp.json()
+        except ValueError as exc:
+            raise RuntimeError("Service query returned invalid JSON.") from exc
+
+        results = body.get("results") if isinstance(body, dict) else None
+        if not isinstance(results, list):
+            raise RuntimeError(f"Service query returned invalid response: {body!r}")
+
+        all_hits: list[list[dict[str, Any]]] = []
+        for result_set in results:
+            hits = result_set.get("hits", []) if isinstance(result_set, dict) else []
+            all_hits.append(hits if isinstance(hits, list) else [])
+        return all_hits
 
     # ------------------------------------------------------------------
     # Job lifecycle

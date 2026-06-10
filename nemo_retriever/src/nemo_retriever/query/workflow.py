@@ -54,6 +54,11 @@ def _build_retriever_kwargs(request: QueryRequest) -> dict[str, Any]:
 
 def query_documents(request: QueryRequest) -> list[RetrievalHit]:
     """Run the SDK query path used by the root CLI."""
+    if request.runtime.run_mode == "service":
+        from nemo_retriever.query.service import query_documents as query_service_documents
+
+        return query_service_documents(request)
+
     retriever = Retriever(**_build_retriever_kwargs(request))
     return retriever.query(
         request.query,
