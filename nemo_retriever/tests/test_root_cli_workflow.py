@@ -104,6 +104,45 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
     assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
 
+def test_root_ingest_without_mode_defaults_to_local(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    create_calls: list[dict[str, Any]] = []
+    document = tmp_path / "default-local.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    def fake_create_ingestor(**kwargs: Any) -> Any:
+        create_calls.append(kwargs)
+        return fake_ingestor
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fake_create_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
+
+    assert result.exit_code == 0, result.output
+    assert create_calls == [{"run_mode": "inprocess"}]
+    assert fake_ingestor.files.call_args.args == ([str(document)],)
+
+
+def test_root_ingest_without_mode_accepts_local_options_before_documents(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "default-local-options.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", "--append", "--lancedb-uri", "/tmp/default-lancedb", str(document)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert fake_ingestor.vdb_upload.call_args.args[0].vdb_kwargs == {
+        "uri": "/tmp/default-lancedb",
+        "table_name": "nemo-retriever",
+        "overwrite": False,
+    }
+
+
 def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch) -> None:
     import nemo_retriever.service_ingestor as service_ingestor_module
 
