@@ -302,8 +302,8 @@ class ExtractParams(_ParamsModel):
     extract_images: bool = True
     extract_tables: bool = True
     extract_charts: bool = True
-    extract_infographics: bool = True
-    extract_page_as_image: Optional[bool] = None
+    extract_infographics: bool = False
+    extract_page_as_image: Optional[bool] = True
 
     # Extraction options
     method: str = "pdfium"
