@@ -47,6 +47,14 @@ source retriever/bin/activate
 uv pip install "nemo-retriever[local]==26.05-RC1"
 ```
 
+The `[local]` extra resolves stable Nemotron extraction packages by default. To
+try prerelease/nightly Nemotron packages from PyPI within the same supported
+major-version windows, opt in with `--pre`:
+
+```bash
+uv pip install --pre "nemo-retriever[local]==26.05-RC1"
+```
+
 Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (see the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
 
 For **remote NIM inference only** (no local GPU required), the base package is sufficient:
