@@ -1,6 +1,10 @@
 # NeMo Retriever Library (NRL) documentation — sole publisher to GitHub Pages for this repo.
 # Does not run the full Docker + Sphinx pipeline (no nv-ingest / nv-ingest-api HTML API dump).
 # Full-pipeline doc builds run in docs-deploy.yml (CI only, no deploy).
+#
+# If deploy fails with HTTP 401, verify repo Settings → Pages → Build and deployment
+# source is "GitHub Actions" (not "Deploy from a branch") and that workflow permissions
+# allow pages:write + id-token:write (Settings → Actions → General).
 name: NRL documentation — GitHub Pages
 
 on:
@@ -29,6 +33,11 @@ jobs:
   build:
     name: Build NRL docs
     runs-on: ubuntu-latest
+    # upload-pages-artifact requires pages + id-token on the build job (not only workflow-level).
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -84,6 +93,14 @@ jobs:
         with:
           path: docs/site
 
+      # Long-lived download (90 days) for S3/staging; survives GitHub Pages deploy failures.
+      - name: Upload docs artifact (nrl-docs-site)
+        if: ${{ github.repository == 'NVIDIA/NeMo-Retriever' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nrl-docs-site
+          path: docs/site
+
       - name: Upload docs artifact (non-Pages repos)
         if: ${{ github.repository != 'NVIDIA/NeMo-Retriever' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -96,10 +113,16 @@ jobs:
     if: ${{ github.repository == 'NVIDIA/NeMo-Retriever' }}
     needs: build
     runs-on: ubuntu-latest
+    # deploy-pages needs pages + id-token (+ actions: read for artifact fetch) on this job.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+      actions: read
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy
         id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
