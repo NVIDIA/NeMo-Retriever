@@ -81,7 +81,7 @@ Image captioning generates natural-language descriptions for unstructured image 
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
-- [Image captioning — NIM and hardware](prerequisites-support-matrix.md#image-captioning-2605)
+- [Image captioning — NIM and hardware](prerequisites-support-matrix.md#image-captioning-nim-hardware)
 
 ## Metadata and content schema { #metadata-and-content-schema }
 
