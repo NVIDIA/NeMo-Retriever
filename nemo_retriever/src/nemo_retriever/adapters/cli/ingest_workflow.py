@@ -61,7 +61,7 @@ def _strip_secret_values(value: Any) -> Any:
 
 
 def _ingest_plan_to_dry_run_data(plan: ResolvedIngestPlan) -> dict[str, Any]:
-    """Return the JSON payload printed by ``retriever ingest --dry-run``."""
+    """Return the JSON payload printed by ``retriever ingest local --dry-run``."""
     return {
         "dry_run": True,
         "profile": plan.profile,
@@ -95,7 +95,7 @@ def _ingest_plan_to_dry_run_data(plan: ResolvedIngestPlan) -> dict[str, Any]:
 
 
 def service_ingest_request_to_dry_run_data(request: ServiceIngestRequest) -> dict[str, Any]:
-    """Return the JSON payload printed by ``retriever ingest --run-mode service --dry-run``."""
+    """Return the JSON payload printed by ``retriever ingest service --dry-run``."""
     return {
         "dry_run": True,
         "run_mode": "service",

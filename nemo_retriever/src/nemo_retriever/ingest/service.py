@@ -7,35 +7,27 @@ from __future__ import annotations
 import glob as _glob
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Literal, Sequence, cast
+from typing import Any, Sequence
 
-from nemo_retriever.params import CaptionParams, DedupParams, EmbedParams, ExtractParams, StoreParams, TextChunkParams
-from nemo_retriever.utils.input_files import (
-    AUTO_INPUT_EXTENSIONS,
-    INPUT_TYPE_EXTENSIONS,
-    expand_input_file_patterns,
-    input_type_for_path,
-    resolve_input_files,
+from nemo_retriever.ingest.plan import (
+    IngestInputTypeValue,
+    IngestProfileValue,
+    build_caption_params,
+    build_dedup_params,
+    build_store_params,
+    build_text_chunk_kwargs,
+    expand_ingest_documents,
+    profile_extract_defaults,
+    validate_ingest_input_type,
+    validate_ingest_profile,
 )
+from nemo_retriever.params import CaptionParams, DedupParams, EmbedParams, ExtractParams, StoreParams, TextChunkParams
+from nemo_retriever.utils.input_files import input_type_for_path
 
 logger = logging.getLogger(__name__)
 
-ServiceIngestInputTypeValue = Literal["auto", "pdf", "doc", "txt", "html", "image", "audio", "video"]
-ServiceIngestProfileValue = Literal["auto", "fast-text"]
-_SUPPORTED_SERVICE_INPUT_TYPES: tuple[ServiceIngestInputTypeValue, ...] = (
-    "auto",
-    "pdf",
-    "doc",
-    "txt",
-    "html",
-    "image",
-    "audio",
-    "video",
-)
-_SUPPORTED_SERVICE_PROFILES: tuple[ServiceIngestProfileValue, ...] = ("auto", "fast-text")
-_DEFAULT_TEXT_CHUNK_MAX_TOKENS = 1024
-_DEFAULT_TEXT_CHUNK_OVERLAP_TOKENS = 150
+ServiceIngestInputTypeValue = IngestInputTypeValue
+ServiceIngestProfileValue = IngestProfileValue
 
 
 @dataclass(frozen=True)
@@ -167,12 +159,12 @@ def resolve_service_ingest_request(request: ServiceIngestPlanRequest) -> Service
     """Resolve first-class root service ingest options into service params."""
 
     source = request.source
-    input_type = _validate_service_input_type(source.input_type)
-    profile = _validate_service_profile(source.profile)
-    documents = resolve_service_documents(source.documents, input_type=input_type)
+    input_type = validate_ingest_input_type(source.input_type)
+    profile = validate_ingest_profile(source.profile)
+    documents = expand_ingest_documents(source.documents, input_type=input_type)
     _validate_service_profile_documents(profile, documents)
 
-    extract_kwargs = _service_profile_extract_defaults(profile)
+    extract_kwargs = profile_extract_defaults(profile)
     extract_kwargs.update(
         {
             key: value
@@ -207,7 +199,12 @@ def resolve_service_ingest_request(request: ServiceIngestPlanRequest) -> Service
         }.items()
         if value is not None
     }
-    enable_text_chunk, text_chunk_params = _build_service_text_chunk_params(request.chunk)
+    enable_text_chunk, text_chunk_kwargs = build_text_chunk_kwargs(
+        enabled=request.chunk.enabled,
+        text_chunk_max_tokens=request.chunk.text_chunk_max_tokens,
+        text_chunk_overlap_tokens=request.chunk.text_chunk_overlap_tokens,
+    )
+    text_chunk_params = TextChunkParams(**text_chunk_kwargs) if enable_text_chunk else TextChunkParams()
 
     return ServiceIngestRequest(
         documents=documents,
@@ -216,9 +213,13 @@ def resolve_service_ingest_request(request: ServiceIngestPlanRequest) -> Service
         embed_params=EmbedParams(**embed_kwargs) if embed_kwargs else EmbedParams(),
         text_chunk_params=text_chunk_params,
         enable_text_chunk=enable_text_chunk,
-        dedup_params=_build_service_dedup_params(request.dedup),
-        caption_params=_build_service_caption_params(request.caption),
-        store_params=_build_service_store_params(request.image_store),
+        dedup_params=build_dedup_params(enabled=request.dedup.enabled, iou_threshold=request.dedup.iou_threshold),
+        caption_params=build_caption_params(
+            enabled=request.caption.enabled,
+            caption_context_text_max_chars=request.caption.context_text_max_chars,
+            caption_infographics=request.caption.caption_infographics,
+        ),
+        store_params=build_store_params(images_uri=request.image_store.images_uri),
         connection=request.connection,
     )
 
@@ -278,30 +279,6 @@ def execute_service_ingest_request(request: ServiceIngestRequest) -> ServiceInge
     )
 
 
-def resolve_service_documents(
-    documents: Sequence[str],
-    *,
-    input_type: ServiceIngestInputTypeValue = "auto",
-) -> list[str]:
-    """Expand root service ingest files/directories/globs without creating an ingestor."""
-
-    inputs: list[str] = []
-    for document in documents:
-        raw_document = str(document)
-        path = Path(raw_document).expanduser()
-        if path.is_dir():
-            directory_files = resolve_input_files(path, input_type)
-            if not directory_files:
-                raise FileNotFoundError(f"No supported ingest files found under directory: {path}")
-            inputs.extend(str(file) for file in directory_files)
-        else:
-            inputs.append(raw_document)
-
-    document_list = expand_input_file_patterns(inputs)
-    _validate_service_document_types(document_list, input_type=input_type)
-    return document_list
-
-
 def expand_service_file_patterns(documents: Sequence[str]) -> list[str]:
     """Expand recursive file patterns for service ingest construction."""
 
@@ -316,34 +293,6 @@ def service_split_config_for_request(request: ServiceIngestRequest) -> dict[str,
 
     chunk_dict = _service_text_chunk_dict(request.text_chunk_params) if request.enable_text_chunk else None
     return _split_config_for_input_type(request.input_type, chunk_dict, documents=request.documents)
-
-
-def _validate_service_input_type(input_type: str) -> ServiceIngestInputTypeValue:
-    if input_type not in _SUPPORTED_SERVICE_INPUT_TYPES:
-        raise ValueError(f"input_type must be one of {', '.join(_SUPPORTED_SERVICE_INPUT_TYPES)}, got {input_type!r}.")
-    return cast(ServiceIngestInputTypeValue, input_type)
-
-
-def _validate_service_profile(profile: str) -> ServiceIngestProfileValue:
-    if profile not in _SUPPORTED_SERVICE_PROFILES:
-        raise ValueError(f"profile must be one of {', '.join(_SUPPORTED_SERVICE_PROFILES)}, got {profile!r}.")
-    return cast(ServiceIngestProfileValue, profile)
-
-
-def _validate_service_document_types(
-    documents: Sequence[str],
-    *,
-    input_type: ServiceIngestInputTypeValue,
-) -> None:
-    allowed_extensions = AUTO_INPUT_EXTENSIONS if input_type == "auto" else INPUT_TYPE_EXTENSIONS[input_type]
-    unsupported = [
-        document
-        for document in documents
-        if not _glob.has_magic(str(document)) and Path(document).suffix.lower() not in allowed_extensions
-    ]
-    if unsupported:
-        examples = ", ".join(unsupported[:3])
-        raise ValueError(f"Unsupported input file type(s) for retriever ingest: {examples}")
 
 
 def _validate_service_profile_documents(profile: ServiceIngestProfileValue, documents: Sequence[str]) -> None:
@@ -361,82 +310,6 @@ def _validate_service_profile_documents(profile: ServiceIngestProfileValue, docu
     if disallowed:
         observed = ", ".join(disallowed)
         raise ValueError(f"--profile {profile} only supports PDF/document inputs; observed {observed}.")
-
-
-def _service_profile_extract_defaults(profile: ServiceIngestProfileValue) -> dict[str, Any]:
-    if profile == "fast-text":
-        return {
-            "method": "pdfium",
-            "extract_text": True,
-            "extract_images": False,
-            "extract_tables": False,
-            "extract_charts": False,
-            "extract_infographics": False,
-            "extract_page_as_image": False,
-            "use_page_elements": False,
-        }
-    return {}
-
-
-def _build_service_text_chunk_params(chunk: ServiceIngestChunkOptions) -> tuple[bool, TextChunkParams]:
-    enabled = (
-        bool(chunk.enabled) or chunk.text_chunk_max_tokens is not None or chunk.text_chunk_overlap_tokens is not None
-    )
-    if not enabled:
-        return False, TextChunkParams()
-    return True, TextChunkParams(
-        max_tokens=(
-            int(chunk.text_chunk_max_tokens)
-            if chunk.text_chunk_max_tokens is not None
-            else _DEFAULT_TEXT_CHUNK_MAX_TOKENS
-        ),
-        overlap_tokens=(
-            int(chunk.text_chunk_overlap_tokens)
-            if chunk.text_chunk_overlap_tokens is not None
-            else _DEFAULT_TEXT_CHUNK_OVERLAP_TOKENS
-        ),
-    )
-
-
-def _build_service_dedup_params(dedup: ServiceIngestDedupOptions) -> DedupParams | None:
-    if not dedup.enabled:
-        if dedup.iou_threshold is not None:
-            raise ValueError("Dedup options require --dedup: dedup_iou_threshold.")
-        return None
-    dedup_kwargs = {}
-    if dedup.iou_threshold is not None:
-        dedup_kwargs["iou_threshold"] = dedup.iou_threshold
-    return DedupParams(**dedup_kwargs)
-
-
-def _build_service_caption_params(caption: ServiceIngestCaptionOptions) -> CaptionParams | None:
-    overrides = {
-        "caption_context_text_max_chars": caption.context_text_max_chars,
-        "caption_infographics": caption.caption_infographics,
-    }
-    if not caption.enabled:
-        provided = [name for name, value in overrides.items() if value is not None]
-        if provided:
-            raise ValueError(f"Caption options require --caption: {', '.join(provided)}.")
-        return None
-    if caption.context_text_max_chars is not None and caption.context_text_max_chars < 0:
-        raise ValueError("caption_context_text_max_chars must be >= 0.")
-
-    caption_kwargs = {
-        key: value
-        for key, value in {
-            "context_text_max_chars": caption.context_text_max_chars,
-            "caption_infographics": caption.caption_infographics,
-        }.items()
-        if value is not None
-    }
-    return CaptionParams(**caption_kwargs)
-
-
-def _build_service_store_params(image_store: ServiceIngestImageStoreOptions) -> StoreParams | None:
-    if image_store.images_uri is None:
-        return None
-    return StoreParams(storage_uri=image_store.images_uri)
 
 
 def _service_extraction_mode(input_type: str) -> str:
