@@ -115,7 +115,6 @@ def test_huggingface_workflow_has_manual_stable_ocr_release_controls() -> None:
     assert "Built wheel metadata does not declare expected version" in workflow
 
 
-
 def test_huggingface_non_ocr_nightlies_are_versioned_after_current_stable() -> None:
     workflow = (REPO_ROOT / ".github" / "workflows" / "huggingface-nightly.yml").read_text(encoding="utf-8")
 
@@ -125,6 +124,7 @@ def test_huggingface_non_ocr_nightlies_are_versioned_after_current_stable() -> N
     assert "id: nemotron-table-structure-v1" in workflow
     assert workflow.count('nightly_base_version: "1.0.1"') == 2
     assert "id: nemotron-graphic-elements-v1" in workflow
+
 
 def test_huggingface_nightly_builder_defaults_to_public_pypi() -> None:
     script = (REPO_ROOT / "ci" / "scripts" / "nightly_build_publish.py").read_text(encoding="utf-8")

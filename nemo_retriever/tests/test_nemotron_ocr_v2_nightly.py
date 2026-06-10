@@ -80,10 +80,7 @@ def test_local_extras_keep_stable_and_nightly_nemotron_choices_separate() -> Non
     uv_tool = pyproject["tool"]["uv"]
     uv_sources = uv_tool["sources"]
     uv_indexes = uv_tool["index"]
-    uv_conflicts = [
-        {entry["extra"] for entry in conflict}
-        for conflict in uv_tool["conflicts"]
-    ]
+    uv_conflicts = [{entry["extra"] for entry in conflict} for conflict in uv_tool["conflicts"]]
 
     assert not any(dep.startswith("nemotron-") for dep in local_base_deps)
     assert "nemo_retriever[local-base]" in local_deps
