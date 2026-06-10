@@ -114,7 +114,7 @@ def test_local_extras_keep_stable_and_nightly_nemotron_choices_separate() -> Non
 
     for package in ("nemotron-graphic-elements-v1", "nemotron-table-structure-v1"):
         nightly_requirement = _requirement(local_nightly_deps, package)
-        assert nightly_requirement.specifier.contains("1.0.0.dev1", prereleases=True)
+        assert not nightly_requirement.specifier.contains("1.0.0.dev1", prereleases=True)
         assert nightly_requirement.specifier.contains("1.0.1.dev1", prereleases=True)
         assert not nightly_requirement.specifier.contains("1.0.0", prereleases=True)
         assert not nightly_requirement.specifier.contains("1.0.1", prereleases=True)
