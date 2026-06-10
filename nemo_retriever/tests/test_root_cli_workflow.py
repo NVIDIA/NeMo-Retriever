@@ -21,6 +21,7 @@ from typer.testing import CliRunner
 
 import nemo_retriever.ingest.execution as ingest_execution
 import nemo_retriever.ingest.plan as ingest_plan
+import nemo_retriever.ingest.service as ingest_service
 import nemo_retriever.adapters.cli.ingest_workflow as ingest_workflow
 import nemo_retriever.adapters.cli.ingest.graph as ingest_cli_graph
 import nemo_retriever.adapters.cli.ingest.shared as ingest_cli_shared
@@ -187,6 +188,21 @@ def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch
     assert captured["caption_params"].context_text_max_chars == 12
     assert captured["embed_params"].embed_granularity == "page"
     assert "through retriever service http://retriever-service:7670" in result.output
+
+
+def test_service_split_config_expands_glob_patterns_for_auto_input(tmp_path) -> None:
+    document = tmp_path / "chunked.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+    request = ingest_service.ServiceIngestRequest(
+        documents=[str(tmp_path / "*.pdf")],
+        input_type="auto",
+        enable_text_chunk=True,
+        text_chunk_params=TextChunkParams(max_tokens=64, overlap_tokens=8),
+    )
+
+    split_config = ingest_service.service_split_config_for_request(request)
+
+    assert split_config == {"pdf": {"max_tokens": 64, "overlap_tokens": 8, "encoding": "utf-8"}}
 
 
 def test_root_ingest_service_dry_run_redacts_token(tmp_path, monkeypatch) -> None:

@@ -22,7 +22,7 @@ from nemo_retriever.ingest.plan import (
     validate_ingest_profile,
 )
 from nemo_retriever.params import CaptionParams, DedupParams, EmbedParams, ExtractParams, StoreParams, TextChunkParams
-from nemo_retriever.utils.input_files import input_type_for_path
+from nemo_retriever.utils.input_files import expand_input_file_patterns, input_type_for_path
 
 logger = logging.getLogger(__name__)
 
@@ -387,7 +387,7 @@ def _split_config_for_auto_documents(
     documents: Sequence[str],
     chunk_dict: dict[str, Any],
 ) -> dict[str, Any] | None:
-    input_types = {input_type_for_path(document) for document in documents if not _glob.has_magic(str(document))}
+    input_types = {input_type_for_path(document) for document in expand_input_file_patterns(documents)}
     split_config: dict[str, Any] = {}
     if input_types & {"pdf", "doc"}:
         split_config["pdf"] = dict(chunk_dict)
