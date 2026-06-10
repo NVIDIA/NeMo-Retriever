@@ -45,7 +45,10 @@ class Schema:
             if "table_type" not in self.tables_df.columns:
                 self.tables_df["table_type"] = TableTypes.BASE_TABLE
             self.tables_df["table_type"] = (
-                self.tables_df["table_type"].fillna(TableTypes.BASE_TABLE).apply(lambda x: str(x).lower())
+                self.tables_df["table_type"]
+                .astype(object)
+                .fillna(TableTypes.BASE_TABLE)
+                .apply(lambda x: str(x).lower())
             )
             if "id" not in self.tables_df.columns:
                 self.tables_df["id"] = None

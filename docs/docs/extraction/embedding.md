@@ -2,7 +2,7 @@
 
 !!! note "Text-only NeMo Retriever embedding NIM"
 
-    You can still use the NeMo Retriever text embedding NIM (OpenAI-compatible embeddings for passage and query vectors) alongside or instead of the multimodal flows on this page. Product and deployment details are in the [NeMo Retriever Text Embedding NIM documentation](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html). In library and CLI pipelines, route embedding to that NIM with your configured `embed` / invoke URL and model name (see the [graph pipeline examples](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/README.md) for environment-based remote inference).
+    You can still use the NeMo Retriever text embedding NIM (OpenAI-compatible embeddings for passage and query vectors) alongside or instead of the multimodal flows on this page. Product and deployment details are in the [NeMo Retriever Text Embedding NIM documentation](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html). In library and CLI pipelines, route embedding to that NIM with your configured embed endpoint and model name (refer to the [graph pipeline examples](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/README.md) for environment-based remote inference).
 
 This documentation describes how to use [NeMo Retriever Library](overview.md) 
 with the multimodal embedding model [Llama Nemotron Embed VL 1B v2](https://build.nvidia.com/nvidia/llama-nemotron-embed-vl-1b-v2).
@@ -12,6 +12,7 @@ The model can embed documents in the form of an image, text, or a combination of
 Documents can then be retrieved given a user query in text form. 
 The model supports images that contain text, tables, charts, and infographics.
 
+Parameter details for `.extract()` and `.embed()` appear in the [Python API guide](nemo-retriever-api-reference.md).
 
 ## Example with Default Text-Based Embedding
 
@@ -21,11 +22,13 @@ The following example provides a strong baseline for retrieval.
 - The `embed` method is called with no arguments.
 
 ```python
+from nemo_retriever import create_ingestor
+
 ingestor = (
-    Ingestor()
+    create_ingestor(run_mode="batch")
     .files("./data/*.pdf")
     .extract()
-    .embed() # Default behavior embeds all content as text
+    .embed()  # Default behavior embeds all content as text
 )
 results = ingestor.ingest()
 ```
@@ -33,15 +36,17 @@ results = ingestor.ingest()
 
 ## Example with Embedding Structured Elements as Text + Images
 
-It is common to process PDFs by embedding standard text as text, and embed visual elements like tables and charts as images. 
+It is common to process PDFs by embedding standard text as text and embed visual elements such as tables and charts as images. 
 The following example enables the multimodal model to capture the spatial and structural information of the visual content.
 
 - The `embed` method is configured with `embed_modality="text_image"` to embed the extracted tables and charts as images.
-- This configuration is more accurate than text only with a performance cost
+- This configuration is more accurate than text only, with a performance cost.
 
 ```python
+from nemo_retriever import create_ingestor
+
 ingestor = (
-    Ingestor()
+    create_ingestor(run_mode="batch")
     .files("./data/*.pdf")
     .extract()
     .embed(
@@ -58,16 +63,18 @@ For documents where the entire page layout is important (such as infographics, c
 you can configure NeMo Retriever Library to treat every page as a single image.
 The following example extracts and embeds each page as an image.
 
-- The `embed method` processes the page images.
+- The `embed` method processes the page images.
 
 ```python
+from nemo_retriever import create_ingestor
+
 ingestor = (
-    Ingestor()
+    create_ingestor(run_mode="batch")
     .files("./data/*.pdf")
     .extract()
     .embed(
         embed_modality="image",
-        embed_granularity="page"
+        embed_granularity="page",
     )
 )
 results = ingestor.ingest()
@@ -78,4 +85,3 @@ results = ingestor.ingest()
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Troubleshoot Nemo Retriever Extraction](troubleshoot.md)
 - [Use the Python API](nemo-retriever-api-reference.md)
-- [Extract Captions from Images](nemo-retriever-api-reference.md)

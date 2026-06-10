@@ -32,7 +32,7 @@ It does not store the embeddings for images.
 
     To persist extracted images, tables, and chart renderings to disk or object storage, use the `store` task in addition to `vdb_upload`. The `store` task supports any fsspec-compatible backend (local filesystem, S3, GCS, and other object stores). For details, refer to [Store Extracted Images](nemo-retriever-api-reference.md).
 
-NeMo Retriever Library supports uploading data by using the [Ingestor.vdb_upload API](nemo-retriever-api-reference.md).
+NeMo Retriever Library supports uploading data through `.vdb_upload()` on `create_ingestor(...)` ([Python API guide](nemo-retriever-api-reference.md)).
 Currently, data upload is not supported through the [CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli).
 
 
@@ -51,11 +51,13 @@ This combination of file format, index strategy, and in-process runtime supports
 
 ## Upload to LanceDB { #upload-to-lancedb }
 
-LanceDB uses the `LanceDB` operator class from the client library. You can configure it via the Python API.
+LanceDB uses the `LanceDB` operator class from the client library. You can configure it through the Python API.
 
 ### Programmatic API (Python)
 
-Pass `vdb_op="lancedb"` to `vdb_upload`, or construct a `LanceDB` instance and pass it as `vdb_op`:
+Pass `vdb_op="lancedb"` to `vdb_upload`, or construct a `LanceDB` instance and pass it as `vdb_op`.
+
+For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
 ```python
 from nemo_retriever.vdb.lancedb import LanceDB
@@ -108,13 +110,13 @@ This page covers LanceDB upload and retrieval. **Metadata is not duplicated here
 
 ## Upload to a Custom Data Store { #upload-to-a-custom-data-store }
 
-You can ingest to other data stores by using the `Ingestor.vdb_upload` method;
+You can ingest to other data stores through `.vdb_upload()` on `create_ingestor(...)`;
 however, you must configure other data stores and connections yourself.
 NeMo Retriever Library does not provide connections to other data sources.
 
 ## Vector database partners { #vector-database-partners }
 
-NeMo Retriever Library integrates with vector databases used for RAG collections. The sections above focus on LanceDB as the shipped backend. This section lists that backend and how partner or custom `VDB` subclasses plug into graph operators. For chunking behavior, see [Chunking](concepts.md#chunking).
+NeMo Retriever Library integrates with vector databases used for RAG collections. The sections above focus on LanceDB as the shipped backend. This section lists that backend and how partner or custom `VDB` subclasses plug into graph operators. For chunking behavior, refer to [Chunking](concepts.md#chunking).
 
 ### Backends with `VDB` implementations (retriever adapters) { #vdb-backends-implementations }
 
@@ -124,9 +126,9 @@ NeMo Retriever graph operators [`IngestVdbOperator`](https://github.com/NVIDIA/N
 |---------|---------|----------------|
 | **LanceDB** | [LanceDB](https://lancedb.com/) · [documentation](https://lancedb.github.io/lancedb/) | [`lancedb.py`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/vdb/lancedb.py) — pass `vdb_op="lancedb"` (recommended). |
 
-On the ingestion Python client's `Ingestor.vdb_upload`, omitting `vdb_op` does not select LanceDB; see [Upload to LanceDB](#upload-to-lancedb).
+On `GraphIngestor.vdb_upload`, omitting `vdb_op` does not select LanceDB; refer to [Upload to LanceDB](#upload-to-lancedb).
 
-Pass `vdb_op="lancedb"` or a `LanceDB` instance. To integrate another vector database, subclass [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/vdb/adt_vdb.py) and pass your operator instance as `vdb` (see [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb)).
+Pass `vdb_op="lancedb"` or a `LanceDB` instance. To integrate another vector database, subclass [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/vdb/adt_vdb.py) and pass your operator instance as `vdb` (refer to [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb)).
 
 ### RAG Blueprint and partner vector stores { #rag-blueprint-and-partner-vector-stores }
 
