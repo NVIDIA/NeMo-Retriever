@@ -140,6 +140,27 @@ def test_public_nightly_python_publish_workflows_do_not_target_testpypi():
         assert "PYPI_API_TOKEN" in workflow, workflow_name
 
 
+@requires_workflows
+def test_public_nightly_python_publish_workflows_use_read_only_token_permissions():
+    workflow_names = ("pypi-nightly-publish.yml", "huggingface-nightly.yml")
+
+    for workflow_name in workflow_names:
+        workflow = _load_workflow(workflow_name)
+
+        assert workflow["permissions"] == {"contents": "read"}, workflow_name
+
+
+@requires_workflows
+def test_pypi_nightly_publish_uses_twine_password_env():
+    workflow = _load_workflow("pypi-nightly-publish.yml")
+    steps = workflow["jobs"]["build"]["steps"]
+    publish_step = next(step for step in steps if step.get("name") == "Publish wheels")
+
+    assert publish_step["env"] == {"TWINE_PASSWORD": "${{ secrets.PYPI_API_TOKEN }}"}
+    assert ' -p "${token}"' not in publish_step["run"]
+    assert "PYPI_API_TOKEN" not in publish_step["run"]
+
+
 def test_legacy_nv_ingest_root_compose_stack_is_removed():
     legacy_paths = (
         "docker-compose.yaml",
