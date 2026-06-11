@@ -23,7 +23,7 @@ from tests import _ffprobe_first_stream_type
 from tests import _make_test_mp4_with_av
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.pipeline_graph import Graph
-from nemo_retriever.params import (
+from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
     AudioVisualFuseParams,
@@ -32,8 +32,8 @@ from nemo_retriever.params import (
     VideoFrameParams,
     VideoFrameTextDedupParams,
 )
-from nemo_retriever.video import VideoSplitActor
-from nemo_retriever.video import _content_types as _CT
+from nemo_retriever.operators.extract.video.split import VideoSplitActor
+from nemo_retriever.common.modality.video import _content_types as _CT
 
 
 def _collect_node_names(graph: Graph) -> list[str]:
@@ -58,7 +58,7 @@ def test_video_asr_chunk_params_force_audio_demux() -> None:
         video_audio_separate=True,
     )
 
-    from nemo_retriever.video import video_asr_audio_chunk_params
+    from nemo_retriever.operators.extract.video.split import video_asr_audio_chunk_params
 
     normalized = video_asr_audio_chunk_params(params)
 
@@ -75,7 +75,7 @@ def test_video_asr_chunk_params_force_audio_demux() -> None:
 
 def test_video_asr_chunk_params_disabled_passthrough() -> None:
     """Disabled params must pass through unchanged."""
-    from nemo_retriever.video import video_asr_audio_chunk_params
+    from nemo_retriever.operators.extract.video.split import video_asr_audio_chunk_params
 
     disabled = AudioChunkParams(enabled=False, audio_only=False)
     result = video_asr_audio_chunk_params(disabled)

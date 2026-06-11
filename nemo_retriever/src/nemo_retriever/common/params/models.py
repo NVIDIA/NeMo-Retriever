@@ -1,0 +1,682 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+from __future__ import annotations
+
+from typing import Any, Literal, Optional, Sequence, Tuple
+from urllib.parse import urlparse
+
+import warnings
+
+
+from upath import UPath
+
+from nemo_retriever.tabular_data.sql_database import SQLDatabase
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from nemo_retriever.common.remote_auth import resolve_remote_api_key
+
+IngestorRunMode = Literal["inprocess", "batch", "service"]
+
+# Pass as an api_key value to suppress auto-resolution from environment variables.
+# Example: EmbedParams(api_key=NO_API_KEY)
+NO_API_KEY = ""
+
+
+_REDACTED = "***"
+
+
+def _is_api_key_field(field_name: str) -> bool:
+    """Return True when ``field_name`` should be masked in ``repr`` / logs."""
+    return field_name == "api_key" or field_name.endswith("_api_key")
+
+
+class _ParamsModel(BaseModel):
+    """Shared base for all remote-transport Pydantic params models.
+
+    Two cross-cutting behaviours live here:
+
+    * :meth:`_resolve_api_keys` auto-fills unset ``*api_key`` fields from
+      ``NVIDIA_API_KEY`` / ``NGC_API_KEY`` (see
+      :func:`nemo_retriever.utils.remote_auth.resolve_remote_api_key`).
+    * :meth:`__repr__` redacts every field whose name matches
+      :func:`_is_api_key_field` so that logging a transport object (or
+      letting Pydantic's default error formatter echo one back) never
+      prints a bearer token.  The underlying field still serialises as
+      a plain ``str`` via ``.model_dump()`` / ``getattr(self, field)``
+      so no downstream consumer needs changes.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _resolve_api_keys(self) -> "_ParamsModel":
+        for field_name in type(self).model_fields:
+            if _is_api_key_field(field_name):
+                value = getattr(self, field_name, None)
+                if value is None:
+                    setattr(self, field_name, resolve_remote_api_key())
+                elif value == NO_API_KEY:
+                    setattr(self, field_name, None)
+        return self
+
+    def __repr__(self) -> str:
+        parts: list[str] = []
+        for field_name in type(self).model_fields:
+            value = getattr(self, field_name, None)
+            if _is_api_key_field(field_name) and value:
+                parts.append(f"{field_name}={_REDACTED}")
+            elif field_name == "storage_options" and value:
+                parts.append(f"{field_name}={_REDACTED}")
+            else:
+                parts.append(f"{field_name}={value!r}")
+        return f"{type(self).__name__}({', '.join(parts)})"
+
+    __str__ = __repr__
+
+
+class RemoteRetryParams(_ParamsModel):
+    remote_max_pool_workers: int = 32
+    remote_max_retries: int = 5
+    remote_max_429_retries: int = 3
+
+
+class RemoteInvokeParams(_ParamsModel):
+    invoke_url: Optional[str] = None
+    api_key: Optional[str] = None
+    request_timeout_s: float = 60.0
+
+
+class ModelRuntimeParams(_ParamsModel):
+    device: Optional[str] = None
+    hf_cache_dir: Optional[str] = None
+    normalize: bool = True
+    max_length: int = 8192
+    model_name: Optional[str] = None
+    gpu_memory_utilization: float = 0.45
+    enforce_eager: bool = False
+
+
+class IngestorCreateParams(_ParamsModel):
+    documents: list[str] = Field(default_factory=list)
+    ray_address: Optional[str] = None
+    ray_log_to_driver: bool = True
+    debug: bool = False
+    base_url: str = "http://localhost:7670"
+    allow_no_gpu: bool = False
+    node_overrides: Optional[dict[str, dict[str, Any]]] = None
+    api_key: Optional[str] = None
+    error_policy: Literal["raise", "collect"] = "raise"
+    # service run mode: maximum number of concurrent page uploads.  Lower
+    # values (e.g. 2-4) reduce burst pressure on Kubernetes NodePort /
+    # kube-proxy paths that otherwise reset connections under heavy load.
+    max_concurrency: Optional[int] = None
+
+
+class IngestExecuteParams(_ParamsModel):
+    show_progress: bool = False
+    return_failures: bool = False
+    return_traces: bool = False
+    return_results: bool = True
+    parallel: bool = False
+    max_workers: Optional[int] = None
+    gpu_devices: list[str] = Field(default_factory=list)
+    page_chunk_size: int = 32
+    runtime_metrics_dir: Optional[str] = None
+    runtime_metrics_prefix: Optional[str] = None
+
+
+class PdfSplitParams(_ParamsModel):
+    start_page: Optional[int] = None
+    end_page: Optional[int] = None
+
+
+class TextChunkParams(_ParamsModel):
+    max_tokens: int = 1024
+    overlap_tokens: int = 0
+    tokenizer_model_id: Optional[str] = None
+    encoding: str = "utf-8"
+    tokenizer_cache_dir: Optional[str] = None
+
+
+class HtmlChunkParams(TextChunkParams):
+    pass
+
+
+class AudioChunkParams(_ParamsModel):
+    """Params for media chunking (audio/video split). Aligned with `nemo_retriever.api` dataloader.
+
+    Set ``enabled=False`` (when wired through ``VideoSplitActor``) to skip
+    audio chunking and ASR on a video pipeline — useful for visual-only
+    recall benchmarks. ``MediaChunkActor`` ignores this flag for the
+    audio-only pipeline since chunking is the whole point there.
+
+    ``audio_only=True`` on a video input extracts only the audio track,
+    runs ASR over it, and skips the visual branch entirely — no frame
+    extraction, no OCR, no audio/visual fusion.
+
+    ``video_audio_separate`` is accepted for compatibility but ignored by
+    ``MediaChunkActor`` on video inputs: this ASR chunking path always demuxes
+    videos to ASR-safe audio chunks and does not emit video-container chunks.
+    Use ``VideoSplitActor`` or the video pipeline when you need audio+visual
+    video processing.
+    """
+
+    enabled: bool = True
+    split_type: Literal["size", "time", "frame"] = "size"
+    split_interval: int = 450
+    audio_only: bool = False
+    video_audio_separate: bool = False
+
+
+class ASRParams(_ParamsModel):
+    """Params for ASR (Parakeet/Riva gRPC or local transformers backend).
+
+    Choice of remote-NIM vs local-model is made by the :class:`ASRActor`
+    archetype (CPU variant = remote, GPU variant = local), not by a flag here.
+    Pass ``audio_endpoints`` to force the remote variant on any host; leave
+    them empty to let the archetype pick GPU (local) when a GPU is present
+    and fall back to remote (NVCF default) when not.
+    """
+
+    audio_endpoints: Tuple[Optional[str], Optional[str]] = (None, None)
+    audio_infer_protocol: str = "grpc"
+    # ``auto``: streaming (online) for NVCF; offline recognize for other gRPC
+    # endpoints (e.g. Helm Parakeet NIM with ``mode=ofl``).
+    audio_infer_mode: Literal["auto", "online", "offline"] = "auto"
+    function_id: Optional[str] = None
+    auth_token: Optional[str] = None
+    segment_audio: bool = False
+
+
+class VideoFrameParams(_ParamsModel):
+    """Params for video frame extraction (ffmpeg fps + perceptual-hash dedup).
+
+    Set ``enabled=False`` to skip frame extraction entirely; the video
+    pipeline then produces only audio (ASR) rows — no frame OCR, no
+    audio+visual fusion. Useful for ablating the visual modality or for
+    audio-only recall benchmarks against video corpora.
+
+    ``dedup`` activates perceptual-hash (dhash) dedup before OCR. dhash
+    catches visually-identical adjacent frames that byte-level hashing
+    misses (encoder noise, brightness drift, etc.). On a 60s slide-heavy
+    sample we measured ~91% duplicates collapsed at distance 5 vs ~11%
+    for MD5 — a near-10x cut in OCR cost on slide content. Tune
+    ``dedup_max_hamming_distance`` upward for more aggressive merging or
+    down to 0 to require exact perceptual-hash matches.
+    """
+
+    enabled: bool = True
+    fps: float = Field(default=1.0, gt=0.0)
+    max_frames: Optional[int] = None
+    dedup: bool = True
+    dedup_max_hamming_distance: int = 5
+    dedup_max_dropped_frames: int = 2
+
+
+class VideoFrameTextDedupParams(_ParamsModel):
+    """Params for merging consecutive video_frame rows with identical OCR text.
+
+    After full-frame OCR, slides that are visible for many seconds produce a
+    flood of frames with the same text (image-hash dedup misses them when
+    encoder noise differs frame-to-frame). This stage groups by
+    ``(source_path, text)`` and merges adjacent runs into a single row whose
+    ``segment_start_seconds`` / ``segment_end_seconds`` cover the union of
+    the run.
+
+    Tolerance is expressed in **dropped frames**, not seconds, so it scales
+    with ``video_frame_fps``: at runtime the dedup reads each group's
+    ``metadata.fps`` and converts to ``max_gap_seconds = max_dropped_frames / fps``.
+    Default 2 means we bridge gaps of up to 2 missing frames in a run —
+    a typical safety margin for image-hash dedup leaving small holes.
+    """
+
+    enabled: bool = True
+    max_dropped_frames: int = 2
+
+
+class AudioVisualFuseParams(_ParamsModel):
+    """Toggle for :class:`~nemo_retriever.video.AudioVisualFuser`."""
+
+    enabled: bool = True
+
+
+class LanceDbParams(_ParamsModel):
+    lancedb_uri: str = "lancedb"
+    table_name: str = "nv-ingest"
+    overwrite: bool = True
+    create_index: bool = True
+    index_type: str = "IVF_HNSW_SQ"
+    metric: str = "l2"
+    num_partitions: int = 16
+    num_sub_vectors: int = 256
+    embedding_column: str = "text_embeddings_1b_v2"
+    embedding_key: str = "embedding"
+    include_text: bool = True
+    text_column: str = "text"
+    hybrid: bool = False
+    fts_language: str = "English"
+
+
+class BatchTuningParams(_ParamsModel):
+    debug_run_id: str = "unknown"
+    pdf_split_batch_size: int = 1
+    pdf_extract_batch_size: int = 4
+    pdf_extract_num_cpus: float = 2
+    pdf_extract_workers: Optional[int] = None
+    page_elements_batch_size: int = 24
+    detect_batch_size: int = 24
+    ocr_inference_batch_size: Optional[int] = None
+    page_elements_workers: Optional[int] = None
+    ocr_workers: Optional[int] = None
+    detect_workers: Optional[int] = None
+    page_elements_cpus_per_actor: float = 1
+    ocr_cpus_per_actor: float = 1
+    table_structure_workers: Optional[int] = None
+    table_structure_batch_size: Optional[int] = None
+    table_structure_cpus_per_actor: float = 1
+    embed_workers: Optional[int] = None
+    embed_batch_size: int = 32
+    embed_cpus_per_actor: float = 1
+    gpu_page_elements: Optional[float] = None
+    gpu_ocr: Optional[float] = None
+    gpu_table_structure: Optional[float] = None
+    gpu_embed: Optional[float] = None
+    nemotron_parse_workers: Optional[int] = None
+    gpu_nemotron_parse: Optional[float] = None
+    nemotron_parse_batch_size: Optional[int] = None
+    store_workers: Optional[int] = None
+    inference_batch_size: int = 8
+
+
+class GpuAllocationParams(_ParamsModel):
+    gpu_devices: list[str] = Field(default_factory=list)
+    startup_timeout: float = 600.0
+
+
+class ExtractParams(_ParamsModel):
+    # Extraction flags
+    extract_text: bool = True
+    extract_images: bool = True
+    extract_tables: bool = True
+    extract_charts: bool = True
+    extract_infographics: bool = False
+    extract_page_as_image: Optional[bool] = True
+
+    # Extraction options
+    method: str = "pdfium"
+    # Run PageElementDetection (layout/yolox). Required by TableStructure,
+    # GraphicElements, and OCR. Safe to disable for text-only ingests.
+    use_page_elements: bool = True
+    use_table_structure: bool = False
+    table_output_format: Optional[Literal["pseudo_markdown", "markdown"]] = None
+    use_graphic_elements: bool = False
+    dpi: int = 200
+    image_format: str = "jpeg"
+    jpeg_quality: int = 100
+    render_mode: Literal["full_dpi", "fit_to_model"] = "fit_to_model"
+    inference_batch_size: int = 8
+    ocr_model_dir: Optional[str] = None
+    ocr_version: Literal["v1", "v2"] = "v2"
+    ocr_lang: Optional[Literal["multi", "english"]] = None
+
+    # Service endpoints
+    invoke_url: Optional[str] = None
+    api_key: Optional[str] = None
+    request_timeout_s: float = 60.0
+    page_elements_invoke_url: Optional[str] = None
+    page_elements_api_key: Optional[str] = None
+    page_elements_request_timeout_s: Optional[float] = None
+    ocr_invoke_url: Optional[str] = None
+    ocr_api_key: Optional[str] = None
+    ocr_request_timeout_s: Optional[float] = None
+    graphic_elements_invoke_url: Optional[str] = None
+    table_structure_invoke_url: Optional[str] = None
+    nemotron_parse_invoke_url: Optional[str] = None
+    nemotron_parse_model: Optional[str] = None
+
+    # Output columns
+    output_column: str = "page_elements_v3"
+    num_detections_column: str = "page_elements_v3_num_detections"
+    counts_by_label_column: str = "page_elements_v3_counts_by_label"
+
+    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
+    batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
+
+    @model_validator(mode="after")
+    def _auto_enable_features(self) -> "ExtractParams":
+        """Auto-configure feature flags from remote endpoints.
+
+        * Enable ``use_graphic_elements`` when ``graphic_elements_invoke_url``
+          is provided.
+        * Enable ``use_table_structure`` when ``table_structure_invoke_url``
+          is provided.
+        * Default ``table_output_format`` to ``"markdown"`` when the stage is
+          enabled and the caller did not explicitly choose a format.
+        """
+        if self.graphic_elements_invoke_url and not self.use_graphic_elements:
+            self.use_graphic_elements = True
+        if self.table_structure_invoke_url and not self.use_table_structure:
+            self.use_table_structure = True
+        if self.table_output_format is None:
+            self.table_output_format = "markdown" if self.use_table_structure else "pseudo_markdown"
+        if self.ocr_version == "v1" and self.ocr_lang is not None:
+            raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
+        if not self.use_page_elements:
+            consumers = [
+                ("use_table_structure", self.use_table_structure and self.extract_tables),
+                ("use_graphic_elements", self.use_graphic_elements and self.extract_charts),
+            ]
+            enabled = [name for name, on in consumers if on]
+            if enabled:
+                raise ValueError(f"use_page_elements=False is incompatible with: {', '.join(enabled)}")
+        return self
+
+
+VALID_EMBED_MODALITIES: frozenset[str] = frozenset({"text", "image", "text_image"})
+IMAGE_MODALITIES: frozenset[str] = frozenset({"image", "text_image"})
+
+
+class EmbedParams(_ParamsModel):
+    model_name: Optional[str] = None
+    embedding_endpoint: Optional[str] = None
+    embed_invoke_url: Optional[str] = None
+    embed_model_name: Optional[str] = None
+    api_key: Optional[str] = None
+    input_type: str = "passage"
+    embed_modality: str = "text"  # "text", "image", or "text_image" — default for all element types
+    embed_granularity: Literal["element", "page"] = "element"  # "element" = per-element rows, "page" = one row per page
+    text_elements_modality: Optional[str] = None  # per-type override for page-text rows
+    structured_elements_modality: Optional[str] = None  # per-type override for table/chart/infographic rows
+    text_column: str = "text"
+    inference_batch_size: int = 32
+    output_column: str = "text_embeddings_1b_v2"
+    embedding_dim_column: str = "text_embeddings_1b_v2_dim"
+    has_embedding_column: str = "text_embeddings_1b_v2_has_embedding"
+    embed_output_column: str = "text_embeddings_1b_v2"
+    embed_inference_batch_size: int = 16
+
+    local_ingest_embed_backend: str = (
+        "vllm"  # "vllm" or "hf" — selects ingest-time embedder backend for both text and VL models
+    )
+    query_max_length: int = 128
+    dimensions: Optional[int] = None
+
+    # Concurrent HTTP embedding requests per Ray batch (OpenAI-compatible NIM).
+    nim_http_max_concurrent: int = 32
+    request_timeout_s: float = 600.0
+
+    runtime: ModelRuntimeParams = Field(default_factory=ModelRuntimeParams)
+    batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
+
+    @field_validator("local_ingest_embed_backend", mode="before")
+    @classmethod
+    def _validate_local_ingest_embed_backend(cls, v: str) -> str:
+        from nemo_retriever.models import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
+
+        return normalize_backend(
+            str(v) if v is not None else None,
+            _LOCAL_INGEST_EMBED_BACKENDS,
+            field_name="local_ingest_embed_backend",
+            default="vllm",
+        )
+
+    @field_validator("embed_modality", "text_elements_modality", "structured_elements_modality", mode="before")
+    @classmethod
+    def _validate_modality(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        modality = str(v).strip()
+        if modality == "image_text":
+            raise ValueError("Use 'text_image' instead of 'image_text'.")
+        if modality not in VALID_EMBED_MODALITIES:
+            raise ValueError(f"Modality must be one of {sorted(VALID_EMBED_MODALITIES)}")
+        return modality
+
+    @model_validator(mode="after")
+    def _warn_page_granularity_overrides(self) -> "EmbedParams":
+        if self.embed_granularity == "page" and (
+            self.text_elements_modality is not None or self.structured_elements_modality is not None
+        ):
+            warnings.warn(
+                "text_elements_modality and structured_elements_modality are ignored when "
+                "embed_granularity='page' (only embed_modality is used).",
+                UserWarning,
+                stacklevel=2,
+            )
+        return self
+
+
+MetaJoinKey = Literal["auto", "source_id", "source_name"]
+
+
+class VdbUploadParams(_ParamsModel):
+    """Post-graph vector DB upload configuration.
+
+    Sidecar metadata (``meta_*``) matches ``nv_ingest_client`` / ``metadata_and_filtered_search.ipynb``:
+    all three fields must be set together to merge columns into each chunk's ``content_metadata``.
+    """
+
+    vdb_op: str = "lancedb"
+    vdb_kwargs: dict[str, Any] = Field(default_factory=dict)
+    meta_dataframe: Optional[Any] = None
+    """Path to csv/json/parquet or an in-memory :class:`pandas.DataFrame`."""
+    meta_source_field: Optional[str] = None
+    meta_fields: Optional[list[str]] = None
+    meta_join_key: MetaJoinKey = "auto"
+    """How to match rows to documents: ``source_id`` (full path), ``source_name`` (basename), or ``auto`` (try both)."""
+
+    @model_validator(mode="after")
+    def _validate_sidecar_triplet(self) -> "VdbUploadParams":
+        trio = (self.meta_dataframe, self.meta_source_field, self.meta_fields)
+        if all(x is None for x in trio):
+            return self
+        if any(x is None for x in trio):
+            raise ValueError(
+                "meta_dataframe, meta_source_field, and meta_fields must all be set together "
+                "when attaching sidecar metadata."
+            )
+        if not self.meta_fields:
+            raise ValueError("meta_fields must be a non-empty list when sidecar metadata is enabled.")
+        return self
+
+    def to_ingest_operator_kwargs(self) -> dict[str, Any]:
+        """Flatten into kwargs for :class:`~nemo_retriever.vdb.IngestVdbOperator`."""
+        out = dict(self.vdb_kwargs or {})
+        if self.meta_dataframe is not None:
+            out["meta_dataframe"] = self.meta_dataframe
+            out["meta_source_field"] = self.meta_source_field
+            out["meta_fields"] = list(self.meta_fields or [])
+            out["meta_join_key"] = self.meta_join_key
+        return out
+
+
+class StoreParams(_ParamsModel):
+    storage_uri: str = "stored_images"
+    storage_options: dict[str, Any] = Field(default_factory=dict)
+    image_format: str = "png"
+    strip_base64: bool = True
+    batch_tuning: BatchTuningParams = Field(default_factory=BatchTuningParams)
+
+    @model_validator(mode="after")
+    def _resolve_local_storage_uri(self) -> "StoreParams":
+        """Resolve relative local paths to absolute so they survive Ray serialization."""
+        if not urlparse(self.storage_uri).scheme:
+            self.storage_uri = str(UPath(self.storage_uri).resolve())
+        return self
+
+
+class PageElementsParams(_ParamsModel):
+    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
+    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
+    inference_batch_size: int = 8
+    output_column: str = "page_elements_v3"
+    num_detections_column: str = "page_elements_v3_num_detections"
+    counts_by_label_column: str = "page_elements_v3_counts_by_label"
+
+
+class OcrParams(_ParamsModel):
+    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
+    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
+    inference_batch_size: int = 8
+    extract_tables: bool = False
+    extract_charts: bool = False
+    extract_infographics: bool = False
+
+
+class TableParams(_ParamsModel):
+    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
+    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
+    inference_batch_size: int = 8
+    output_column: str = "table_structure_v1"
+    num_detections_column: str = "table_structure_v1_num_detections"
+    counts_by_label_column: str = "table_structure_v1_counts_by_label"
+
+
+class ChartParams(_ParamsModel):
+    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
+    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
+    inference_batch_size: int = 8
+
+
+class LLMInferenceParams(_ParamsModel):
+    """Reusable LLM sampling / generation parameters.
+
+    Inherit from this model to add temperature, top_p, and max_tokens
+    to any task that invokes an LLM (captioning, summarization, etc.).
+    """
+
+    temperature: float = 1.0
+    top_p: Optional[float] = None
+    max_tokens: int = 1024
+
+    @field_validator("temperature")
+    @classmethod
+    def _check_temperature(cls, v: float) -> float:
+        if not (0.0 <= v <= 2.0):
+            raise ValueError("temperature must be between 0.0 and 2.0")
+        return v
+
+    @field_validator("top_p")
+    @classmethod
+    def _check_top_p(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not (0.0 <= v <= 1.0):
+            raise ValueError("top_p must be between 0.0 and 1.0")
+        return v
+
+    @field_validator("max_tokens")
+    @classmethod
+    def _check_max_tokens(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("max_tokens must be > 0")
+        return v
+
+    def to_sampling_kwargs(self) -> dict[str, Any]:
+        """Build a dict of sampling parameters suitable for LLM inference calls.
+
+        ``top_p`` is only included when explicitly set (not ``None``), because
+        many backends (vLLM, OpenAI, NIM) change behaviour when the key is
+        present vs. absent.
+        """
+        kw: dict[str, Any] = {"temperature": self.temperature, "max_tokens": self.max_tokens}
+        if self.top_p is not None:
+            kw["top_p"] = self.top_p
+        return kw
+
+
+class LLMRemoteClientParams(_ParamsModel):
+    """Transport / connection parameters for any remote LLM client.
+
+    Pairs with :class:`LLMInferenceParams` (sampling) to fully specify a
+    call.  ``api_key`` is auto-resolved from the environment by
+    :class:`_ParamsModel` when left as ``None``.
+    """
+
+    model: str
+    api_base: Optional[str] = None
+    api_key: Optional[str] = None
+    num_retries: int = 3
+    timeout: float = 120.0
+    extra_params: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("num_retries")
+    @classmethod
+    def _check_retries(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("num_retries must be >= 0")
+        return v
+
+    @field_validator("timeout")
+    @classmethod
+    def _check_timeout(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("timeout must be > 0")
+        return v
+
+
+class CaptionParams(LLMInferenceParams):
+    endpoint_url: Optional[str] = None
+    model_name: str = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
+    api_key: Optional[str] = None
+    prompt: str = "Caption the content of this image:"
+    system_prompt: Optional[str] = "/no_think"
+    batch_size: int = 8
+    device: Optional[str] = None
+    hf_cache_dir: Optional[str] = None
+    context_text_max_chars: int = 0
+    tensor_parallel_size: int = 1
+    gpu_memory_utilization: float = 0.5
+    caption_infographics: bool = False
+    extra_body: dict[str, Any] = Field(default_factory=dict)
+
+
+class WebhookParams(_ParamsModel):
+    """Configuration for the webhook notification stage.
+
+    When ``endpoint_url`` is set, selected columns from the processed batch
+    are serialised to JSON and HTTP-POSTed to that URL.  If ``endpoint_url``
+    is ``None`` the stage is a no-op.
+    """
+
+    endpoint_url: Optional[str] = None
+    columns: list[str] = Field(default_factory=list)
+    headers: dict[str, str] = Field(default_factory=dict)
+    timeout_s: float = 30.0
+    max_retries: int = 3
+
+
+class DedupParams(_ParamsModel):
+    content_hash: bool = True
+    bbox_iou: bool = True
+    iou_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
+
+
+class InfographicParams(_ParamsModel):
+    remote: RemoteInvokeParams = Field(default_factory=RemoteInvokeParams)
+    remote_retry: RemoteRetryParams = Field(default_factory=RemoteRetryParams)
+    inference_batch_size: int = 8
+    allowed_page_element_labels: Sequence[str] = ("infographic", "title")
+    output_column: str = "infographic_elements_v1"
+    num_detections_column: str = "infographic_elements_v1_num_detections"
+    counts_by_label_column: str = "infographic_elements_v1_counts_by_label"
+
+
+# ---------------------------------------------------------------------------
+# Structured (database) ingestion params
+# ---------------------------------------------------------------------------
+
+
+class TabularExtractParams(_ParamsModel):
+    """Params for step 1: extract schema metadata and write to Neo4j.
+
+    Covers SQLAlchemy reflection of a live database and/or parsing of
+    pre-existing SQL DDL/query files.  Produces Database, Schema, Table,
+    Column, View and Query nodes together with their relationships.
+    The Neo4j connection is provided by get_neo4j_conn() (see
+    tabular_data.neo4j) and is not configured here.
+    """
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    connector: Optional[SQLDatabase] = None

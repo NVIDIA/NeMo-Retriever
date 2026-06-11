@@ -39,7 +39,7 @@ from nemo_retriever.harness.config import (
     load_nightly_config,
 )
 from nemo_retriever.harness.parsers import StreamMetrics
-from nemo_retriever.utils.input_files import resolve_input_files
+from nemo_retriever.common.input_files import resolve_input_files
 
 
 ANSI_ESCAPE_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
@@ -828,8 +828,8 @@ try:
             return 0
 
     import ray
-    from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
-    from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
+    from nemo_retriever.models.hf_cache import collect_hf_runtime_env
+    from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env
 
     effective_ray = ray_address or os.environ.get("RAY_ADDRESS")
     is_local = effective_ray in ("auto", "local", None, "")
@@ -1123,7 +1123,7 @@ def _service_beir_dataset_name(cfg: HarnessConfig) -> str:
 def _run_service_beir_evaluation(cfg: HarnessConfig) -> tuple[float, dict[str, float], int]:
     import time as _time
 
-    from nemo_retriever.recall.beir import BeirConfig, evaluate_service_beir, resolve_beir_dataset_options
+    from nemo_retriever.tools.recall.beir import BeirConfig, evaluate_service_beir, resolve_beir_dataset_options
 
     beir_options = resolve_beir_dataset_options(
         dataset_name=_service_beir_dataset_name(cfg),
@@ -1171,7 +1171,7 @@ def _run_service_mode(
     """
     import time as _time
 
-    from nemo_retriever.service_ingestor import ServiceIngestor
+    from nemo_retriever.service.service_ingestor import ServiceIngestor
 
     runtime_dir = artifact_dir / "runtime_metrics"
     runtime_dir.mkdir(parents=True, exist_ok=True)

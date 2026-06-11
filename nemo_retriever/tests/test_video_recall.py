@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from nemo_retriever.recall.core import (
+from nemo_retriever.tools.recall.core import (
     _hit_to_audio_segment_key,
     _normalize_audio_query_df,
     is_hit_at_k,

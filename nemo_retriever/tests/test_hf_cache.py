@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
+from nemo_retriever.models.hf_cache import collect_hf_runtime_env
 
 
 def test_collect_hf_runtime_env_defaults_to_online(monkeypatch):

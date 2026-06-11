@@ -32,7 +32,7 @@ from typing import Any, Callable
 from pydantic import ConfigDict
 
 from nemo_retriever.service.config import PipelinePoolConfig
-from nemo_retriever.service.models.base import RichModel
+from nemo_retriever.common.schemas.base import RichModel
 from nemo_retriever.service.services.prometheus import (
     POOL_MAX_QUEUE_SIZE,
     POOL_PROCESSED_TOTAL,

@@ -93,7 +93,7 @@ class VectorDBState:
         if not rows:
             return 0
 
-        from nemo_retriever.vdb.lancedb_schema import (
+        from nemo_retriever.common.vdb.lancedb_schema import (
             create_or_append_lancedb_table,
             infer_vector_dim,
             lancedb_schema,
@@ -141,7 +141,7 @@ class VectorDBState:
         if not self._table_exists:
             return [[] for _ in vectors]
 
-        from nemo_retriever.vdb.records import normalize_retrieval_results
+        from nemo_retriever.common.vdb.records import normalize_retrieval_results
 
         table = self._db.open_table(self.table_name)
         raw_results = []
@@ -153,7 +153,7 @@ class VectorDBState:
 
     def embed_queries(self, texts: list[str]) -> list[list[float]]:
         """Embed query texts using the configured NIM endpoint."""
-        from nemo_retriever.api.util.nim import infer_microservice
+        from nemo_retriever.models.nim.util import infer_microservice
 
         embeddings = infer_microservice(
             texts,

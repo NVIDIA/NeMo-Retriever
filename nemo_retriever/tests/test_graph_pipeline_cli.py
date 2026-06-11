@@ -13,11 +13,11 @@ from typer.testing import CliRunner
 
 import nemo_retriever.ingest.execution as ingest_execution
 import nemo_retriever.examples.graph_pipeline as batch_pipeline
-import nemo_retriever.model as model_module
-import nemo_retriever.pipeline.__main__ as pipeline_main
-import nemo_retriever.recall.beir as beir_module
-import nemo_retriever.utils.detection_summary as detection_summary_module
-from nemo_retriever.utils.input_files import resolve_input_patterns
+import nemo_retriever.models as model_module
+import nemo_retriever.cli.pipeline.__main__ as pipeline_main
+import nemo_retriever.tools.recall.beir as beir_module
+import nemo_retriever.common.detection_summary as detection_summary_module
+from nemo_retriever.common.input_files import resolve_input_patterns
 
 RUNNER = CliRunner()
 
@@ -602,7 +602,7 @@ def test_graph_pipeline_cli_service_mode_lists_all_incompatible_flags(tmp_path) 
 
 def test_graph_pipeline_cli_service_mode_allows_extract_and_embed_flags(tmp_path, monkeypatch) -> None:
     """Flags whose values flow through to ``ServiceIngestor`` must not be rejected."""
-    import nemo_retriever.service_ingestor as service_ingestor_module
+    import nemo_retriever.service.service_ingestor as service_ingestor_module
 
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
@@ -705,7 +705,7 @@ def test_graph_pipeline_cli_service_mode_rejects_vdb_flags(tmp_path) -> None:
 
 
 def test_graph_pipeline_cli_service_mode_accepts_allowlisted_flags(tmp_path, monkeypatch) -> None:
-    import nemo_retriever.service_ingestor as service_ingestor_module
+    import nemo_retriever.service.service_ingestor as service_ingestor_module
 
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()

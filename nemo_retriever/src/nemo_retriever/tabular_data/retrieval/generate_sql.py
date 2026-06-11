@@ -251,7 +251,7 @@ def get_sql_tool_response_top_k(
 
     Returns a dict with keys: sql_code, answer, result.
     """
-    from nemo_retriever.retriever import Retriever
+    from nemo_retriever.graph.retriever import Retriever
 
     embed_kw: dict = {}
     if embedding_http_endpoint:

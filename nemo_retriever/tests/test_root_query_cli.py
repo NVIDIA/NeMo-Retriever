@@ -14,7 +14,7 @@ import nemo_retriever.query.workflow as query_core
 
 
 RUNNER = CliRunner()
-cli_main = importlib.import_module("nemo_retriever.adapters.cli.main")
+cli_main = importlib.import_module("nemo_retriever.cli.main")
 
 
 def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:

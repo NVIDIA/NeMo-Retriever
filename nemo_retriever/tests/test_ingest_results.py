@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from nemo_retriever.ingest_results import (
+from nemo_retriever.ingestor.results import (
     concat_ingest_results,
     dataframe_from_transport_records,
     dataframe_to_transport_records,

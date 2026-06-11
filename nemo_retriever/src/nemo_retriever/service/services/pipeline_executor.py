@@ -85,7 +85,7 @@ def _sanitize_result_data(df: Any) -> list[dict[str, Any]]:
     frame; cell values are sanitized for transport (see
     :mod:`nemo_retriever.ingest_results`).
     """
-    from nemo_retriever.ingest_results import dataframe_to_transport_records
+    from nemo_retriever.ingestor.results import dataframe_to_transport_records
 
     return dataframe_to_transport_records(df)
 
@@ -352,8 +352,8 @@ def _build_graph_ingestor_from_spec(
     vectordb fan-out — the in-graph ``IngestVdbOperator`` already
     handles persistence when ``vdb_upload_params`` is present.
     """
-    from nemo_retriever.graph_ingestor import GraphIngestor
-    from nemo_retriever.params import (
+    from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+    from nemo_retriever.common.params import (
         ASRParams,
         CaptionParams,
         DedupParams,
@@ -548,7 +548,7 @@ def _run_pipeline_in_process(
         # Skip the out-of-graph fan-out when the client already wired
         # IngestVdbOperator into the spec — that operator handles
         # persistence itself.
-        from nemo_retriever.vdb.lancedb_schema import build_lancedb_rows
+        from nemo_retriever.common.vdb.lancedb_schema import build_lancedb_rows
 
         lancedb_rows = build_lancedb_rows(result_df)
         _post_rows_to_vectordb(lancedb_rows, vectordb_url, filename)
@@ -564,7 +564,7 @@ def build_extract_params(nim: NimEndpointsConfig) -> Any:
     ``use_graphic_elements`` / ``use_table_structure`` when the
     corresponding invoke URLs are provided.
     """
-    from nemo_retriever.params import ExtractParams
+    from nemo_retriever.common.params import ExtractParams
 
     kwargs: dict[str, Any] = {}
     if nim.page_elements_invoke_url:
@@ -588,7 +588,7 @@ def build_caption_params(nim: NimEndpointsConfig) -> Any | None:
     that request the ``caption`` stage will hit the policy's
     ``caption_enabled`` guard before reaching this point.
     """
-    from nemo_retriever.params import CaptionParams
+    from nemo_retriever.common.params import CaptionParams
 
     if not nim.caption_invoke_url:
         return None
@@ -610,7 +610,7 @@ def build_asr_params(nim: NimEndpointsConfig) -> Any | None:
     if not nim.audio_grpc_endpoint:
         return None
 
-    from nemo_retriever.params import ASRParams
+    from nemo_retriever.common.params import ASRParams
 
     return ASRParams(
         audio_endpoints=(nim.audio_grpc_endpoint, None),
@@ -628,7 +628,7 @@ def build_embed_params(nim: NimEndpointsConfig) -> Any | None:
     if not nim.embed_invoke_url:
         return None
 
-    from nemo_retriever.params import EmbedParams
+    from nemo_retriever.common.params import EmbedParams
 
     kwargs: dict[str, Any] = {"embed_invoke_url": nim.embed_invoke_url}
     if nim.embed_model_name:

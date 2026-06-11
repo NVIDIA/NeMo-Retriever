@@ -10,9 +10,9 @@ import pandas as pd
 import pytest
 import typer
 
-import nemo_retriever.pipeline as pipeline_pkg
-from nemo_retriever.params import EmbedParams, ExtractParams, TextChunkParams
-from nemo_retriever.pipeline.__main__ import (
+import nemo_retriever.cli.pipeline as pipeline_pkg
+from nemo_retriever.common.params import EmbedParams, ExtractParams, TextChunkParams
+from nemo_retriever.cli.pipeline.__main__ import (
     _build_embed_params,
     _build_service_ingestor,
     _collect_results,
@@ -22,13 +22,13 @@ from nemo_retriever.pipeline.__main__ import (
     _resolve_file_patterns,
 )
 from nemo_retriever.service.config import PipelineOverridesConfig
-from nemo_retriever.service.models.pipeline_spec import PipelineSpec
-from nemo_retriever.service.policy import validate_pipeline_spec
-from nemo_retriever.service_ingestor import ServiceIngestor
+from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
+from nemo_retriever.common.policy import validate_pipeline_spec
+from nemo_retriever.service.service_ingestor import ServiceIngestor
 
 
 def test_pipeline_package_exports_cli_app_and_run() -> None:
-    from nemo_retriever.pipeline.__main__ import app, run
+    from nemo_retriever.cli.pipeline.__main__ import app, run
 
     assert pipeline_pkg.app is app
     assert pipeline_pkg.run is run
@@ -219,7 +219,7 @@ def test_collect_results_accepts_inprocess_dataframe() -> None:
 
 
 def test_to_client_vdb_records_returns_empty_list_when_nothing_uploadable() -> None:
-    from nemo_retriever.vdb.records import to_client_vdb_records
+    from nemo_retriever.common.vdb.records import to_client_vdb_records
 
     assert to_client_vdb_records([]) == []
     assert to_client_vdb_records([{"text": "no embedding"}]) == []

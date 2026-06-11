@@ -7,26 +7,26 @@ from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.ingestor_runtime import build_inprocess_graph
 from nemo_retriever.graph.pipeline_graph import Graph
-from nemo_retriever.ocr.ocr import OCRActor
-from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
-from nemo_retriever.text_embed.operators import _BatchEmbedActor
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.graph_ingestor import GraphIngestor
-from nemo_retriever.ingest_plans import BaseIngestPlan
-from nemo_retriever.params import ASRParams
-from nemo_retriever.params import AudioChunkParams
-from nemo_retriever.params import BatchTuningParams
-from nemo_retriever.params import CaptionParams
-from nemo_retriever.params import EmbedParams
-from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import StoreParams
-from nemo_retriever.params import TextChunkParams
-from nemo_retriever.params import VdbUploadParams
-from nemo_retriever.params import WebhookParams
-from nemo_retriever.utils.ray_resource_hueristics import ClusterResources
-from nemo_retriever.utils.ray_resource_hueristics import Resources
+from nemo_retriever.operators.extract.ocr.ocr import OCRActor
+from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionActor
+from nemo_retriever.operators.embed.operators import _BatchEmbedActor
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+from nemo_retriever.ingestor.plans import BaseIngestPlan
+from nemo_retriever.common.params import ASRParams
+from nemo_retriever.common.params import AudioChunkParams
+from nemo_retriever.common.params import BatchTuningParams
+from nemo_retriever.common.params import CaptionParams
+from nemo_retriever.common.params import EmbedParams
+from nemo_retriever.common.params import ExtractParams
+from nemo_retriever.common.params import StoreParams
+from nemo_retriever.common.params import TextChunkParams
+from nemo_retriever.common.params import VdbUploadParams
+from nemo_retriever.common.params import WebhookParams
+from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+from nemo_retriever.common.ray_resource_hueristics import Resources
 
 
 def _linear_nodes(graph):
@@ -237,7 +237,7 @@ def test_build_graph_resolves_endpoint_configured_nodes_to_cpu_variants(
 
 
 def test_build_graph_keeps_partial_graphic_endpoint_on_gpu_for_local_ocr(caplog) -> None:
-    caplog.set_level(logging.WARNING, logger="nemo_retriever.chart.chart_detection")
+    caplog.set_level(logging.WARNING, logger="nemo_retriever.operators.extract.chart.chart_detection")
     graph = build_graph(
         extract_params=ExtractParams(
             method="ocr",
@@ -438,12 +438,12 @@ def test_graph_ingestor_autodetects_no_gpu_for_batch_overrides(monkeypatch) -> N
         available_resources=Resources(cpu_count=16, gpu_count=0),
     )
 
-    monkeypatch.setattr("nemo_retriever.graph_ingestor.build_graph", lambda **kwargs: Graph())
+    monkeypatch.setattr("nemo_retriever.ingestor.graph_ingestor.build_graph", lambda **kwargs: Graph())
     monkeypatch.setattr(
-        "nemo_retriever.graph_ingestor.batch_tuning_to_node_overrides", _fake_batch_tuning_to_node_overrides
+        "nemo_retriever.ingestor.graph_ingestor.batch_tuning_to_node_overrides", _fake_batch_tuning_to_node_overrides
     )
-    monkeypatch.setattr("nemo_retriever.graph_ingestor.gather_cluster_resources", lambda ray: cluster)
-    monkeypatch.setattr("nemo_retriever.graph_ingestor.RayDataExecutor", _FakeExecutor)
+    monkeypatch.setattr("nemo_retriever.ingestor.graph_ingestor.gather_cluster_resources", lambda ray: cluster)
+    monkeypatch.setattr("nemo_retriever.ingestor.graph_ingestor.RayDataExecutor", _FakeExecutor)
     monkeypatch.setattr("ray.is_initialized", _FakeRay.is_initialized)
 
     ingestor = GraphIngestor(run_mode="batch", documents=["/tmp/input.pdf"])

@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for nemo_retriever.graph.webhook_operator."""
+"""Tests for nemo_retriever.operators.graph_ops.webhook_operator."""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.webhook_operator import (
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.graph_ops.webhook_operator import (
     WebhookNotifyOperator,
     _dataframe_to_records,
     _serialize_value,
@@ -133,7 +133,7 @@ class TestWebhookNotifyOperator:
 
     # -- happy-path POST ----------------------------------------------------
 
-    @patch("nemo_retriever.graph.webhook_operator.WebhookNotifyOperator._get_session")
+    @patch("nemo_retriever.operators.graph_ops.webhook_operator.WebhookNotifyOperator._get_session")
     def test_happy_path_post(self, mock_get_session):
         mock_session = MagicMock()
         mock_response = MagicMock(status_code=200)
@@ -153,7 +153,7 @@ class TestWebhookNotifyOperator:
         assert call_kwargs[0][0] == "https://hook.example.com/ingest"
         mock_response.raise_for_status.assert_called_once()
 
-    @patch("nemo_retriever.graph.webhook_operator.WebhookNotifyOperator._get_session")
+    @patch("nemo_retriever.operators.graph_ops.webhook_operator.WebhookNotifyOperator._get_session")
     def test_post_with_column_filter(self, mock_get_session):
         mock_session = MagicMock()
         mock_session.post.return_value = MagicMock(status_code=200)
@@ -170,7 +170,7 @@ class TestWebhookNotifyOperator:
 
     # -- error handling -----------------------------------------------------
 
-    @patch("nemo_retriever.graph.webhook_operator.WebhookNotifyOperator._get_session")
+    @patch("nemo_retriever.operators.graph_ops.webhook_operator.WebhookNotifyOperator._get_session")
     def test_post_failure_logs_and_passes_data_through(self, mock_get_session):
         mock_session = MagicMock()
         mock_session.post.side_effect = ConnectionError("boom")

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,7 @@ IGNORED_SCAN_DIRS = {
     "__pycache__",
     "artifacts",
     "lancedb",
+    "tmp",
 }
 IGNORED_SCAN_SUFFIXES = (".egg-info",)
 IGNORED_SCAN_PREFIXES = ("lancedb_",)
@@ -43,19 +45,31 @@ def _legacy_text_offenders(tokens: tuple[str, ...], ignored_files: set[Path]) ->
     ignored_resolved = {path.resolve() for path in ignored_files}
     offenders: list[str] = []
 
-    for path in REPO_ROOT.rglob("*"):
-        relative = path.relative_to(REPO_ROOT)
-        if path.resolve() in ignored_resolved or not path.is_file() or _is_ignored_scan_path(relative):
-            continue
+    # Prune ignored directories during traversal (rather than filtering after a
+    # full rglob) so the scan never descends into large generated/scratch trees
+    # such as .venv/ or tmp/. This keeps the scan fast regardless of local state.
+    for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in IGNORED_SCAN_DIRS
+            and not d.endswith(IGNORED_SCAN_SUFFIXES)
+            and not d.startswith(IGNORED_SCAN_PREFIXES)
+        ]
+        for name in filenames:
+            path = Path(dirpath) / name
+            relative = path.relative_to(REPO_ROOT)
+            if path.resolve() in ignored_resolved or _is_ignored_scan_path(relative):
+                continue
 
-        try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
 
-        for token in tokens:
-            if token in text:
-                offenders.append(f"{relative}: {token}")
+            for token in tokens:
+                if token in text:
+                    offenders.append(f"{relative}: {token}")
 
     return offenders
 
@@ -241,7 +255,7 @@ def test_dev_compose_helpers_are_feature_scoped():
     assert "docker-compose" not in docker_doc_text.lower()
 
     skill_eval_config = (
-        REPO_ROOT / "nemo_retriever" / "src" / "nemo_retriever" / "skill_eval" / "configs" / "skill_eval.yaml"
+        REPO_ROOT / "nemo_retriever" / "src" / "nemo_retriever" / "tools" / "skill_eval" / "configs" / "skill_eval.yaml"
     ).read_text(encoding="utf-8")
     assert "nemo_retriever/dev/compose/judge.compose.yaml" in skill_eval_config
 

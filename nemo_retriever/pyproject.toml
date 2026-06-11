@@ -232,7 +232,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "nemo_retriever.harness.portal" = ["static/**/*"]
 "nemo_retriever.service" = ["retriever-service.yaml"]
-"nemo_retriever.skill_eval" = ["prompts/*.j2", "configs/*.yaml"]
+"nemo_retriever.tools.skill_eval" = ["prompts/*.j2", "configs/*.yaml"]
 
 [tool.pytest.ini_options]
 # ``src`` exposes the ``nemo_retriever`` package (src layout). ``.`` keeps ``from tests import …``

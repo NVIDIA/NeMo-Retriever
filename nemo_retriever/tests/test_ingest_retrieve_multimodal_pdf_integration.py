@@ -64,7 +64,7 @@ def multimodal_pdf_path() -> Path:
 def test_ingest_multimodal_pdf_embed_vdb_then_retriever_query(multimodal_pdf_path: Path) -> None:
     """Mirror ``nv-ingest/test.py``: full graph ingest then a semantic query against the default VDB."""
     from nemo_retriever import create_ingestor
-    from nemo_retriever.retriever import Retriever
+    from nemo_retriever.graph.retriever import Retriever
 
     pdf = str(multimodal_pdf_path.resolve())
     remote = _remote_nim_config_from_env()

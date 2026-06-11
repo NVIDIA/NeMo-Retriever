@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from nemo_retriever.skill_eval.runner import (
+from nemo_retriever.tools.skill_eval.runner import (
     _codex_exit_ok,
     _retriever_in_command,
     _retriever_segment_kind,

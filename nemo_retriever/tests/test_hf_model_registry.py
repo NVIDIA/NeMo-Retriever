@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from nemo_retriever.utils import hf_model_registry as registry
+from nemo_retriever.models import hf_model_registry as registry
 
 
 def test_extraction_hf_repos_have_pinned_revisions():

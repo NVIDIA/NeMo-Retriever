@@ -6,11 +6,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_retriever.params import build_embed_option_kwargs
+from nemo_retriever.common.params import build_embed_option_kwargs
 from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
-from nemo_retriever.retriever import Retriever
-from nemo_retriever.utils.remote_auth import resolve_remote_api_key
-from nemo_retriever.vdb.records import RetrievalHit
+from nemo_retriever.graph.retriever import Retriever
+from nemo_retriever.common.remote_auth import resolve_remote_api_key
+from nemo_retriever.common.vdb.records import RetrievalHit
 
 _LOCAL_VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
 
