@@ -358,8 +358,10 @@ write concurrency.
 
 ### Where results live
 
-- **LanceDB** — `--lancedb-uri lancedb` (default), table `nv-ingest`. Query via
-  `retriever recall vdb-recall …` or `nemo_retriever.retriever.Retriever`.
+- **LanceDB** — `--lancedb-uri lancedb` (default). Default table name depends on the
+  subcommand: `retriever ingest` and `retriever query` use `nemo-retriever`; `retriever
+  pipeline run` still uses `nv-ingest`. Query via `retriever recall vdb-recall …` or
+  `nemo_retriever.retriever.Retriever`.
 - **Parquet** — `--save-intermediate <dir>` writes `<dir>/extraction.parquet`.
 - **Images** — `--store-images-uri <uri>` (local path or fsspec URI). Storage follows
   `--embed-granularity` (page vs element images).
@@ -420,6 +422,10 @@ retriever pipeline run "${PDF_DIR}" \
 - Tune throughput with `--pdf-split-batch-size`, `--pdf-extract-batch-size`, etc.
 
 ### Inspect results
+
+The batch walk-through above uses `retriever pipeline run`, which writes LanceDB table
+`nv-ingest` by default. After `retriever ingest`, use `nemo-retriever` instead (see
+[Inspect the results](#inspect-the-results)).
 
 ```python
 import pyarrow.parquet as pq
