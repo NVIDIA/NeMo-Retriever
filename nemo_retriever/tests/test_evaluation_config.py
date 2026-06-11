@@ -143,7 +143,7 @@ def test_build_eval_chain_forwards_judge_num_retries() -> None:
     with (
         patch("nemo_retriever.tools.evaluation.retrieval_loader.RetrievalLoaderOperator"),
         patch("nemo_retriever.tools.evaluation.generation.QAGenerationOperator"),
-        patch("nemo_retriever.tools.evaluation.scoring_operator.ScoringOperator"),
+        patch("nemo_retriever.operators.graph_ops.scoring_operator.ScoringOperator"),
         patch("nemo_retriever.tools.evaluation.judging.JudgingOperator") as mock_judge_op,
     ):
         mock_judge_op.return_value = MagicMock()
@@ -162,7 +162,7 @@ def test_build_eval_chain_defaults_judge_num_retries_when_absent() -> None:
     with (
         patch("nemo_retriever.tools.evaluation.retrieval_loader.RetrievalLoaderOperator"),
         patch("nemo_retriever.tools.evaluation.generation.QAGenerationOperator"),
-        patch("nemo_retriever.tools.evaluation.scoring_operator.ScoringOperator"),
+        patch("nemo_retriever.operators.graph_ops.scoring_operator.ScoringOperator"),
         patch("nemo_retriever.tools.evaluation.judging.JudgingOperator") as mock_judge_op,
     ):
         mock_judge_op.return_value = MagicMock()

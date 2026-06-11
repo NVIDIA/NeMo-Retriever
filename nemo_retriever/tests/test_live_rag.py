@@ -431,7 +431,7 @@ class TestPipelineBuilder:
             # Mock out the three EvalOperator classes that the builder imports
             # lazily so we can assert which ones were appended and executed.
             with patch("nemo_retriever.tools.evaluation.generation.QAGenerationOperator") as mock_gen_cls, patch(
-                "nemo_retriever.tools.evaluation.scoring_operator.ScoringOperator"
+                "nemo_retriever.operators.graph_ops.scoring_operator.ScoringOperator"
             ) as mock_score_cls, patch("nemo_retriever.tools.evaluation.judging.JudgingOperator") as mock_judge_cls:
                 # Configure each mocked operator to pass the DataFrame through
                 # with a sentinel column so we can verify each step ran.
@@ -474,7 +474,7 @@ class TestPipelineBuilder:
 
         with patch.object(r, "queries", return_value=[_fake_hits()]):
             with patch("nemo_retriever.tools.evaluation.generation.QAGenerationOperator") as mock_gen_cls, patch(
-                "nemo_retriever.tools.evaluation.scoring_operator.ScoringOperator"
+                "nemo_retriever.operators.graph_ops.scoring_operator.ScoringOperator"
             ) as mock_score_cls, patch("nemo_retriever.tools.evaluation.judging.JudgingOperator") as mock_judge_cls:
 
                 def _gen_process(df, **_):
