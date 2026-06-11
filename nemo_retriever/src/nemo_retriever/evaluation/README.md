@@ -289,7 +289,7 @@ python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
 Output:
 - `lancedb/nemo-retriever/` (~84k chunks) -- used by step 3 for retrieval queries.
 
-**Note:** `graph_pipeline.py` defaults to `--run-mode inprocess`. Pass `--run-mode batch` for Ray Data scale-out. Both modes produce the same output schema.
+**Note:** `graph_pipeline.py` defaults to `--run-mode inprocess`. Pass `--run-mode batch` for Ray Data scale-out. Both modes produce compatible chunk records for downstream evaluation (return type differs: `pandas.DataFrame` vs `ray.data.Dataset`).
 
 ### Step 2: Build page markdown index (NeMo Retriever)
 
