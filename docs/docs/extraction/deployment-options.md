@@ -11,6 +11,10 @@ Use the sections below to pick documentation and deployment options that match y
 1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 2. [Use the Python API](nemo-retriever-api-reference.md) or [Use the CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli) — install and run the [`nemo_retriever`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever) package in your environment
 
+### I want a standalone Docker service container
+
+Build and run the NeMo Retriever service image with the [Docker service image guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md). Use this for local service-container validation; use Helm for multi-service Kubernetes deployments.
+
 ### I want a Kubernetes / Helm deployment
 
 1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
@@ -20,7 +24,6 @@ Use the sections below to pick documentation and deployment options that match y
 
 **Core NIMs for the default extraction pipeline** (26.05): `page_elements`, `table_structure`, `ocr`, and `vlm_embed` (`llama-nemotron-embed-vl-1b-v2:1.12.0`). These four are auto-wired into the retriever service. **Nemotron Parse**, **Nemotron 3 Nano Omni**, the **VL reranker**, and **Parakeet ASR** are optional and not auto-wired. For a minimal GPU footprint, disable optional keys you do not need (see [Recommended minimal install (26.05)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#recommended-minimal-install-2605)). See [Pre-Requisites & Support Matrix — Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims).
 
-**Docker Compose (unsupported, developer-only):** [Docker Compose for local development](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) — **not** a substitute for Helm or the published Library charts.
 
 For audio and video extraction in Kubernetes, set `service.installFfmpeg=true`
 so the service container installs `ffmpeg` and `ffprobe` at startup. This
@@ -46,7 +49,7 @@ environments), use a custom service image that already contains `ffmpeg` and
 2. [Throughput is dataset-dependent](multimodal-extraction.md#extraction-limitations-and-quality)
 3. [Evaluate on your data](evaluate-on-your-data.md)
 
-## When to use NVIDIA-hosted NIMs { #when-to-use-nvidia-hosted-nims }
+## When to use NVIDIA-hosted NIMs
 
 [NVIDIA-hosted NIMs](https://build.nvidia.com/) run inference on NVIDIA-managed infrastructure. You call models with API keys (refer to [Get your API key](api-keys.md)) without operating GPU nodes yourself.
 
@@ -58,7 +61,7 @@ Consider hosted NIMs when:
 
 **Also refer to:** [NVIDIA NIM catalog](https://build.nvidia.com/)
 
-## When to self-host NIMs { #when-to-self-host-nims }
+## When to self-host NIMs
 
 Self-hosted NIMs run on your GPUs or air-gapped hardware, typically with Kubernetes and the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html).
 
@@ -88,4 +91,3 @@ For offline image captioning, deploy the in-cluster [Nemotron 3 Nano Omni](prere
 - [NeMo Retriever Library — prerequisites / deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (supported **Helm** handoff)
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Audio and video](audio-video.md)
-- **Docker Compose (unsupported):** [docker.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) — local developer tooling only

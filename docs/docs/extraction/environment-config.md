@@ -3,8 +3,6 @@
 The following are the environment variables that you can use to configure [NeMo Retriever Library](overview.md).
 You can specify these in a .env file in your working directory or directly as shell environment variables.
 
-For **Docker Compose** `.env` files at the **NeMo-Retriever repository root** (unsupported developer tooling only), refer to [`docker.md`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md).
-
 
 ## General Environment Variables
 

@@ -6,8 +6,6 @@ streams uploads through a set of NVIDIA NIM microservices
 (page-elements, table-structure, OCR, VLM embed by default) and exposes
 result + status APIs over HTTP / SSE.
 
-**Unsupported developer path:** ad-hoc **Docker Compose** workflows (not
-chart-managed) are documented separately in [`../docker.md`](../docker.md).
 Use **Helm** (this chart and/or the **additional Library charts** documented in the
 [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/))
 for supported NIM and service deployment.
@@ -936,6 +934,155 @@ kubectl get hpa <release>-realtime -o jsonpath='{.metadata.annotations.nemo-retr
 The dashboard's *Worker Pool Capacity* card on the **Overview** page
 mirrors the same signal Prometheus is seeing, so it's a quick eyeball
 sanity check before opening Grafana.
+
+---
+
+## OpenShift deployment { #openshift-deployment }
+
+The chart defaults target generic Kubernetes clusters that allow fixed numeric
+UIDs (`runAsUser` / `runAsGroup` / `fsGroup` **1000**). **OpenShift 4.x**
+namespaces under the default **restricted-v2** Security Context Constraint (SCC)
+and **Pod Security Admission (PSA) `restricted`** profile assign a per-namespace
+UID/GID range instead. A stock `helm install` without overrides therefore fails
+SCC validation, emits PSA warnings, or crashes on log paths the random UID cannot
+write.
+
+We do **not** change chart defaults for OpenShift-only behavior (that would affect
+other platforms). Use the overrides below on OpenShift, or save the YAML block
+into a local values file and pass `-f <file>`.
+
+### Cluster posture (typical QA / hardened namespaces)
+
+| Control | Typical default on a new OpenShift project |
+| --- | --- |
+| SCC | **restricted-v2** (first match in priority order) |
+| PSA | `pod-security.kubernetes.io/warn=restricted` (and often `audit=restricted`; `enforce` may be unset on dev clusters) |
+| UID assignment | SCC injects `runAsUser` / `fsGroup` from the namespace range (for example `1000750000–1000759999`) |
+
+On clusters with **PSA `enforce=restricted`**, missing container `securityContext`
+fields become hard rejections, not warnings.
+
+### Override reference (maps to chart limitations)
+
+| Symptom on stock install | Cause | Helm override |
+| --- | --- | --- |
+| `FailedCreate`: UID/GID **1000** not in namespace range | Hardcoded `service.podSecurityContext` UID/GID/fsGroup | Omit `runAsUser`, `runAsGroup`, and `fsGroup`; keep only `runAsNonRoot: true` |
+| PSA warning: `allowPrivilegeEscalation`, capabilities, `seccompProfile` | Empty `service.securityContext` | Set restricted baseline on `service.securityContext` (see sample below) |
+| `PermissionError` on `/var/lib/nemo-retriever/retriever-service.log` when `persistence.enabled=false` | Default log path is image-owned; random UID cannot write without a PVC | Point `serviceConfig.logging.file` at `/tmp/...` (chart mounts `emptyDir` at `/tmp`) |
+| `CreateContainerConfigError`: non-numeric image `USER nemo` on **vectordb** | Vectordb container has no `securityContext` block for SCC to annotate | Disable vectordb for smoke tests, or patch the vectordb Deployment after install (below) |
+| PSA warnings on **otel-collector** | Otel Deployment has no `securityContext` in the chart | `topology.otel.enabled=false` unless you patch that Deployment |
+
+### Recommended value overrides
+
+```yaml
+# OpenShift overrides for nemo-retriever Helm chart (restricted-v2 / PSA restricted).
+# Save locally, then: helm install retriever ./nemo_retriever/helm -f <your-file>.yaml ...
+
+service:
+  podSecurityContext:
+    runAsNonRoot: true
+    # Do NOT set runAsUser, runAsGroup, or fsGroup — OpenShift SCC assigns them.
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+serviceConfig:
+  logging:
+    # Writable without persistence PVC (chart always mounts emptyDir at /tmp).
+    file: /tmp/retriever-service.log
+  vectordb:
+    # Set false for minimal service-only validation; see vectordb patch below if enabled.
+    enabled: false
+
+topology:
+  otel:
+    enabled: false
+```
+
+When **`persistence.enabled=true`**, you can keep the default log path under
+`persistence.mountPath` (`/var/lib/nemo-retriever`) because the PVC is mounted and
+SCC-assigned `fsGroup` applies. When persistence is off, always relocate logs to
+`/tmp` (or another path backed by `service.extraVolumes`).
+
+### Example install on OpenShift 4.20 (service-only smoke test)
+
+Matches QA validation with external NIMs disabled, no persistence, and no results
+PVC:
+
+```bash
+oc new-project nemo-retriever
+
+oc create secret docker-registry ngc-secret -n nemo-retriever \
+  --docker-server=nvcr.io --docker-username='$oauthtoken' \
+  --docker-password="$NGC_API_KEY"
+
+oc create secret generic ngc-api -n nemo-retriever \
+  --from-literal=NGC_API_KEY="$NGC_API_KEY" \
+  --from-literal=NGC_CLI_API_KEY="$NGC_API_KEY"
+
+helm install retriever ./nemo_retriever/helm -n nemo-retriever \
+  -f <your-openshift-overrides>.yaml \
+  --set ngcImagePullSecret.create=false \
+  --set ngcApiSecret.create=false \
+  --set nims.enabled=false \
+  --set persistence.enabled=false \
+  --set retrieverResults.enabled=false
+```
+
+Verify pods:
+
+```bash
+oc get pods -n nemo-retriever
+oc describe pod -l app.kubernetes.io/name=nemo-retriever -n nemo-retriever
+```
+
+You should see SCC-assigned numeric `runAsUser` on containers that declare a
+`securityContext` block, and no PSA warnings once overrides are applied.
+
+### Enabling the vectordb Deployment on OpenShift
+
+`serviceConfig.vectordb.enabled=true` renders a **vectordb** container from the
+same image (`USER nemo`, non-numeric). The chart does not yet expose a
+`securityContext` value for that container. After `helm install`, patch the
+Deployment so OpenShift can inject a numeric UID into the container spec:
+
+```bash
+RELEASE=retriever
+NS=nemo-retriever
+VDB_DEPLOY="${RELEASE}-nemo-retriever-vectordb"
+
+oc patch deployment "$VDB_DEPLOY" -n "$NS" --type=json -p='[
+  {"op": "add", "path": "/spec/template/spec/containers/0/securityContext", "value": {
+    "allowPrivilegeEscalation": false,
+    "capabilities": {"drop": ["ALL"]},
+    "runAsNonRoot": true,
+    "seccompProfile": {"type": "RuntimeDefault"}
+  }}
+]'
+```
+
+Re-apply the patch after `helm upgrade` if the Deployment is recreated. A future
+chart release may add first-class `topology.vectordb.securityContext` values.
+
+### Enabling the OpenTelemetry collector on OpenShift
+
+The chart’s otel-collector Deployment likewise lacks `securityContext` fields.
+Prefer `topology.otel.enabled=false` (as in the sample values) unless you operate
+your own collector or patch `*-otel` the same way as vectordb.
+
+### What we intentionally do not require on OpenShift
+
+Do **not** bind the namespace to **anyuid** SCC or set PSA `enforce=privileged`
+unless your security team explicitly approves it. The overrides above are intended
+to keep **restricted-v2** / PSA **restricted** posture.
+
+### Related documentation
+
+- [Pre-Requisites & Support Matrix](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md)
+- [Deployment options](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md)
 
 ---
 

@@ -4,23 +4,17 @@
 with no guarantees — see [Supported vs development / experimental subcommands](README.md#supported-vs-development--experimental-subcommands).
 
 This page covers benchmark workflows for NeMo Retriever Library. See also
-`docs/docs/extraction/benchmarking.md`, [`tools/harness/README.md`](../../../tools/harness/README.md)
-(legacy integration harness), and [`nemo_retriever/harness/HANDOFF.md`](../../harness/HANDOFF.md)
-(the harness behind `retriever harness`).
+`docs/docs/extraction/benchmarking.md` for published extraction benchmark notes and
+[`nemo_retriever/harness/HANDOFF.md`](../../harness/HANDOFF.md) for operator-oriented
+notes on `retriever harness`.
 
-There are two harness stacks:
+Use `retriever harness` for benchmark orchestration and `retriever benchmark` for
+per-stage micro-benchmarks.
 
-| Stack | How you run it | Config |
-|-------|----------------|--------|
-| **Legacy** (`tools/harness/`) | `python -m nv_ingest_harness.cli.run` from `tools/harness/` | `tools/harness/test_configs.yaml` |
-| **Retriever CLI** (`nemo_retriever.harness`) | `retriever harness run` | `nemo_retriever/harness/test_configs.yaml` |
-
-The `retriever` CLI also exposes per-stage `retriever benchmark …` micro-benchmarks.
-
-## Retriever harness (development / experimental)
+## Harness (development / experimental)
 
 Run from the repository root (or any directory; pass `--config` if needed). Uses
-`--dataset` and `--preset` — there is no `--case` flag on this harness.
+`--dataset` and `--preset` against `nemo_retriever/harness/test_configs.yaml`.
 
 ```bash
 # Named dataset from nemo_retriever/harness/test_configs.yaml
@@ -60,28 +54,6 @@ Image persistence is configured on `retriever pipeline run`, not on the harness.
 Use `--store-images-uri <uri>` (local path or fsspec URI). Stored assets follow
 `--embed-granularity` (page vs element images).
 
-## Legacy `tools/harness` (nv_ingest_harness)
-
-Unsupported developer tooling; kept for older CI and compose/helm managed runs.
-After `cd tools/harness`, omit `--project tools/harness` — uv finds `pyproject.toml`
-in the current directory.
-
-```bash
-cd tools/harness
-uv sync
-uv pip install -e .
-
-uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
-uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=/path/to/your/data
-uv run python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767 --managed
-```
-
-From the **repo root** without `cd`, use the project flag:
-
-```bash
-uv run --project tools/harness python -m nv_ingest_harness.cli.run --case=e2e --dataset=bo767
-```
-
 ## Per-stage micro-benchmarks
 
 Stage throughput benchmarks on the main CLI (no full harness required):
@@ -106,16 +78,12 @@ retriever benchmark extract ./data/pdf_corpus \
 
 Each benchmark reports rows/sec (or chunk rows/sec for audio) for its actor.
 
-## Parity notes
+## Notes
 
-- **Not a drop-in flag map:** legacy harness uses `--case=e2e`; `retriever harness`
-  uses `--dataset` / `--preset` / `--override KEY=VALUE` against
+- **Configuration:** `retriever harness` uses `--dataset` / `--preset` /
+  `--override KEY=VALUE` against
   `nemo_retriever/harness/test_configs.yaml`.
-- **Datasets:** names like `bo767` and `jp20` exist in both configs but paths and
-  defaults may differ; check the YAML for each stack.
 - **Launcher:** for internal benchmarking, `retriever harness run …` is the
-  retriever-CLI entry point (development / experimental; no guarantees). Use
-  `nv_ingest_harness` when you still depend on `--case` or `--managed` behavior in
-  `tools/harness/README.md`.
+  benchmark orchestration entry point (development / experimental; no guarantees).
 - **Stage benchmarks:** `retriever benchmark …` is specific to the retriever CLI and
-  has no legacy service-CLI equivalent.
+  covers per-stage throughput rather than full harness orchestration.
