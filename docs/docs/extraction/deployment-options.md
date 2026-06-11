@@ -36,7 +36,6 @@ environments), use a custom service image that already contains `ffmpeg` and
 ### I want examples and notebooks
 
 1. [Jupyter Notebooks](notebooks/index.md)
-2. [Integrate with LangChain, LlamaIndex, Haystack](integrations-langchain-llamaindex-haystack.md)
 
 ### I need API details and keys
 
