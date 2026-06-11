@@ -110,3 +110,54 @@ def test_html_bytes_to_chunks_df(tmp_path: Path, monkeypatch):
     assert df["path"].iloc[0] == path
     assert "source_path" in df["metadata"].iloc[0]
     assert df["text"].iloc[0].strip()
+
+
+def test_html_bytes_to_chunks_df_falls_back_when_markitdown_returns_empty(tmp_path: Path, monkeypatch):
+    pytest.importorskip("markitdown")
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.html.convert._get_txt_tokenizer",
+        lambda model_id, cache_dir=None: _MockTokenizer(),
+    )
+
+    class _EmptyResult:
+        text_content = ""
+
+    class _EmptyMarkItDown:
+        def convert(self, _source):
+            return _EmptyResult()
+
+    monkeypatch.setattr("markitdown.MarkItDown", _EmptyMarkItDown)
+
+    html_bytes = b"<html><body><h1>Title</h1><p>body</p></body></html>"
+    df = html_bytes_to_chunks_df(
+        html_bytes,
+        str(tmp_path / "virtual.html"),
+        params=HtmlChunkParams(max_tokens=512, overlap_tokens=0),
+    )
+
+    assert len(df) == 1
+    assert "Title" in df["text"].iloc[0]
+    assert "body" in df["text"].iloc[0]
+
+
+def test_html_to_markdown_fallback_ignores_noncontent_blocks(monkeypatch):
+    pytest.importorskip("markitdown")
+
+    class _EmptyResult:
+        text_content = ""
+
+    class _EmptyMarkItDown:
+        def convert_stream(self, _source):
+            return _EmptyResult()
+
+    monkeypatch.setattr("markitdown.MarkItDown", _EmptyMarkItDown)
+
+    markdown = html_to_markdown(
+        "<html><head><style>.hidden{display:none}</style></head>"
+        "<body><script>ignored()</script><h1>Title</h1><p>body</p></body></html>"
+    )
+
+    assert "Title" in markdown
+    assert "body" in markdown
+    assert "ignored" not in markdown
+    assert "hidden" not in markdown

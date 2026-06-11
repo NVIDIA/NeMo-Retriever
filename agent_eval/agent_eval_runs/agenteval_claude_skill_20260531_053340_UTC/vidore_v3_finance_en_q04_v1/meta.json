@@ -1,0 +1,21 @@
+{
+  "query_id": "vidore_v3_finance_en:q04:v1",
+  "domain": "vidore_v3_finance_en",
+  "agent": "claude",
+  "model": "claude-opus-4-7",
+  "profile": "skill",
+  "status": "ok",
+  "exit_status": 0,
+  "duration_ms": 100091,
+  "session_id": "75f1f8b0-b3c7-435e-b42f-4d962b47b870",
+  "tokens": {
+    "input": 18,
+    "output": 5419,
+    "cache_read": 256886,
+    "cache_creation": 42825
+  },
+  "cost_usd": 0.53260225,
+  "num_selected_chunks": 9,
+  "final_answer_len": 2113,
+  "error": ""
+}

@@ -1,0 +1,174 @@
+{
+  "suite_id": "retrieve_10_citation_metadata",
+  "jtbd": "RETRIEVE",
+  "user_task": "Every retrieved result includes citation metadata (source + page/offset).",
+  "user_task_priority": "P0",
+  "source": "JTBD & user tasks tab, RETRIEVE bucket; seed queries from 'NeMo Retriever — JTBD seed queries' tab, RETRIEVE → citation/provenance ('I want exact page references and quoted excerpts for every claim').",
+  "success_criteria": {
+    "quality": "OPERATIONAL pass ONLY (no accuracy / RAGAS gate per spec). Binary pass/fail on the citation invariant: EVERY hit returned by `retriever query` carries a non-null `source` and a valid 1-indexed integer `page_number`, and each `source` resolves to a real ingested file. A single null citation field on ANY returned hit fails the whole run. Answer correctness is NOT graded here.",
+    "time": "RETRIEVE non-agentic — wall clock per query <= 1 min",
+    "trigger_rate": ">= 95% — a 'give me page references / quoted excerpts for every claim' prompt must fire the skill",
+    "subcommand_accuracy": ">= 90% — must run `retriever ingest` then `retriever query` (with `--top-k`); query table-name must match the ingest table-name",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "install": "any supported install (hosted CPU or local GPU) — this suite is host-agnostic; the citation invariant is asserted at the CLI output layer and is independent of where embedding/extraction run.",
+    "defaults": {"lancedb_uri": "lancedb", "table_name": "nemo-retriever"},
+    "cli_hit_shape": "Each `retriever query` hit is exactly {source, page_number, text}. `source` is the ingested file path/name; `page_number` is an int, 1-indexed. There is NO `metadata` / `_distance` key at the CLI layer.",
+    "citation_invariant": "OPERATIONAL invariant under test: for every hit, source != null AND page_number is an int >= 1 AND source resolves to a file that was actually ingested into the queried table. Checked on 100% of returned hits — not a sample.",
+    "pdf_page_note": "The spec models a citation as `<source_id, page_number, pdf_page, filename>` where pdf_page is e.g. WALMART_2017_10K_42. The shipped CLI hit does NOT expose `pdf_page` (or `source_id` / `filename`) directly — it exposes only {source, page_number, text}. pdf_page is DERIVABLE as `<basename(source)>_<page_number>` (e.g. source=woods_frost.pdf, page_number=2 -> woods_frost_2); source_id/filename collapse onto `source`. This suite asserts the two primitives the CLI actually emits (source + page_number) and derives/validates pdf_page from them; it does not assert a literal `pdf_page` field because the CLI does not return one."
+  },
+  "cases": [
+    {
+      "id": "retrieve-cm-001",
+      "title": "Single query, single hit carries source + page_number",
+      "complexity": 1,
+      "complexity_axis": "Satisfies the citation-metadata user task in its simplest form: one query, one hit. ADDS over nothing (baseline rung) — establishes that a single returned hit carries a non-null `source` and a valid 1-indexed `page_number` (and that pdf_page is derivable as woods_frost_<page_number>). Operational-only: the excerpt's correctness is not graded.",
+      "prompt": "What does woods_frost.pdf say about the woods? I want an exact page reference and a quoted excerpt for the claim.",
+      "data_files": ["cases/retrieve-cm-001/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf",
+        "$RETRIEVER query \"What does woods_frost.pdf say about the woods?\" --top-k 1"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever.",
+        "query_shape": "JSON array with exactly 1 hit; the hit is {source, page_number, text}",
+        "citation_check": "hit.source == woods_frost.pdf (non-null); hit.page_number is an int in {1,2}; derived pdf_page = woods_frost_<page_number>",
+        "answer_note": "(not graded) excerpt is expected to be Frost text, e.g. p1 poem text"
+      },
+      "pass_when": [
+        "ingest + query round-trip completes and returns >= 1 hit",
+        "the returned hit has a non-null `source` equal to woods_frost.pdf",
+        "the returned hit has an integer `page_number` >= 1",
+        "derived pdf_page (woods_frost_<page_number>) is well-formed",
+        "query wall clock <= 1 min"
+      ]
+    },
+    {
+      "id": "retrieve-cm-002",
+      "title": "top-k=10 over a multi-page doc — ALL 10 hits carry non-null source + page_number",
+      "complexity": 2,
+      "complexity_axis": "Satisfies the user task at scale on ONE document. ADDS over rung 1: the 100%-coverage dimension — not one hit but ALL of top-k=10 hits (spanning multiple pages of a 3-page doc) must each carry a non-null source and a valid 1-indexed page_number. A single null on any of the 10 fails the run.",
+      "prompt": "Quote me what multimodal_test.pdf says across the whole document — give exact wording and a page number for every excerpt. Return up to 10 passages.",
+      "data_files": ["cases/retrieve-cm-002/data/multimodal_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/multimodal_test.pdf",
+        "$RETRIEVER query \"What does this document say? quote every section with its page\" --top-k 10"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever.",
+        "query_shape": "JSON array of up to 10 hits; each {source, page_number, text}",
+        "citation_check": "for EVERY hit: source == multimodal_test.pdf (non-null) AND page_number is an int in {1,2,3}; page_number values are expected to vary across hits (doc is 3 pages)",
+        "coverage_rule": "100% of returned hits must satisfy the check; any single hit with null source or null/zero/non-int page_number = FAIL"
+      },
+      "pass_when": [
+        "query returns multiple hits (up to 10) over the multi-page doc",
+        "EVERY returned hit has non-null `source` == multimodal_test.pdf",
+        "EVERY returned hit has an integer `page_number` >= 1",
+        "no returned hit is missing either citation field (single miss = run FAIL)",
+        "query wall clock <= 1 min"
+      ]
+    },
+    {
+      "id": "retrieve-cm-003",
+      "title": "Multi-doc corpus — every hit's source resolves to a real ingested file",
+      "complexity": 3,
+      "complexity_axis": "Satisfies the user task across a MULTI-DOCUMENT corpus. ADDS over rung 2: the resolvability dimension — with 3 different source files in one index, every hit's `source` must not just be non-null but must resolve to one of the actually-ingested files (woods_frost.pdf / multimodal_test.pdf / table_test.pdf), i.e. no fabricated/dangling citations.",
+      "prompt": "Across all three of my PDFs, pull supporting passages with exact page references and quoted excerpts for every claim. Return up to 10 results.",
+      "data_files": [
+        "cases/retrieve-cm-003/data/woods_frost.pdf",
+        "cases/retrieve-cm-003/data/multimodal_test.pdf",
+        "cases/retrieve-cm-003/data/table_test.pdf"
+      ],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/",
+        "$RETRIEVER query \"supporting passages with page references across all documents\" --top-k 10"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 3 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:3)",
+        "query_shape": "JSON array of up to 10 hits; each {source, page_number, text}",
+        "citation_check": "for EVERY hit: source resolves to exactly one of {woods_frost.pdf, multimodal_test.pdf, table_test.pdf} AND page_number is a valid 1-indexed int within that file's page range (woods_frost <=2, multimodal_test <=3, table_test ==1)",
+        "resolvability_rule": "each cited source must correspond to a real row in the queried table; a source not among the ingested files = FAIL"
+      },
+      "pass_when": [
+        "single `retriever ingest data/` ingests all 3 PDFs into one table",
+        "EVERY returned hit's `source` resolves to one of the 3 ingested files",
+        "EVERY returned hit has an integer `page_number` >= 1 within that file's page range",
+        "no hit cites a source that was not ingested (dangling citation = run FAIL)",
+        "query wall clock <= 1 min"
+      ]
+    },
+    {
+      "id": "retrieve-cm-004",
+      "title": "page_number correctness across pages — a page-3 fact cites page 3",
+      "complexity": 4,
+      "complexity_axis": "Satisfies the user task's correctness-of-the-page-offset dimension. ADDS over rung 3: not just that page_number is present/valid, but that it is the RIGHT page — a fact that lives only on page 3 of the 3-page doc (the 'Conclusion' / 'Chart 2') must come back with page_number == 3, proving the citation points to the actual source page, not a constant.",
+      "prompt": "On what page of multimodal_test.pdf is the conclusion, and what does it say? Give me the exact page number and a quoted excerpt.",
+      "data_files": ["cases/retrieve-cm-004/data/multimodal_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/multimodal_test.pdf",
+        "$RETRIEVER query \"What is the conclusion of the document?\" --top-k 5"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever.",
+        "query_shape": "JSON array of up to 5 hits; each {source, page_number, text}",
+        "page_correctness": "the hit whose text contains the page-3-only 'Conclusion' / 'Chart 2 ... average frequency ranges for speaker drivers' content carries page_number == 3 (derived pdf_page = multimodal_test_3)",
+        "citation_check": "all returned hits still carry non-null source + valid 1-indexed page_number"
+      },
+      "pass_when": [
+        "the conclusion passage (page-3-only content) comes back with page_number == 3",
+        "derived pdf_page for that hit == multimodal_test_3",
+        "every returned hit still carries non-null `source` + integer `page_number` >= 1",
+        "query wall clock <= 1 min"
+      ],
+      "known_caveat": "Page mapping depends on extraction chunking; if a chunk straddles a page boundary the engine assigns the chunk's primary page. The page-3 'Conclusion' text is unique to p3, so the cited page_number for that passage must be 3 — a 1 or 2 would indicate a page-offset bug."
+    },
+    {
+      "id": "retrieve-cm-005",
+      "title": "Acceptance: strict run — every result across docs/pages/content-types carries resolvable citation metadata; any null = FAIL",
+      "complexity": 5,
+      "complexity_axis": "Composed operational-pass / acceptance gate for the row. ADDS over rung 4: it combines multi-doc + multi-page + multiple content types (text + table + chart from the 3 PDFs) into ONE strict top-k=10 run and enforces the full invariant simultaneously — every returned hit, regardless of which doc / page / content type it came from, must carry a non-null source AND a valid 1-indexed page_number AND resolve to a real ingested row. A single null on a single hit fails the entire run. Operational-only: no answer-accuracy gate.",
+      "prompt": "Build me a fully cited evidence set from all my documents: for every passage you return, I need the source file and the exact page number, with no exceptions. Return up to 10 passages and span text, tables, and charts.",
+      "data_files": [
+        "cases/retrieve-cm-005/data/woods_frost.pdf",
+        "cases/retrieve-cm-005/data/multimodal_test.pdf",
+        "cases/retrieve-cm-005/data/table_test.pdf"
+      ],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/ --table-name cite_audit",
+        "$RETRIEVER query \"fully cited evidence across text tables and charts\" --table-name cite_audit --top-k 10 --content-types text,table,chart"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 3 file(s) -> N row(s) in LanceDB lancedb/cite_audit. (branch_summary pdf:3)",
+        "query_shape": "JSON array of up to 10 hits; each {source, page_number, text}",
+        "assertions": [
+          "query reads the SAME table (cite_audit) the ingest wrote — not the default nemo-retriever",
+          "EVERY returned hit has a non-null `source` that resolves to one of the 3 ingested files",
+          "EVERY returned hit has an integer `page_number` >= 1 within that file's page range",
+          "hits span multiple source files and multiple pages (and, with --content-types text,table,chart, multiple content types)",
+          "derived pdf_page (<basename>_<page_number>) is well-formed for every hit",
+          "ANY single hit missing source or page_number = FAIL for the whole run",
+          "query wall clock <= 1 min"
+        ]
+      },
+      "pass_when": [
+        "ingest writes lancedb/cite_audit and query reads cite_audit (table names aligned)",
+        "100% of returned hits carry non-null `source` + integer `page_number` >= 1",
+        "every hit's `source` resolves to a real ingested file; page_number within range",
+        "no returned hit is missing a citation field (single miss = run FAIL)",
+        "query wall clock <= 1 min"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,170 @@
+{
+  "suite_id": "dx_02_config_knobs",
+  "jtbd": "DEVELOPER EXPERIENCE (DX)",
+  "user_task": "Tinker with any exposed configuration knob across the pipeline.",
+  "user_task_priority": "P0",
+  "source": "JTBD & user tasks tab, DEVELOPER EXPERIENCE bucket; seed queries from 'NeMo Retriever — JTBD seed queries' tab, DX -> config tinkering ('Load <doc>.pdf but use a 1000-token chunk size with 100-token overlap'; 'Use a different embedding model for this run -- don't rebuild anything'; 'Bump the number of reranked results from 5 to 20 for this one query').",
+  "success_criteria": {
+    "quality": "operational pass -- an exposed configuration knob is overridden on the command line and (a) the override APPLIES on the very next call with NO rebuild/reinstall/restart, (b) the override is VISIBLE IN THE TRACE (the new value reached the resolved operator plan, not the default), and (c) DEFAULT behavior is RESTORED on a subsequent call with no sticky state (unless the user explicitly persisted it). Binary pass/fail.",
+    "time": "fast -- <= 30s per case. Ingest-time knobs are proven via `retriever ingest ... --dry-run`, which is offline (no network, no GPU) and returns in well under 30s; query-time knobs are proven by hit count on a single tiny pre-ingested table.",
+    "trigger_rate": ">= 95% -- a 'change/override/use a different <knob> for this run, don't rebuild' prompt must fire the skill",
+    "subcommand_accuracy": ">= 90% -- must map each knob to its REAL flag: chunk size -> `retriever ingest --text-chunk --text-chunk-max-tokens / --text-chunk-overlap-tokens`; embedding model -> `--embed-model-name`; reranked count -> `retriever query --top-k --rerank`. Ingest-time knobs proven with `--dry-run`. No invented flags.",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "version_grounded_against": "2026.06.10.devXXXX",
+    "dry_run_is_the_trace_for_ingest_knobs": "`retriever ingest <doc> --dry-run` prints the RESOLVED plan as JSON, offline (no network/GPU). It is the 'trace' for ingest-time knobs: the chunk knob lands in `split_config.pdf.{max_tokens,overlap_tokens}` and the embedding-model knob lands in `embed.embed_model_name` / `embed.model_name`. `retriever query` has NO --dry-run, so query-time knobs (top-k/rerank) are proven by the OBSERVED effect on the next call (number of hits returned) -- not a plan dump.",
+    "verified_defaults_vs_overrides": {
+      "chunk_max_tokens_default": 1024,
+      "chunk_overlap_tokens_default": 150,
+      "chunk_override_example": {"max_tokens": 1000, "overlap_tokens": 100},
+      "chunk_plan_location": "split_config.pdf.max_tokens / split_config.pdf.overlap_tokens (only materialized when --text-chunk is enabled; without --text-chunk, split_config is null)",
+      "embed_model_default": "bundled default embedder (the embed block is null/unset in the dry-run plan unless an --embed-* flag is passed; spec default embedder is nvidia/llama-nemotron-embed-1b-v2)",
+      "embed_model_override_example": "nvidia/nv-embedqa-e5-v5",
+      "embed_plan_location": "embed.embed_model_name and embed.model_name (the embed block is only materialized in the dry-run plan when an --embed-* flag is set)",
+      "query_top_k_default": 10,
+      "query_top_k_override_example": 20,
+      "rerank_default": "off (--no-rerank); passing --rerank (or any reranker flag) turns it on",
+      "note": "All values above were confirmed against `retriever ingest woods_frost.pdf [flags] --dry-run` on 2026.06.10.devXXXX and `retriever query --help` / `retriever ingest --help`."
+    },
+    "defaults": {"lancedb_uri": "lancedb", "table_name": "nemo-retriever"},
+    "ingest_success_line": "Ingested N file(s) -> M row(s) in LanceDB lancedb/<table>.",
+    "query_hit_shape": "JSON array; each hit has exactly {source, page_number, text}; page_number is a 1-indexed int."
+  },
+  "cases": [
+    {
+      "id": "dx-ck-001",
+      "title": "Chunk-size knob: --text-chunk-max-tokens 1000 / --text-chunk-overlap-tokens 100 visible in the dry-run plan vs the 1024/150 default",
+      "complexity": 1,
+      "complexity_axis": "Satisfies the DX config-knob operational-pass core in its simplest form: override ONE ingest-time knob and prove the new value reached the resolved plan (the trace) without any rebuild. Adds nothing over a prior rung (it is the floor): one knob, one --dry-run, value visible.",
+      "prompt": "Load data/woods_frost.pdf but use a 1000-token chunk size with 100-token overlap for this run. Show me the override actually took effect before doing any real ingest -- I don't want to rebuild anything.",
+      "data_files": ["cases/dx-ck-001/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --text-chunk --text-chunk-max-tokens --text-chunk-overlap-tokens --dry-run"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf --text-chunk --text-chunk-max-tokens 1000 --text-chunk-overlap-tokens 100 --dry-run"
+      ],
+      "expected_output": {
+        "trace": "resolved plan (JSON) shows split_config.pdf.max_tokens = 1000 and split_config.pdf.overlap_tokens = 100",
+        "default_for_comparison": "the same plan WITHOUT the override flags (still --text-chunk) shows split_config.pdf.max_tokens = 1024 and overlap_tokens = 150",
+        "no_rebuild": "--dry-run is offline (no network/GPU); the override is resolved purely from CLI args -- no reinstall/rebuild/restart",
+        "branch_summary": "pdf:1"
+      },
+      "pass_when": [
+        "command uses the REAL flags --text-chunk --text-chunk-max-tokens 1000 --text-chunk-overlap-tokens 100 (no invented flag)",
+        "dry-run plan shows split_config.pdf.max_tokens == 1000 AND split_config.pdf.overlap_tokens == 100 (the override reached the operator)",
+        "the value differs from the verified default 1024/150 (proves it is an override, not the default)",
+        "no rebuild/reinstall/restart was required -- the override applies on this single call"
+      ]
+    },
+    {
+      "id": "dx-ck-002",
+      "title": "Embedding-model knob: --embed-model-name reaches the plan without rebuild",
+      "complexity": 2,
+      "complexity_axis": "Satisfies the 'use a different embedding model for this run, don't rebuild' clause. Adds over rung 1 exactly one dimension: a DIFFERENT knob on a DIFFERENT pipeline stage (embedding, not chunking) -- swapping a model is the case most likely to be (wrongly) thought to need a rebuild, so the assertion is that a hot model swap lands in the plan with no reinstall.",
+      "prompt": "For this one run, ingest data/woods_frost.pdf with a different embedding model -- use nvidia/nv-embedqa-e5-v5 instead of the default. Don't rebuild or reinstall anything; just prove the new model is what the pipeline will use.",
+      "data_files": ["cases/dx-ck-002/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --embed-model-name --dry-run"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf --embed-model-name nvidia/nv-embedqa-e5-v5 --dry-run"
+      ],
+      "expected_output": {
+        "trace": "resolved plan shows embed.embed_model_name = 'nvidia/nv-embedqa-e5-v5' AND embed.model_name = 'nvidia/nv-embedqa-e5-v5'",
+        "default_for_comparison": "without any --embed-* flag the dry-run plan's embed block is null/unset (no model swap requested); the spec default embedder is nvidia/llama-nemotron-embed-1b-v2",
+        "no_rebuild": "model selection is a runtime arg resolved by --dry-run; no reinstall/rebuild of the index or environment is triggered"
+      },
+      "pass_when": [
+        "command uses the REAL flag --embed-model-name nvidia/nv-embedqa-e5-v5 (no invented flag)",
+        "dry-run plan shows embed.embed_model_name == 'nvidia/nv-embedqa-e5-v5' (the override reached the embed operator)",
+        "no rebuild/reinstall is performed -- the model swap is applied on this single call",
+        "agent does NOT claim a re-install or environment rebuild is required to change the embedding model"
+      ]
+    },
+    {
+      "id": "dx-ck-003",
+      "title": "Query-time top-k knob: bump reranked results 5 -> 20 on the next query, no re-ingest",
+      "complexity": 3,
+      "complexity_axis": "Satisfies the 'bump reranked results from 5 to 20 for this one query' clause. Adds over rungs 1-2 a new dimension: a QUERY-TIME knob (vs ingest-time), proven by the OBSERVED effect on the next call (more hits) rather than a --dry-run plan -- and proven with NO re-ingest of the corpus. New dimension: query-side override against an already-built index.",
+      "prompt": "I've already ingested data/woods_frost.pdf. Bump the number of reranked results from the default up to 20 for just this one query about the poem -- and don't re-ingest anything.",
+      "data_files": ["cases/dx-ck-003/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query --top-k --rerank"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf",
+        "$RETRIEVER query \"How far does the speaker have to go before sleeping?\" --top-k 20 --rerank"
+      ],
+      "expected_output": {
+        "trace": "the query call uses --top-k 20 (vs the default top-k 10 / a 5-result baseline) with reranking enabled (--rerank); the override changes the size of the returned JSON hit array on THIS call",
+        "no_reingest": "the index built by the single prior ingest is reused; --top-k/--rerank are query-side args -- no second ingest",
+        "answer": "grounded hit citing woods_frost.pdf p1 ('miles to go before I sleep')",
+        "caveat": "woods_frost.pdf is a small 2-page doc, so fewer than 20 chunks may exist; the assertion is that the knob is HONORED (top-k raised, rerank on), not that exactly 20 hits come back from a tiny corpus"
+      },
+      "pass_when": [
+        "query uses the REAL flags --top-k 20 --rerank (no invented flag); top-k is raised above the default 10 / the 5-result baseline",
+        "the override takes effect on the NEXT query with NO re-ingest (the prior index is reused)",
+        "reranking is enabled for this query (--rerank or a reranker flag set)",
+        "answer is grounded in woods_frost.pdf p1 ('miles to go before I sleep')"
+      ],
+      "known_caveat": "woods_frost.pdf is only 2 pages, so the index may hold fewer than 20 retrievable chunks; --top-k 20 is a CEILING. The pass condition is that the knob is honored (top-k raised from the default, rerank on), not a literal count of 20 hits. A live run on a larger corpus would show the array growing from ~5 to up to 20."
+    },
+    {
+      "id": "dx-ck-004",
+      "title": "Default RESTORED on a subsequent call -- the override is not sticky",
+      "complexity": 4,
+      "complexity_axis": "Satisfies the validation path's 'default behavior is RESTORED on subsequent calls (no sticky override unless explicitly persisted)' clause. Adds over rungs 1-3 the NON-STICKINESS dimension: run an OVERRIDDEN call, then an immediately-following PLAIN call, and prove the second call reverts to the verified default -- the override did not leak into later runs.",
+      "prompt": "First, dry-run an ingest of data/woods_frost.pdf with a 1000-token chunk size and 100-token overlap. Then dry-run a plain ingest of the same file with no chunk flags, and confirm the chunk settings went back to the defaults -- I want to be sure the override from the first run isn't sticking.",
+      "data_files": ["cases/dx-ck-004/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --text-chunk --text-chunk-max-tokens --text-chunk-overlap-tokens --dry-run", "ingest --text-chunk --dry-run"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf --text-chunk --text-chunk-max-tokens 1000 --text-chunk-overlap-tokens 100 --dry-run",
+        "$RETRIEVER ingest data/woods_frost.pdf --text-chunk --dry-run"
+      ],
+      "expected_output": {
+        "trace_call1": "first plan shows split_config.pdf.max_tokens = 1000, overlap_tokens = 100 (override active)",
+        "trace_call2": "second plan (same file, no chunk-size flags) shows split_config.pdf.max_tokens = 1024, overlap_tokens = 150 (default RESTORED)",
+        "non_sticky": "the override from call 1 did NOT persist into call 2 -- each CLI invocation resolves its plan independently; nothing was explicitly persisted"
+      },
+      "pass_when": [
+        "call 1 dry-run shows the override values 1000/100",
+        "call 2 dry-run (no chunk-size flags) shows the DEFAULT values 1024/150 -- not 1000/100",
+        "the override is proven NON-STICKY: it did not leak into the subsequent call",
+        "no rebuild/reinstall happened between the two calls"
+      ]
+    },
+    {
+      "id": "dx-ck-005",
+      "title": "Acceptance: multiple knobs across the pipeline (chunking at ingest + top-k/rerank at query) overridden in one workflow, each visible in the trace, defaults restored after",
+      "complexity": 5,
+      "complexity_axis": "Composed operational-pass / acceptance gate for the DX config-knob row. Adds over rung 4 the COMPOSITION dimension: override knobs on TWO different pipeline stages in one workflow -- chunking at ingest AND top-k/rerank at query -- each visible in its own trace (dry-run plan for ingest, observed hit array for query), then prove a follow-up plain call reverts to defaults. This is the gate the others build up to.",
+      "prompt": "End-to-end on data/woods_frost.pdf and data/table_test.pdf, tinker with several knobs in one go for this run only: (1) prove a 1000/100 chunk override reaches the ingest plan, (2) actually ingest with that chunking, (3) on the query, bump reranked results from the default 5 to 20, and (4) finally show that a plain follow-up ingest dry-run is back to the default chunk settings. Don't rebuild or reinstall anything between steps.",
+      "data_files": ["cases/dx-ck-005/data/woods_frost.pdf", "cases/dx-ck-005/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --text-chunk --text-chunk-max-tokens --text-chunk-overlap-tokens --dry-run", "ingest --text-chunk --text-chunk-max-tokens --text-chunk-overlap-tokens", "query --top-k --rerank", "ingest --text-chunk --dry-run"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf data/table_test.pdf --text-chunk --text-chunk-max-tokens 1000 --text-chunk-overlap-tokens 100 --dry-run",
+        "$RETRIEVER ingest data/woods_frost.pdf data/table_test.pdf --text-chunk --text-chunk-max-tokens 1000 --text-chunk-overlap-tokens 100",
+        "$RETRIEVER query \"What value did James have in 2019?\" --top-k 20 --rerank",
+        "$RETRIEVER ingest data/woods_frost.pdf --text-chunk --dry-run"
+      ],
+      "expected_output": {
+        "ingest_knob_trace": "step-1 dry-run plan shows split_config.pdf.max_tokens = 1000 and overlap_tokens = 100 (ingest-time knob reached the operator)",
+        "ingest_summary_line": "step-2 real ingest: Ingested 2 file(s) -> M row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:2; chunking applied at 1000/100)",
+        "query_knob_trace": "step-3 query honors --top-k 20 --rerank (raised from the default 10 / 5-result baseline), reranking on; returns a grounded hit",
+        "answer": "James 2019 = 978 from table_test.pdf p1",
+        "defaults_restored": "step-4 plain dry-run shows split_config.pdf.max_tokens = 1024, overlap_tokens = 150 -- defaults restored, override not sticky",
+        "no_rebuild": "no reinstall/rebuild/restart between any of the four steps"
+      },
+      "pass_when": [
+        "ingest-time knob: step-1 dry-run plan shows 1000/100 (override reached the plan)",
+        "real ingest (step-2) runs WITH the 1000/100 chunking and produces NON-ZERO rows for both files (no rebuild)",
+        "query-time knob: step-3 query honors --top-k 20 --rerank (raised above default, rerank on) and returns the answer 978 citing table_test.pdf p1 -- with NO re-ingest",
+        "defaults restored: step-4 plain dry-run reverts to 1024/150 (override not sticky)",
+        "every override is visible in its own trace (dry-run plan for chunking; honored flags/hit array for query); no invented flags; no rebuild/reinstall between steps"
+      ],
+      "known_caveat": "woods_frost.pdf is 2 pages and table_test.pdf is 1 page, so the combined index holds well under 20 chunks; --top-k 20 is a ceiling and the pass condition is that the knob is honored (raised from the default, rerank on) plus the correct grounded answer (978), not a literal 20-hit array. The real ingest step (2) needs a reachable embedding backend (hosted endpoint + NVIDIA_API_KEY or a local GPU); the dry-run steps (1, 4) are fully offline."
+    }
+  ]
+}

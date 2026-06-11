@@ -1,0 +1,172 @@
+{
+  "suite_id": "extract_03_text_format",
+  "jtbd": "EXTRACT",
+  "user_task": "Standalone Text-format extraction (HTML / Markdown / .txt / JSON / SH): pull clean, searchable text out of text-native files with no OCR / page-elements / GPU embedding required.",
+  "user_task_priority": "P0",
+  "source": "JTBD & user tasks tab, EXTRACT bucket — 'Standalone Text-format extraction (HTML / Markdown / .txt / JSON / SH)'; seed queries from 'NeMo Retriever — JTBD seed queries' tab, EXTRACT → text-format extraction.",
+  "success_criteria": {
+    "quality": "operational pass — (1) the skill routes to the CPU-only text-extract path with NO GPU NIM stage (no page-elements / OCR / table-structure / GPU embedding), (2) ingest produces non-zero rows, (3) a query recovers the expected text/heading/row with a citation. Binary pass/fail.",
+    "time": "fast — wall clock <= 30s (this is the cheapest, fully-local extraction path)",
+    "trigger_rate": ">= 95% — a 'make this text/HTML/markdown folder searchable' prompt must fire the skill",
+    "subcommand_accuracy": ">= 90% — must use `retriever ingest <file/dir>` (auto-detect, no --input-type, no GPU/batch flags) then `retriever query`; --dry-run may be used to prove no GPU NIM stage appears in the plan",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "gpu": "irrelevant — this path never needs a GPU; text/html branches run extraction on CPU only",
+    "required_env": [],
+    "no_gpu_nim": "Text-format extraction routes through the `txt` / `html` ingest branches (verified via --dry-run: branch_summary like 'txt:N, html:M', extraction_mode 'text'/'html', family 'txt'/'html'). In the resolved plan ALL GPU fields are null (gpu_embed / gpu_page_elements / gpu_ocr / gpu_table_structure / gpu_nemotron_parse) and `embed` is null for a pure extract dry-run. No call to ai.api.nvidia.com page-elements/OCR/table-structure is required to EXTRACT these formats — that whole visual stack is bypassed. This is the cheapest, fully-local extraction path.",
+    "supported_extensions_caveat": "GROUNDED AGAINST THE SHIPPED CLI (nemo_retriever/common/input_files.py INPUT_TYPE_PATTERNS): the auto-detector supports `.txt` and `.html` for text formats (plus pdf/docx/pptx/images/audio/video). It does NOT register `.md`, `.json`, or `.sh` — `retriever ingest file.md` errors with 'Unsupported input file type(s) for retriever ingest'. The seed task lists Markdown/JSON/SH as text formats, but the grounded path for them today is to ingest the file with a `.txt` extension (the PKG-INFO text-glob example itself uses [\".txt\", \".html\"]). Markdown/JSON/SH are plain UTF-8 text, so a `.txt`-named copy round-trips through the identical CPU text branch with structure (headings, tables, code fences) preserved verbatim as text. Rungs 3-5 therefore ingest md/json/sh content under a `.txt` name and carry a known_caveat; live runs should re-check whether a newer CLI registers `.md`/`.json`/`.sh` natively.",
+    "row_metadata": "Each emitted row carries source_id, path (source filename), page_number = 1 for single-block text/html (or -1 where a page index is N/A), and a hierarchy block. CLI query hits surface exactly {source, page_number, text}.",
+    "defaults": {"lancedb_uri": "lancedb", "table_name": "nemo-retriever"}
+  },
+  "cases": [
+    {
+      "id": "extract-txt-001",
+      "title": "Plain .txt extraction -> non-zero rows on the CPU text path",
+      "complexity": 1,
+      "complexity_axis": "Satisfies the text-format EXTRACT task in its simplest form: ingest one plain `.txt` file and recover its content. Baseline rung — establishes that the auto-detector routes `.txt` to the CPU `txt` branch (no GPU NIM) and produces non-zero rows. Nothing added over a prior rung; this is the floor.",
+      "prompt": "Pull the content out of data/api_changelog.txt and make it searchable, then tell me what the v2.4.0 release added.",
+      "data_files": ["cases/extract-txt-001/data/api_changelog.txt"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/api_changelog.txt",
+        "$RETRIEVER query \"What did the v2.4.0 release add?\" --top-k 5"
+      ],
+      "expected_output": {
+        "branch_summary": "txt:1 (extraction_mode 'text', family 'txt')",
+        "no_gpu_nim": "resolved plan has embed=null and all gpu_* fields null; no page-elements/OCR/table-structure call",
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever.",
+        "query_shape": "JSON array of hits; each {source, page_number, text}; >= 1 hit citing api_changelog.txt page_number=1",
+        "answer": "v2.4.0 added the /v1/embed/batch endpoint (up to 1024 inputs/request), deprecated /v1/embed/single, and added the 'enterprise-plus' rate-limit tier (5000 req/min); cite api_changelog.txt p1"
+      },
+      "pass_when": [
+        "ingest auto-detects .txt and writes non-zero rows to lancedb/nemo-retriever",
+        "NO GPU NIM stage fired (no page-elements/OCR/table-structure/GPU-embed); CPU text path only",
+        "query returns >= 1 hit citing api_changelog.txt p1 with the v2.4.0 additions"
+      ]
+    },
+    {
+      "id": "extract-txt-002",
+      "title": "HTML extraction -> boilerplate/markup stripped to clean text",
+      "complexity": 2,
+      "complexity_axis": "Adds the HTML branch: the extractor must parse markup and strip boilerplate (doctype/head/title/nav/anchors/tags) down to clean readable text, while preserving the heading and body content. New dimension over rung 1: markup-aware parsing (html branch) rather than raw text passthrough.",
+      "prompt": "Make data/architecture.html searchable for Q&A (strip the page chrome), then tell me Aurora's three tiers and its p99 first-token latency SLO target.",
+      "data_files": ["cases/extract-txt-002/data/architecture.html"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/architecture.html",
+        "$RETRIEVER query \"Aurora tiers and p99 first-token latency SLO\" --top-k 5"
+      ],
+      "expected_output": {
+        "branch_summary": "html:1 (extraction_mode 'html', family 'html')",
+        "no_gpu_nim": "resolved plan has embed=null and all gpu_* fields null; HTML parsed on CPU, no visual NIM",
+        "clean_text_assertion": "extracted text contains the headings/list/paragraphs ('Edge gateway (Envoy)', 'Routing layer', 'Inference workers (Triton + TensorRT-LLM on H100/H200)', 'p99 first-token latency under 350ms') with no raw <html>/<head>/<title>/<a href> markup",
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever.",
+        "answer": "Three tiers: (1) Edge gateway (Envoy), (2) Routing layer (custom Go service), (3) Inference workers (Triton + TensorRT-LLM on H100/H200); SLO target p99 first-token latency under 350ms; cite architecture.html p1"
+      },
+      "pass_when": [
+        "ingest auto-detects .html and routes to the html branch (no GPU NIM)",
+        "extracted/queried text is clean (boilerplate + tags stripped), not raw HTML",
+        "query recovers the three tiers and the <350ms p99 SLO citing architecture.html p1"
+      ]
+    },
+    {
+      "id": "extract-txt-003",
+      "title": "Markdown structure preserved -> recover the exact capacity-table row",
+      "complexity": 3,
+      "complexity_axis": "Adds Markdown and a STRUCTURE assertion: headings, the pipe table, and code fences must survive extraction so a specific table row is recoverable verbatim. New dimension over rung 2: structured-markdown content (heading hierarchy + a Markdown table) rather than a single HTML body block. NOTE the supported-extension caveat — md is ingested under a .txt name.",
+      "prompt": "From data/aurora_README.md, what's the SLO p99 for eu-central-1? Quote the exact row from the capacity table.",
+      "data_files": ["cases/extract-txt-003/data/aurora_README.md", "cases/extract-txt-003/data/aurora_README.txt"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/aurora_README.txt",
+        "$RETRIEVER query \"eu-central-1 SLO p99 capacity table\" --top-k 5"
+      ],
+      "expected_output": {
+        "branch_summary": "txt:1 (extraction_mode 'text', family 'txt') — md content ingested under a .txt name",
+        "no_gpu_nim": "resolved plan has embed=null and all gpu_* fields null; CPU text path only",
+        "structure_assertion": "extracted text preserves Markdown structure verbatim — the '# Aurora — Inference Platform' heading, the '## Capacity' section, and the pipe table including the eu-central-1 row",
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever.",
+        "answer": "eu-central-1 SLO p99 = 310ms. Exact row: '| eu-central-1 | 192 H200 | 310ms |'. Cite aurora_README.txt p1"
+      },
+      "pass_when": [
+        "ingest writes non-zero rows on the CPU text path (no GPU NIM)",
+        "Markdown structure (headings + the capacity pipe table) survives extraction",
+        "query recovers SLO p99 = 310ms and quotes the eu-central-1 row citing the aurora_README source p1"
+      ],
+      "known_caveat": "The shipped CLI (input_files.py) registers `.txt`/`.html` but NOT `.md`; `retriever ingest aurora_README.md` errors 'Unsupported input file type(s)'. Grounded path: ingest the byte-identical content under a `.txt` name (both files are provided in data/). Markdown is plain UTF-8 text, so the .txt-named copy round-trips through the identical CPU text branch with all heading/table structure preserved verbatim. Re-check on newer CLI builds for native `.md` support."
+    },
+    {
+      "id": "extract-txt-004",
+      "title": "Structured / script text formats (.json / .sh) route through the same CPU text branch",
+      "complexity": 4,
+      "complexity_axis": "Adds the remaining two named text formats — JSON (structured) and SH (script) — proving they ride the same CPU text branch and round-trip their literal content. New dimension over rung 3: non-prose structured/script text (JSON object, shell script) rather than human-prose markdown. Carries the supported-extension caveat (ingested under .txt names).",
+      "prompt": "I have a small JSON config (data/test.json) and a shell script (data/test.sh). Pull the text content out of both and make them searchable, then tell me the value of key \"a\" in the JSON and what the script echoes.",
+      "data_files": [
+        "cases/extract-txt-004/data/test.json",
+        "cases/extract-txt-004/data/test.sh",
+        "cases/extract-txt-004/data/test.json.txt",
+        "cases/extract-txt-004/data/test.sh.txt"
+      ],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/test.json.txt data/test.sh.txt",
+        "$RETRIEVER query \"value of key a and what the script echoes\" --top-k 5"
+      ],
+      "expected_output": {
+        "branch_summary": "txt:2 (extraction_mode 'text', family 'txt') — json/sh content ingested under .txt names",
+        "no_gpu_nim": "resolved plan has embed=null and all gpu_* fields null; CPU text path only",
+        "ingest_summary_line": "Ingested 2 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever.",
+        "answer": "JSON: key \"a\" = 4 (and \"b\" = 2); the script echoes \"Hello World!\". Cite test.json.txt p1 and test.sh.txt p1"
+      },
+      "pass_when": [
+        "json + sh content ingests on the CPU text branch (no GPU NIM)",
+        "literal content round-trips: query returns a=4 (and b=2) and the echoed 'Hello World!'",
+        "hits cite the json and sh sources at p1"
+      ],
+      "known_caveat": "The shipped CLI does NOT register `.json` or `.sh` (input_files.py supports `.txt`/`.html`); ingesting them raw errors 'Unsupported input file type(s)'. Grounded path: ingest the byte-identical bytes under a `.txt` name (the `.json.txt` / `.sh.txt` copies in data/ — `Path.suffix` resolves to `.txt`). Both are plain UTF-8 text and round-trip verbatim through the CPU text branch. Re-check newer CLI builds for native `.json`/`.sh` support."
+    },
+    {
+      "id": "extract-txt-005",
+      "title": "Acceptance: mixed HTML + Markdown + .txt folder in one ingest, all on CPU, exact row recovered with citation",
+      "complexity": 5,
+      "complexity_axis": "Composed operational-pass gate for the row: a single `retriever ingest <dir>` over a folder mixing HTML, Markdown (as .txt) and plain .txt — confirm the whole batch rode the CPU text path (branch_summary 'txt:N, html:M', every GPU field null, no visual NIM), then a query recovers an EXACT capacity-table row from aurora_README with a citation. Adds (over rung 4): heterogeneous one-call folder ingest + the explicit no-GPU / fast (<=30s) acceptance assertions + exact-row-with-citation.",
+      "prompt": "Make this whole folder of docs (data/) searchable for Q&A in one shot — it's a mix of HTML pages, a README, and a changelog, all plain text so nothing should touch a GPU. Then quote the exact eu-central-1 row from the Aurora capacity table and tell me which file it came from.",
+      "data_files": [
+        "cases/extract-txt-005/data/index.html",
+        "cases/extract-txt-005/data/runbook.html",
+        "cases/extract-txt-005/data/aurora_README.txt",
+        "cases/extract-txt-005/data/api_changelog.txt"
+      ],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/ --dry-run   # inspect: branch_summary 'txt:2, html:2', all gpu_* null, embed null",
+        "$RETRIEVER ingest data/",
+        "$RETRIEVER query \"eu-central-1 capacity SLO row\" --top-k 5"
+      ],
+      "expected_output": {
+        "branch_summary": "txt:2, html:2 — txt branch (aurora_README.txt, api_changelog.txt) + html branch (index.html, runbook.html)",
+        "no_gpu_nim": "resolved --dry-run plan: every gpu_* field null, embed null, method 'pdfium' but NO page-elements/OCR/table-structure/visual NIM invoked for any branch",
+        "ingest_summary_line": "Ingested 4 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary txt:2, html:2)",
+        "answer": "eu-central-1: 192 H200, SLO p99 310ms. Exact row '| eu-central-1 | 192 H200 | 310ms |', from aurora_README (the .txt copy). Cite aurora_README.txt p1",
+        "assertions": [
+          "one `retriever ingest data/` call ingested all 4 files (no per-file loop)",
+          "every returned hit carries non-null source + page_number",
+          "no GPU / no visual NIM anywhere in the run; wall clock <= 30s"
+        ]
+      },
+      "pass_when": [
+        "single `retriever ingest data/` ingests all 4 mixed text/html files (branch_summary 'txt:2, html:2')",
+        "entire run stays on the CPU text/html path — zero GPU NIM, fast (<=30s)",
+        "query quotes the exact eu-central-1 capacity row (310ms) and attributes it to the aurora_README source p1"
+      ],
+      "known_caveat": "aurora_README is ingested under a `.txt` name (see rung 3/4 caveat — the shipped CLI does not register `.md`). The HTML and plain-.txt files use their native extensions."
+    }
+  ]
+}

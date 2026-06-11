@@ -204,11 +204,11 @@ hits = retriever.query(
 
 ### Larger datasets
 
-- Batch ingest: `retriever ingest ./data/pdf_corpus --run-mode batch`.
+- Omitting `--run-mode` defaults to `inprocess` (single-process pandas; no Ray startup).
+- Ray Data scale-out: `retriever ingest ./data/pdf_corpus --run-mode batch`.
 - Tune throughput with `--pdf-extract-workers`, `--pdf-extract-batch-size`,
   `--page-elements-workers`, `--page-elements-batch-size`, `--ocr-workers`,
   `--ocr-batch-size`, `--embed-workers`, and `--embed-batch-size`.
-- For CI or debugging: `--run-mode inprocess` skips Ray startup.
 
 <!-- --8<-- [end:quickstart] -->
 
@@ -231,8 +231,7 @@ retriever query --help
 ### Extract a PDF with defaults
 
 ```bash
-retriever ingest ./data/test.pdf \
-  --run-mode inprocess
+retriever ingest ./data/test.pdf
 ```
 
 Results go to LanceDB (`./lancedb`, table `nemo-retriever` by default). Use
@@ -283,7 +282,7 @@ ingest API) in Python.
 Remote OCR NIM endpoints choose their own model and language behavior. Local
 `--ocr-lang` and `--ocr-version` are not sent on remote requests. For hosted
 examples until OCR v2 is published on build.nvidia.com, keep
-`--ocr-invoke-url` pointed at `nemotron-ocr-v1` (see [Quick start](#quick-start)).
+`--ocr-invoke-url` pointed at `nemotron-ocr-v1` (refer to [Quick start](#quick-start)).
 
 ### PDF and Office documents
 
@@ -460,7 +459,7 @@ for these cases:
 - `--store-images-uri <uri>` stores extracted image assets to a local path or
   an fsspec URI (e.g. `s3://bucket/prefix`). Page granularity stores page
   images; element granularity stores element images.
-- `--run-mode inprocess` skips Ray and is ideal for single-file demos and CI;
-  `--run-mode batch` (the default) uses Ray Data for throughput.
+- `--run-mode inprocess` (the default) runs single-process pandas without Ray; ideal for single-file demos and CI.
+- `--run-mode batch` uses Ray Data for throughput on larger corpora.
 
 Run `retriever pipeline run --help` for the authoritative flag list.

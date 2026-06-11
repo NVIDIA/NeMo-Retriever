@@ -1,0 +1,5 @@
+{
+  "query_id": "vidore_v3_finance_en:i01:v1",
+  "final_answer": "6 documents were ingested from ./pdfs/ into the LanceDB index (4304 rows total across 2942 pages). The corpus is now ready for queries about the annual reports and SEC filings.",
+  "selected_chunks": []
+}

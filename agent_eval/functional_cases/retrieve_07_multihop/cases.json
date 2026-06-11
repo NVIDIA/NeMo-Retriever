@@ -1,0 +1,175 @@
+{
+  "suite_id": "retrieve_07_multihop",
+  "jtbd": "RETRIEVE",
+  "user_task": "Multi-hop retrieval (single source - multiple chunks).",
+  "user_task_priority": "P0",
+  "source": "JTBD & user tasks tab, RETRIEVE bucket; seed queries from 'NeMo Retriever — JTBD seed queries' tab, RETRIEVE -> multi-hop retrieval (single source, multiple chunks): 'Which entity had the largest <X>, and what was that entity's <Y>?'; 'What was <metric> in the year of <some derived condition>?'; 'For the <superlative> item, what's its <other attribute>?'",
+  "success_criteria": {
+    "quality": "operational pass (NOT RAGAS) — the trace shows >= 2 CHAINED `retriever query` calls against a single ingested source: hop-1's retrieved value is extracted and reused to form hop-2's query string (or filter); the final answer matches the ground truth computed from the real fixture. Binary pass/fail. A single combined query that returns the answer in one shot FAILS the operational gate (the task is to demonstrate chaining over multiple chunks).",
+    "time": "<= 1 min per case (one small single-file ingest + 2+ fast text/table queries against an already-built index).",
+    "trigger_rate": ">= 95% — a 'find X, then use it to answer Y from this one document' prompt must fire the skill",
+    "subcommand_accuracy": ">= 90% — one `retriever ingest <file>` (table rungs add --use-table-structure) then >= 2 sequential `retriever query` calls; the hop-2 query is constructed from hop-1's result; no --input-type flag (does not exist)",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "format_autodetect": "`retriever ingest <file>` auto-detects PDF from the extension. There is NO --input-type flag.",
+    "host_agnostic": "This RETRIEVE suite is host-agnostic (runs on hosted build.nvidia.com endpoints OR a local GPU per the two SETUP suites). The assertion is the CHAINED query pattern + the correct grounded final value, not where extraction/embedding ran.",
+    "table_structure_note": "The numeric multi-hop rungs (mh-001, 002, 003, 005) query table cells, so ingest uses --use-table-structure (flips use_table_structure true, table_output_format markdown, materializes nemotron-table-structure-v1) and queries pass --content-types text,table so the cells are recoverable as content_type=table rows. The cross-page poem/table rung (mh-004) needs both body text (p1) and a table (p2), so it also uses --use-table-structure with --content-types text,table.",
+    "defaults": {"lancedb_uri": "lancedb", "table_name": "nemo-retriever"},
+    "ingest_success_line": "Ingested N file(s) -> M row(s) in LanceDB lancedb/<table>.",
+    "query_hit_shape": "JSON array; each hit has exactly {source, page_number, text}; page_number is a 1-indexed int.",
+    "fixtures_ground_truth": {
+      "table_test.pdf": "1pg table Year x {Bill,Amy,James,Ted,Susan}, 2004-2023 (N/A in some early cells). Verified column maxima and the chained values: James max = 987 in 2015 (Susan that year = 854); Susan max = 994 in 2020 (James that year = 922); Amy max = 938 in 2022 (Ted that year = 912); James 2019 = 978 (NOT his max — his max is 987 in 2015).",
+      "woods_frost.pdf": "2pg single source. p1 = Robert Frost poem 'Stopping by Woods on a Snowy Evening' (owner's 'house is in the village', 'miles to go before I sleep'). p2 = 'Frost's Collections' table (# / Collection / Year): 1 A Boy's Will 1913; 2 North of Boston 1914; 3 Mountain Interval 1916; 4 New Hampshire 1923; 5 West Running Brook 1928; 6 A Further Range 1937; 7 A Witness Tree 1942; 8 In the Clearing 1962; 9 Steeple Bush 1947; 10 An Afterword unknown."
+    }
+  },
+  "cases": [
+    {
+      "id": "retrieve-mh-001",
+      "title": "Explicit 2-hop the user spells out -> two sequential queries, hop-1 value feeds hop-2",
+      "complexity": 1,
+      "complexity_axis": "TASK: multi-hop retrieval (single source, multiple chunks) in its simplest explicit form. The user STATES both hops verbatim, so the agent does not have to discover the chain — it only has to execute it as TWO queries. ADDS over nothing (this is the floor): establishes the baseline multi-hop pattern = hop-1 query -> extract intermediate value -> hop-2 query built from it -> final answer. DISTINCT from single-hop RETRIEVE: the answer cannot be produced by one query; the year from hop-1 is required to phrase hop-2.",
+      "prompt": "Using only data/table_test.pdf: first, in which year did James score 978? Then tell me what Susan scored in that same year. Give me the year and Susan's value.",
+      "data_files": ["cases/retrieve-mh-001/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf --use-table-structure",
+        "$RETRIEVER query \"In which year did James score 978?\" --top-k 5 --content-types text,table",
+        "$RETRIEVER query \"What did Susan score in 2019?\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (table rows present; --use-table-structure)",
+        "hop_1": "query 'year James scored 978' -> table rows surface 2019 row (James 2019 = 978). Intermediate value extracted = 2019.",
+        "hop_2": "the agent rewrites hop-2 using 2019 -> 'What did Susan score in 2019?' -> Susan 2019 = 922.",
+        "answer": "Year = 2019; Susan's value that year = 922; cite table_test.pdf p1"
+      },
+      "pass_when": [
+        "trace shows >= 2 sequential `retriever query` calls against the single ingested table_test.pdf",
+        "hop-1 returns the year 2019 (James = 978) as a content_type=table hit",
+        "hop-2's query string contains 2019 (the hop-1 result), NOT supplied by the user as a literal year",
+        "final answer is year=2019 AND Susan=922, citing table_test.pdf p1",
+        "FAILS if a single query is used, or if Susan's value is read for a wrong/guessed year"
+      ]
+    },
+    {
+      "id": "retrieve-mh-002",
+      "title": "Intermediate value is correctly extracted from hop-1 hits and reused in hop-2",
+      "complexity": 2,
+      "complexity_axis": "TASK: same multi-hop retrieval. ADDS over rung 1 exactly one dimension: the user does NOT hand the agent the linking literal at all — hop-1 must be RUN and its retrieved cell parsed to obtain the intermediate (a year) before hop-2 can even be phrased. Rung 1 named '978'; here the user only refers to 'the year North of Boston was published', so the linking value (1914) exists only in a retrieved chunk. DISTINCT: tests faithful extraction-and-reuse of an intermediate hit, not just executing two stated hops.",
+      "prompt": "From data/woods_frost.pdf only: find the year the collection 'North of Boston' was published, then tell me which collection (by name) was published the year right after that. Give me both the linking year and the next collection.",
+      "data_files": ["cases/retrieve-mh-002/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf --use-table-structure",
+        "$RETRIEVER query \"What year was the collection 'North of Boston' published?\" --top-k 5 --content-types text,table",
+        "$RETRIEVER query \"Which Frost collection was published in 1916?\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (p1 poem text + p2 collections table)",
+        "hop_1": "query 'year North of Boston published' -> p2 table row '2 North of Boston 1914'. Intermediate value extracted = 1914; the agent computes year-after = 1915... NOTE the table has no 1915, the next collection by year is 1916.",
+        "intermediate_resolution": "the chain is by-year ordering of the collections table: after 1914 the next published collection is 'Mountain Interval' (1916). The agent must use the retrieved 1914 to find the NEXT entry, i.e. read another row.",
+        "hop_2": "query for the collection published right after 1914 -> 'Mountain Interval' (1916).",
+        "answer": "Linking year = 1914; next collection = Mountain Interval (1916); cite woods_frost.pdf p2"
+      },
+      "pass_when": [
+        "trace shows >= 2 sequential `retriever query` calls against the single ingested woods_frost.pdf",
+        "hop-1 retrieves the year 1914 for 'North of Boston' (the linking value the user did NOT provide)",
+        "hop-2 is constructed from the hop-1 result (uses 1914 / the next-by-year row) to retrieve 'Mountain Interval' (1916)",
+        "final answer = linking year 1914 AND next collection 'Mountain Interval' (1916), citing woods_frost.pdf p2",
+        "FAILS if the agent answers in one query, or invents a 1915 collection that does not exist in the table"
+      ],
+      "known_caveat": "The collections table is keyed by # and Year, not strictly contiguous years (no 1915 entry). 'The year right after' resolves to the next published collection by year ordering = Mountain Interval (1916). Grading accepts the by-year-ordering interpretation grounded in the p2 table."
+    },
+    {
+      "id": "retrieve-mh-003",
+      "title": "Hop-1 requires a SUPERLATIVE (max) computed over retrieved rows, then hop-2 uses that year",
+      "complexity": 3,
+      "complexity_axis": "TASK: same multi-hop retrieval. ADDS over rung 2 one dimension: hop-1 is no longer a direct lookup of a stated cell — it is a SUPERLATIVE (argmax) over a whole retrieved COLUMN. The agent must pull James's row/column, compute his MAXIMUM, derive the year that maximum occurred, and only then phrase hop-2. DISTINCT: the intermediate is a computed argmax (year of the max), not a value the user named; this is the 'For the superlative item, what's its other attribute?' seed query.",
+      "prompt": "Look only at data/table_test.pdf. In which year did James score his all-time maximum? Then, for that same year, tell me what Susan scored. I want the year of James's max and Susan's value in that year.",
+      "data_files": ["cases/retrieve-mh-003/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf --use-table-structure",
+        "$RETRIEVER query \"James scores by year\" --top-k 25 --content-types text,table",
+        "$RETRIEVER query \"What did Susan score in 2015?\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (--use-table-structure; per-year table rows)",
+        "hop_1": "query retrieves James's per-year values; the agent computes the MAX over them. James's maximum = 987, which occurs in 2015 (NOT 2019/978 — 978 is only James's 2019 value, his max is 987 in 2015). Intermediate = 2015.",
+        "hop_2": "the agent rewrites hop-2 with 2015 -> 'What did Susan score in 2015?' -> Susan 2015 = 854.",
+        "answer": "Year of James's max (987) = 2015; Susan's value in 2015 = 854; cite table_test.pdf p1",
+        "superlative_note": "hop-1 must retrieve ENOUGH rows to compute the true column max (use a generous --top-k / --candidate-k so all year rows are in the pool); a small top-k that misses 2015 would wrongly pick 2019."
+      },
+      "pass_when": [
+        "trace shows >= 2 sequential `retriever query` calls against the single ingested table_test.pdf",
+        "hop-1 retrieves James's values across years and the agent computes the argmax year = 2015 (max value 987)",
+        "hop-2's query string contains 2015 (the computed intermediate), not a user-given literal",
+        "final answer = year 2015 (James max 987) AND Susan 2015 = 854, citing table_test.pdf p1",
+        "FAILS if the agent returns 2019/978 (mistaking James's 2019 value for his maximum) or answers in a single query"
+      ],
+      "known_caveat": "James's maximum is 987 in 2015 — distinct from the 978-in-2019 value used in rung 1 and in the extract suite. Hop-1 must pull all of James's year rows (sufficient top-k/candidate-k) to compute the true argmax; an under-retrieved pool can yield the wrong superlative."
+    },
+    {
+      "id": "retrieve-mh-004",
+      "title": "Verify the trace shows TWO DISTINCT query calls (cross-page single source: table -> poem)",
+      "complexity": 4,
+      "complexity_axis": "TASK: same multi-hop retrieval, single source, multiple chunks. ADDS over rung 3 one dimension: the two hops land on DIFFERENT pages / DIFFERENT modalities of the SAME document (hop-1 on the p2 table, hop-2 on the p1 poem body text), which makes a single-query shortcut impossible and the requirement of TWO DISTINCT query calls explicit and verifiable. DISTINCT: the chain crosses chunks/pages within one source; grading specifically asserts two separate query invocations (not one combined query).",
+      "prompt": "Using only data/woods_frost.pdf: first find the title of the poem in this document, then, from that same poem, tell me the line that is repeated at the very end. Do it as two lookups and show me both answers.",
+      "data_files": ["cases/retrieve-mh-004/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf --use-table-structure",
+        "$RETRIEVER query \"What is the title of the poem in this document?\" --top-k 5 --content-types text,table",
+        "$RETRIEVER query \"What is the closing repeated line of 'Stopping by Woods on a Snowy Evening'?\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (single source, multi-page: p1 poem + p2 table)",
+        "hop_1": "query for the poem title -> retrieves p1 heading 'Stopping by Woods on a Snowy Evening, By Robert Frost'. Intermediate = the poem title.",
+        "hop_2": "the agent reuses the retrieved title in hop-2 to fetch the poem's closing -> last stanza repeats 'And miles to go before I sleep' (cite p1).",
+        "answer": "Title = 'Stopping by Woods on a Snowy Evening' (by Robert Frost); repeated closing line = 'And miles to go before I sleep' (repeated twice); both cite woods_frost.pdf p1",
+        "trace_assertion": "exactly TWO distinct `retriever query` invocations appear in the trace; the hop-2 query string embeds the hop-1 retrieved title"
+      },
+      "pass_when": [
+        "trace shows TWO DISTINCT `retriever query` calls (not one combined query) against the single ingested woods_frost.pdf",
+        "hop-1 retrieves the poem title 'Stopping by Woods on a Snowy Evening' (p1)",
+        "hop-2's query string embeds the hop-1 title and retrieves the closing repeated line 'And miles to go before I sleep'",
+        "final answer gives both the title and the repeated closing line, citing woods_frost.pdf p1",
+        "FAILS if only one query call is present in the trace, or if the answer is produced without the hop-1 title feeding hop-2"
+      ]
+    },
+    {
+      "id": "retrieve-mh-005",
+      "title": "Acceptance: single-source multi-hop answered via >= 2 chained `retriever query` calls with the correct final value",
+      "complexity": 5,
+      "complexity_axis": "TASK: the composed operational-pass / acceptance gate for the multi-hop RETRIEVE row. ADDS over rung 4: a single phrasing that fuses a SUPERLATIVE hop-1 (argmax over a retrieved column) with a cross-cell hop-2 lookup, and is gradable purely on the operational signature: ingest once, then >= 2 CHAINED `retriever query` calls where hop-1's computed value forms hop-2's query, ending in the exact grounded final value. DISTINCT: this is the full chain (discover the linking value by superlative -> reuse it -> final answer), the gate the earlier rungs build up to.",
+      "prompt": "Answer this from data/table_test.pdf only, and show your two retrieval steps: which year did Susan score her highest, and what did James score in that same year? Give me Susan's max year and James's value that year.",
+      "data_files": ["cases/retrieve-mh-005/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf --use-table-structure",
+        "$RETRIEVER query \"Susan scores by year\" --top-k 25 --content-types text,table",
+        "$RETRIEVER query \"What did James score in 2020?\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (--use-table-structure; per-year table rows)",
+        "hop_1": "query retrieves Susan's per-year values; the agent computes the MAX = 994, occurring in 2020. Intermediate = 2020.",
+        "hop_2": "the agent rewrites hop-2 with 2020 -> 'What did James score in 2020?' -> James 2020 = 922.",
+        "answer": "Susan's max (994) year = 2020; James's value in 2020 = 922; cite table_test.pdf p1",
+        "operational_signature": "one ingest, then exactly two chained query calls; hop-2 query string contains 2020 derived from hop-1's argmax"
+      },
+      "pass_when": [
+        "single ingest of table_test.pdf, then >= 2 CHAINED `retriever query` calls in the trace",
+        "hop-1 retrieves Susan's year values and the agent computes argmax year = 2020 (max 994)",
+        "hop-2's query string contains 2020 (the hop-1 computed intermediate), not a user-supplied literal",
+        "final answer = Susan max year 2020 AND James 2020 = 922, citing table_test.pdf p1",
+        "operational pass (NOT RAGAS): correct subcommands + the chained-query signature + the exact grounded value; FAILS on a single combined query or a wrong argmax year"
+      ]
+    }
+  ]
+}

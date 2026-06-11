@@ -117,7 +117,6 @@ class IngestorCreateParams(_ParamsModel):
 class IngestExecuteParams(_ParamsModel):
     show_progress: bool = False
     return_failures: bool = False
-    save_to_disk: bool = False
     return_traces: bool = False
     return_results: bool = True
     parallel: bool = False
@@ -302,8 +301,8 @@ class ExtractParams(_ParamsModel):
     extract_images: bool = True
     extract_tables: bool = True
     extract_charts: bool = True
-    extract_infographics: bool = True
-    extract_page_as_image: Optional[bool] = None
+    extract_infographics: bool = False
+    extract_page_as_image: Optional[bool] = True
 
     # Extraction options
     method: str = "pdfium"

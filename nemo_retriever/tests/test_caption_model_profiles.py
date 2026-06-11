@@ -21,9 +21,9 @@ OMNI_FP8 = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8"
 OMNI_NVFP4 = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4"
 OMNI_REMOTE = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 _LOCAL_CAPTIONER_NEMO_IMPORT_MODULES = (
-    "nemo_retriever.model.local.nemotron_vlm_captioner",
-    "nemo_retriever.utils.nvtx",
-    "nemo_retriever.model.model",
+    "nemo_retriever.models.local.nemotron_vlm_captioner",
+    "nemo_retriever.common.nvtx",
+    "nemo_retriever.models.model",
 )
 _LOCAL_CAPTIONER_DEPENDENCY_MODULES = (
     "torch",
@@ -34,9 +34,9 @@ _LOCAL_CAPTIONER_DEPENDENCY_MODULES = (
 )
 _LOCAL_CAPTIONER_IMPORT_MODULES = _LOCAL_CAPTIONER_NEMO_IMPORT_MODULES + _LOCAL_CAPTIONER_DEPENDENCY_MODULES
 _LOCAL_CAPTIONER_PARENT_ATTRS = (
-    ("nemo_retriever.model.local", "nemotron_vlm_captioner"),
+    ("nemo_retriever.models.local", "nemotron_vlm_captioner"),
     ("nemo_retriever.utils", "nvtx"),
-    ("nemo_retriever.model", "model"),
+    ("nemo_retriever.models", "model"),
     ("torch", "cuda"),
     ("torch", "nn"),
     ("torch.cuda", "nvtx"),

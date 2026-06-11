@@ -44,10 +44,18 @@ For **local GPU inference** (Nemotron models running on your GPU), install with 
 ```bash
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install "nemo-retriever[local]==26.05-RC1"
+uv pip install "nemo-retriever[local]"
 ```
 
-Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (see the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
+The `[local]` extra resolves stable Nemotron extraction packages by default. To
+try prerelease/nightly Nemotron packages from PyPI within the same supported
+major-version windows, opt in with `--pre`:
+
+```bash
+uv pip install --pre "nemo-retriever[local]==26.05-RC1"
+```
+
+Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (refer to the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
 
 For **remote NIM inference only** (no local GPU required), the base package is sufficient:
 
@@ -55,17 +63,17 @@ For **remote NIM inference only** (no local GPU required), the base package is s
 uv python install 3.12
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install nemo-retriever==26.05-RC1
+uv pip install nemo-retriever
 ```
 
-Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (see the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
+Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (refer to the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
 
 This creates a dedicated Python environment and installs the `nemo-retriever` PyPI package, the canonical distribution for the NeMo Retriever Library.
 
 If your PDF pipeline uses `extract_method="nemotron_parse"`, install the Nemotron Parse client dependencies with the `nemotron-parse` extra:
 
 ```bash
-uv pip install "nemo-retriever[nemotron-parse]==26.05-RC1"
+uv pip install "nemo-retriever[nemotron-parse]"
 ```
 
 For local GPU inference with Nemotron Parse, combine the extras as `nemo-retriever[local,nemotron-parse]`.
@@ -87,9 +95,9 @@ Skip this step if you are using remote NIM inference only.
 
 The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
 
-> **Note:** `batch` is the primary intended run_mode of operation for this library. Other modes are experimental and subject to change or removal.
+> **Note:** `retriever ingest` and `retriever pipeline run` default to `--run-mode inprocess` (single-process pandas). Pass `--run-mode batch` for Ray Data scale-out on larger workloads. Other modes are experimental and subject to change or removal.
 
-The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, see [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
+The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, refer to [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
 
 ### Ingest a test pdf
 ```python
@@ -159,7 +167,7 @@ used in [Run a recall query](#run-a-recall-query) below. With the
 and embedding. For a realistic retrieval corpus, see
 [QA evaluation -- Step 1](./src/nemo_retriever/evaluation/README.md#step-1-ingest-and-embed-pdfs-nemo-retriever).
 
-**No local GPU?** Set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) (see [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)) and route extraction and embedding
+**No local GPU?** Set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)) and route extraction and embedding
 through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
 
 ```bash
@@ -520,7 +528,7 @@ ingestor = ingestor.files(documents).extract(method="nemotron_parse")
 
 ## Run with remote inference, no local GPU required:
 
-For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) as an environment variable (see [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)). 
+For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) as an environment variable (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)). 
 
 ```python
 ingestor = (

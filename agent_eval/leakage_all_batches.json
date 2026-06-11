@@ -1,0 +1,3397 @@
+[
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_pharmaceuticals:1:v1",
+    "leak_kind": "filename",
+    "gold_doc": "NASEUAworkshop21_PCavazzoni_forposting",
+    "prompt": "I have a folder of FDA slide decks, drug\u2011safety reviews, and other pharma documents. Using the PDF at test-data/vidorev3-fda/pdfs/NASEUAwork"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_pharmaceuticals:100:v1",
+    "leak_kind": "filename",
+    "gold_doc": "The_Role_of_Social_Science_in_Prescription_Drug_Promotion_at_FDA_and_Preview_of_Upcoming_Studies",
+    "prompt": "I have a folder of FDA slide decks, drug-safety reviews, and pharma documents. Please read the PDF at 'test-data/vidorev3-fda/pdfs/The_Role_"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_pharmaceuticals:173:v1",
+    "leak_kind": "filename",
+    "gold_doc": "Biosimilar_Regulatory_Policy_Understanding_the_Landscape_and_Relevance_to_Medical_Practice",
+    "prompt": "I have a folder of FDA slide decks, drug\u2011safety reviews, and pharma documents. Using the PDF at test-data/vidorev3-fda/pdfs/Biosimilar_Regul"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_pharmaceuticals:2065:v1",
+    "leak_kind": "filename",
+    "gold_doc": "DSCSA_Webinar_October_2021",
+    "prompt": "I have a folder of FDA slide decks, drug-safety reviews, and other pharma documents. Using the PDF at test-data/vidorev3-fda/pdfs/DSCSA_Webi"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_pharmaceuticals:234:v1",
+    "leak_kind": "filename",
+    "gold_doc": "CDER_Office_of_Surveillance_and_Epidemiology_2018_Update",
+    "prompt": "I have a folder of FDA slide decks, drug-safety reviews, and pharma documents. Using the PDF at test-data/vidorev3-fda/pdfs/CDER_Office_of_S"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_pharmaceuticals:27:v1",
+    "leak_kind": "filename",
+    "gold_doc": "CDER_Office_of_Surveillance_and_Epidemiology_2018_Update",
+    "prompt": "I have a folder of FDA slide decks, drug-safety reviews, and pharma documents. Using the PDF at test-data/vidorev3-fda/pdfs/CDER_Office_of_S"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_pharmaceuticals:319:v1",
+    "leak_kind": "filename",
+    "gold_doc": "Presentation_Douglas_Throckmorton_FDAs_Role_in_Confronting_the_Opioid_Epidemic",
+    "prompt": "I have a folder of FDA slide decks, drug-safety reviews, and pharma documents. Using these two PDFs: test-data/vidorev3-fda/pdfs/Presentatio"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_pharmaceuticals:47:v1",
+    "leak_kind": "filename",
+    "gold_doc": "CDER_Office_of_Surveillance_and_Epidemiology_2017_Update",
+    "prompt": "I have a folder of FDA slide decks, drug-safety reviews, and pharma documents. Using the PDF at test-data/vidorev3-fda/pdfs/CDER_Office_of_S"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_pharmaceuticals:57:v1",
+    "leak_kind": "filename",
+    "gold_doc": "FDLI_FDA_CDER_PCavazzoni",
+    "prompt": "I have a folder of FDA slide decks, drug-safety reviews, and pharma documents. Using the PDF at test-data/vidorev3-fda/pdfs/FDLI_FDA_CDER_PC"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_pharmaceuticals:63:v1",
+    "leak_kind": "filename",
+    "gold_doc": "Biosimilar_Regulatory_Policy_Understanding_the_Landscape_and_Relevance_to_Medical_Practice",
+    "prompt": "I have a folder of FDA slide decks, drug\u2011safety reviews, and other pharma documents. Using the PDF at test-data/vidorev3-fda/pdfs/Biosimilar"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_pharmaceuticals:90:v1",
+    "leak_kind": "filename",
+    "gold_doc": "SearchforBalanceFDAsApproachtotheOpioidsCrisis_79",
+    "prompt": "I have a folder of FDA slide decks, drug-safety reviews, and pharma documents. Using the PDF at test-data/vidorev3-fda/pdfs/SearchforBalance"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:1:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use these PDFs as the source documents: `test-data/vidorev3-finance/pdfs/bank_of_america_2024.pdf`, `test-data/vidorev3-finance/pdfs/citigro"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:100:v1",
+    "leak_kind": "filename",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the Morgan Stanley 2024 PDF located at test-data/vidorev3-finance/pdfs/morgan_stanley_2024.pdf, what is the total Average Management V"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:146:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "wells_fargo_2024",
+    "prompt": "Using the finance reports in the folder test-data/vidorev3-finance/pdfs/*.pdf, can you summarize what Wells Fargo\u2019s country exposure data re"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:151:v1",
+    "leak_kind": "filename",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "I have a folder of company filings including annual reports and SEC filings. Using the PDF at test-data/vidorev3-finance/pdfs/morgan_stanley"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:1760:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "I have the Bank of America 2024 and Citigroup 2024 PDFs in the folder test-data/vidorev3-finance/pdfs. Could you tell me the total value of "
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:178:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "I have a folder of finance PDFs (annual reports, SEC filings, earnings materials) located at test-data/vidorev3-finance/pdfs/*.pdf. Please f"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:232:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "I have a folder of finance PDFs (test-data/vidorev3-finance/pdfs/*.pdf) that includes Citigroup\u2019s 2024 annual report and related filings. Co"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:27:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "wells_fargo_2024",
+    "prompt": "I have a folder of finance PDFs (annual reports, SEC filings, earnings materials) located at test-data/vidorev3-finance/pdfs/*.pdf. How did "
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:28:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "I have Bank of America's 2024 report PDF at test-data/vidorev3-finance/pdfs/bank_of_america_2024.pdf. Could you compare how the bank managed"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:283:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "I have a set of finance reports, including annual reports and SEC filings. In the Bank of America 2024 PDF (test-data/vidorev3-finance/pdfs/"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:29:v1",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in test-data/vidorev3-finance/pdfs/*.pdf, what are the potential consequences of inflation and interest rate volatility on Ba"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:36:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "I have a folder of finance reports (PDFs) located at test-data/vidorev3-finance/pdfs/*.pdf. Please list the steps that Bank of America and C"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:6:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "I have a collection of finance PDFs, including annual reports and SEC filings. Using the Bank of America 2024 PDF located at test-data/vidor"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:7:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "I have a set of finance PDFs, including the Bank of America 2024 report located at test-data/vidorev3-finance/pdfs/bank_of_america_2024.pdf."
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_finance_en:83:v1",
+    "leak_kind": "filename",
+    "gold_doc": "citigroup_2024",
+    "prompt": "I have Citigroup's 2024 annual report PDF located at test-data/vidorev3-finance/pdfs/citigroup_2024.pdf. Please compare the changes in risk-"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_hr:115:v1",
+    "leak_kind": "filename",
+    "gold_doc": "employment_and_social_developments_in_europe_2024-KEBD24002ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/employment_and_social_developments_in_europe_2024-KEBD24002ENN.pdf` as the source document. I hav"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_hr:200:v1",
+    "leak_kind": "filename",
+    "gold_doc": "posting_of_workers-KE0224850ENN",
+    "prompt": "In my HR folder I have the posting of workers document (test-data/vidorev3-hr/pdfs/posting_of_workers-KE0224850ENN.pdf). Could you discuss t"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_hr:203:v1",
+    "leak_kind": "filename",
+    "gold_doc": "labour_market_and_wage_developments_in_europe-KEBN24001ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/labour_market_and_wage_developments_in_europe-KEBN24001ENN.pdf` as the source document. I have a "
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_hr:237:v1",
+    "leak_kind": "filename",
+    "gold_doc": "employment_and_social_developments_in_europe_2024-KEBD24002ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/employment_and_social_developments_in_europe_2024-KEBD24002ENN.pdf` as the source document. I hav"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_hr:246:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "posting_of_workers-KE0224850ENN",
+    "prompt": "I have a collection of HR policy PDFs located in test-data/vidorev3-hr/pdfs/*.pdf. Can you tell me what the decline percentage was in the nu"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_hr:278:v1",
+    "leak_kind": "filename",
+    "gold_doc": "estimating_labour_market_transitions_and_skills_investment-KE0125066ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/estimating_labour_market_transitions_and_skills_investment-KE0125066ENN.pdf` as the source docume"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_hr:61:v1",
+    "leak_kind": "filename",
+    "gold_doc": "future-oriented_occupations_in_the_eu-KE0125043ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/future-oriented_occupations_in_the_eu-KE0125043ENN.pdf` as the source document. I have a set of H"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_hr:76:v1",
+    "leak_kind": "filename",
+    "gold_doc": "future-oriented_occupations_in_the_eu-KE0125043ENN",
+    "prompt": "I have a collection of HR documents, including the PDF at test-data/vidorev3-hr/pdfs/future-oriented_occupations_in_the_eu-KE0125043ENN.pdf."
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_hr:77:v1",
+    "leak_kind": "filename",
+    "gold_doc": "labour_market_and_wage_developments_in_europe-KEBN24001ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/labour_market_and_wage_developments_in_europe-KEBN24001ENN.pdf` as the source document. I have th"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_hr:89:v1",
+    "leak_kind": "overlap",
+    "gold_doc": "a_demographic_perspective_on_the_future_of_european-KJ0125152ENN",
+    "prompt": "I have a folder of HR policy PDFs located at test-data/vidorev3-hr/pdfs/*.pdf. Could you summarize the key factors influencing future EU lab"
+  },
+  {
+    "batch": "batch_1 (vidore agent_prompts)",
+    "eval_id": "vidore_v3_hr:98:v1",
+    "leak_kind": "filename",
+    "gold_doc": "estimating_labour_market_transitions_and_skills_investment-KE0125066ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/estimating_labour_market_transitions_and_skills_investment-KE0125066ENN.pdf` as the source docume"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:q01:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "The_Public_Health_Role_of_Drug_Regulation_in_the_US",
+    "prompt": "Use the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents. I\u2019m looking into the history of drug regulation and need to kno"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:q04:v1",
+    "leak_kind": "filename",
+    "gold_doc": "AAMGRxBiosimsSept2018_UHL",
+    "prompt": "Use the PDF at `test-data/vidorev3-fda/pdfs/AAMGRxBiosimsSept2018_UHL.pdf` as the source document. In the FDA slide deck AAMGRxBiosimsSept20"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:q07:v1",
+    "leak_kind": "filename",
+    "gold_doc": "CDER_SEND_Webinar_June_2020",
+    "prompt": "Use the PDF at `test-data/vidorev3-fda/pdfs/CDER_SEND_Webinar_June_2020.pdf` as the source document. In the CDER SEND Webinar June 2020 PDF,"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:q12:v1",
+    "leak_kind": "alias",
+    "gold_doc": "DDI_Medication_Errors_CE_March_2020_DMEPA_and_ISMP_combined_slides_FINAL",
+    "prompt": "You have a collection of FDA slide decks, drug-safety reviews, and other pharmaceutical PDFs in the folder test-data/vidorev3-fda/pdfs/. Usi"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:q13:v1",
+    "leak_kind": "filename",
+    "gold_doc": "Biosimilar_Regulatory_Policy_Understanding_the_Landscape_and_Relevance_to_Medical_Practice",
+    "prompt": "Use the PDF at `test-data/vidorev3-fda/pdfs/Biosimilar_Regulatory_Policy_Understanding_the_Landscape_and_Relevance_to_Medical_Practice.pdf` "
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:q14:v1",
+    "leak_kind": "filename",
+    "gold_doc": "Presentation_CDER_2016_Update_for_Rare_Diseases",
+    "prompt": "In the PDF file Presentation_CDER_2016_Update_for_Rare_Diseases.pdf located in the test-data/vidorev3-fda/pdfs folder, how many slides discu"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:q15:v1",
+    "leak_kind": "filename",
+    "gold_doc": "Presentation_Douglas_Throckmorton_FDAs_Role_in_Confronting_the_Opioid_Epidemic",
+    "prompt": "Use these PDFs as the source documents: `test-data/vidorev3-fda/pdfs/Presentation_Douglas_Throckmorton_FDAs_Role_in_Confronting_the_Opioid_E"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:q16:v1",
+    "leak_kind": "filename",
+    "gold_doc": "FDA_Office_of_Generic_Drugs_OGD_Keynote_Address_GDUFA_Past_Present_and_Future",
+    "prompt": "Use the PDF at `test-data/vidorev3-fda/pdfs/FDA_Office_of_Generic_Drugs_OGD_Keynote_Address_GDUFA_Past_Present_and_Future.pdf` as the source"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:q18:v1",
+    "leak_kind": "filename",
+    "gold_doc": "Future_of_Drug_Development_with_Janet_Woodcock_Director_CDER_FDA",
+    "prompt": "Use the PDF at `test-data/vidorev3-fda/pdfs/Future_of_Drug_Development_with_Janet_Woodcock_Director_CDER_FDA.pdf` as the source document. Us"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:d01:v1",
+    "leak_kind": "filename",
+    "gold_doc": "Biosimilar_Regulatory_Policy_Understanding_the_Landscape_and_Relevance_to_Medical_Practice",
+    "prompt": "Use the PDF at `test-data/vidorev3-fda/pdfs/Biosimilar_Regulatory_Policy_Understanding_the_Landscape_and_Relevance_to_Medical_Practice.pdf` "
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:d05:v1",
+    "leak_kind": "filename",
+    "gold_doc": "Biosimilar_Regulatory_Policy_Understanding_the_Landscape_and_Relevance_to_Medical_Practice",
+    "prompt": "Use these PDFs as the source documents: `test-data/vidorev3-fda/pdfs/Biosimilar_Regulatory_Policy_Understanding_the_Landscape_and_Relevance_"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:d06:v1",
+    "leak_kind": "filename",
+    "gold_doc": "CDER_Office_of_Surveillance_and_Epidemiology_2018_Update",
+    "prompt": "Use the PDF at `test-data/vidorev3-fda/pdfs/CDER_Office_of_Surveillance_and_Epidemiology_2018_Update.pdf` as the source document. In the FDA"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:d07:v1",
+    "leak_kind": "filename",
+    "gold_doc": "Biosimilar_and_Interchangeable_Products_The_US_FDA_Perspective",
+    "prompt": "Use the PDF at `test-data/vidorev3-fda/pdfs/Biosimilar_and_Interchangeable_Products_The_US_FDA_Perspective.pdf` as the source document. Coul"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:d09:v1",
+    "leak_kind": "filename",
+    "gold_doc": "DrThrockmorton1",
+    "prompt": "Using the PDFs located at test-data/vidorev3-fda/pdfs/DrThrockmorton1.pdf and test-data/vidorev3-fda/pdfs/FDA_Role_in_Regulation_of_Cannabis"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:d10:v1",
+    "leak_kind": "filename",
+    "gold_doc": "CDER_Update_Presentation",
+    "prompt": "Use the PDF at `test-data/vidorev3-fda/pdfs/CDER_Update_Presentation.pdf` as the source document. Could you please explain how the implement"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:m02:v1",
+    "leak_kind": "filename",
+    "gold_doc": "CDER_New_Drugs_Program_2017_Update",
+    "prompt": "I just got the PDF `test-data/vidorev3-fda/pdfs/CDER_New_Drugs_Program_2017_Update.pdf` from my FDA slide deck folder. Could you ingest it a"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:m03:v1",
+    "leak_kind": "filename",
+    "gold_doc": "DSCSA_Webinar_October_2021",
+    "prompt": "Please load the PDF DSCSA_Webinar_October_2021.pdf from the test-data/vidorev3-fda/pdfs folder and then tell me what the DSCSA requirements "
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:s06:v1",
+    "leak_kind": "filename",
+    "gold_doc": "The_Role_of_Social_Science_in_Prescription_Drug_Promotion_at_FDA_and_Preview_of_Upcoming_Studies",
+    "prompt": "/nemo-retriever explain the role of visual presentation in shaping consumer beliefs about drug effectiveness based on the described research"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:e08:v1",
+    "leak_kind": "filename",
+    "gold_doc": "CDER_Office_of_Surveillance_and_Epidemiology_2017_Update",
+    "prompt": "Use the PDF at `test-data/vidorev3-fda/pdfs/CDER_Office_of_Surveillance_and_Epidemiology_2017_Update.pdf` as the source document. I\u2019m review"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_pharmaceuticals:p02:v1",
+    "leak_kind": "filename",
+    "gold_doc": "AAMGRxBiosimsSept2018_UHL",
+    "prompt": "Use these PDFs as the source documents: `test-data/vidorev3-fda/pdfs/AAMGRxBiosimsSept2018_UHL.pdf`, `test-data/vidorev3-fda/pdfs/State_of_O"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:q01:v1",
+    "leak_kind": "filename",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Use the PDF at `test-data/vidorev3-finance/pdfs/jpmorgan_chase_2024.pdf` as the source document. Could you let me know if JPMorgan Chase exe"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:q04:v1",
+    "leak_kind": "filename",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDF at `test-data/vidorev3-finance/pdfs/citigroup_2024.pdf` as the source document. Based on Citigroup's 2024 annual report, how doe"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:q05:v1",
+    "leak_kind": "filename",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDF at `test-data/vidorev3-finance/pdfs/citigroup_2024.pdf` as the source document. In Citigroup's 2024 annual report, how did the B"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:q07:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. What are the specific types of Level 3 derivatives reported"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:q10:v1",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in test-data/vidorev3-finance/pdfs/*.pdf, compare and contrast the market\u2011related risk management challenges (inflation, inte"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:q12:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Based on the Bank of America 2024 annual report (test-data/vidorev3-finance/pdfs/bank_of_america_2024.pdf), what is the dividend rate for Ba"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:q18:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Please summarize the main business segments of Goldman Sachs as reported in their 2024 Form 10-K. For each claim, include an inline citation"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:d01:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the Bank of America 2024 annual report located at test-data/vidorev3-finance/pdfs/bank_of_america_2024.pdf, describe the redemption te"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:d02:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use these PDFs as the source documents: `test-data/vidorev3-finance/pdfs/bank_of_america_2024.pdf`, `test-data/vidorev3-finance/pdfs/goldman"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:d04:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDF at `test-data/vidorev3-finance/pdfs/bank_of_america_2024.pdf` as the source document. Based on the Bank of America 2024 report, "
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:d05:v1",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "What were the total nonperforming balances and credit card charge-offs for Bank of America in 2024? Please answer based on the PDFs in the t"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:d06:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "wells_fargo_2024",
+    "prompt": "Using the PDFs in test-data/vidorev3-finance/pdfs/*.pdf, explain how changes in commercial loans and consumer loans contributed to the overa"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:d07:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDF at `test-data/vidorev3-finance/pdfs/bank_of_america_2024.pdf` as the source document. In Bank of America's 2024 annual report PD"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:d09:v1",
+    "leak_kind": "filename",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use these PDFs as the source documents: `test-data/vidorev3-finance/pdfs/citigroup_2024.pdf`, `test-data/vidorev3-finance/pdfs/morgan_stanle"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:d10:v1",
+    "leak_kind": "filename",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Use the PDF at `test-data/vidorev3-finance/pdfs/morgan_stanley_2024.pdf` as the source document. Looking at the Morgan Stanley 2024 annual r"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:m01:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "I've placed the PDFs in test-data/vidorev3-finance/pdfs. Please process them and then answer: What were the key factors driving the robust g"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:m02:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "I have the 2024 annual reports for Bank of America and Citigroup. Please load the PDFs at test-data/vidorev3-finance/pdfs/bank_of_america_20"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:m03:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDF at `test-data/vidorev3-finance/pdfs/bank_of_america_2024.pdf` as the source document. I have the Bank of America 2024 10-K PDF. "
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:s02:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "/nemo-retriever What steps are being taken by Bank of America and Citigroup to mitigate the risks posed by rising interest rates and geopoli"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:s06:v1",
+    "leak_kind": "filename",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "/nemo-retriever find the notional value of interest rate contracts within JPMorgan Chase's derivatives portfolio as reported in 2024 risk di"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:e08:v1",
+    "leak_kind": "filename",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Use these PDFs as the source documents: `test-data/vidorev3-finance/pdfs/jpmorgan_chase_2024.pdf`, `test-data/vidorev3-finance/pdfs/morgan_s"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_finance_en:p02:v1",
+    "leak_kind": "filename",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use these PDFs as the source documents: `test-data/vidorev3-finance/pdfs/bank_of_america_2024.pdf`, `test-data/vidorev3-finance/pdfs/citigro"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:q01:v1",
+    "leak_kind": "filename",
+    "gold_doc": "annual_report_on_intra-eu_labour_mobility-KE0125029ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/annual_report_on_intra-eu_labour_mobility-KE0125029ENN.pdf` as the source document. Based on the "
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:q14:v1",
+    "leak_kind": "filename",
+    "gold_doc": "research_perspectives_on_the_future_of_work-KI0124087ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/research_perspectives_on_the_future_of_work-KI0124087ENN.pdf` as the source document. In the prov"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:q15:v1",
+    "leak_kind": "filename",
+    "gold_doc": "future-oriented_occupations_in_the_eu-KE0125043ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/future-oriented_occupations_in_the_eu-KE0125043ENN.pdf` as the source document. Using the HR docu"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:q16:v1",
+    "leak_kind": "filename",
+    "gold_doc": "employment_and_social_developments_in_europe_2024-KEBD24002ENN",
+    "prompt": "Use these PDFs as the source documents: `test-data/vidorev3-hr/pdfs/employment_and_social_developments_in_europe_2024-KEBD24002ENN.pdf`, `te"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:d01:v1",
+    "leak_kind": "filename",
+    "gold_doc": "annual_report_on_intra-eu_labour_mobility-KE0125029ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/annual_report_on_intra-eu_labour_mobility-KE0125029ENN.pdf` as the source document. Using the PDF"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:d02:v1",
+    "leak_kind": "filename",
+    "gold_doc": "future-oriented_occupations_in_the_eu-KE0125043ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/future-oriented_occupations_in_the_eu-KE0125043ENN.pdf` as the source document. I\u2019d like to know "
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:d03:v1",
+    "leak_kind": "filename",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Using the document `test-data/vidorev3-hr/pdfs/european_network_of_public_employment_services_annual-KE0124024ENN.pdf`, compare how public e"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:d04:v1",
+    "leak_kind": "filename",
+    "gold_doc": "annual_report_on_intra-eu_labour_mobility-KE0125029ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/annual_report_on_intra-eu_labour_mobility-KE0125029ENN.pdf` as the source document. In the annual"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:d05:v1",
+    "leak_kind": "filename",
+    "gold_doc": "annual_report_on_intra-eu_labour_mobility-KE0125029ENN",
+    "prompt": "Using the PDF at test-data/vidorev3-hr/pdfs/annual_report_on_intra-eu_labour_mobility-KE0125029ENN.pdf, explain why there is a difference in"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:d06:v1",
+    "leak_kind": "filename",
+    "gold_doc": "employment_and_social_developments_in_europe-KE0125067ENN",
+    "prompt": "Use these PDFs as the source documents: `test-data/vidorev3-hr/pdfs/employment_and_social_developments_in_europe-KE0125067ENN.pdf`, `test-da"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:m02:v1",
+    "leak_kind": "filename",
+    "gold_doc": "labour_market_and_wage_developments_in_europe-KEBN24001ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/labour_market_and_wage_developments_in_europe-KEBN24001ENN.pdf` as the source document. I just re"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:m03:v1",
+    "leak_kind": "filename",
+    "gold_doc": "employment_and_social_developments_in_europe_2024-KEBD24002ENN",
+    "prompt": "Please read the two HR PDFs located at test-data/vidorev3-hr/pdfs/employment_and_social_developments_in_europe_2024-KEBD24002ENN.pdf and tes"
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:e07:v1",
+    "leak_kind": "filename",
+    "gold_doc": "employment_and_social_developments_in_europe-KE0125067ENN",
+    "prompt": "Using the HR document at test-data/vidorev3-hr/pdfs/employment_and_social_developments_in_europe-KE0125067ENN.pdf, what factors help the EU "
+  },
+  {
+    "batch": "batch_2 (vidore scenario)",
+    "eval_id": "vidore_v3_hr:e08:v1",
+    "leak_kind": "filename",
+    "gold_doc": "employment_and_social_developments_in_europe-KE0125067ENN",
+    "prompt": "Use the PDF at `test-data/vidorev3-hr/pdfs/employment_and_social_developments_in_europe-KE0125067ENN.pdf` as the source document. Using the "
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:q01:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "What was Apple's net revenue in fiscal year 2022?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:q02:v1",
+    "leak_kind": "filename",
+    "gold_doc": "82092117",
+    "prompt": "What date is shown on the FUNSD form image 82092117.png?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:q04:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "What do Apple's, Microsoft's, and Walmart's most recent 10-K filings say about cybersecurity risks?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:q08:v1",
+    "leak_kind": "filename",
+    "gold_doc": "WALMART_2017_10K",
+    "prompt": "Get the full extracted contents of WALMART_2017_10K.pdf."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:q10:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "Compare Apple's gross margin in fiscal year 2022 with Microsoft's gross margin in fiscal year 2022."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:q11:v1",
+    "leak_kind": "filename",
+    "gold_doc": "doc_005",
+    "prompt": "Looking at DocVQA image doc_005.png, what is the title or main heading of the document?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:q16:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "APPLE_*_10K",
+    "prompt": "What was Apple's R&D spending in the year of its largest year-over-year revenue growth between 2017 and 2022?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:q17:v1",
+    "leak_kind": "filename",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "TWO-PART TEST. Turn 1: 'Remember that our compliance reference document is APPLE_2022_10K.pdf.' Turn 2 (new session, days later): 'What was "
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:q18:v1",
+    "leak_kind": "filename",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "What does APPLE_2022_10K.pdf say about climate change risk? Include exact page citations and quoted excerpts for every claim."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:q19:v1",
+    "leak_kind": "filename",
+    "gold_doc": "chart_001",
+    "prompt": "Looking at ChartQA image chart_001.png, what does the chart show, and what is the most striking data point?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:q20:v1",
+    "leak_kind": "filename",
+    "gold_doc": "1089-134686-0000",
+    "prompt": "Transcribe LibriSpeech file LibriSpeech/test-clean/1089/134686/1089-134686-0000.flac. What is the speaker discussing?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:i01:v1",
+    "leak_kind": "filename",
+    "gold_doc": "pdfs",
+    "prompt": "Set up Q&A over test-data/financebench/pdfs/ \u2014 I want to ask questions about these 10-Ks."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:i02:v1",
+    "leak_kind": "filename",
+    "gold_doc": "pdfs",
+    "prompt": "Build a knowledge base from the 10-Ks in test-data/financebench/pdfs/."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:i03:v1",
+    "leak_kind": "filename",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "Make these PDFs searchable: APPLE_2022_10K.pdf, MICROSOFT_2022_10K.pdf, WALMART_2017_10K.pdf."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:i04:v1",
+    "leak_kind": "filename",
+    "gold_doc": "AMAZON_2018_10K",
+    "prompt": "Drop test-data/financebench/pdfs/AMAZON_2018_10K.pdf into a KB \u2014 I'll have questions in a sec."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:i05:v1",
+    "leak_kind": "filename",
+    "gold_doc": "images",
+    "prompt": "Ingest test-data/funsd/dataset/training_data/images/ \u2014 these are scanned forms I need to extract data from."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:i07:v1",
+    "leak_kind": "filename",
+    "gold_doc": "chartqa",
+    "prompt": "Wire up doc search over test-data/chartqa/ \u2014 bunch of chart PNGs."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:i08:v1",
+    "leak_kind": "filename",
+    "gold_doc": "docvqa",
+    "prompt": "I have doc images at test-data/docvqa/ \u2014 make them searchable."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:i09:v1",
+    "leak_kind": "filename",
+    "gold_doc": "test-clean",
+    "prompt": "Set up RAG over the audio files in test-data/librispeech/test-clean/ \u2014 I want to search through transcripts."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:i10:v1",
+    "leak_kind": "filename",
+    "gold_doc": "COSTCO_2021_10K",
+    "prompt": "Add test-data/financebench/pdfs/COSTCO_2021_10K.pdf to whatever KB I built earlier."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:i11:v1",
+    "leak_kind": "filename",
+    "gold_doc": "pdfs",
+    "prompt": "Re-ingest test-data/financebench/pdfs/ \u2014 I think I dropped in new PDFs."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:i12:v1",
+    "leak_kind": "filename",
+    "gold_doc": "test-data",
+    "prompt": "Process everything in test-data/ and let me query it later."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:d01:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "What's Apple saying about R&D in their 2022 10-K?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:d03:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "Side-by-side Apple's and Walmart's exec comp from 2022."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:d05:v1",
+    "leak_kind": "filename",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "What's on page 14 of APPLE_2022_10K.pdf?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:d07:v1",
+    "leak_kind": "filename",
+    "gold_doc": "pdfs",
+    "prompt": "Anyone mention tariffs in the financebench PDFs?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:d09:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "Quote me what Apple says about supply chain risk \u2014 exact wording and page numbers."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:m01:v1",
+    "leak_kind": "filename",
+    "gold_doc": "pdfs",
+    "prompt": "Drop test-data/financebench/pdfs/ in and tell me what each company says about AI."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:s01:v1",
+    "leak_kind": "filename",
+    "gold_doc": "pdfs",
+    "prompt": "/nemo-retriever ingest test-data/financebench/pdfs/"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:s02:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "/nemo-retriever What did Apple disclose about climate risk in 2022?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:s03:v1",
+    "leak_kind": "filename",
+    "gold_doc": "images",
+    "prompt": "/nemo-retriever build me a KB from test-data/funsd/dataset/training_data/images/"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:s04:v1",
+    "leak_kind": "filename",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "/nemo-retriever compare cybersecurity disclosures in APPLE_2022_10K.pdf and MICROSOFT_2022_10K.pdf"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:s06:v1",
+    "leak_kind": "filename",
+    "gold_doc": "pdfs",
+    "prompt": "/nemo-retriever count Apple 10-Ks in test-data/financebench/pdfs/"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:e01:v1",
+    "leak_kind": "filename",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "Just extract the text from APPLE_2022_10K.pdf \u2014 give me the chunks, don't index it."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:e02:v1",
+    "leak_kind": "filename",
+    "gold_doc": "ja_train_0",
+    "prompt": "Extract the text from xfund/ja/ja_train_0.jpg (Japanese scanned form)."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:e03:v1",
+    "leak_kind": "filename",
+    "gold_doc": "zh_train_0",
+    "prompt": "Read the Chinese form xfund/zh/zh_train_0.jpg and tell me what it says."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:e04:v1",
+    "leak_kind": "filename",
+    "gold_doc": "pdfs",
+    "prompt": "Stream-ingest test-data/financebench/pdfs/ via the OnlineIngestor \u2014 print progress every 10 docs."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:e05:v1",
+    "leak_kind": "filename",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "Ingest APPLE_2022_10K.pdf with a custom 1000-token chunk size and 100-token overlap."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:e06:v1",
+    "leak_kind": "filename",
+    "gold_doc": "pdfs",
+    "prompt": "TWO-PART TEST. Turn 1: Ingest financebench/pdfs/, then kill the process at ~50%. Turn 2: Re-run the same ingest command. Verify .dedup() ski"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:e07:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "Re-rank the top-20 hits for 'climate risk in Apple's 10-K' using llama-nemotron-rerank-1b-v2."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:e11:v1",
+    "leak_kind": "filename",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "TWO-TURN TEST. Turn 1: Run q01 and verify the LanceDB chunk count for APPLE_2022_10K.pdf. Turn 2 (new Claude Code session, after fully closi"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:e12:v1",
+    "leak_kind": "filename",
+    "gold_doc": "invoice_001",
+    "prompt": "Extract the invoice details from multilingual/ru/invoice_001.jpg (Russian invoice). What is the total amount?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:e13:v1",
+    "leak_kind": "filename",
+    "gold_doc": "contract_001",
+    "prompt": "Read the bilingual contract multilingual/ru_en_mixed/contract_001.jpg \u2014 extract both the English and the Russian sections and verify both la"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:e14:v1",
+    "leak_kind": "filename",
+    "gold_doc": "de_train_0",
+    "prompt": "Extract from xfund/de/de_train_0.jpg (German form). v2_multilingual is NOT trained on German \u2014 verify the skill either produces partial/nois"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:e15:v1",
+    "leak_kind": "filename",
+    "gold_doc": "factuur_001",
+    "prompt": "Negative test: extract from multilingual/nl/factuur_001.jpg (Dutch). Dutch is NOT in v2's trained set. Expect graceful degradation or warnin"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:p01:v1",
+    "leak_kind": "filename",
+    "gold_doc": "82092117",
+    "prompt": "Extract structured invoice fields {date, vendor, amount} from funsd/dataset/training_data/images/82092117.png \u2014 return a JSON object, not fr"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:p04:v1",
+    "leak_kind": "phrase",
+    "gold_doc": "APPLE_2022_10K",
+    "prompt": "Explain why hit 1 was returned for 'climate risk in Apple's 10-K'. Show retrieval strategy, embedding distance, reranker delta, contributing"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:p05:v1",
+    "leak_kind": "filename",
+    "gold_doc": "doc_005",
+    "prompt": "Caption the diagram in docvqa/doc_005.png using the VLM \u2014 describe what's depicted, not just extract OCR text."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:p06:v1",
+    "leak_kind": "filename",
+    "gold_doc": "chart_001",
+    "prompt": "Tell me in natural language what chartqa/chart_001.png shows \u2014 a paragraph summary, not the underlying axis/legend data."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:p07:v1",
+    "leak_kind": "filename",
+    "gold_doc": "doc_005",
+    "prompt": "Describe the infographic in docvqa/doc_005.png \u2014 give me a one-sentence takeaway, not the underlying data points."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:f01:v1",
+    "leak_kind": "filename",
+    "gold_doc": "procurement_memo_q4",
+    "prompt": "What does multiformat/docx/procurement_memo_q4.docx recommend for GPU procurement, and what's the total dollar amount?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:f02:v1",
+    "leak_kind": "filename",
+    "gold_doc": "docx",
+    "prompt": "Across the procurement memos in multiformat/docx/, list every GPU type recommended and the total capital outlay for each project."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:f03:v1",
+    "leak_kind": "filename",
+    "gold_doc": "aurora_qbr_q1",
+    "prompt": "From multiformat/pptx/aurora_qbr_q1.pptx, what's the FY27 Q1 revenue projection and which region has the largest pipeline?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:f04:v1",
+    "leak_kind": "filename",
+    "gold_doc": "fy27_bookings",
+    "prompt": "From multiformat/xlsx/fy27_bookings.xlsx, sum Q1 Inference bookings across all three regions."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:f05:v1",
+    "leak_kind": "filename",
+    "gold_doc": "html",
+    "prompt": "Set up Q&A over multiformat/html/ (Aurora docs) and tell me the p99 latency SLO for the Aurora platform."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:f06:v1",
+    "leak_kind": "filename",
+    "gold_doc": "runbook",
+    "prompt": "Pull the full contents of multiformat/html/runbook.html \u2014 I need the entire runbook inline."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:f07:v1",
+    "leak_kind": "filename",
+    "gold_doc": "api_changelog",
+    "prompt": "What was deprecated in multiformat/txt/api_changelog.txt v2.4.0?"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:f08:v1",
+    "leak_kind": "filename",
+    "gold_doc": "aurora_README",
+    "prompt": "From multiformat/md/aurora_README.md, what's the SLO for eu-central-1? Quote the exact row from the capacity table."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:f09:v1",
+    "leak_kind": "filename",
+    "gold_doc": "aurora_townhall_excerpt",
+    "prompt": "Transcribe multiformat/mp4/aurora_townhall_excerpt.mp4 and tell me the speaker's topic."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:f10:v1",
+    "leak_kind": "filename",
+    "gold_doc": "aurora_README",
+    "prompt": "Compare the GPU capacity figures across multiformat/md/aurora_README.md (markdown table) and multiformat/docx/procurement_memo_q4.docx (DOCX"
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:u01:v1",
+    "leak_kind": "filename",
+    "gold_doc": "sample",
+    "prompt": "Ingest test-data/unsupported/sample.eml and tell me what the email is about."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:u02:v1",
+    "leak_kind": "filename",
+    "gold_doc": "sample",
+    "prompt": "Search through test-data/unsupported/sample.py for any TODOs."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:u03:v1",
+    "leak_kind": "filename",
+    "gold_doc": "random",
+    "prompt": "Index test-data/unsupported/random.bin so I can query it."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:u04:v1",
+    "leak_kind": "filename",
+    "gold_doc": "sample",
+    "prompt": "Set up Q&A over test-data/unsupported/sample.rtf (the Q4 memo)."
+  },
+  {
+    "batch": "batch_3 (agent_functional)",
+    "eval_id": "functional:u05:v1",
+    "leak_kind": "filename",
+    "gold_doc": "sample",
+    "prompt": "Ingest test-data/unsupported/sample.jsonl so I can query the event log."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:101:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "wells_fargo_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the percentage increase in net loan charge-offs"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:101:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "wells_fargo_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:107:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer the following question and provide citations or pa"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:107:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:115:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer the following question across the finance reports "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:115:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, te"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:117:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the year-over-year percentage growth of Citigro"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:117:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:12:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, summarize how macroeconomic volatility impacts the financ"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:12:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:124:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the total amount Citigroup has spent in charges"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:124:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:127:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Across the finance reports corpus, answer the question: Wha"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:127:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:128:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine by which year Bank of America\u2019s G-SIB surcharge"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:128:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:13:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "wells_fargo_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer: How many quarterly blackout periods are there for"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:13:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "wells_fargo_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:135:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the fixed dividend rate for the Series KK in Ba"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:135:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:14:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, summarize the main business segments of Goldman Sachs as "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:14:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:142:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine what percentage of Morgan Stanley\u2019s total 2024 "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:142:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:145:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer the following question across the finance reports "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:145:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching the globs `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`, and `test-data/vidorev3-fda/p"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:15:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the key factors affecting Citigroup's net inter"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:15:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:152:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, compare the composition of Citigroup\u2019s credit risk exposu"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:152:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:162:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine what percentage of Goldman Sachs\u2019 total loan fa"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:162:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:164:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine what percentage of Citigroup's 2024 total expos"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:164:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:168:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine Citigroup\u2019s Supplementary Leverage Ratio (SLR) "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:168:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:180:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the TLAC amount and the average LCR percentage "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:180:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:181:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine Morgan Stanley's total deposit amounts and the "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:181:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:182:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, list the three measures used to assess Citigroup's bank c"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:182:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:19:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer the following question and provide citations to th"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:19:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:192:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Across the finance reports corpus, identify the three nonin"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:192:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:193:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer: What is the central focus of the Corporate Audit "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:193:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:194:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer the following question and provide citations to th"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:194:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:195:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, identify and list the U.S. states that Bank of America hi"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:195:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:203:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine Bank of America\u2019s Liquidity Coverage Ratio (LCR"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:203:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:21:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, describe Citigroup's performance trends and any evidence "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:21:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:212:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the decrease in Bank of America\u2019s Accumulated O"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:212:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:215:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, identify and extract the number of Citigroup employees in"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:215:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:216:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, list Bank of America's 2024 consumer key portfolios and p"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:216:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:217:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Across the finance reports corpus, answer the following que"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:217:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:218:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer: What fractional voting rights are assigned to dif"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:218:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:224:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "wells_fargo_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer: How does Wells Fargo\u2019s country exposure data reve"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:224:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "wells_fargo_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:24:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Across the finance reports corpus, answer this question and"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:24:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the combined corpus of PDFs from the finance, HR, and FDA collections (matching test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidor"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:250:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer the following question and include source citation"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:250:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:26:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Across the finance reports corpus, what were the total nonp"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:26:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:277:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Across the finance reports corpus, answer the following que"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:277:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:32:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer the following question and provide citations to th"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:32:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:40:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, analyze performance trends of Citigroup stock returns rel"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:40:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:44:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the total value of Citigroup's share repurchase"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:44:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:49:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer: What total amount did Goldman Sachs report as its"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:49:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:5:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Across the finance reports corpus, answer the question and "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:5:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:50:domain",
+    "leak_kind": "alias",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the maximum combined percentage reduction of Pe"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:50:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:51:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, list all specific third-party risk mitigation strategies "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:51:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:55:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, identify the specific energy sector index that is directl"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:55:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:65:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the average daily Value at Risk (VaR) for Goldm"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:65:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:66:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the total residential mortgage exposure held by"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:66:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:67:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, extract the Common Equity Tier 1 capital ratio reported b"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:67:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:69:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer the following question and provide citations to th"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:69:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:71:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, list the events that trigger a default under the BofA Fin"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:71:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:73:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, describe the factors that contributed to the increase in "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:73:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, te"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:76:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, describe how the interest rate on the Step Up Callable No"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:76:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:79:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, identify the dividend payment dates for the Bank of Ameri"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:79:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:8:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer the following question and include source citation"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:8:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, and test-data/vidorev3-fda/pdfs/*.pdf as th"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:97:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the fixed annual dividend rate for Citigroup's "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:97:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:99:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Across the finance reports corpus, answer this question and"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:99:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:117:domain",
+    "leak_kind": "alias",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, identify the collaborative initiatives implemented in 2024 to "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:117:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:121:domain",
+    "leak_kind": "alias",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Use the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents. Across the HR documents corpus, answer this question and include"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:121:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:126:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "future-oriented_occupations_in_the_eu-KE0125043ENN",
+    "prompt": "Use the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents. Across the HR documents corpus, answer the following question an"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:126:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "future-oriented_occupations_in_the_eu-KE0125043ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:151:domain",
+    "leak_kind": "alias",
+    "gold_doc": "access_for_domestic_workers_to_labour_and_social_protection-KE0124002ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, determine the self-employment rate in Slovakia for domestic wo"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:151:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "access_for_domestic_workers_to_labour_and_social_protection-KE0124002ENN",
+    "prompt": "Using the combined source corpus consisting of the PDFs matching test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, an"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:168:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "joint_employment_report_2025-KE0125018ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, answer the following question and cite the relevant sources: W"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:168:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "joint_employment_report_2025-KE0125018ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:174:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "posting_of_workers-KE0224850ENN",
+    "prompt": "Use the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents. Across the HR documents corpus, answer the following question an"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:174:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "posting_of_workers-KE0224850ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:2:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "posting_of_workers-KE0224850ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, explain the reasons behind the decrease in posted workers in G"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:2:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "posting_of_workers-KE0224850ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus (`test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:213:domain",
+    "leak_kind": "overlap",
+    "gold_doc": "future-oriented_occupations_in_the_eu-KE0125043ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, answer the following question and include source citations: Wh"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:213:cross_domain",
+    "leak_kind": "overlap",
+    "gold_doc": "future-oriented_occupations_in_the_eu-KE0125043ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:227:domain",
+    "leak_kind": "alias",
+    "gold_doc": "access_for_domestic_workers_to_labour_and_social_protection-KE0124002ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, answer: Which non\u2011EU country has 30% foreign\u2011born domestic wor"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:227:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "access_for_domestic_workers_to_labour_and_social_protection-KE0124002ENN",
+    "prompt": "Using the PDFs matching test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, and test-data/vidorev3-fda/pdfs/*.pdf as th"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:236:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "posting_of_workers-KE0224850ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, identify which EU nationalities together make up nearly 30% of"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:236:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "posting_of_workers-KE0224850ENN",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:253:domain",
+    "leak_kind": "alias",
+    "gold_doc": "access_for_domestic_workers_to_labour_and_social_protection-KE0124002ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, determine how many domestic workers make up the workforce per "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:253:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "access_for_domestic_workers_to_labour_and_social_protection-KE0124002ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:261:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "posting_of_workers-KE0224850ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, answer the following question and provide citations to the rel"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:261:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "posting_of_workers-KE0224850ENN",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:274:domain",
+    "leak_kind": "alias",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, explain the details of the 2024 Annual Report of the European "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:274:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Using the PDFs matching test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*.pdf as the co"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:280:domain",
+    "leak_kind": "alias",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, answer the following question and include source citations or "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:280:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:297:domain",
+    "leak_kind": "alias",
+    "gold_doc": "access_for_domestic_workers_to_labour_and_social_protection-KE0124002ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, answer the following question based on the HR documents corpus"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:297:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "access_for_domestic_workers_to_labour_and_social_protection-KE0124002ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:41:domain",
+    "leak_kind": "alias",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, determine how many years the European Network of Public Employ"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:41:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:68:domain",
+    "leak_kind": "alias",
+    "gold_doc": "undeclared_care_work_in_the_eu-TJ0125004ENN",
+    "prompt": "Use the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents. Across the HR documents corpus, answer the following question an"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:68:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "undeclared_care_work_in_the_eu-TJ0125004ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:72:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "future-oriented_occupations_in_the_eu-KE0125043ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, determine what percentage of EU employment is accounted for by"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:72:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "future-oriented_occupations_in_the_eu-KE0125043ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:82:domain",
+    "leak_kind": "overlap",
+    "gold_doc": "labour_market_and_wage_developments_in_europe-KEBN24001ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, answer: Using labour market data from 2022 to 2024, determine "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:82:cross_domain",
+    "leak_kind": "overlap",
+    "gold_doc": "labour_market_and_wage_developments_in_europe-KEBN24001ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:94:domain",
+    "leak_kind": "alias",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Using the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents, answer the following question and provide citations to the rel"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:94:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "european_network_of_public_employment_services_annual-KE0124024ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:123:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "Update_Biosimilar_Program_in_the_US",
+    "prompt": "Using the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents, answer the following question and provide citations to the re"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:123:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "Update_Biosimilar_Program_in_the_US",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:152:domain",
+    "leak_kind": "alias",
+    "gold_doc": "DDI_Medication_Errors_CE_March_2020_DMEPA_and_ISMP_combined_slides_FINAL",
+    "prompt": "Using the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents, explain what structural features of the FDA's organizational "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:152:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "DDI_Medication_Errors_CE_March_2020_DMEPA_and_ISMP_combined_slides_FINAL",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:174:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "drug_resistance_book",
+    "prompt": "Using the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents, determine the total number of countries that conducted or com"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:174:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "drug_resistance_book",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:252:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "drug_resistance_book",
+    "prompt": "Use the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents. Identify the five public health interventions targeting asympto"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:252:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "drug_resistance_book",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:64:domain",
+    "leak_kind": "alias",
+    "gold_doc": "DSCSA_Webinar_October_2021",
+    "prompt": "Using the PDFs located in `test-data/vidorev3-fda/pdfs/*.pdf` as the source corpus, answer the following question and provide citations to t"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:64:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "DSCSA_Webinar_October_2021",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:9:domain",
+    "leak_kind": "alias",
+    "gold_doc": "DDI_Medication_Errors_CE_March_2020_DMEPA_and_ISMP_combined_slides_FINAL",
+    "prompt": "Using the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents, describe how proactive risk assessment during drug developmen"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:9:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "DDI_Medication_Errors_CE_March_2020_DMEPA_and_ISMP_combined_slides_FINAL",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:103:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer whether Bank of America Corporation sponsors its C"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:103:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:111:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "/nemo-retriever Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, list all subsidiaries registered in the B"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:111:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "/nemo-retriever Use the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-h"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:112:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, locate Exhibit 21.01 from Citigroup\u2019s 2024 subsidiary lis"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:112:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:113:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine whether Bank of America in 2024 has identified "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:113:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:119:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine whether Citigroup\u2019s collateral for securities f"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:119:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:122:domain",
+    "leak_kind": "alias",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source corpus, determine the increase in JP Morgan Chase's total asset mana"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:122:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, te"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:129:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "wells_fargo_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer: What type of inputs are used for Level 3 valuatio"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:129:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "wells_fargo_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:130:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, plan the corpus search steps needed to find the actions t"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:130:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching the globs test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, and test-data/vidorev3-fda/pdfs/*"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:131:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf`, compare the workforce figures reported by Bank of America Corporation and Citigro"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:131:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:136:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Ingest the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` to make the finance reports corpus searchable, then verify the corpus is ready fo"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:136:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Ingest the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:137:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Prepare the finance reports corpus for search, then answer "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:137:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:138:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "/nemo-retriever Using the PDFs in test-data/vidorev3-finance/pdfs/*.pdf as the source documents, describe the voting rights in Citigroup's S"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:138:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "/nemo-retriever Use the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-h"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:139:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, extract the relevant information to answer: How much did "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:139:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:155:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, synthesize information across the corpus to answer: What "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:155:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:156:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Compare Citigroup's risk-weighted assets using the standard"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:156:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:158:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, describe how Bank of America manages climate risk as outl"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:158:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:163:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Ingest the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.p"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:166:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Build the finance reports corpus for search, then answer th"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:166:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:17:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "/nemo-retriever Using the PDFs in test-data/vidorev3-finance/pdfs/*.pdf as the source documents, what is the Bank of America Series 5 Prefer"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:17:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "/nemo-retriever Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidor"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:170:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine which independent public accounting firm provid"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:170:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the combined source corpus consisting of the PDFs matching test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, an"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:171:domain",
+    "leak_kind": "alias",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, examine the corpus to determine whether co\u2011branding and p"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:171:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:175:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the jurisdiction name for Citibank Europe plc a"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:175:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, te"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:1757:domain",
+    "leak_kind": "alias",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, explain the three categories that define 'Connected Perso"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:1757:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:1761:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, explain how Bank of America uses stress testing, capital "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:1761:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:1763:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "/nemo-retriever Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, describe JPMorgan Chase's three lines of "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:1763:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "/nemo-retriever Use the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-h"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:1764:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, explain how window periods and pre-clearance requirements"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:1764:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs matching test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, and test-data/vidorev3-fda/pdfs/*.pdf as th"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:1767:domain",
+    "leak_kind": "alias",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, explain how JPMorgan integrates climate and operational r"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:1767:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs matching the globs `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`, and `test-data/vidorev3-fda/p"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:179:domain",
+    "leak_kind": "alias",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine all parties that the Trading and MNPI Standard "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:179:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:18:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, compare the performance of Bank of America's Consumer Ban"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:18:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:184:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, plan the corpus search steps and answer: Who guarantees t"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:184:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:185:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer whether in 2024 the CET1 ratio of Goldman Sachs is"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:185:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:187:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Ingest the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` to build the finance reports corpus. Then, describe how the distribution of asset"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:187:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:189:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "/nemo-retriever Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, identify which Citigroup Inc. policy deta"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:189:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "/nemo-retriever Use the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-h"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:197:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, synthesize the relevant evidence and provide citations to"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:197:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:2:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, explain how Citigroup manages its interest rate and forei"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:2:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, te"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:213:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer the following question and provide sufficient cite"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:213:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:221:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Plan the corpus search steps, then answer with citations: H"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:221:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Plan the corpus search steps, then answer with citations: How does the payment process for Trust XIII HITS differ between DTC and non-DTC ho"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:222:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer the following question with citations to the relev"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:222:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:223:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Ingest and index the finance reports corpus, then confirm t"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:228:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer whether the collateral posted for JPMorgan Chase's"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:228:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:231:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "/nemo-retriever Using the PDFs in test-data/vidorev3-finance/pdfs/*.pdf as the source documents, provide Goldman Sachs' total government obl"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:231:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "/nemo-retriever Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:234:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine whether downward shocks such as a 200\u2011bps cut c"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:234:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:245:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the amount of Morgan Stanley's credit loss dedu"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:245:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:246:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, locate the 2024 Return on Tangible Common Equity (ROTCE) "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:246:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs matching test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, and test-data/vidorev3-fda/pdfs/*.pdf as th"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:247:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine the redemption amount per share for Citigroup's"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:247:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, and test-data/vidorev3-fda/pdfs/*.pdf as th"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:25:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, first outline the steps you would take to search the corp"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:25:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:251:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, what is the stated value per share of Citigroup Preferred"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:251:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:254:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Ingest the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf,"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:279:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, identify and describe the Event of Default conditions for"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:279:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:280:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine whether Bank of America reported material chang"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:280:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:282:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Plan the corpus search steps, then answer with citations: D"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:282:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "goldman_sachs_2024",
+    "prompt": "Using the PDFs matching the globs `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`, `test-data/vidorev3-fda/pdfs/"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:290:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, report the investment banking fees of JPMorgan Chase for "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:290:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:3:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:30:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, create a searchable finance reports corpus and then answe"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:30:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:31:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "/nemo-retriever Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, what is the percentage increase in Morgan"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:31:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "/nemo-retriever Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:35:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, locate evidence regarding Bank of America's nonperforming"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:35:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:37:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, compare the information across the corpus and synthesize "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:37:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:48:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, search the corpus for the total net income reported by Ba"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:48:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:56:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, analyze the financial performance of Citigroup and Goldma"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:56:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:59:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, answer whether JPMorgan Chase's 2024 CET1 ratio is higher"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:59:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:68:domain",
+    "leak_kind": "alias",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Explain how the reorganization of JPMorgan's business segme"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:68:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:77:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, set up the finance reports corpus for search and then ans"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:77:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Ingest the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf,"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:78:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "/nemo-retriever Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, compare the financial exposure from lease"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:78:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "/nemo-retriever Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:80:domain",
+    "leak_kind": "alias",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, determine whether Citibank's Supplementary Leverage Ratio"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:80:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:81:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, compare the Corporate and Investment Banking (CIB) and Co"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:81:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:82:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, find evidence of JPMorgan Chase's non-GAAP financial metr"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:82:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "jpmorgan_chase_2024",
+    "prompt": "Using the PDFs matching these globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, test-data/vidorev3-fda/pdfs/*."
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:85:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, compare the risk exposure and management strategies for c"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:85:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:88:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, calculate the difference in net income growth between Cit"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:88:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:9:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, outline the steps you would take to locate information ab"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:9:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "You have access to the combined source corpus consisting of all PDFs matching the globs: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vi"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:90:domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents, compare the dividend rates and payment dates for Bank of "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:90:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "bank_of_america_2024",
+    "prompt": "Using the PDFs matching test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, and test-data/vidorev3-fda/pdfs/*.pdf as th"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:92:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "citigroup_2024",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:96:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Use the PDFs in `test-data/vidorev3-finance/pdfs/*.pdf` as the source documents. Prepare the finance reports corpus for retrieval, then answ"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_finance_en:96:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "morgan_stanley_2024",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus (`test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:1807:domain",
+    "leak_kind": "alias",
+    "gold_doc": "employment_and_social_developments_in_europe-KE0125067ENN",
+    "prompt": "/nemo-retriever Use the PDFs in test-data/vidorev3-hr/pdfs/*.pdf as the source documents. Who are the main contributors to Part I of the Emp"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:1807:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "employment_and_social_developments_in_europe-KE0125067ENN",
+    "prompt": "/nemo-retriever Using the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:1811:domain",
+    "leak_kind": "alias",
+    "gold_doc": "undeclared_care_work_in_the_eu-TJ0125004ENN",
+    "prompt": "Use the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents. Extract the relevant evidence needed to answer the question, the"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:1811:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "undeclared_care_work_in_the_eu-TJ0125004ENN",
+    "prompt": "Using the combined source corpus consisting of the PDFs matching test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, an"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:229:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "posting_of_workers-KE0224850ENN",
+    "prompt": "Using the PDFs located at `test-data/vidorev3-hr/pdfs/*.pdf`, examine the share of workers registered in all EU member states through prior "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:229:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "posting_of_workers-KE0224850ENN",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:260:domain",
+    "leak_kind": "overlap",
+    "gold_doc": "future-oriented_occupations_in_the_eu-KE0125043ENN",
+    "prompt": "Use the PDFs in `test-data/vidorev3-hr/pdfs/*.pdf` as the source documents. Plan the corpus search steps to investigate why employment stabi"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_hr:260:cross_domain",
+    "leak_kind": "overlap",
+    "gold_doc": "future-oriented_occupations_in_the_eu-KE0125043ENN",
+    "prompt": "Using the PDFs that match the globs test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, and test-data/vidorev3-fda/pdfs"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:11:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "Presentation_CDER_2016_Update_for_Rare_Diseases",
+    "prompt": "Using the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents, plan the corpus search steps and then answer with citations: "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:11:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "Presentation_CDER_2016_Update_for_Rare_Diseases",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, te"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:178:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "drug_resistance_book",
+    "prompt": "Using the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents, compare the ethical challenges of antimicrobial resistance an"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:178:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "drug_resistance_book",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:316:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "Update_Biosimilar_Program_in_the_US",
+    "prompt": "Using the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents, answer the question about U.S. FDA approval of biosimilar and"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:316:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "Update_Biosimilar_Program_in_the_US",
+    "prompt": "Using the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pd"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:317:domain",
+    "leak_kind": "phrase",
+    "gold_doc": "drug_resistance_book",
+    "prompt": "Using the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents, first outline the steps you would take to search the corpus f"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:317:cross_domain",
+    "leak_kind": "phrase",
+    "gold_doc": "drug_resistance_book",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:325:domain",
+    "leak_kind": "alias",
+    "gold_doc": "DSCSA_Webinar_October_2021",
+    "prompt": "Using the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents, set up the FDA/pharmaceutical corpus for search, then answer "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:325:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "DSCSA_Webinar_October_2021",
+    "prompt": "Use the PDFs matching these globs as the combined source corpus: `test-data/vidorev3-finance/pdfs/*.pdf`, `test-data/vidorev3-hr/pdfs/*.pdf`"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:34:domain",
+    "leak_kind": "alias",
+    "gold_doc": "DSCSA_Webinar_October_2021",
+    "prompt": "Using the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents, locate and summarize the DSCSA requirements for prescription "
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:34:cross_domain",
+    "leak_kind": "alias",
+    "gold_doc": "DSCSA_Webinar_October_2021",
+    "prompt": "Using the combined source corpus of PDFs matching the globs test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, and tes"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:74:domain",
+    "leak_kind": "overlap",
+    "gold_doc": "Biosimilar_and_Interchangeable_Products_The_US_FDA_Perspective",
+    "prompt": "Using the PDFs in `test-data/vidorev3-fda/pdfs/*.pdf` as the source documents, identify and summarize the FDA regulatory framework for biosi"
+  },
+  {
+    "batch": "batch_4 (agent_corpus_level)",
+    "eval_id": "vidore_v3_pharmaceuticals:74:cross_domain",
+    "leak_kind": "overlap",
+    "gold_doc": "Biosimilar_and_Interchangeable_Products_The_US_FDA_Perspective",
+    "prompt": "Using the PDFs matching test-data/vidorev3-finance/pdfs/*.pdf, test-data/vidorev3-hr/pdfs/*.pdf, and test-data/vidorev3-fda/pdfs/*.pdf as th"
+  }
+]

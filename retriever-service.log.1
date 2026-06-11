@@ -1,0 +1,521 @@
+2026-06-08 17:24:45,876 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:45,880 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:45,880 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:45,897 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:45,897 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:45,912 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:45,912 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:45,915 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:45,915 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:45,916 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:45,916 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:45,917 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:45,917 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:45,918 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:45,918 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:45,919 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:45,919 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:45,919 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:45,919 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:45,920 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:45,920 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:45,921 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:45,921 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:45,922 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:45,922 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:45,927 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore: stored sidecar_id=bOstDFtS7InVPh60V31ZUw filename=meta.csv bytes=37 ttl=3600s
+2026-06-08 17:24:45,927 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore: stored sidecar_id=bOstDFtS7InVPh60V31ZUw filename=meta.csv bytes=37 ttl=3600s
+2026-06-08 17:24:45,928 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:45,928 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:45,929 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:45,929 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:45,930 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:45,930 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:45,931 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:45,931 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:45,932 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=1 bytes=37)
+2026-06-08 17:24:45,932 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=1 bytes=37)
+2026-06-08 17:24:45,933 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:45,933 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:45,934 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:45,934 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:45,935 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:45,935 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:45,935 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:45,935 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:45,951 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:45,951 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:45,953 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:45,953 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:45,970 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:45,970 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:45,972 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:45,972 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:45,974 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:45,974 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:45,974 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:45,974 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:45,975 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:45,975 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:45,976 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:45,976 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:45,977 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:45,977 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:45,978 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:45,978 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:45,979 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:45,979 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:45,980 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:45,980 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:45,983 | INFO | nemo_retriever.service.services.job_tracker | Job registered: 80f9553f463d4e3692280f568933b444 (expected_documents=1, label=None)
+2026-06-08 17:24:45,983 | INFO | nemo_retriever.service.services.job_tracker | Job registered: 80f9553f463d4e3692280f568933b444 (expected_documents=1, label=None)
+2026-06-08 17:24:45,986 | WARNING | nemo_retriever.service.routers.ingest | Could not determine PDF page count; defaulting to 1 page: Failed to load document (PDFium: Data format error).
+2026-06-08 17:24:45,986 | WARNING | nemo_retriever.service.routers.ingest | Could not determine PDF page count; defaulting to 1 page: Failed to load document (PDFium: Data format error).
+2026-06-08 17:24:45,988 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:45,988 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:45,989 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=1)
+2026-06-08 17:24:45,989 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=1)
+2026-06-08 17:24:45,990 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:45,990 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:45,990 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:45,990 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:45,991 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:45,991 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:45,992 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:45,992 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:45,993 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 1, 'total_documents': 1, 'pending': 0, 'processing': 0, 'completed': 1, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:45,993 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 1, 'total_documents': 1, 'pending': 0, 'processing': 0, 'completed': 1, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:45,994 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:45,994 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:45,995 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:45,995 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:45,997 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:45,997 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:45,999 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:45,999 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,014 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,014 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,017 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,017 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,018 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,018 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,019 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,019 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,019 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,019 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,020 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,020 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,021 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,021 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,022 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,022 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,023 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,023 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,024 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,024 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,027 | INFO | nemo_retriever.service.services.job_tracker | Job registered: 08d67ee458e942be8e946d13d3b95daf (expected_documents=1, label=None)
+2026-06-08 17:24:46,027 | INFO | nemo_retriever.service.services.job_tracker | Job registered: 08d67ee458e942be8e946d13d3b95daf (expected_documents=1, label=None)
+2026-06-08 17:24:46,030 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,030 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,031 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,031 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,032 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,032 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,033 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,033 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,034 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,034 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,035 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,035 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,036 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 1, 'total_documents': 0, 'pending': 1, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,036 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 1, 'total_documents': 0, 'pending': 1, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,037 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,037 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,038 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,038 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,040 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,040 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,042 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,042 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,057 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,057 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,059 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,059 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,061 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,061 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,062 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,062 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,063 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,063 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,064 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,064 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,065 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,065 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,066 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,066 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,067 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,067 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,068 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,068 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,070 | INFO | nemo_retriever.service.services.job_tracker | Job registered: 6162a409c3704ef7af5ff8b8ac46a653 (expected_documents=1, label=None)
+2026-06-08 17:24:46,070 | INFO | nemo_retriever.service.services.job_tracker | Job registered: 6162a409c3704ef7af5ff8b8ac46a653 (expected_documents=1, label=None)
+2026-06-08 17:24:46,073 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,073 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,074 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,074 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,075 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,075 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,076 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,076 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,077 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,077 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,078 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,078 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,079 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 1, 'total_documents': 0, 'pending': 1, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,079 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 1, 'total_documents': 0, 'pending': 1, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,080 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,080 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,081 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,081 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,083 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,083 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,085 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,085 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,102 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,102 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,104 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,104 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,106 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,106 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,106 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,106 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,107 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,107 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,108 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,108 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,109 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,109 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,110 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,110 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,112 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,112 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,113 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,113 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,115 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,115 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,117 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,117 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,118 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,118 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,119 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,119 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,120 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,120 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,120 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,120 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,121 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,121 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,123 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,123 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,123 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,123 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,126 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,126 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,127 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,127 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,144 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,144 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,147 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,147 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,148 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,148 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,149 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,149 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,150 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,150 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,151 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,151 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,152 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,152 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,153 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,153 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,154 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,154 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,155 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,155 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,159 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,159 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,160 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,160 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,161 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,161 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,162 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,162 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,163 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,163 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,164 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,164 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,165 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,165 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,166 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,166 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,167 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,167 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,170 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,170 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,171 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,171 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,188 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,188 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,191 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,191 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,193 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,193 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,194 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,194 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,195 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,195 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,196 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,196 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,197 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,197 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,198 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,198 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,199 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,199 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,200 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,200 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,203 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,203 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,204 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,204 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,205 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,205 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,206 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,206 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,207 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,207 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,208 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,208 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,209 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,209 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,210 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,210 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,211 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,211 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,213 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,213 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,215 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,215 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,230 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,230 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,233 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,233 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,234 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,234 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,235 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,235 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,236 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,236 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,237 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,237 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,239 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,239 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,240 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,240 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,241 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,241 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,242 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,242 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,245 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,245 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,246 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,246 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,247 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,247 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,248 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,248 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,249 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,249 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,250 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,250 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,251 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,251 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,252 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,252 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,253 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,253 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,256 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,256 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,257 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,257 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,272 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,272 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,275 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,275 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,276 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,276 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,277 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,277 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,278 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,278 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,279 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,279 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,280 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,280 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,281 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,281 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,282 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,282 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,284 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,284 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,345 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,345 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,347 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,347 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,348 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,348 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,349 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,349 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,350 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,350 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,351 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,351 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,352 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,352 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,353 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,353 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,354 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,354 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,357 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,357 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,360 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,360 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,392 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,392 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=standalone)
+2026-06-08 17:24:46,396 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,396 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service initialised
+2026-06-08 17:24:46,397 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,397 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,398 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,398 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,400 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,400 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,401 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,401 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' started: workers=1 queue_size=2048 work_fn=_stub_work
+2026-06-08 17:24:46,402 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,402 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_stub_work
+2026-06-08 17:24:46,403 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,403 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=standalone, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,404 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,404 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=standalone)
+2026-06-08 17:24:46,405 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,405 | INFO | nemo_retriever.service.app | Retriever service started — mode=standalone host=0.0.0.0 port=7670
+2026-06-08 17:24:46,459 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,459 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,461 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,461 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'realtime' shut down (processed=0)
+2026-06-08 17:24:46,462 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,462 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,463 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,463 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,464 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,464 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,465 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,465 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,466 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,466 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,468 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,468 | INFO | nemo_retriever.service.services.metrics | Ingest metrics service shut down
+2026-06-08 17:24:46,469 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,469 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,478 | INFO | nemo_retriever.service.vectordb_app | LanceDB table 'test_table' does not exist yet at /tmp/pytest-of-root/pytest-43/test_query_empty_index_returns0
+2026-06-08 17:24:46,478 | INFO | nemo_retriever.service.vectordb_app | LanceDB table 'test_table' does not exist yet at /tmp/pytest-of-root/pytest-43/test_query_empty_index_returns0
+2026-06-08 17:24:46,480 | INFO | nemo_retriever.service.vectordb_app | VectorDB service started: uri=/tmp/pytest-of-root/pytest-43/test_query_empty_index_returns0 table=test_table embed=http://embed.example/v1/embeddings max_concurrent_queries=4
+2026-06-08 17:24:46,480 | INFO | nemo_retriever.service.vectordb_app | VectorDB service started: uri=/tmp/pytest-of-root/pytest-43/test_query_empty_index_returns0 table=test_table embed=http://embed.example/v1/embeddings max_concurrent_queries=4
+2026-06-08 17:24:46,483 | INFO | nemo_retriever.service.vectordb_app | VectorDB service stopped
+2026-06-08 17:24:46,483 | INFO | nemo_retriever.service.vectordb_app | VectorDB service stopped
+2026-06-08 17:24:46,487 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,487 | INFO | nemo_retriever.service.app | Logging configured: level=INFO file=retriever-service.log
+2026-06-08 17:24:46,488 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,488 | INFO | nemo_retriever.service.app | Bearer-token authentication DISABLED (no api_token configured)
+2026-06-08 17:24:46,507 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=batch)
+2026-06-08 17:24:46,507 | INFO | nemo_retriever.service.services.prometheus | Prometheus /metrics endpoint registered (role=batch)
+2026-06-08 17:24:46,511 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,511 | INFO | nemo_retriever.service.services.job_tracker | Job tracker initialised
+2026-06-08 17:24:46,512 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,512 | INFO | nemo_retriever.service.services.event_bus | Event bus initialised
+2026-06-08 17:24:46,513 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,513 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore initialised (ttl=3600s max_entries=1024)
+2026-06-08 17:24:46,516 | INFO | nemo_retriever.service.services.pipeline_executor | Pipeline work function created (Batch): extract=ExtractParams, embed=disabled, process_pool_workers=1, max_tasks_per_child=100
+2026-06-08 17:24:46,516 | INFO | nemo_retriever.service.services.pipeline_executor | Pipeline work function created (Batch): extract=ExtractParams, embed=disabled, process_pool_workers=1, max_tasks_per_child=100
+2026-06-08 17:24:46,518 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_work
+2026-06-08 17:24:46,518 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' started: workers=1 queue_size=4096 work_fn=_work
+2026-06-08 17:24:46,519 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=batch, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,519 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool initialised (mode=batch, realtime=1w/2048q, batch=1w/4096q)
+2026-06-08 17:24:46,520 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=batch)
+2026-06-08 17:24:46,520 | INFO | nemo_retriever.service.app | Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=batch)
+2026-06-08 17:24:46,521 | INFO | nemo_retriever.service.app | Retriever service started — mode=batch host=0.0.0.0 port=7670
+2026-06-08 17:24:46,521 | INFO | nemo_retriever.service.app | Retriever service started — mode=batch host=0.0.0.0 port=7670
+2026-06-08 17:24:46,525 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,525 | INFO | nemo_retriever.service.services.pipeline_executor | All pipeline process executors shut down
+2026-06-08 17:24:46,526 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,526 | INFO | nemo_retriever.service.services.pipeline_pool | Pool 'batch' shut down (processed=0)
+2026-06-08 17:24:46,527 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,527 | INFO | nemo_retriever.service.services.pipeline_pool | Pipeline pool shut down
+2026-06-08 17:24:46,528 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,528 | INFO | nemo_retriever.service.services.sidecar_store | SidecarStore shut down (entries=0 bytes=0)
+2026-06-08 17:24:46,529 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,529 | INFO | nemo_retriever.service.services.event_bus | Event bus shut down (subscribers=0)
+2026-06-08 17:24:46,531 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,531 | INFO | nemo_retriever.service.services.job_tracker | Job tracker shut down: {'total_jobs': 0, 'total_documents': 0, 'pending': 0, 'processing': 0, 'completed': 0, 'failed': 0, 'partial_success': 0}
+2026-06-08 17:24:46,532 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:46,532 | INFO | nemo_retriever.service.app | Retriever service stopped
+2026-06-08 17:24:51,815 | INFO | nemo_retriever.graph.ingestor_runtime | Selected OCR engine: v2 (OCRActor)
+2026-06-08 17:24:51,815 | INFO | nemo_retriever.graph.ingestor_runtime | Selected OCR engine: v2 (OCRActor)
+2026-06-08 17:24:52,191 | WARNING | nemo_retriever.common.api.util.exception_handlers.pdf | PDF Processing:boom error:x
+2026-06-08 17:24:52,191 | WARNING | nemo_retriever.common.api.util.exception_handlers.pdf | PDF Processing:boom error:x
+2026-06-08 17:24:53,430 | INFO | nemo_retriever.operators.extract.video.text_dedup | VideoFrameTextDedup: merged 3 frame rows -> 1 (max_dropped_frames=2)
+2026-06-08 17:24:53,430 | INFO | nemo_retriever.operators.extract.video.text_dedup | VideoFrameTextDedup: merged 3 frame rows -> 1 (max_dropped_frames=2)
+2026-06-08 17:24:53,435 | INFO | nemo_retriever.operators.extract.video.text_dedup | VideoFrameTextDedup: merged 12 frame rows -> 1 (max_dropped_frames=2)
+2026-06-08 17:24:53,435 | INFO | nemo_retriever.operators.extract.video.text_dedup | VideoFrameTextDedup: merged 12 frame rows -> 1 (max_dropped_frames=2)
+2026-06-08 17:24:53,440 | INFO | nemo_retriever.operators.extract.video.text_dedup | VideoFrameTextDedup: merged 4 frame rows -> 2 (max_dropped_frames=2)
+2026-06-08 17:24:53,440 | INFO | nemo_retriever.operators.extract.video.text_dedup | VideoFrameTextDedup: merged 4 frame rows -> 2 (max_dropped_frames=2)
+2026-06-08 17:24:53,445 | INFO | nemo_retriever.operators.extract.video.text_dedup | VideoFrameTextDedup: merged 2 frame rows -> 1 (max_dropped_frames=2)
+2026-06-08 17:24:53,445 | INFO | nemo_retriever.operators.extract.video.text_dedup | VideoFrameTextDedup: merged 2 frame rows -> 1 (max_dropped_frames=2)
+2026-06-08 17:24:53,483 | WARNING | nemo_retriever.operators.graph_ops.webhook_operator | WebhookNotifyOperator: requested columns missing from batch: ['missing']
+2026-06-08 17:24:53,483 | WARNING | nemo_retriever.operators.graph_ops.webhook_operator | WebhookNotifyOperator: requested columns missing from batch: ['missing']
+2026-06-08 17:24:53,486 | WARNING | nemo_retriever.operators.graph_ops.webhook_operator | WebhookNotifyOperator: requested columns missing from batch: ['nope']
+2026-06-08 17:24:53,486 | WARNING | nemo_retriever.operators.graph_ops.webhook_operator | WebhookNotifyOperator: requested columns missing from batch: ['nope']
+2026-06-08 17:24:53,494 | INFO | nemo_retriever.operators.graph_ops.webhook_operator | WebhookNotifyOperator: POST 2 records to https://hook.example.com/ingest — 200
+2026-06-08 17:24:53,494 | INFO | nemo_retriever.operators.graph_ops.webhook_operator | WebhookNotifyOperator: POST 2 records to https://hook.example.com/ingest — 200
+2026-06-08 17:24:53,497 | INFO | nemo_retriever.operators.graph_ops.webhook_operator | WebhookNotifyOperator: POST 1 records to https://hook.example.com/ingest — 200
+2026-06-08 17:24:53,497 | INFO | nemo_retriever.operators.graph_ops.webhook_operator | WebhookNotifyOperator: POST 1 records to https://hook.example.com/ingest — 200
+2026-06-08 17:24:53,499 | ERROR | nemo_retriever.operators.graph_ops.webhook_operator | WebhookNotifyOperator: failed to POST to https://hook.example.com/ingest
+Traceback (most recent call last):
+  File "/raid/nemo_retriever/nemo_retriever/src/nemo_retriever/operators/graph_ops/webhook_operator.py", line 123, in process
+    response = session.post(url, json=records, timeout=timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+ConnectionError: boom
+2026-06-08 17:24:53,499 | ERROR | nemo_retriever.operators.graph_ops.webhook_operator | WebhookNotifyOperator: failed to POST to https://hook.example.com/ingest
+Traceback (most recent call last):
+  File "/raid/nemo_retriever/nemo_retriever/src/nemo_retriever/operators/graph_ops/webhook_operator.py", line 123, in process
+    response = session.post(url, json=records, timeout=timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1134, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1138, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1193, in _execute_mock_call
+    raise effect
+ConnectionError: boom

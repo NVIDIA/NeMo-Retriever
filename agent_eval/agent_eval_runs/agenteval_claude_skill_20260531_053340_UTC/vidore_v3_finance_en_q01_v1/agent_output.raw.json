@@ -1,0 +1,34 @@
+{
+  "query_id": "vidore_v3_finance_en:q01:v1",
+  "final_answer": "JPMorgan Chase's 2024 Form 10-K does not separately disclose the amount repurchased under just the new $30 billion common share repurchase program, so it cannot be definitively confirmed that more than half of that specific program was executed by the end of 2024. Per page 108 (printed page 105) of the 10-K, the Board authorized the new $30 billion common share repurchase program on June 28, 2024 (effective July 1, 2024); through June 30, 2024, repurchases were made under the prior April 13, 2022 program. The Firm reports total 2024 common stock repurchases of $18,841 million (~$18.8 billion, 91.7 million shares) — but this aggregate spans both the prior program (H1 2024) and the new $30 billion program (H2 2024), and the 10-K does not break out the H2-only portion attributable to the $30 billion program.",
+  "selected_chunks": [
+    {
+      "rank": 1,
+      "doc_id": "jpmorgan_chase_2024",
+      "modality": "pdf_page",
+      "locator": {"page_number": 108},
+      "content": "Common stock — On June 28, 2024, the Firm announced that its Board of Directors had authorized a new $30 billion common share repurchase program, effective July 1, 2024. Through June 30, 2024, the Firm was authorized to purchase up to $30 billion of common shares under its previously-approved common share repurchase program that was announced on April 13, 2022. The following table sets forth the Firm's repurchases of common stock for the years ended December 31, 2024, 2023 and 2022. Year ended December 31, (in millions) 2024 2023 2022 — Total number of shares of common stock repurchased 91.7 69.5 23.1; Aggregate purchase price of common stock repurchases $18,841 $9,898 $3,122. The $30 billion common share repurchase program approved by the Board of Directors does not establish specific price targets or timetables."
+    },
+    {
+      "rank": 2,
+      "doc_id": "jpmorgan_chase_2024",
+      "modality": "pdf_page",
+      "locator": {"page_number": 42},
+      "content": "Repurchases under the common share repurchase program — Refer to Capital actions in the Capital Risk Management section of Management's discussion and analysis on page 105 for information regarding repurchases under the Firm's common share repurchase program. On June 28, 2024, the Firm announced that its Board of Directors had authorized a new $30 billion common share repurchase program, effective July 1, 2024. Through June 30, 2024, the Firm was authorized to purchase up to $30 billion of common shares under its previously-approved common share repurchase program (announced April 13, 2022)."
+    },
+    {
+      "rank": 3,
+      "doc_id": "jpmorgan_chase_2024",
+      "modality": "pdf_page",
+      "locator": {"page_number": 179},
+      "content": "Consolidated Statements of Cash Flows — Financing activities — Treasury stock repurchased (18,830) (9,824) (3,162) for the years ended December 31, 2024, 2023, 2022 respectively (in millions)."
+    },
+    {
+      "rank": 4,
+      "doc_id": "jpmorgan_chase_2024",
+      "modality": "pdf_page",
+      "locator": {"page_number": 178},
+      "content": "Treasury stock, at cost — Balance at January 1 (116,217); Repurchase (19,007) (9,980) (3,122) for 2024, 2023, 2022; Reissuance 1,206; Balance at December 31 (134,018)."
+    }
+  ]
+}

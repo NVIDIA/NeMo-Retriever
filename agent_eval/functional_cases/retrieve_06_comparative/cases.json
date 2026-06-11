@@ -1,0 +1,194 @@
+{
+  "suite_id": "retrieve_06_comparative",
+  "jtbd": "RETRIEVE",
+  "user_task": "Comparative: compare entities or sections across retrieved chunks.",
+  "user_task_priority": "P0",
+  "source": "JTBD & user tasks tab, RETRIEVE bucket -> comparative; seed queries from 'NeMo Retriever — JTBD seed queries' tab, RETRIEVE -> comparative ('Compare <A>'s and <B>'s <metric> in <year>.'; 'Side-by-side: <A>'s and <B>'s <attribute>.'; 'Compare the <section> in <docA>.pdf and <docB>.pdf.').",
+  "success_criteria": {
+    "quality": "operational pass (NOT RAGAS) — the response is a STRUCTURED side-by-side comparison with ONE citation per side; each citation has a DISTINCT source_id when comparing across documents, OR distinct rows/cells (same source) when comparing entities within one document; the per-side facts each match ground truth. Binary pass/fail. RETRIEVE functional tests use operational pass, not the graded RAGAS path (that lives in the performance-eval suites).",
+    "time": "RETRIEVE <= 1 min per case (corpus already ingested; 1-2 small queries + compose the two-sided answer).",
+    "trigger_rate": ">= 95% — a 'compare A vs B' / 'side-by-side' prompt must fire the skill",
+    "subcommand_accuracy": ">= 90% — must run `retriever ingest <paths>` once to build the corpus, then `retriever query` to pull the comparable chunks (one query, or one query per entity/side), then compose the side-by-side from the CITED hits. No --input-type flag (does not exist).",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "format_autodetect": "`retriever ingest <file>` auto-detects PDF from the extension. There is NO --input-type flag.",
+    "defaults": {"lancedb_uri": "lancedb", "table_name": "nemo-retriever"},
+    "ingest_success_line": "Ingested N file(s) -> M row(s) in LanceDB lancedb/<table>.",
+    "query_hit_shape": "JSON array; each hit has exactly {source, page_number, text}; page_number is a 1-indexed int. The agent uses `source` as the per-side source_id and `text` (which for table-structure ingests carries the row/cell text) as the per-side fact.",
+    "table_structure_note": "Within-doc ENTITY comparison pulls values out of a table, so the table-bearing cases ingest with --use-table-structure (flips use_table_structure true, table_output_format -> markdown, materializes nemotron-table-structure-v1) and query with --content-types text,table so the compared cells return as content_type=table rows. Without it the table can flatten to plain text and the two entity values may collapse into one chunk, breaking the 'distinct rows per side' requirement.",
+    "comparative_pattern": "A comparative answer is NOT a single retrieved fact — it is the agent COMPOSING a two-sided structure from cited hits. Two valid retrieval shapes: (a) ONE query whose top-k spans both sides, then the agent splits the hits per side; (b) TWO queries, one per entity/side, each contributing its own cited hit. Either way the acceptance check is the same: two sides, one citation per side, distinct source_id (across docs) or distinct rows (within doc), correct facts on both sides.",
+    "ground_truth": {
+      "table_test_pdf": "1pg table, Year x {Bill,Amy,James,Ted,Susan}. 2019 row: Bill 665, Amy 600, James 978, Ted 707, Susan 922. 2023 row: Bill 919, Amy 656, James 539, Ted 870, Susan 970.",
+      "woods_frost_pdf": "2pg. p2 table Collection x Year: 'New Hampshire' = 1923 (#4); 'A Witness Tree' = 1942 (#7).",
+      "multimodal_test_pdf": "3pg 'TestingDocument'. p1 Table 1 (Animal/Activity/Place): Giraffe -> Driving a car -> At the beach. p1 'Chart 1 shows some gadgets, and some very fictitious costs.'"
+    }
+  },
+  "cases": [
+    {
+      "id": "retrieve-cmp-001",
+      "title": "Compare two ENTITIES within one doc: James vs Susan in 2019 -> side-by-side, distinct table rows cited",
+      "complexity": 1,
+      "complexity_axis": "Satisfies the comparative core (a STRUCTURED two-sided answer) in its simplest form: two entities (two people) in ONE document, for ONE year. Distinct over a plain RETRIEVE lookup: the answer is a side-by-side with one citation per side and DISTINCT ROWS/cells (same source_id, two different table cells). Rung 1 floor — single doc, single metric, two entities.",
+      "prompt": "Using data/table_test.pdf, give me a side-by-side comparison of James's and Susan's values in 2019. One row per person, and cite where each number came from.",
+      "data_files": ["cases/retrieve-cmp-001/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf --use-table-structure",
+        "$RETRIEVER query \"James and Susan values in 2019\" --top-k 10 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (table rows present via --use-table-structure)",
+        "comparison": {
+          "James (2019)": "978",
+          "Susan (2019)": "922"
+        },
+        "structure": "structured side-by-side (two rows / two columns): | entity | 2019 value | source |  -> James=978, Susan=922",
+        "citations": "ONE citation per side; both cite table_test.pdf p1 (same source_id) but resolve to DISTINCT table cells/rows (James row vs Susan row) — distinct-rows-within-a-doc form"
+      },
+      "pass_when": [
+        "ingest runs with --use-table-structure so table cells are queryable as content_type=table rows",
+        "query uses --content-types text,table and returns the 2019 row(s)/cells for both people",
+        "response is a STRUCTURED side-by-side, not prose: a per-side row/column for James and for Susan",
+        "James (2019) = 978 and Susan (2019) = 922 — both facts match ground truth",
+        "one citation per side, each citing table_test.pdf p1, resolving to DISTINCT rows/cells (James vs Susan)"
+      ]
+    },
+    {
+      "id": "retrieve-cmp-002",
+      "title": "Compare two entities within one doc on a DIFFERENT year/metric: James vs Susan in 2023",
+      "complexity": 2,
+      "complexity_axis": "Same within-doc, two-entity, side-by-side shape as rung 1, but adds ONE dimension: a different attribute slice (year 2023 instead of 2019), where the ranking FLIPS (James leads in 2019, Susan leads in 2023). Forces per-side accuracy on a second metric and guards against the agent memorizing rung-1 numbers. Distinct: structured two-sided answer for a new metric, one citation per side, distinct rows.",
+      "prompt": "Side-by-side: from data/table_test.pdf, compare James's and Susan's values for 2023, and say who is higher. Cite the source for each value.",
+      "data_files": ["cases/retrieve-cmp-002/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf --use-table-structure",
+        "$RETRIEVER query \"James and Susan values in 2023\" --top-k 10 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (table rows present)",
+        "comparison": {
+          "James (2023)": "539",
+          "Susan (2023)": "970",
+          "higher": "Susan (970 > 539)"
+        },
+        "structure": "structured side-by-side: James=539, Susan=970; verdict Susan is higher",
+        "citations": "one citation per side; both table_test.pdf p1, distinct James vs Susan rows"
+      },
+      "pass_when": [
+        "ingest runs with --use-table-structure; query uses --content-types text,table for year 2023",
+        "response is a structured side-by-side (per-side row/column), not prose",
+        "James (2023) = 539 and Susan (2023) = 970 — both facts match ground truth",
+        "the comparative verdict is correct: Susan is higher (970 > 539) — note the flip vs 2019",
+        "one citation per side, each table_test.pdf p1, DISTINCT rows (James vs Susan)"
+      ]
+    },
+    {
+      "id": "retrieve-cmp-003",
+      "title": "Compare a SECTION across TWO docs: a fact in woods_frost.pdf vs multimodal_test.pdf -> one citation per source, distinct source_ids",
+      "complexity": 3,
+      "complexity_axis": "Switches the comparison axis from within-doc entities to ACROSS-doc sections. Adds the DISTINCT-source_id form: two different documents, one cited hit from EACH, so the two citations carry different source values. New dimension: cross-document retrieval (top-k must span both docs, or one query per doc) + the distinct-source_id half of the validation rule.",
+      "prompt": "Compare a key table fact in each document: in data/woods_frost.pdf, what year is the 'New Hampshire' collection; and in data/multimodal_test.pdf, what is the Giraffe doing in Table 1? Give it to me side-by-side with one citation per document.",
+      "data_files": ["cases/retrieve-cmp-003/data/woods_frost.pdf", "cases/retrieve-cmp-003/data/multimodal_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf data/multimodal_test.pdf --use-table-structure",
+        "$RETRIEVER query \"New Hampshire collection year (Frost)\" --top-k 5 --content-types text,table",
+        "$RETRIEVER query \"Giraffe activity in Table 1\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 2 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:2)",
+        "comparison": {
+          "woods_frost.pdf — New Hampshire collection year": "1923",
+          "multimodal_test.pdf — Giraffe (Table 1)": "Driving a car (At the beach)"
+        },
+        "structure": "structured side-by-side, one row per document",
+        "citations": "ONE citation per side with DISTINCT source_id: side A cites source=woods_frost.pdf (p2 table), side B cites source=multimodal_test.pdf (p1 Table 1)"
+      },
+      "pass_when": [
+        "ingest builds a 2-doc corpus (woods_frost.pdf + multimodal_test.pdf), --use-table-structure on",
+        "the agent retrieves a cited hit from EACH document (one query spanning both, or one query per doc)",
+        "response is a structured side-by-side, one row per document",
+        "woods_frost 'New Hampshire' = 1923 AND multimodal Giraffe = 'Driving a car' (At the beach) — both facts match ground truth",
+        "the two citations have DISTINCT source_ids: source=woods_frost.pdf vs source=multimodal_test.pdf"
+      ]
+    },
+    {
+      "id": "retrieve-cmp-004",
+      "title": "Per-side accuracy: full 2019 row, every entity value matches ground truth, one citation per side",
+      "complexity": 4,
+      "complexity_axis": "Stresses the PER-SIDE ACCURACY clause directly. Adds over rung 1: instead of two entities, ALL FIVE people are compared for one year (2019), so each of five sides must independently match ground truth and carry its own cited cell. New dimension: per-side accuracy at scale (5 distinct rows, 5 facts, no value bleed between adjacent table cells).",
+      "prompt": "From data/table_test.pdf, build a side-by-side comparison of ALL five people (Bill, Amy, James, Ted, Susan) for the year 2019. One row per person with the value and a citation, then tell me who had the highest.",
+      "data_files": ["cases/retrieve-cmp-004/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf --use-table-structure",
+        "$RETRIEVER query \"2019 values for Bill Amy James Ted Susan\" --top-k 10 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (table rows present)",
+        "comparison": {
+          "Bill (2019)": "665",
+          "Amy (2019)": "600",
+          "James (2019)": "978",
+          "Ted (2019)": "707",
+          "Susan (2019)": "922",
+          "highest": "James (978)"
+        },
+        "structure": "structured side-by-side, one row per person (5 rows)",
+        "citations": "one citation per side; all table_test.pdf p1; five DISTINCT cells (no value bleed between adjacent columns)"
+      },
+      "pass_when": [
+        "ingest runs with --use-table-structure; query uses --content-types text,table",
+        "response is a structured 5-row side-by-side (one row per person)",
+        "every per-side fact matches ground truth: Bill=665, Amy=600, James=978, Ted=707, Susan=922 (2019)",
+        "the verdict is correct: James (978) is the highest in 2019",
+        "one citation per side (table_test.pdf p1), each resolving to a DISTINCT cell — no value bleed between adjacent columns"
+      ]
+    },
+    {
+      "id": "retrieve-cmp-005",
+      "title": "Acceptance: mixed corpus, structured side-by-side with one cited source per side and correct facts on both sides",
+      "complexity": 5,
+      "complexity_axis": "Composed operational-pass / acceptance gate for the comparative row. Adds over rung 3: a MIXED 3-doc corpus where the agent must (a) compare two ENTITIES within table_test.pdf (distinct-rows form) AND (b) compare a SECTION across woods_frost.pdf vs multimodal_test.pdf (distinct-source_id form) in one structured answer, picking the right retrieval shape for each and not cross-contaminating sources. This is the full validation rule end to end: structured side-by-side, one citation per side, distinct source_id (across docs) OR distinct rows (within doc), facts correct on every side.",
+      "prompt": "I have three PDFs in data/. Give me TWO side-by-side comparisons in one structured answer, each with one citation per side: (1) James vs Susan in 2019 from table_test.pdf; and (2) the 'New Hampshire' collection year in woods_frost.pdf vs what the Giraffe is doing in multimodal_test.pdf's Table 1.",
+      "data_files": ["cases/retrieve-cmp-005/data/table_test.pdf", "cases/retrieve-cmp-005/data/woods_frost.pdf", "cases/retrieve-cmp-005/data/multimodal_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf data/woods_frost.pdf data/multimodal_test.pdf --use-table-structure",
+        "$RETRIEVER query \"James and Susan values in 2019\" --top-k 10 --content-types text,table",
+        "$RETRIEVER query \"New Hampshire collection year (Frost)\" --top-k 5 --content-types text,table",
+        "$RETRIEVER query \"Giraffe activity in Table 1\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 3 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:3)",
+        "comparison_within_doc": {
+          "James (2019)": "978",
+          "Susan (2019)": "922",
+          "form": "distinct rows, same source_id table_test.pdf p1"
+        },
+        "comparison_across_docs": {
+          "woods_frost.pdf — New Hampshire collection year": "1923",
+          "multimodal_test.pdf — Giraffe (Table 1)": "Driving a car (At the beach)",
+          "form": "distinct source_ids woods_frost.pdf vs multimodal_test.pdf"
+        },
+        "structure": "ONE structured answer holding TWO side-by-side comparisons, each a per-side row/column",
+        "citations": "comparison 1: two citations, same source (table_test.pdf p1), DISTINCT rows; comparison 2: two citations, DISTINCT source_ids (woods_frost.pdf vs multimodal_test.pdf); no source cross-contamination"
+      },
+      "pass_when": [
+        "single ingest builds the 3-doc corpus (--use-table-structure on); query/queries cover both comparisons",
+        "the answer is ONE structured response containing TWO side-by-side comparisons (not loose prose)",
+        "within-doc: James 2019 = 978, Susan 2019 = 922, cited to DISTINCT rows of table_test.pdf p1",
+        "across-doc: woods_frost 'New Hampshire' = 1923 and multimodal Giraffe = 'Driving a car' (At the beach), cited to DISTINCT source_ids",
+        "every side has exactly one citation; facts on both sides of BOTH comparisons match ground truth; no source cross-contamination (e.g. a Frost fact mis-cited to multimodal_test.pdf)"
+      ]
+    }
+  ]
+}

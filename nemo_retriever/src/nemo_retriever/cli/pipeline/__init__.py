@@ -2,12 +2,11 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""End-to-end ingestion pipeline subcommand for the ``retriever`` CLI.
+"""Legacy end-to-end ingestion pipeline subcommand for the ``retriever`` CLI.
 
-This package wraps :class:`~nemo_retriever.graph_ingestor.GraphIngestor` with a
-Typer application that exposes every knob needed to run a full PDF / doc /
-txt / html / image / audio ingestion job, write results to LanceDB, and
-optionally evaluate recall or BEIR.
+This package owns the ``retriever pipeline`` Typer application. Local pipeline
+runs delegate ingest graph construction to the core ingest package; service
+runs still build the service client path directly.
 
 It is registered on the ``retriever`` CLI as the ``pipeline`` subcommand::
 

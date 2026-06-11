@@ -1,0 +1,40 @@
+{
+  "source_manifest": "/raid/retriever-sdg-v3/runs/agent_corpus_level_batch_4/agent_corpus_level_manifest.json",
+  "track": "functional_corpus_variants",
+  "count": 4,
+  "excluded_stateful": 6,
+  "queries": [
+    {
+      "query_id": "functional_corpus:q05:v1",
+      "prompt": "Using the full corpus of 2022 10-K filings located at test-data/financebench/pdfs/*_2022_10K.pdf, identify the regulatory risk that appears most frequently across all filings. Provide your answer with citations to the relevant source files (file names) that support your conclusion.",
+      "functional_type": "retrieval_answer",
+      "corpus_refs": [
+        "test-data/financebench/pdfs"
+      ]
+    },
+    {
+      "query_id": "functional_corpus:f02:v1",
+      "prompt": "Using the entire corpus located at test-data/multiformat/docx, list every GPU type recommended in the procurement memos and provide the total capital outlay for each project. Include file citations for each recommendation.",
+      "functional_type": "retrieval_answer",
+      "corpus_refs": [
+        "test-data/multiformat/docx"
+      ]
+    },
+    {
+      "query_id": "functional_corpus:i07:v1",
+      "prompt": "Please ingest or refresh the full source corpus located at test-data/chartqa and report on its readiness.",
+      "functional_type": "ingest",
+      "corpus_refs": [
+        "test-data/chartqa"
+      ]
+    },
+    {
+      "query_id": "functional_corpus:m04:v1",
+      "prompt": "Using the corpus at `test-data/librispeech/LibriSpeech/test-clean`, ingest the audio data if needed, then set up a Q&A system to find any mention of the word 'medicine'. Return the answer with citations to the relevant source files or segments.",
+      "functional_type": "ingest_plus_answer",
+      "corpus_refs": [
+        "test-data/librispeech/LibriSpeech/test-clean"
+      ]
+    }
+  ]
+}

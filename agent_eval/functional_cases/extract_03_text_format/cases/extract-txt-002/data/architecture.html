@@ -1,0 +1,6 @@
+<!doctype html><html><head><title>Aurora — Architecture</title></head><body>
+<h1>Aurora Architecture</h1>
+<p>Aurora is a 3-tier inference platform:</p>
+<ol><li>Edge gateway (Envoy)</li><li>Routing layer (custom Go service)</li><li>Inference workers (Triton + TensorRT-LLM on H100/H200)</li></ol>
+<p>The routing layer applies token-budget enforcement and tenant isolation. SLO target: p99 first-token latency under 350ms.</p>
+</body></html>

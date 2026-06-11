@@ -36,6 +36,7 @@ from nemo_retriever.common.params.models import VideoFrameParams
 from nemo_retriever.common.params.models import VideoFrameTextDedupParams
 from nemo_retriever.common.params.models import WebhookParams
 from nemo_retriever.common.params.utils import SPLIT_CONFIG_VALID_KEYS
+from nemo_retriever.common.params.utils import build_embed_option_kwargs
 from nemo_retriever.common.params.utils import resolve_split_params
 
 __all__ = [
@@ -73,5 +74,6 @@ __all__ = [
     "VideoFrameParams",
     "VideoFrameTextDedupParams",
     "WebhookParams",
+    "build_embed_option_kwargs",
     "resolve_split_params",
 ]

@@ -1,0 +1,57 @@
+{
+  "query_id": "vidore_v3_finance_en:q07:v1",
+  "final_answer": "Goldman Sachs reports its Level 3 derivatives in 2024 across five product types: Interest rates, Credit, Currencies, Commodities, and Equities. As of December 2024, the gross Level 3 derivative assets by type were: Interest rates $580M, Credit $2,188M, Currencies $174M, Commodities $1,192M, and Equities $742M (total Level 3 gross fair value of $4,876M), per the Fair Value by Level table on page 159 of the Goldman Sachs 2024 annual report. The Level 3 derivatives rollforward and commentary appear on pages 161-162.",
+  "selected_chunks": [
+    {
+      "rank": 1,
+      "doc_id": "goldman_sachs_2024",
+      "modality": "pdf_page",
+      "locator": {
+        "page_number": 159
+      },
+      "content": "Derivatives Fair Value by Level. The table below presents derivatives on a gross basis by level and product type, as well as the impact of netting. $ in millions Level 1 Level 2 Level 3 Total As of December 2024 Assets Interest rates $ 102 $ 156,054 $ 580 $ 156,736; Credit – 9,249 2,188 11,437; Currencies – 114,500 174 114,674; Commodities – 12,134 1,192 13,326; Equities 136 79,301 742 80,179; Gross fair value 238 371,238 4,876 376,352.",
+      "score": null
+    },
+    {
+      "rank": 2,
+      "doc_id": "goldman_sachs_2024",
+      "modality": "pdf_page",
+      "locator": {
+        "page_number": 161
+      },
+      "content": "Level 3 Rollforward. The table below presents a summary of the changes in fair value for level 3 derivatives. Year Ended December $ in millions 2024 2023 Total level 3 derivatives, net Beginning balance $ 810 $ 1,521 Net realized gains/(losses) (129) 65 Net unrealized gains/(losses) 25 (327) Purchases 480 366 Sales (885) (1,420) Settlements 573 466 Transfers into level 3 (25) (90) Transfers out of level 3 (24) 229 Ending balance $ 825 $ 810.",
+      "score": null
+    },
+    {
+      "rank": 3,
+      "doc_id": "goldman_sachs_2024",
+      "modality": "pdf_page",
+      "locator": {
+        "page_number": 162
+      },
+      "content": "Level 3 Rollforward Commentary for the Year Ended December 2024. The net unrealized gains on level 3 derivatives for 2024 primarily reflected gains on certain commodity derivatives (principally due to the impact of changes in commodity prices) and gains on certain interest rate derivatives (principally due to an increase in interest rates), partially offset by losses on certain equity derivatives.",
+      "score": null
+    },
+    {
+      "rank": 4,
+      "doc_id": "goldman_sachs_2024",
+      "modality": "pdf_page",
+      "locator": {
+        "page_number": 154
+      },
+      "content": "Currency. Prices for currency derivatives based on the exchange rates of leading industrialized nations, including those with longer tenors, are generally transparent. Commodity. Commodity derivatives include transactions referenced to energy (e.g., oil, natural gas and electricity), metals (e.g., precious and base) and soft commodities (e.g., agricultural).",
+      "score": null
+    },
+    {
+      "rank": 5,
+      "doc_id": "goldman_sachs_2024",
+      "modality": "pdf_page",
+      "locator": {
+        "page_number": 160
+      },
+      "content": "The ranges, averages and medians of these inputs are not representative of the appropriate inputs to use when calculating the fair value of any one derivative. For example, the highest correlation for interest rate derivatives is appropriate for valuing a specific interest rate derivative.",
+      "score": null
+    }
+  ],
+  "schema_version": 1
+}

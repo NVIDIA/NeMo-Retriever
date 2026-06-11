@@ -25,19 +25,21 @@ on:
           - dev
           - release
       upload_to:
-        description: 'Where to upload (none/testpypi/pypi)'
+        description: 'Where to upload (none/pypi)'
         required: true
-        default: testpypi
+        default: pypi
         type: choice
         options:
           - none
-          - testpypi
           - pypi
       skip_existing:
         description: 'Skip already-uploaded versions'
         required: true
         default: true
         type: boolean
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -48,8 +50,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Default for scheduled runs: testpypi
-          upload_to="testpypi"
+          # Default for scheduled runs: pypi
+          upload_to="pypi"
           skip_existing="true"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             upload_to="${{ inputs.upload_to }}"
@@ -124,20 +126,13 @@ jobs:
 
       - name: Publish wheels
         env:
-          TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
 
           upload_to="${{ steps.target.outputs.upload_to }}"
-          repository_url="https://test.pypi.org/legacy/"
-          token="${TEST_PYPI_API_TOKEN:-}"
-          if [[ "${upload_to}" == "pypi" ]]; then
-            repository_url="https://upload.pypi.org/legacy/"
-            token="${PYPI_API_TOKEN:-}"
-          fi
-
+          repository_url="https://upload.pypi.org/legacy/"
           if [[ "${upload_to}" == "none" ]]; then
             echo "upload_to=none; skipping package upload."
             exit 0
@@ -148,4 +143,4 @@ jobs:
             skip_existing_flag="--skip-existing"
           fi
 
-          twine upload ${skip_existing_flag} --repository-url "${repository_url}" -u __token__ -p "${token}" nemo_retriever/dist/*
+          twine upload ${skip_existing_flag} --repository-url "${repository_url}" -u __token__ nemo_retriever/dist/*

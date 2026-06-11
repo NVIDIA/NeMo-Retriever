@@ -1,0 +1,15 @@
+API Changelog — Aurora Platform
+
+v2.4.0 (2026-10-15)
+- Added /v1/embed/batch endpoint supporting up to 1024 inputs per request
+- Deprecated /v1/embed/single (sunset: 2027-04-15)
+- New rate-limit tier "enterprise-plus" with 5000 req/min ceiling
+
+v2.3.2 (2026-09-22)
+- Fixed: 503 errors under cold-start when token-budget cache is empty
+- Fixed: incorrect Retry-After header on rate-limit responses
+- Performance: 18% latency reduction for top_k > 50 retrieval queries
+
+v2.3.1 (2026-09-01)
+- Initial release of the explainability endpoint /v1/retrieve/explain
+- Notes: explainability output is currently English-only; multilingual support targeted FY27 Q3.

@@ -1,0 +1,6 @@
+modality,query,answer,pdf,page
+text,Which Robert Frost collection was published in 1923?,New Hampshire,woods_frost,1
+table,What value did James have in 2019?,978,table_test,0
+text,What does the narrator repeat about miles to go before sleeping?,miles to go before I sleep,woods_frost,0
+table,What value did Susan have in 2023?,970,table_test,0
+text,What animal is driving a car at the beach in Table 1?,Giraffe,multimodal_test,0

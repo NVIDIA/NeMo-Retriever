@@ -195,15 +195,6 @@ class ingestor:
         """Record intermediate results persistence configuration."""
         self._not_implemented("save_intermediate_results")
 
-    def save_to_disk(
-        self,
-        output_directory: Optional[str] = None,
-        cleanup: bool = True,
-        compression: Optional[str] = "gzip",
-    ) -> "ingestor":
-        """Record result persistence configuration (execution TBD)."""
-        self._not_implemented("save_to_disk")
-
     def caption(self, params: "CaptionParams | None" = None, **kwargs: Any) -> "ingestor":
         """Record a caption task configuration."""
         _ = _merge_params(params, kwargs)

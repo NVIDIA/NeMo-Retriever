@@ -1,0 +1,173 @@
+{
+  "suite_id": "ingest_02_immediately_queryable",
+  "jtbd": "INGEST",
+  "user_task": "Extracted content is immediately queryable through the platform — no manual glue between ingestion stages.",
+  "user_task_priority": "P0",
+  "source": "JTBD & user tasks tab, INGEST bucket; seed queries from 'NeMo Retriever — JTBD seed queries' tab, INGEST → 'drop these 10-Ks in and tell me what each company says about AI' / 'I just got these docs — pull out X's stance' / 'process my docs folder and rank the items by some metric'.",
+  "success_criteria": {
+    "quality": "operational pass — a SINGLE skill turn handles BOTH the ingest and query phases (no 'ingest first, then ask again' handoff). The query phase runs against the FRESHLY-built index in the same turn and returns grounded hits; provenance is proven because the returned hits' `source` is one of the just-ingested files. Binary pass/fail.",
+    "time": "fast — the QUERY phase responds <= 30s after ingest completes (the no-glue query leg is fast; ingest itself is not the gated leg).",
+    "trigger_rate": ">= 95% — a 'drop these docs in and tell me X' prompt must fire the skill",
+    "subcommand_accuracy": ">= 90% — must run `retriever ingest <path>` then immediately `retriever query \"<text>\"` in the SAME turn against the SAME default table (lancedb/nemo-retriever); no manual index/embed glue step between them; no --input-type flag (does not exist)",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "the_point_under_test": "ingest -> query with NO manual glue, in ONE turn, and the query reads the just-built index. There is no separate 'now build/load the index' step the user must perform; `retriever ingest` writes rows into LanceDB and `retriever query` reads from the same default table immediately.",
+    "no_glue_contract": "ingest and query default to the SAME LanceDB target (uri `lancedb`, table `nemo-retriever`). Because the defaults match, a query issued right after an ingest in the same turn reads exactly the rows the ingest just wrote. The agent must NOT require the user to re-ask or run a manual indexing step between the two.",
+    "provenance": "each query hit is {source, page_number, text}; `source` is the just-ingested file path/name. Provenance is verified by asserting the returned `source` is one of the files ingested in THIS turn (and, for cross-doc rungs, that hits cite the right file per claim).",
+    "defaults_from_dry_run": {
+      "branch_summary_one_file": "pdf:1",
+      "branch_summary_folder_of_3": "pdf:3",
+      "lancedb_uri": "lancedb",
+      "table_name": "nemo-retriever",
+      "vdb_overwrite_default": true,
+      "extract_text": true,
+      "method": "pdfium"
+    },
+    "ingest_success_line": "Ingested N file(s) -> M row(s) in LanceDB lancedb/nemo-retriever.",
+    "query_hit_shape": "JSON array; each hit has exactly {source, page_number, text}; page_number is a 1-indexed int.",
+    "timing_note": "The gated SLA is the QUERY leg (<= 30s after ingest completes). It is a dense-vector lookup over the freshly-written table; default ingest is text-only pdfium extraction (no hosted visual NIMs needed for these text/table fixtures), keeping the loop offline-capable on the bundled embedder."
+  },
+  "cases": [
+    {
+      "id": "ingest-iq-001",
+      "title": "Baseline no-glue loop: ingest ONE doc then immediately query it in the SAME turn",
+      "complexity": 1,
+      "complexity_axis": "Satisfies the INGEST 'immediately queryable / no manual glue' core in its simplest form: one PDF dropped in, one question, answered in ONE turn. Proves the agent runs `ingest` then `query` back-to-back without asking the user to re-issue the question or run a separate index step. The floor rung — adds nothing over a prior rung.",
+      "prompt": "I just got this file — load data/woods_frost.pdf and tell me who owns the woods. Don't make me ask twice.",
+      "data_files": ["cases/ingest-iq-001/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf",
+        "$RETRIEVER query \"Who owns the woods?\" --top-k 5"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:1, N >= 1)",
+        "query_shape": "JSON array of hits; each {source, page_number, text}; >= 1 hit citing woods_frost.pdf",
+        "answer": "The woods' owner's 'house is in the village' (the owner lives in the village); cite woods_frost.pdf p1",
+        "no_glue_assertion": "ingest and query run in the SAME turn against the SAME default table; no separate user-driven 'now index it' step"
+      },
+      "pass_when": [
+        "BOTH `retriever ingest` and `retriever query` run in ONE turn (no 'ingest first, then ask again' handoff)",
+        "query reads the default table (lancedb/nemo-retriever) the ingest just wrote",
+        "query returns >= 1 grounded hit whose `source` is woods_frost.pdf (the just-ingested file), p1",
+        "answer reflects the owner lives in the village",
+        "no --input-type flag used (does not exist)"
+      ]
+    },
+    {
+      "id": "ingest-iq-002",
+      "title": "Provenance: the query cites the just-built index (source = the freshly-ingested file)",
+      "complexity": 2,
+      "complexity_axis": "Satisfies the validation path's provenance clause: the query phase operates on the freshly-built index, verified by `source` provenance in the returned citations. Adds over rung 1 exactly one dimension: an explicit provenance assertion — the answer's value must be traceable to the just-ingested file via the `source` field of the returned hit (not from model memory or a stale prior index). Uses a precise table cell so a generic / hallucinated answer cannot pass.",
+      "prompt": "I just received data/table_test.pdf. Load it and tell me what value James had in 2019 — and show me which file and page that came from so I know it's from the doc I just gave you.",
+      "data_files": ["cases/ingest-iq-002/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf",
+        "$RETRIEVER query \"James value in 2019\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:1)",
+        "answer": "James 2019 = 978; cite table_test.pdf p1",
+        "provenance_assertion": "the returned hit carrying 978 has source=table_test.pdf and page_number=1 — i.e. it came from the index built THIS turn, not a prior/default state"
+      },
+      "pass_when": [
+        "ingest then query run in ONE turn against the default table",
+        "answer is exactly 978",
+        "the supporting hit's `source` is table_test.pdf (the just-ingested file) and `page_number` is 1 — provenance proven via the returned citation",
+        "agent surfaces the source/page to the user (does not answer 978 without provenance)"
+      ]
+    },
+    {
+      "id": "ingest-iq-003",
+      "title": "Folder dropped in -> immediate cross-doc question in the SAME turn",
+      "complexity": 3,
+      "complexity_axis": "Satisfies the 'process my docs folder' seed query. Adds over rung 2: a small FOLDER (2 PDFs) ingested in ONE invocation, then a cross-doc question answered in the same turn — so the freshly-built index spans multiple sources and the query must pick the right source. New dimension: folder-level ingest (branch_summary pdf:2) + cross-doc retrieval, still no manual glue and still one turn.",
+      "prompt": "Process my data/ folder (it has a couple of docs I just dropped in) and, in the same go, tell me which Robert Frost collection was published in 1923. No second step — just answer from what you loaded.",
+      "data_files": ["cases/ingest-iq-003/data/woods_frost.pdf", "cases/ingest-iq-003/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/",
+        "$RETRIEVER query \"Robert Frost collection published in 1923\" --top-k 5"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 2 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:2)",
+        "answer": "New Hampshire (1923); cite woods_frost.pdf p2 (collection table)",
+        "no_glue_assertion": "single ingest call on the folder + one query, same turn; the query reads the multi-source index just built",
+        "provenance_assertion": "the answer hit's source is woods_frost.pdf (not table_test.pdf) — correct source picked out of the freshly-built multi-doc index"
+      },
+      "pass_when": [
+        "single `retriever ingest data/` call ingests BOTH PDFs (no per-file loop), branch_summary pdf:2",
+        "query runs in the SAME turn against the just-built index (default table)",
+        "answer is New Hampshire (1923), citing woods_frost.pdf p2",
+        "the cited `source` is the freshly-ingested woods_frost.pdf — provenance across a multi-doc index"
+      ]
+    },
+    {
+      "id": "ingest-iq-004",
+      "title": "Timing: the query phase returns <= 30s after ingest completes",
+      "complexity": 4,
+      "complexity_axis": "Satisfies the Time criterion (fast: query leg <= 30s after ingest). Adds over rung 3 one dimension: an explicit latency assertion on the QUERY leg. The agent must NOT re-ingest or rebuild before answering — the post-ingest query is a fast dense lookup over the just-written table. New dimension: the <=30s post-ingest query SLA, still one turn, still no glue.",
+      "prompt": "Load data/multimodal_test.pdf, then immediately tell me what activity the Giraffe is doing in Table 1. I care about speed — once it's loaded, the answer should come back fast, no rebuilding.",
+      "data_files": ["cases/ingest-iq-004/data/multimodal_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/multimodal_test.pdf",
+        "$RETRIEVER query \"What activity is the Giraffe doing in Table 1?\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:1)",
+        "answer": "Giraffe -> Driving a car (At the beach); cite multimodal_test.pdf p1 (Table 1)",
+        "timing_assertion": "the query leg returns <= 30s after ingest completes; the agent issues exactly one query against the existing freshly-built table — no re-ingest / re-embed / index rebuild before answering"
+      },
+      "pass_when": [
+        "ingest then query in ONE turn; answer is 'Driving a car' (Giraffe, Table 1), citing multimodal_test.pdf p1",
+        "the QUERY phase responds <= 30s after ingest completes (fast post-ingest lookup)",
+        "no rebuild/re-ingest between load and answer — the query reads the table already written this turn",
+        "if --content-types is used it is a valid value (text,table)"
+      ]
+    },
+    {
+      "id": "ingest-iq-005",
+      "title": "Acceptance: folder dropped in + 'tell me about each' answered in ONE turn, every claim cited to a freshly-ingested source",
+      "complexity": 5,
+      "complexity_axis": "Composed operational-pass / acceptance gate for the INGEST 'immediately queryable, no manual glue' row. Adds over rung 4: a folder of 3 docs ingested once, then a multi-part 'tell me about each' question answered in the SAME turn, where EVERY claim is cited to a freshly-ingested source (per-doc provenance) and the query leg is fast (<=30s after ingest). Asserts NO second 'now ask again' step. This is the gate the others build up to.",
+      "prompt": "I just dropped three docs into data/. Process the folder and, in one go, tell me about each: (a) the poem one — who owns the woods; (b) the numbers one — what James scored in 2019; (c) the testing doc — what the Giraffe is doing in Table 1. For each, cite the file and page. Do NOT make me ask again after loading.",
+      "data_files": ["cases/ingest-iq-005/data/woods_frost.pdf", "cases/ingest-iq-005/data/table_test.pdf", "cases/ingest-iq-005/data/multimodal_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query", "query --content-types text,table", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/",
+        "$RETRIEVER query \"Who owns the woods?\" --top-k 5",
+        "$RETRIEVER query \"James value in 2019\" --top-k 5 --content-types text,table",
+        "$RETRIEVER query \"What activity is the Giraffe doing in Table 1?\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 3 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:3)",
+        "answers": {
+          "poem": "the owner's house is in the village (owner lives in the village); cite woods_frost.pdf p1",
+          "numbers": "James 2019 = 978; cite table_test.pdf p1",
+          "testing": "Giraffe -> Driving a car (At the beach), Table 1; cite multimodal_test.pdf p1"
+        },
+        "citation_assertion": "each claim cites a DISTINCT freshly-ingested source: woods_frost.pdf, table_test.pdf, multimodal_test.pdf respectively; every returned hit carries non-null source + page_number",
+        "no_glue_assertion": "ONE turn: a single `retriever ingest data/` then the queries, all without a second 'now ask again' handoff; queries read the just-built 3-doc index",
+        "timing_assertion": "each query leg responds fast (<=30s after ingest completes)"
+      },
+      "pass_when": [
+        "single `retriever ingest data/` ingests all 3 PDFs (branch_summary pdf:3) in ONE turn",
+        "all three sub-questions answered in the SAME turn against the freshly-built index — no second 'now ask again' step",
+        "poem -> owner lives in the village, cite woods_frost.pdf p1",
+        "numbers -> James 2019 = 978, cite table_test.pdf p1",
+        "testing -> Giraffe 'Driving a car', cite multimodal_test.pdf p1",
+        "every claim is cited to its correct, distinct, freshly-ingested source (per-doc provenance); every hit has source + page_number",
+        "the query legs are fast (<=30s each after ingest completes)"
+      ]
+    }
+  ]
+}

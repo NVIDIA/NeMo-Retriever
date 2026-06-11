@@ -1,0 +1,171 @@
+{
+  "suite_id": "retrieve_02_nl_citations",
+  "jtbd": "RETRIEVE",
+  "user_task": "Accept a natural-language question and return retrieved grounding context with structured citations (source identifier, page, chunk ID).",
+  "user_task_priority": "P0",
+  "source": "JTBD & user tasks tab, RETRIEVE bucket; seed queries from 'NeMo Retriever — JTBD seed queries' tab, RETRIEVE → NL question with structured citations ('What was <metric> in <year>?', 'What's the main heading of this document image?', 'What's on page 14 of <doc>.pdf?'). The page-14 query is really a FILTERING test and is deliberately left to retrieve_11_filter; this suite stays focused on CITATIONS.",
+  "success_criteria": {
+    "quality": "operational pass (NOT RAGAS) — a NL question returns grounding hits where EVERY hit carries a structured citation: a non-null source identifier and a non-null 1-indexed page_number; the answer is grounded in (quotes/uses) the cited row's text. At the CLI layer each hit is exactly {source, page_number, text}; the internal spec citation also exposes source_id, filename, full path, and a pdf_page string (e.g. WALMART_2017_10K_42). Binary pass/fail: correct grounded answer + a resolvable source+page citation for every hit; NO null citations.",
+    "time": "RETRIEVE <= 1 min per case (small corpus already ingested + one query).",
+    "trigger_rate": ">= 95% — a 'answer this question and cite where it came from' prompt must fire the skill",
+    "subcommand_accuracy": ">= 90% — must run `retriever ingest <paths>` then `retriever query \"<NL question>\" --top-k 5`; the structured citation in each returned hit is the deliverable. No --input-type flag (does not exist).",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "format_autodetect": "`retriever ingest <file>` auto-detects PDF from the extension. There is NO --input-type flag.",
+    "citation_shape": {
+      "cli_layer": "`retriever query` prints a JSON array; each hit has EXACTLY three keys {source, page_number, text}. `source` is the source identifier (resolvable to a filename + full path of the ingested doc). `page_number` is an int and 1-INDEXED. There is no metadata/_distance key at the CLI layer.",
+      "spec_layer": "The internal citation object the CLI projects from carries the structured fields the row asks for: source_id, filename, full path, page_number, chunk/element id, and a human-readable pdf_page string of the form <DOCSTEM>_<PAGE> (e.g. WALMART_2017_10K_42 == page 42 of WALMART_2017_10K.pdf). For these fixtures the analogous pdf_page values are e.g. woods_frost_1, woods_frost_2, table_test_1.",
+      "assertion": "every hit must have NON-NULL source AND NON-NULL page_number; no null citations; the cited row's text must actually support the answer (grounding)."
+    },
+    "defaults": {"lancedb_uri": "lancedb", "table_name": "nemo-retriever", "top_k_default": 10},
+    "ingest_success_line": "Ingested N file(s) -> M row(s) in LanceDB lancedb/<table>.",
+    "query_hit_shape": "JSON array; each hit {source, page_number, text}; page_number is a 1-indexed int."
+  },
+  "cases": [
+    {
+      "id": "retrieve-cit-001",
+      "title": "Baseline: NL question -> grounded answer + one source+page citation",
+      "complexity": 1,
+      "complexity_axis": "Satisfies the RETRIEVE-with-citations core in its simplest form: accept ONE natural-language question and return a grounded answer together with at least one structured citation (a non-null source + page_number). Rung 1 only asserts that a citation comes back at all and that it is non-null and resolvable to the ingested file; it does not yet test which page or multi-hit completeness. It is the floor.",
+      "prompt": "Ingest data/woods_frost.pdf, then answer this and tell me where you got it: in the poem, where is the owner of the woods said to live?",
+      "data_files": ["cases/retrieve-cit-001/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf",
+        "$RETRIEVER query \"Where does the owner of the woods live?\" --top-k 5"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:1, N >= 1)",
+        "query_shape": "JSON array of hits; each {source, page_number, text}; >= 1 hit citing woods_frost.pdf",
+        "answer": "The owner's 'house is in the village' — the owner lives in the village; cited from woods_frost.pdf p1 (pdf_page woods_frost_1)",
+        "citation_assertion": "the top hit carries a non-null source (resolvable to woods_frost.pdf, full path under cases/retrieve-cit-001/data/) and a non-null 1-indexed page_number"
+      },
+      "pass_when": [
+        "`retriever ingest data/woods_frost.pdf` returns a NON-ZERO row count",
+        "query returns >= 1 hit shaped {source, page_number, text}",
+        "answer is 'the village' (owner's house is in the village), grounded in the cited hit's text",
+        "the cited hit has NON-NULL source AND NON-NULL page_number (page 1); citation resolvable to woods_frost.pdf",
+        "no --input-type flag used (does not exist); format auto-detected as pdf"
+      ]
+    },
+    {
+      "id": "retrieve-cit-002",
+      "title": "Cited page_number is CORRECT: a page-2-only fact must cite page 2, not page 1",
+      "complexity": 2,
+      "complexity_axis": "Satisfies the 'page' field of the structured citation and proves it is ACCURATE, not just present. Adds over rung 1 exactly one dimension: the answer comes from a fact that lives ONLY on page 2 (the Frost-collections table on woods_frost.pdf p2), while page 1 is the poem. So the returned page_number must be 2, not 1 — catching a citation that is present but points at the wrong page. New dimension: page-number correctness.",
+      "prompt": "Ingest data/woods_frost.pdf and tell me which Robert Frost collection was published in 1923 — and give me the exact page number it's on.",
+      "data_files": ["cases/retrieve-cit-002/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf",
+        "$RETRIEVER query \"Which Robert Frost collection was published in 1923?\" --top-k 5"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:1)",
+        "answer": "New Hampshire (1923); cited from woods_frost.pdf PAGE 2 (the 'Frost's Collections' table), pdf_page woods_frost_2 — NOT page 1 (the poem)",
+        "citation_assertion": "the hit carrying the 1923 fact has page_number == 2 (1-indexed); the p1 poem text would carry page_number == 1"
+      },
+      "pass_when": [
+        "ingest returns a NON-ZERO row count for woods_frost.pdf",
+        "answer is 'New Hampshire' (published 1923)",
+        "the cited hit's page_number is 2 (the collections table lives on p2), NOT 1",
+        "citation is non-null and resolvable to woods_frost.pdf; page-number is correct for the cited fact"
+      ],
+      "known_caveat": "page_number is 1-indexed at the CLI layer. A common failure is a citation that is present but stale/wrong-page (e.g. defaulting to page 1); this rung exists to catch exactly that by choosing a fact that is page-2-exclusive."
+    },
+    {
+      "id": "retrieve-cit-003",
+      "title": "Multi-hit: EVERY returned hit carries a citation (no null source / no null page)",
+      "complexity": 3,
+      "complexity_axis": "Satisfies the 'every claim is cited' completeness clause across a multi-hit result over a 2-document corpus. Adds over rung 2: instead of one cited hit, the query returns several hits spanning two source files, and the assertion is that EVERY hit in the array has a non-null source AND a non-null page_number (no nulls anywhere) and that each source resolves to one of the two ingested files. New dimension: citation completeness / no-null guarantee across all hits and across multiple sources.",
+      "prompt": "Ingest the whole data/ folder (woods_frost.pdf and table_test.pdf), then ask: what is this collection about? Return the top 5 supporting passages and make sure EVERY one of them has a source and page citation — no blanks.",
+      "data_files": [
+        "cases/retrieve-cit-003/data/woods_frost.pdf",
+        "cases/retrieve-cit-003/data/table_test.pdf"
+      ],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/",
+        "$RETRIEVER query \"What is this collection about?\" --top-k 5"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 2 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:2)",
+        "query_shape": "JSON array of up to 5 hits; each {source, page_number, text}; sources resolve to woods_frost.pdf and/or table_test.pdf",
+        "citation_assertion": "for ALL returned hits: source is non-null and resolves to one of the two ingested files (full path under cases/retrieve-cit-003/data/); page_number is a non-null 1-indexed int (woods_frost p1/p2, table_test p1). Zero null citations in the array."
+      },
+      "pass_when": [
+        "single `retriever ingest data/` ingests BOTH PDFs (NON-ZERO rows)",
+        "query returns multiple hits (up to top-k 5), each shaped {source, page_number, text}",
+        "EVERY hit has NON-NULL source AND NON-NULL page_number — no null citations anywhere in the array",
+        "each hit's source resolves to woods_frost.pdf or table_test.pdf (filename + full path available)"
+      ]
+    },
+    {
+      "id": "retrieve-cit-004",
+      "title": "Grounding: the cited row's text actually SUPPORTS the answer",
+      "complexity": 4,
+      "complexity_axis": "Satisfies the grounding clause: a citation that resolves AND whose text genuinely supports the answer. Adds over rung 3: it is no longer enough that the citation is present and non-null — the cited row's `text` must literally contain the value used in the answer. The answer is a specific table cell (James, 2019 = 978) so the cited hit's text must contain '978' (and the James/2019 context), making the grounding check unambiguous. New dimension: answer-to-citation grounding (no citation that points at an unrelated row).",
+      "prompt": "Ingest data/table_test.pdf and tell me what value James had in 2019. Cite the exact passage you used, and make sure that passage actually contains the number.",
+      "data_files": ["cases/retrieve-cit-004/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf",
+        "$RETRIEVER query \"What value did James have in 2019?\" --top-k 5"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever.",
+        "answer": "James 2019 = 978; cited from table_test.pdf p1 (pdf_page table_test_1)",
+        "grounding_assertion": "the cited hit's `text` literally contains '978' in the James/2019 context — the citation's text supports the answer, it is not a citation to an unrelated row"
+      },
+      "pass_when": [
+        "ingest returns a NON-ZERO row count for table_test.pdf",
+        "answer is exactly 978 for James in 2019",
+        "the cited hit has non-null source (table_test.pdf) + non-null page_number (1)",
+        "the cited hit's `text` actually contains '978' (grounding check): the citation supports the answer, not just any row"
+      ],
+      "known_caveat": "table_test.pdf is a dense Year x {Bill,Amy,James,Ted,Susan} grid; if the table is flattened the '978' may land in a row whose text still includes the 2019/James context. The grounding assertion requires the SPECIFIC value to appear in the cited row's text, not merely a nearby cell."
+    },
+    {
+      "id": "retrieve-cit-005",
+      "title": "Acceptance: NL question over a multi-doc corpus, structured citation (source+page) for every claim, resolvable to real rows",
+      "complexity": 5,
+      "complexity_axis": "Composed operational-pass / acceptance gate for the row: a single natural-language question answered over a 3-document corpus, where the answer's supporting claim(s) each carry a STRUCTURED citation (non-null source + non-null 1-indexed page_number) that RESOLVES to a real ingested row whose text supports the claim, with NO null citations anywhere. Adds over rung 4: it composes correct page-number (rung 2) + no-null completeness across multiple sources (rung 3) + answer grounding (rung 4) into one acceptance check over a mixed corpus where the wrong document/page is an available distractor.",
+      "prompt": "Ingest data/ (woods_frost.pdf, table_test.pdf, multimodal_test.pdf). Then answer with a citation: in which poem does the speaker repeat that they have 'miles to go before I sleep', who wrote it, and what page is it on? Every claim must carry a source + page citation that resolves to a real passage — no null or unresolvable citations.",
+      "data_files": [
+        "cases/retrieve-cit-005/data/woods_frost.pdf",
+        "cases/retrieve-cit-005/data/table_test.pdf",
+        "cases/retrieve-cit-005/data/multimodal_test.pdf"
+      ],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/",
+        "$RETRIEVER query \"In which poem does the speaker say 'miles to go before I sleep' and who wrote it?\" --top-k 5"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 3 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:3)",
+        "answer": "'Stopping by Woods on a Snowy Evening' by Robert Frost; cited from woods_frost.pdf PAGE 1 (pdf_page woods_frost_1) — the poem, NOT table_test.pdf or multimodal_test.pdf",
+        "assertions": [
+          "the answering hit cites woods_frost.pdf page 1 (correct doc AND correct page among 3 candidate docs)",
+          "every returned hit carries NON-NULL source + NON-NULL page_number — no null citations",
+          "each citation resolves to a real ingested row (source -> filename + full path under cases/retrieve-cit-005/data/) whose text supports the claim",
+          "the cited row's text contains 'miles to go before I sleep' (grounding)",
+          "RETRIEVE wall clock <= 1 min (corpus already ingested)"
+        ]
+      },
+      "pass_when": [
+        "single `retriever ingest data/` ingests all 3 PDFs (NON-ZERO rows)",
+        "answer: 'Stopping by Woods on a Snowy Evening' by Robert Frost, citing woods_frost.pdf p1 (right doc + right page among distractors)",
+        "EVERY returned hit has non-null source + non-null page_number; no null citations",
+        "the cited hit's text contains 'miles to go before I sleep' (grounding) and resolves to a real woods_frost.pdf row",
+        "query honors --top-k 5 and the answer is served in <= 1 min"
+      ]
+    }
+  ]
+}

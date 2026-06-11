@@ -1,0 +1,172 @@
+{
+  "suite_id": "retrieve_03_single_source",
+  "jtbd": "RETRIEVE",
+  "user_task": "Single-source Q&A: direct retrieval and answer from ONE named document through the platform's RAG runtime.",
+  "user_task_priority": "P0",
+  "source": "JTBD & user tasks tab, RETRIEVE bucket -> single-source Q&A; seed queries from 'NeMo Retriever — JTBD seed queries' tab, RETRIEVE: \"What's <company> saying about R&D in their 2022 10-K?\", \"Pull up the revenue numbers from <doc>.pdf.\", \"What does <doc>.docx recommend for X, and what's the total amount?\".",
+  "success_criteria": {
+    "quality": "OPERATIONAL pass (NOT RAGAS — that is the separate performance-eval suite). Binary: (1) retrieval is SCOPED to the ONE named document — every considered/returned hit's source basename is the named doc, no cross-doc bleed; and (2) the answer matches the ground-truth value (numeric or span) for that named doc. Scoping is achieved by a REAL CLI mechanism (dedicated per-doc table via --table-name, or the LanceDB source_name python filter), NOT a non-existent query-time --where flag.",
+    "time": "RETRIEVE <= 1 min per case (single small doc, one ingest + one scoped query; query embedder/reranker via hf for fast cold start).",
+    "trigger_rate": ">= 95% — a 'answer X from <named doc>' prompt must fire the nemo-retriever skill.",
+    "subcommand_accuracy": ">= 90% — must run `retriever ingest <paths>` (with --table-name <doc> when isolating one doc into its own table) then `retriever query` against that table (--table-name), OR the LanceDB source_name python one-liner to filter a shared table. There is NO `retriever query --where` / source-filter flag (verified against the CLI).",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "single_source_scoping_mechanism": "The shipped `retriever query` CLI has NO `--where`, `--source`, or `--pdf-basename` flag (verified: `retriever query --help` exposes only --table-name among scoping options; grep of src/nemo_retriever finds no `vdb_kwargs`/`pdf_basename`/query-time `where`). The spec's `vdb_kwargs={\"where\": \"pdf_basename = '...'\"}` is a LIBRARY/python-API construct, NOT a CLI flag — do NOT invent it. Single-source scoping on the CLI is achieved by EITHER: (a) ingest ONLY the named doc into its OWN table (`retriever ingest <doc> --table-name <doc> --overwrite`) and query that table (`retriever query \"...\" --table-name <doc>`), so only that doc's rows can ever be returned; OR (b) ingest the whole corpus into one shared table, then filter LanceDB by source_name with the python one-liner from skills/nemo-retriever/references/query.md: `lancedb.connect('./lancedb').open_table('nemo-retriever').to_pandas()` then keep rows where `json.loads(r['source'])['source_name'] == '<doc>'`.",
+    "query_embed_backend": "hf — `--query-embed-backend hf --reranker-backend hf --rerank` for a fast single-query cold start (~20-30s), per references/query.md.",
+    "defaults": {"lancedb_uri": "lancedb", "table_name": "nemo-retriever"},
+    "ingest_success_line": "Ingested N file(s) -> M row(s) in LanceDB lancedb/<table>.",
+    "query_hit_shape": "JSON array; each hit has exactly {source, page_number, text}; source is the full path (basename = doc_id); page_number is a 1-indexed int. No pdf_basename/metadata/_distance keys at the CLI layer.",
+    "prereqs": {
+      "libreoffice": "Only the T5 (.docx) rung needs libreoffice (host pkg: `sudo apt-get install -y libreoffice`); a single .docx --dry-run shows branch_summary pdf:1 (converted to pdf then run through the pdf branch). PDF rungs need no office tooling."
+    }
+  },
+  "cases": [
+    {
+      "id": "retrieve-ss-001",
+      "title": "Trivially single-source: corpus has exactly ONE doc, query it",
+      "complexity": 1,
+      "complexity_axis": "Satisfies the RETRIEVE single-source operational floor: ingest ONE document and answer a question from it. Single-source is trivially guaranteed because the index contains only that one doc — there is no other source to bleed in. Rung 1 adds nothing over a prior rung (it is the floor); it establishes the ingest->scoped-query->grounded-answer loop. CLI scoping mechanism: none needed yet (the table holds one doc), but the default table is used so later rungs can contrast it.",
+      "prompt": "I only have one document, data/woods_frost.pdf. Ingest it and tell me: in the poem, where does the speaker say the owner of the woods has his house?",
+      "data_files": ["cases/retrieve-ss-001/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf --overwrite",
+        "$RETRIEVER query \"Where is the owner of the woods's house?\" --top-k 5 --query-embed-backend hf --reranker-backend hf --rerank"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:1, N >= 1)",
+        "query_shape": "JSON array of hits; each {source, page_number, text}; every hit cites woods_frost.pdf (the only source in the table)",
+        "answer": "The owner's house is in the village ('Whose woods these are I think I know. / His house is in the village though'); cite woods_frost.pdf p1"
+      },
+      "pass_when": [
+        "ingest produces NON-ZERO rows for woods_frost.pdf",
+        "every returned hit cites woods_frost.pdf (single-source is trivially satisfied — only one doc in the index)",
+        "answer states the owner's house is 'in the village', grounded in woods_frost.pdf p1",
+        "no `--where` / source-filter flag used (it does not exist on the CLI)"
+      ]
+    },
+    {
+      "id": "retrieve-ss-002",
+      "title": "Multi-doc on disk, answer from ONE named doc — scope via a dedicated per-doc table",
+      "complexity": 2,
+      "complexity_axis": "Satisfies 'multi-doc index but the answer must come from ONE named doc'. Adds over rung 1 exactly one dimension: the workdir now holds MULTIPLE documents, but the user names ONE (table_test.pdf). The agent must NOT ingest everything into one table and hope semantics pick the right doc; the real CLI scoping move is to ingest ONLY the named doc into its OWN table (`--table-name table_test --overwrite`) and query that table. New dimension: single-source SCOPING via a dedicated table (the only mechanism the CLI offers besides the python source_name filter).",
+      "prompt": "There are several PDFs in data/ (woods_frost.pdf, multimodal_test.pdf, table_test.pdf). Pull up the numbers from table_test.pdf only: what value did James have in 2019?",
+      "data_files": [
+        "cases/retrieve-ss-002/data/table_test.pdf",
+        "cases/retrieve-ss-002/data/woods_frost.pdf",
+        "cases/retrieve-ss-002/data/multimodal_test.pdf"
+      ],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --table-name --use-table-structure --overwrite", "query --table-name"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf --table-name table_test --use-table-structure --overwrite",
+        "$RETRIEVER query \"James value in 2019\" --table-name table_test --top-k 5 --content-types text,table --query-embed-backend hf --reranker-backend hf --rerank"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/table_test. (only table_test.pdf ingested; the other two PDFs are NOT in this table)",
+        "scoping": "single-source achieved by a dedicated table: only table_test.pdf's rows exist in lancedb/table_test, so the query physically cannot return woods_frost or multimodal_test content",
+        "answer": "James 2019 = 978; cite table_test.pdf p1"
+      },
+      "pass_when": [
+        "agent ingests ONLY table_test.pdf (not the other two) into a dedicated table via --table-name table_test",
+        "query is run against --table-name table_test (NOT the default table); every hit cites table_test.pdf",
+        "answer is exactly 978, grounded in table_test.pdf p1",
+        "no `--where` flag used; scoping is via the dedicated table (a real CLI mechanism)"
+      ]
+    },
+    {
+      "id": "retrieve-ss-003",
+      "title": "Scoping predicate/mechanism verified — only the named doc's rows are considered",
+      "complexity": 3,
+      "complexity_axis": "Satisfies the validation clause 'the scoping predicate/mechanism fired — only that doc's rows considered'. Adds over rung 2: instead of trusting the dedicated table implicitly, the agent must PROVE the scope is tight. With all three docs ingested into ONE shared table, the agent uses the LanceDB source_name python one-liner (references/query.md) to filter to multimodal_test.pdf rows and confirm distinct sources, then answers from only those rows. New dimension: explicit verification that the source-scoping predicate (source_name == named doc) is the one that fired — the CLI-honest stand-in for the spec's vdb_kwargs where=pdf_basename predicate.",
+      "prompt": "Ingest all three PDFs in data/ into one index. Then answer from multimodal_test.pdf ONLY, and prove to me that you restricted the lookup to that document: in Table 1, what activity is the Giraffe doing? Show that no other document's rows were used.",
+      "data_files": [
+        "cases/retrieve-ss-003/data/multimodal_test.pdf",
+        "cases/retrieve-ss-003/data/table_test.pdf",
+        "cases/retrieve-ss-003/data/woods_frost.pdf"
+      ],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure --overwrite", "query / lancedb source_name filter"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/multimodal_test.pdf data/table_test.pdf data/woods_frost.pdf --use-table-structure --overwrite",
+        "$RETRIEVER_VENV/bin/python -c \"import lancedb,json; from collections import Counter; df=lancedb.connect('./lancedb').open_table('nemo-retriever').to_pandas(); names=[json.loads(s)['source_name'] for s in df['source']]; print(sorted(set(names))); sub=[r for _,r in df.iterrows() if json.loads(r['source'])['source_name']=='multimodal_test.pdf']; print('scoped_rows',len(sub),'of',len(df)); print('\\n'.join(r['text'] for r in sub if 'Giraffe' in r['text']))\""
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 3 file(s) -> M row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:3; all three docs in ONE table)",
+        "distinct_sources": "['multimodal_test.pdf', 'table_test.pdf', 'woods_frost.pdf'] — confirms the shared table holds 3 docs",
+        "scoping_predicate": "source_name == 'multimodal_test.pdf' selects only that doc's rows (scoped_rows < total); the Giraffe row comes exclusively from multimodal_test.pdf",
+        "answer": "Giraffe -> Driving a car (-> At the beach), from Table 1; cite multimodal_test.pdf p1"
+      },
+      "pass_when": [
+        "all three PDFs ingested into ONE shared table (multi-doc index established)",
+        "agent applies the source_name == 'multimodal_test.pdf' predicate (LanceDB python filter from references/query.md) and reports distinct sources, proving the scope",
+        "the rows used for the answer all have source_name == multimodal_test.pdf (no table_test/woods_frost rows considered)",
+        "answer is 'Driving a car' for the Giraffe (Table 1), grounded in multimodal_test.pdf p1",
+        "scoping is the real source_name predicate, NOT a fabricated `--where` CLI flag"
+      ]
+    },
+    {
+      "id": "retrieve-ss-004",
+      "title": "Numeric answer matches ground truth for the named doc",
+      "complexity": 4,
+      "complexity_axis": "Satisfies the validation clause 'answer matches ground-truth value (numeric/span) for the named doc'. Adds over rung 3: the accuracy bar tightens to an EXACT numeric cell, with a deliberate distractor in the index. The corpus holds table_test.pdf (numeric tables) AND multimodal_test.pdf (which also contains a small numeric table), so a sloppy unscoped query could pull the wrong table's number. The agent must scope to the named doc (dedicated table or source_name filter) AND return the exact ground-truth cell. New dimension: exact numeric correctness under a same-shaped distractor, with scoping enforced.",
+      "prompt": "data/ has table_test.pdf and multimodal_test.pdf (both have tables). From table_test.pdf specifically, what value does Susan have in 2023? Give me the exact number.",
+      "data_files": [
+        "cases/retrieve-ss-004/data/table_test.pdf",
+        "cases/retrieve-ss-004/data/multimodal_test.pdf"
+      ],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --table-name --use-table-structure --overwrite", "query --table-name --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf --table-name table_test --use-table-structure --overwrite",
+        "$RETRIEVER query \"Susan value in 2023\" --table-name table_test --top-k 5 --content-types text,table --query-embed-backend hf --reranker-backend hf --rerank"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/table_test. (only table_test.pdf; multimodal_test.pdf is NOT ingested into this table -> cannot be a distractor)",
+        "scoping": "dedicated table table_test scopes retrieval to table_test.pdf; the multimodal_test.pdf table-with-numbers distractor is excluded by construction",
+        "answer": "Susan 2023 = 970; cite table_test.pdf p1 (content_type=table cell, via --use-table-structure)"
+      },
+      "pass_when": [
+        "agent ingests ONLY table_test.pdf into a dedicated table (or filters the shared table by source_name == table_test.pdf)",
+        "query scoped so the multimodal_test.pdf table cannot leak a wrong number",
+        "answer is EXACTLY 970 (Susan, 2023), grounded in table_test.pdf p1 as a table cell",
+        "--use-table-structure used so the cell materializes as content_type=table; no --where flag used"
+      ]
+    },
+    {
+      "id": "retrieve-ss-005",
+      "title": "Acceptance: multi-doc index, question about ONE named .docx returns the correct value scoped to that doc (no cross-doc bleed)",
+      "complexity": 5,
+      "complexity_axis": "Composed operational-pass / acceptance gate for the RETRIEVE single-source row. Adds over rung 4: (a) the named source is a NON-PDF (.docx -> libreoffice -> pdf branch) sitting inside a genuinely MULTI-doc index alongside two unrelated PDFs, and (b) the question asks for BOTH a span (the recommendation) AND a number (the total) from that one doc. Acceptance = in a multi-doc index, a question about ONE named document returns the correct value scoped to that doc with NO cross-doc bleed, proven by source_name. This is the gate the others build to. CLI scoping mechanism: scope to procurement_memo_q4.docx via dedicated table OR source_name filter — never a query-time --where.",
+      "prompt": "data/ has procurement_memo_q4.docx plus two unrelated PDFs (woods_frost.pdf, table_test.pdf). From the procurement memo only: what does it recommend procuring, and what's the total capital outlay? Make sure the answer comes only from that memo.",
+      "data_files": [
+        "cases/retrieve-ss-005/data/procurement_memo_q4.docx",
+        "cases/retrieve-ss-005/data/woods_frost.pdf",
+        "cases/retrieve-ss-005/data/table_test.pdf"
+      ],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --table-name --overwrite", "query --table-name"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/procurement_memo_q4.docx --table-name procurement_memo_q4 --overwrite",
+        "$RETRIEVER query \"What does the memo recommend procuring and what is the total capital outlay?\" --table-name procurement_memo_q4 --top-k 5 --query-embed-backend hf --reranker-backend hf --rerank"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/procurement_memo_q4. (branch_summary pdf:1 — docx converted to pdf via libreoffice, then pdf branch; only the memo is in this table)",
+        "routing": "format auto-detected as docx; libreoffice converts .docx -> pdf; same pdf extraction branch (no --input-type flag)",
+        "scoping": "dedicated table procurement_memo_q4 -> only the memo's rows exist; woods_frost.pdf and table_test.pdf can NOT bleed into the answer. (Alternative: ingest all 3 into one table and filter source_name == 'procurement_memo_q4.docx'.)",
+        "answer": "Recommends procuring an additional 512 H200 GPUs (320 to us-east-2, 192 to eu-central-1); total capital outlay = $14.8M (payback period 7 months); cite procurement_memo_q4.docx"
+      },
+      "pass_when": [
+        "multi-doc workdir, but the agent scopes retrieval to procurement_memo_q4.docx ONLY (dedicated table via --table-name, or source_name == 'procurement_memo_q4.docx' python filter)",
+        "every hit used for the answer cites the memo; NO content from woods_frost.pdf or table_test.pdf appears (no cross-doc bleed)",
+        "span correct: recommends procuring 512 additional H200 GPUs",
+        "number correct: total capital outlay = $14.8M",
+        "docx auto-detected and routed via libreoffice->pdf (no --input-type); no `--where` / source-filter flag invented"
+      ],
+      "known_caveat": "The .docx rung needs the libreoffice host package (`sudo apt-get install -y libreoffice`); without it the docx->pdf conversion fails and no rows are produced. The named-doc scoping still uses a REAL CLI mechanism (dedicated --table-name table, or the LanceDB source_name python filter) — the CLI has no query-time --where/source flag."
+    }
+  ]
+}

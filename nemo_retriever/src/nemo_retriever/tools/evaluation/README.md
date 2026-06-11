@@ -256,8 +256,8 @@ ls /path/to/bo767/*.pdf | wc -l   # should be 767
 ### Step 1: Ingest and embed PDFs (NeMo Retriever)
 
 `graph_pipeline.py` builds an operator graph (`AbstractOperator` nodes connected via `>>`) and
-executes it through either a `RayDataExecutor` (batch mode, default) or `InprocessExecutor`
-(single-process pandas). The pipeline extracts, embeds, and uploads chunks to LanceDB in a
+executes it through either an `InprocessExecutor` (inprocess mode, default) or `RayDataExecutor`
+(batch mode). The pipeline extracts, embeds, and uploads chunks to LanceDB in a
 single pass.
 
 Run from the **repo root**. **Estimated time: ~45-90 min** (767 PDFs, GPU-accelerated
@@ -289,8 +289,7 @@ python -m nemo_retriever.examples.graph_pipeline /path/to/bo767 \
 Output:
 - `lancedb/nemo-retriever/` (~84k chunks) -- used by step 3 for retrieval queries.
 
-**Note:** `graph_pipeline.py` uses `--run-mode batch` (Ray Data) by default. For local testing
-without Ray, pass `--run-mode inprocess`. Both modes produce the same output.
+**Note:** `graph_pipeline.py` defaults to `--run-mode inprocess`. Pass `--run-mode batch` for Ray Data scale-out. Both modes return a `pandas.DataFrame` and produce compatible chunk records for downstream evaluation.
 
 ### Step 2: Build page markdown index (NeMo Retriever)
 

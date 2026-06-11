@@ -201,6 +201,7 @@ class Retriever:
             "text_column": "text",
             "inference_batch_size": 32,
             "embed_inference_batch_size": 32,
+            "local_ingest_embed_backend": "hf",
         }
         merged = {**base, **dict(self.embed_kwargs or {}), **dict(extra or {})}
         if "local_ingest_embed_backend" in merged and merged["local_ingest_embed_backend"] is not None:

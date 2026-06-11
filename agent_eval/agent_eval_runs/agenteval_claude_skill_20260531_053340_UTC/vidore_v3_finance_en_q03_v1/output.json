@@ -1,0 +1,37 @@
+{
+  "query_id": "vidore_v3_finance_en:q03:v1",
+  "final_answer": "Wells Fargo reported $0 in goodwill impairment charges in its 2024 annual report. The 2024 assessment indicated goodwill was not impaired as of December 31, 2024, based on the fair value of each reporting unit exceeding its carrying amount by a significant amount. The total goodwill balance as of December 31, 2024 was $25.2 billion, with no impairment loss recognized during the year (see Wells Fargo 2024 10-K, page 194; goodwill discussion also referenced on pages 228 and 318).",
+  "selected_chunks": [
+    {
+      "rank": 1,
+      "doc_id": "wells_fargo_2024",
+      "modality": "pdf_page",
+      "locator": {
+        "page_number": 194
+      },
+      "content": "Goodwill Impairment — We assess goodwill for impairment annually in the fourth quarter or more frequently depending on macroeconomic and other business factors... Our 2024 assessment indicated goodwill was not impaired as of December 31, 2024, based on the fair value of each reporting unit exceeding its carrying amount by a significant amount. The aggregate fair value of our reporting units exceeded our market capitalization, and we believe factors that contributed to this difference included an overall control premium and market volatility. Although the fair value of our Consumer Lending reporting unit exceeded its carrying amount by a significant amount, it was the most sensitive to changes in the estimated financial forecasts.",
+      "score": null
+    },
+    {
+      "rank": 2,
+      "doc_id": "wells_fargo_2024",
+      "modality": "pdf_page",
+      "locator": {
+        "page_number": 318
+      },
+      "content": "Assessment of goodwill impairment — As discussed in Note 7 to the consolidated financial statements, the Company's goodwill balance as of December 31, 2024 was $25.2 billion. As discussed in Note 1, the Company tests goodwill for impairment annually in the fourth quarter, or more frequently if events or circumstances indicate that the carrying value of goodwill may be impaired... We identified the assessment of goodwill impairment for the Consumer Lending reporting unit, which had $7.1 billion of allocated goodwill as of December 31, 2024, as a critical audit matter.",
+      "score": null
+    },
+    {
+      "rank": 3,
+      "doc_id": "wells_fargo_2024",
+      "modality": "pdf_page",
+      "locator": {
+        "page_number": 228
+      },
+      "content": "GOODWILL. Goodwill is recorded for business combinations when the purchase price is higher than the fair value of the acquired net assets, including identifiable intangible assets. We assess goodwill for impairment at a reporting unit level on an annual basis or more frequently in certain circumstances. A goodwill impairment loss is recognized if the fair value is less than the carrying amount, including goodwill. The goodwill impairment loss is limited to the amount of goodwill allocated to the reporting unit. We recognize impairment losses as a charge to other noninterest expense and a reduction to the carrying value of goodwill. Subsequent reversals of goodwill impairment are prohibited.",
+      "score": null
+    }
+  ],
+  "schema_version": 1
+}

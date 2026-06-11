@@ -1,0 +1,182 @@
+{
+  "suite_id": "extract_01_visual_doc",
+  "jtbd": "EXTRACT",
+  "user_task": "Standalone visual-document extraction (PDF / DOCX / PPTX) — text, tables, charts, infographics, pictures.",
+  "user_task_priority": "P0",
+  "source": "JTBD & user tasks tab, EXTRACT bucket; seed queries from 'NeMo Retriever — JTBD seed queries' tab, EXTRACT → standalone visual-document extraction (10-K PDF revenue lookup, PDF climate-risk page references, QBR pptx revenue/pipeline).",
+  "success_criteria": {
+    "quality": "operational pass — ingest one visual document (PDF/DOCX/PPTX) and get back a non-zero number of chunks; the visual pipeline (nemotron-page-elements-v3 -> nemotron-ocr-v2 -> nemotron-table-structure-v1) fires; tables surface as discrete content_type=table rows with row/col structure; picture/chart regions are detected and either captioned or stored as image content; NO silent text-only fallback when tables/charts are present. Binary pass/fail.",
+    "time": "medium — <= 2 min per case (single small file ingest + one query).",
+    "trigger_rate": ">= 95% — an 'extract / load this document and answer from it' prompt must fire the skill",
+    "subcommand_accuracy": ">= 90% — must run `retriever ingest <file>` (format auto-detected; tables/charts on by default; --use-table-structure to materialize row/col table structure) then `retriever query` with --content-types text,table to confirm table rows; no --input-type flag (does not exist)",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "format_autodetect": "`retriever ingest <file>` auto-detects PDF/DOCX/PPTX from the extension. There is NO --input-type flag.",
+    "prereqs": {
+      "libreoffice": ".docx / .pptx are converted to PDF by libreoffice (host pkg: `sudo apt-get install -y libreoffice`) and then run through the SAME pdf extraction branch — `--dry-run` shows branch_summary `pdf:1` for a single .docx or .pptx, i.e. they route through the pdf family. Without libreoffice, DOCX/PPTX ingest fails.",
+      "visual_extraction_endpoints": "page-elements / OCR / table-structure run on hosted ai.api.nvidia.com by default (API key from NVIDIA_API_KEY) OR on a local GPU when configured. This EXTRACT suite is host-agnostic: the assertion is that the visual stack fired and produced table/picture rows, not WHERE it ran."
+    },
+    "extraction_defaults_from_dry_run": {
+      "extract_text": true,
+      "extract_tables": true,
+      "extract_charts": true,
+      "extract_images": true,
+      "extract_infographics": true,
+      "use_page_elements": true,
+      "use_table_structure": false,
+      "ocr_version": "v2",
+      "method": "pdfium",
+      "dpi": 200,
+      "table_output_format_default": "pseudo_markdown",
+      "note": "Tables/charts/page-elements extraction is ON by default. use_table_structure is OFF by default; passing --use-table-structure flips it true and switches table_output_format to markdown, materializing nemotron-table-structure-v1 row/col output so table cells are queryable as discrete content_type=table rows."
+    },
+    "defaults": {"lancedb_uri": "lancedb", "table_name": "nemo-retriever"},
+    "ingest_success_line": "Ingested N file(s) -> M row(s) in LanceDB lancedb/<table>.",
+    "query_hit_shape": "JSON array; each hit has exactly {source, page_number, text}; page_number is a 1-indexed int."
+  },
+  "cases": [
+    {
+      "id": "extract-vd-001",
+      "title": "Baseline: extract a multi-page visual PDF -> non-zero chunks, answer from body text",
+      "complexity": 1,
+      "complexity_axis": "Satisfies the EXTRACT operational-pass core (ingest 1 file -> non-zero chunks) in its simplest form: a single multi-page PDF with text, tables, charts and a picture. Rung 1 only asserts the file ingests and produces a non-zero row count and a grounded text answer — it does not yet drill into a specific table cell. Adds nothing over a prior rung (it is the floor).",
+      "prompt": "Extract data/multimodal_test.pdf and tell me what the document says it should contain by the end (how many tables, charts, and bullet points).",
+      "data_files": ["cases/extract-vd-001/data/multimodal_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/multimodal_test.pdf",
+        "$RETRIEVER query \"How many tables, charts, and bullet points should be extracted?\" --top-k 5"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:1, N >= 1)",
+        "pipeline": "visual pipeline fires: nemotron-page-elements-v3 -> nemotron-ocr-v2 over the 3 pages (extract_text/tables/charts/images all true by default)",
+        "query_shape": "JSON array of hits; each {source, page_number, text}; >= 1 hit citing multimodal_test.pdf",
+        "answer": "The conclusion (p3) states it should extract 2 tables, 2 charts, and 3 bullet points; cite multimodal_test.pdf p3"
+      },
+      "pass_when": [
+        "`retriever ingest` returns a NON-ZERO row count (chunks produced) for multimodal_test.pdf",
+        "query returns >= 1 grounded hit citing multimodal_test.pdf",
+        "answer reflects '2 tables, 2 charts, 3 bullet points' (grounded in p3 conclusion)",
+        "no --input-type flag used (does not exist); format auto-detected as pdf"
+      ]
+    },
+    {
+      "id": "extract-vd-002",
+      "title": "PDF with a TABLE -> recover a specific cell as a content_type=table row",
+      "complexity": 2,
+      "complexity_axis": "Satisfies the validation path's 'tables surface as discrete content_type=table rows with row/col structure' clause. Adds over rung 1: instead of body text, the answer must come from a TABLE cell, which forces --use-table-structure (nemotron-table-structure-v1) and a query filtered to --content-types text,table. New dimension: table-structure materialization + table-typed retrieval; catches a silent text-only fallback.",
+      "prompt": "From data/table_test.pdf, what value did James have in 2019? I need it pulled from the table, not guessed.",
+      "data_files": ["cases/extract-vd-002/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf --use-table-structure",
+        "$RETRIEVER query \"James value in 2019\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (table rows present)",
+        "pipeline": "--use-table-structure -> use_table_structure true + table_output_format markdown; nemotron-table-structure-v1 fires after page-elements + OCR v2",
+        "answer": "James 2019 = 978; cite table_test.pdf p1",
+        "table_row_assertion": "at least one returned hit is a table-derived row (content_type=table) carrying the cell; no silent text-only fallback"
+      },
+      "pass_when": [
+        "ingest runs with --use-table-structure so table-structure (nemotron-table-structure-v1) materializes row/col cells",
+        "query uses --content-types text,table (valid value) and returns a table row",
+        "answer is exactly 978 citing table_test.pdf p1",
+        "fails if the table is flattened to plain text only (silent text fallback) and 978 cannot be recovered as a table cell"
+      ]
+    },
+    {
+      "id": "extract-vd-003",
+      "title": "DOCX (same content) -> format routing through libreoffice -> pdf branch",
+      "complexity": 3,
+      "complexity_axis": "Satisfies the 'DOCX' modality of the EXTRACT task. Adds over rung 2 exactly one dimension: a non-PDF source format. The .docx is auto-detected and converted by libreoffice to PDF, then run through the SAME pdf extraction branch (dry-run shows branch_summary pdf:1). New dimension: format routing + the libreoffice host prereq; same multimodal content/ground truth as the PDF so the variable is purely the input format.",
+      "prompt": "I only have the Word version: extract data/multimodal_test.docx and tell me, from Table 1, what activity the Giraffe is doing and where.",
+      "data_files": ["cases/extract-vd-003/data/multimodal_test.docx"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/multimodal_test.docx --use-table-structure",
+        "$RETRIEVER query \"What activity is the Giraffe doing and where (Table 1)?\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:1 — docx converted to pdf via libreoffice, then pdf extraction branch)",
+        "routing": "format auto-detected as docx; libreoffice converts .docx -> pdf; dry-run branch_summary is pdf:1 (routes through the pdf family)",
+        "answer": "Giraffe — Driving a car — At the beach; cite multimodal_test.docx (Table 1)"
+      },
+      "pass_when": [
+        "ingest auto-detects .docx (no --input-type) and produces NON-ZERO rows",
+        "docx is routed through the pdf branch (libreoffice conversion); requires libreoffice host pkg",
+        "Table 1 cell recovered: Giraffe is 'Driving a car' 'At the beach' (content_type=table)",
+        "answer grounded in the docx, matching the multimodal PDF ground truth"
+      ],
+      "known_caveat": "DOCX/PPTX extraction requires the libreoffice host package (`sudo apt-get install -y libreoffice`). Without it, the .docx -> pdf conversion step fails and ingest cannot produce chunks. This is the prereq the rung is built to exercise."
+    },
+    {
+      "id": "extract-vd-004",
+      "title": "PPTX slide deck -> table/chart from a slide (chart-region extraction)",
+      "complexity": 4,
+      "complexity_axis": "Satisfies the 'PPTX' modality and the 'charts / infographics' clause. Adds over rung 3: a slide-deck source whose key figures live in a CHART (slide 3 chart, not body text) plus a text KPI slide. The chart region must be detected and its values surfaced (captioned or as chart/table content) so a chart-backed answer is possible. New dimension: chart-region extraction from a presentation; same libreoffice->pdf routing as docx.",
+      "prompt": "From data/aurora_qbr_q1.pptx, what's the FY27 Q1 revenue projection, and which region has the largest pipeline?",
+      "data_files": ["cases/extract-vd-004/data/aurora_qbr_q1.pptx"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table,chart"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/aurora_qbr_q1.pptx --use-table-structure",
+        "$RETRIEVER query \"FY27 Q1 revenue projection and region with the largest pipeline\" --top-k 5 --content-types text,table,chart"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:1 — pptx converted to pdf via libreoffice)",
+        "routing": "format auto-detected as pptx; libreoffice converts .pptx -> pdf; charts on by default (extract_charts true)",
+        "answer": "FY27 Q1 revenue projection = $487M (+18% YoY) (slide 2 'Revenue Trajectory'); largest pipeline region = Americas at $1,200M / $1.2B (slide 3 'Pipeline by Region' chart: Americas 1200, EMEA 480, APAC 420)",
+        "chart_assertion": "slide-3 chart region detected; the Americas=1200 figure is recoverable (chart/table/caption content), not silently dropped"
+      },
+      "pass_when": [
+        "ingest auto-detects .pptx (no --input-type), routes via libreoffice->pdf, NON-ZERO rows",
+        "text KPI recovered: FY27 Q1 revenue projection = $487M (slide 2)",
+        "chart-backed answer recovered: Americas has the largest pipeline (1200 vs EMEA 480, APAC 420; slide 3 chart)",
+        "chart region is detected/extracted (no silent text-only fallback that loses the chart figures)"
+      ],
+      "known_caveat": "PPTX requires libreoffice (same as DOCX). Chart numeric values come from a chart object; surfacing them depends on chart extraction (extract_charts, on by default) and/or VLM captioning (--caption). If charts are dropped, the Americas=1200 figure is unrecoverable — which this rung is designed to catch."
+    },
+    {
+      "id": "extract-vd-005",
+      "title": "Acceptance: visual-rich PDF where text + table + chart + picture all extract, with page/bbox citations",
+      "complexity": 5,
+      "complexity_axis": "Composed operational-pass / acceptance gate for the EXTRACT row. Adds over rung 4: a single visual-rich document where ALL four modalities (body text, a table cell, a chart, a picture region) must independently land and be provable via per-modality queries, each hit carrying source_id + page_number (and bbox_xyxy_norm where applicable). Asserts NO silent text-only fallback and that extraction-only was requested (no separate index/embed step is the user's ask — the ingest+query loop simply proves chunks of every modality exist). This is the gate the others build up to.",
+      "prompt": "Do a full visual extraction of data/multimodal_test.pdf and prove every modality landed: (1) the body text of the Introduction, (2) the Giraffe row of Table 1, (3) what Chart 1 is about, and (4) that the page with the 'high-quality picture of some shapes' was captured. Give me page references for each.",
+      "data_files": ["cases/extract-vd-005/data/multimodal_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table,chart,image"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/multimodal_test.pdf --use-table-structure",
+        "$RETRIEVER query \"Introduction placeholder text\" --top-k 5 --content-types text",
+        "$RETRIEVER query \"Giraffe activity and place in Table 1\" --top-k 5 --content-types text,table",
+        "$RETRIEVER query \"What does Chart 1 show?\" --top-k 5 --content-types text,table,chart",
+        "$RETRIEVER query \"high-quality picture of some shapes\" --top-k 5 --content-types text,image,infographic"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (N >= 1; rows of multiple content types)",
+        "pipeline": "full visual stack: nemotron-page-elements-v3 -> nemotron-ocr-v2 -> nemotron-table-structure-v1 (via --use-table-structure); charts + images + infographics on by default",
+        "answers": {
+          "text": "Introduction: placeholder document with headings/placeholder text used for testing; cite multimodal_test.pdf p1",
+          "table": "Giraffe -> Driving a car -> At the beach (Table 1); content_type=table; cite multimodal_test.pdf p1",
+          "chart": "Chart 1 shows some gadgets and their (fictitious) costs; cite multimodal_test.pdf p1",
+          "picture": "the picture of shapes is referenced on p2 ('Below, is a high-quality picture of some shapes'); a picture/image region is captured on that page"
+        },
+        "citation_assertion": "every returned hit carries non-null source (source_id) + page_number; table/chart/picture rows carry bbox_xyxy_norm where applicable"
+      },
+      "pass_when": [
+        "single ingest of multimodal_test.pdf produces NON-ZERO rows spanning multiple content types (text + table + chart + image)",
+        "text modality: Introduction body text recovered (p1)",
+        "table modality: Giraffe row recovered as a content_type=table row (Driving a car / At the beach, p1)",
+        "chart modality: Chart 1 ('gadgets and costs') recoverable (chart/caption content, p1) — not silently dropped",
+        "picture modality: a picture/image region is captured (p2 'picture of some shapes')",
+        "every hit carries source + page_number; NO silent text-only fallback that loses table/chart/picture"
+      ]
+    }
+  ]
+}

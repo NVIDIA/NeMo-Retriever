@@ -1,0 +1,160 @@
+{
+  "suite_id": "extract_07_multilingual",
+  "jtbd": "EXTRACT",
+  "user_task": "Standalone multi-lingual doc extraction — including non-Latin (CJK and similar) and Latin scripts. The skill must pick the correct nemotron-ocr-v2 language mode per document and, for languages outside the OCR v2 trained set, relay to the user that the language is not supported rather than silently emit garbage.",
+  "user_task_priority": "P0",
+  "source": "JTBD & user tasks tab, EXTRACT bucket; seed queries from 'NeMo Retriever — JTBD seed queries' tab, EXTRACT → multilingual doc extraction (Japanese/Chinese/Russian/Korean forms and invoices).",
+  "success_criteria": {
+    "quality": "operational pass — (1) ingest each document with the correct --ocr-version v2 + --ocr-lang selector for its language, returning non-zero chunks; (2) extracted text preserves the SOURCE script (no romanization, no '?' placeholders); (3) a same-language round-trip query returns the indexed row in top-5; (4) for a language NOT in the OCR v2 trained set, the skill GATES — it declines before invoking, or invokes then sanity-checks language and flags language_unsupported — instead of silently indexing garbage. All binary pass/fail.",
+    "time": "medium — each ingest+query ≤ 2 min wall-clock per the spec's 'Time: medium' for this row.",
+    "trigger_rate": ">= 95% — a 'pull the text out of this <language> doc' prompt must fire the skill.",
+    "subcommand_accuracy": ">= 90% — must run `retriever ingest <file> --ocr-version v2` with the right --ocr-lang (english for English; default/multi for the trained non-English + mixed set) and `retriever query`; must NOT manually override the OCR model.",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "required_env": ["NVIDIA_API_KEY"],
+    "ocr_flag_grounding": "Verified against `retriever ingest --help`: --ocr-version accepts [v1|v2] (default v2); --ocr-lang accepts ONLY [multi|english] (NOT freeform 'en'/'fr'/'zh' selectors). Resolved-plan default (ingest --dry-run) is ocr_version=v2, ocr_lang=null — null behaves as the multilingual mode. So the spec's 'en' flag maps to `--ocr-lang english`; the spec's 'multi (or default)' maps to either `--ocr-lang multi` or omitting the flag.",
+    "ocr_v2_trained_languages": ["English", "Chinese (Simplified)", "Chinese (Traditional)", "Japanese", "Korean", "Russian"],
+    "language_routing": "English doc -> --ocr-lang english. Trained non-English (zh/ja/ko/ru) and mixed docs (e.g. en+ru) -> --ocr-lang multi or default. Untrained language (e.g. Dutch, French is also untrained per this OCR v2 set) -> GATE: skill declines and relays 'language not supported', OR invokes + sanity-checks detect_language() and flags language_unsupported. Silent garbage = fail.",
+    "metadata_note": "Each ingested row carries text_metadata.language from langdetect; detection is metadata-only, so UNKNOWN is acceptable and is NOT used to route extraction.",
+    "embedder": "nvidia/llama-nemotron-embed-1b-v2 — must tolerate non-Latin scripts (Cyrillic, CJK) for the round-trip query to work.",
+    "hosted_endpoints": {
+      "extraction_ocr": "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2",
+      "extraction_page_elements": "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3",
+      "embedding": "https://integrate.api.nvidia.com/v1"
+    },
+    "defaults": {"lancedb_uri": "lancedb", "table_name": "nemo-retriever"},
+    "fixture_language_gap": "The spec's ideal language set is en/fr/zh/ar/en-fr/en-ar. On disk only en (data PDFs), ru, ru+en mixed, and nl are available. So: zh/ja/ko (CJK, trained) and fr/ar (untrained or RTL) have NO fixture. This suite exercises the routing LOGIC across the supported/unsupported boundary using ru (trained) and nl (untrained Latin) as proxies; the CJK and Arabic legs are documented gaps to be filled when fixtures land."
+  },
+  "cases": [
+    {
+      "id": "ml-001",
+      "title": "English baseline — extract with --ocr-lang english, non-zero chunks",
+      "complexity": 1,
+      "complexity_axis": "Satisfies the EXTRACT row at its simplest: a plain English document routed to the English OCR mode. Establishes the baseline that ingest with --ocr-version v2 --ocr-lang english returns non-zero chunks and the loop closes. Adds nothing over a normal extract except making the language selector explicit.",
+      "prompt": "Pull the text out of this English document (data/test.pdf) and confirm you actually extracted something.",
+      "data_files": ["cases/ml-001/data/test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/test.pdf --ocr-version v2 --ocr-lang english",
+        "$RETRIEVER query \"What does the document say?\" --top-k 5"
+      ],
+      "expected_output": {
+        "language_routing": "English -> --ocr-lang english (the spec's 'en' flag).",
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (N >= 1, non-zero chunks)",
+        "query_shape": "JSON array of hits; each {source, page_number, text}; >= 1 hit citing test.pdf p1",
+        "answer": "Placeholder lines of text + an image reference; cite test.pdf p1"
+      },
+      "pass_when": [
+        "ingest uses --ocr-version v2 and routes English to --ocr-lang english (or default; not 'multi'-only logic)",
+        "ingest returns non-zero rows (N >= 1)",
+        "query returns >= 1 hit citing test.pdf p1"
+      ]
+    },
+    {
+      "id": "ml-002",
+      "title": "Russian invoice (trained, non-Latin) — default/multi, Cyrillic preserved (not romanized)",
+      "complexity": 2,
+      "complexity_axis": "Adds the first non-Latin / non-English script. Russian is in the OCR v2 trained set, so the correct route is the multilingual mode (default or --ocr-lang multi), NOT --ocr-lang english. New dimension over T1: the extracted text must preserve the SOURCE Cyrillic script — no romanization, no '?' placeholders — and a Cyrillic-token must survive into the index.",
+      "prompt": "Extract the details from this Russian invoice (data/invoice_001.jpg) — what's the total?",
+      "data_files": ["cases/ml-002/data/invoice_001.jpg"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/invoice_001.jpg --ocr-version v2 --ocr-lang multi   # or omit --ocr-lang (default == multilingual)",
+        "$RETRIEVER query \"Какая итоговая сумма счёта?\" --top-k 5"
+      ],
+      "expected_output": {
+        "language_routing": "Russian is a trained OCR v2 language -> --ocr-lang multi or default (NOT english).",
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (N >= 1)",
+        "script_preservation": "extracted text contains Cyrillic characters (e.g. 'СЧЁТ-ФАКТУРА', 'Аврора'); no Latin transliteration, no '?' boxes",
+        "answer": "Invoice total = 20 400 000 (RUB); seller ООО «Аврора Технологии»; cite invoice_001.jpg p1",
+        "metadata_note": "row text_metadata.language likely 'ru' (langdetect); UNKNOWN acceptable"
+      },
+      "pass_when": [
+        "ingest routes Russian to multi/default OCR v2 mode (NOT --ocr-lang english)",
+        "ingest returns non-zero rows; extracted text preserves Cyrillic (not romanized, no '?' placeholders)",
+        "query returns the invoice row in top-5 and the total 20 400 000 is recoverable, citing invoice_001.jpg p1"
+      ]
+    },
+    {
+      "id": "ml-003",
+      "title": "Russian+English mixed contract — one multi pass handles both scripts in one doc",
+      "complexity": 3,
+      "complexity_axis": "Adds a single document that mixes two scripts (Cyrillic + Latin) — the spec's 'En-Ar / En-Fr mixed -> multi' case, realized with the available en+ru fixture. New dimension over T2: one --ocr-lang multi pass must recover BOTH a Cyrillic token and a Latin token from the same page (you cannot satisfy this with --ocr-lang english).",
+      "prompt": "This contract (data/contract_001.jpg) is written in both English and Russian. Read it and tell me the total contract value and who the Russian party is.",
+      "data_files": ["cases/ml-003/data/contract_001.jpg"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/contract_001.jpg --ocr-version v2 --ocr-lang multi   # or default; NOT english (would drop the Cyrillic leg)",
+        "$RETRIEVER query \"What is the total contract value?\" --top-k 5",
+        "$RETRIEVER query \"Назови российскую сторону договора.\" --top-k 5"
+      ],
+      "expected_output": {
+        "language_routing": "Mixed en+ru -> --ocr-lang multi or default (the trained mixed-set route).",
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (N >= 1)",
+        "script_preservation": "extracted text contains BOTH Latin (e.g. 'BILINGUAL AGREEMENT', 'Acme Software Inc.', '1,250,000') AND Cyrillic (e.g. 'ДВУЯЗЫЧНЫЙ ДОГОВОР', 'Восход')",
+        "answer": "Total contract value = 1,250,000 (USD); Russian party = OOO Восход; cite contract_001.jpg p1"
+      },
+      "pass_when": [
+        "ingest uses --ocr-lang multi/default (NOT english) so both scripts are extracted in one pass",
+        "extracted text contains both a Latin token (1,250,000) and a Cyrillic token (Восход)",
+        "both queries return the contract row in top-5 with the correct value/party, citing contract_001.jpg p1"
+      ]
+    },
+    {
+      "id": "ml-004",
+      "title": "Same-language round-trip — non-Latin query returns the indexed multilingual row",
+      "complexity": 4,
+      "complexity_axis": "Adds the embedder-tolerates-the-script clause as an explicit retrieval gate. New dimension over T2/T3: a query written in the SOURCE script (Russian) must embed via llama-nemotron-embed-1b-v2 and pull the indexed Russian row back into top-5 — proving the non-Latin text round-trips end to end (extract -> embed -> index -> retrieve), not just that extraction produced bytes.",
+      "prompt": "Make this Russian invoice (data/invoice_001.jpg) searchable, then prove it: I'll ask in Russian — кто продавец? — and you should find the right document.",
+      "data_files": ["cases/ml-004/data/invoice_001.jpg"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/invoice_001.jpg --ocr-version v2 --ocr-lang multi --embed-invoke-url https://integrate.api.nvidia.com/v1 --embed-model-name nvidia/llama-nemotron-embed-1b-v2",
+        "$RETRIEVER query \"Кто продавец?\" --top-k 5 --embed-invoke-url https://integrate.api.nvidia.com/v1 --embed-model-name nvidia/llama-nemotron-embed-1b-v2"
+      ],
+      "expected_output": {
+        "language_routing": "Russian -> multi; embedder llama-nemotron-embed-1b-v2 must tolerate Cyrillic.",
+        "ingest_summary_line": "Ingested 1 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (N >= 1)",
+        "roundtrip": "Russian-language query 'Кто продавец?' returns the invoice_001 row in top-5",
+        "answer": "Seller = ООО «Аврора Технологии» (i.e. 'Аврора'); cite invoice_001.jpg p1"
+      },
+      "pass_when": [
+        "ingest of the Russian doc succeeds in multi/default mode with non-zero rows",
+        "a same-language (Russian) query returns the invoice_001 row within top-5",
+        "answer surfaces the seller 'Аврора', citing invoice_001.jpg p1 (script-preserving end-to-end round-trip)"
+      ]
+    },
+    {
+      "id": "ml-005",
+      "title": "Acceptance gate — untrained language (Dutch): skill GATES, does not silently index garbage",
+      "complexity": 5,
+      "complexity_axis": "The composed acceptance gate for this row: the correct routing DECISION across the supported/unsupported boundary. Dutch is NOT in the OCR v2 trained set (en, zh-S, zh-T, ja, ko, ru). New dimension over T1-T4: instead of extracting, the skill must GATE — decline before invoking and relay 'language not supported', OR invoke then sanity-check detect_language() and flag language_unsupported — rather than silently emitting English-biased garbage. This maps to negative-test category (f).",
+      "prompt": "Pull the text out of this document (data/factuur_001.jpg) and make it searchable — what's the total?",
+      "data_files": ["cases/ml-005/data/factuur_001.jpg"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["(gate / decline)", "ingest (optional, with sanity-check)"],
+      "expected_commands": [
+        "# Preferred: skill recognizes Dutch is outside the OCR v2 trained set (en/zh/ja/ko/ru) and DECLINES before invoking, relaying 'Dutch is not supported by nemotron-ocr-v2'.",
+        "# Acceptable alternative: $RETRIEVER ingest data/factuur_001.jpg --ocr-version v2 --ocr-lang multi  THEN sanity-check detect_language() on the extracted text and flag language_unsupported (do NOT present the noisy text as a confident answer)."
+      ],
+      "expected_output": {
+        "language_routing": "Dutch (nl) is NOT a trained OCR v2 language -> GATE (category f).",
+        "gate_behavior": "Either (a) decline before invoking with a 'language not supported' message naming the supported set, or (b) invoke + detect_language sanity-check + flag language_unsupported. Must NOT present silently romanized/garbled text as a confident extraction.",
+        "ground_truth_if_extracted": "If extraction is attempted, ground truth is total 90.000 (EUR), seller 'Nederlandse Halfgeleider B.V.' — but the OCR v2 English bias is expected to mangle Dutch OOV tokens ('Verkoper', 'Aantal'), which is exactly why the gate matters.",
+        "metadata_note": "text_metadata.language would be 'nl' (langdetect) — usable as the sanity-check signal for option (b)."
+      },
+      "pass_when": [
+        "skill recognizes Dutch is outside the OCR v2 trained set and does NOT silently index garbage",
+        "it either declines before invoking (relaying 'not supported') OR invokes + sanity-checks + flags language_unsupported",
+        "it does not present mangled/romanized Dutch text as a confident answer to the total"
+      ],
+      "known_caveat": "Dutch uses the Latin alphabet, so OCR v2's English variant WILL emit plausible-looking bytes — the failure mode this gate guards against is exactly 'silent garbage' that looks extracted but is wrong. The correct pass is the routing decision, not the byte count."
+    }
+  ]
+}

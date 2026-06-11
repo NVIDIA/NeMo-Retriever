@@ -1,0 +1,160 @@
+{
+  "suite_id": "setup_02_local_gpu",
+  "jtbd": "SETUP",
+  "user_task": "Nemo Retriever library setup on local GPU machine: GPU detected (automatic detection) — Extraction, Embedding, Reranking models load directly on a local GPU.",
+  "user_task_priority": "P0",
+  "source": "JTBD & user tasks tab, SETUP bucket, row 2; seed queries from 'NeMo Retriever — JTBD seed queries' tab, SETUP → 'Setup on local GPU machine — models loaded directly on local GPU'.",
+  "success_criteria": {
+    "quality": "operational pass — (1) clean library install with models loaded directly on local GPU, (2) ingest a PDF with models downloaded/loaded locally, (3) first successful retrieval served by GPU-resident models, all binary pass/fail",
+    "time": "end-to-end (clean state → first successful retrieval) <= 30 minutes",
+    "trigger_rate": ">= 95% — an on-device setup-and-load prompt must fire the skill",
+    "subcommand_accuracy": ">= 90% — must run `retriever ingest` then `retriever query` with LOCAL-GPU flags (local backends, no --embed-invoke-url / --api-key / hosted endpoints)",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "install": "pip/uv install '.[local]' on a CUDA-13 host (GPU torch wheels from the cu130 index); see skills/nemo-retriever/references/install.md",
+    "gpu": "present (nvidia-smi non-empty; torch.cuda.is_available() == True)",
+    "required_env": [],
+    "no_hosted": "No NVIDIA_API_KEY / hosted invoke-urls needed for the smoke loop. Embedding + reranking run on the bundled GPU models; text extraction is local pdfium. The smoke run must make ZERO outbound calls to ai.api.nvidia.com / integrate.api.nvidia.com / build.nvidia.com.",
+    "local_query_command_template": "$RETRIEVER query \"<q>\" --top-k 10 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --query-embed-backend hf --reranker-backend hf --rerank",
+    "backend_note": "Query uses --query-embed-backend hf + --reranker-backend hf (HuggingFace, ~20-30s cold start, GPU-resident) for one-off CLI queries; ingest uses the default vLLM backend for batch throughput. Both load the model on the local GPU.",
+    "extraction_caveat": "Text-PDF extraction (pdfium) is fully local on CPU — no NIM call, so a text-only smoke is 100% on-device. Running page-elements / OCR / table-structure on the LOCAL GPU (not the hosted ai.api.nvidia.com default) requires either local NIM endpoints (--page-elements-invoke-url http://localhost:... etc.) or batch run-mode with GPU actors (--run-mode batch --page-elements-gpus-per-actor / --ocr-gpus-per-actor / --table-structure-gpus-per-actor). This is the genuinely harder part of the row and is what case 004 targets.",
+    "defaults": {"lancedb_uri": "lancedb", "table_name": "nemo-retriever"}
+  },
+  "cases": [
+    {
+      "id": "setup-gpu-001",
+      "title": "On-device smoke loop: [local] install + GPU detect + single text-PDF ingest → query",
+      "complexity": 1,
+      "complexity_axis": "Baseline happy path, GPU flavor: install with [local], confirm a GPU is visible, then close the ingest→query loop on one trivial text PDF using local backends. Text extraction is local pdfium, so this run touches no network at all.",
+      "prompt": "I have a CUDA-capable GPU. Install with local GPU support, confirm the models loaded onto the card, then load data/test.pdf and tell me what the document says — keep everything on-device, no hosted calls.",
+      "data_files": ["cases/setup-gpu-001/data/test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["install [local]", "nvidia-smi", "version", "ingest", "query"],
+      "expected_commands": [
+        "nvidia-smi  (GPU present)",
+        "$RETRIEVER --version",
+        "$RETRIEVER ingest data/test.pdf",
+        "$RETRIEVER query \"What does the document say?\" --top-k 5 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --query-embed-backend hf --reranker-backend hf --rerank"
+      ],
+      "expected_output": {
+        "install": "uv pip install '.[local]' (cu130 torch) completes (<= 20 min)",
+        "gpu_detect": "nvidia-smi lists >= 1 GPU; torch.cuda.is_available() True",
+        "ingest_summary_line": "Ingested 1 file(s) → N row(s) in LanceDB lancedb/nemo-retriever.",
+        "query_shape": "JSON array of hits; each {source, page_number, text}; >= 1 hit citing test.pdf p1",
+        "answer": "placeholder text + an image reference; cite test.pdf p1"
+      },
+      "pass_when": [
+        "[local] install succeeds and a GPU is detected",
+        "ingest + query round-trip with LOCAL backends (no --embed-invoke-url / --api-key)",
+        "no outbound build.nvidia.com / ai.api.nvidia.com / integrate.api.nvidia.com call in the trace",
+        "answer cites test.pdf p1"
+      ]
+    },
+    {
+      "id": "setup-gpu-002",
+      "title": "Confirm models resident in VRAM + zero hosted egress",
+      "complexity": 2,
+      "complexity_axis": "Adds the two explicit GPU-setup assertions the row calls for: after load, the model(s) actually occupy VRAM (nvidia-smi memory), and the ingest+query made NO outbound call to a hosted NVIDIA endpoint. Exercises the 'confirm the models loaded onto the card' seed query.",
+      "prompt": "Set up on my GPU box and confirm the embedding/reranker models are actually resident on the card (not calling the cloud). Then load data/woods_frost.pdf and tell me who owns the woods.",
+      "data_files": ["cases/setup-gpu-002/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query", "nvidia-smi (verify VRAM)"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf",
+        "$RETRIEVER query \"Who owns the woods?\" --top-k 5 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --query-embed-backend hf --reranker-backend hf --rerank",
+        "nvidia-smi  (VRAM occupied by the python/retriever process during/after the query)"
+      ],
+      "expected_output": {
+        "vram_assertion": "nvidia-smi shows the retriever process holding GPU memory (embedder + reranker loaded)",
+        "egress_assertion": "no request to ai.api.nvidia.com / integrate.api.nvidia.com / build.nvidia.com in the trace",
+        "answer": "The woods' owner's 'house is in the village' — the owner lives in the village; cite woods_frost.pdf p1"
+      },
+      "pass_when": [
+        "GPU memory is occupied by the local models (VRAM check passes)",
+        "zero hosted egress during ingest + query",
+        "answer grounded in woods_frost.pdf p1"
+      ]
+    },
+    {
+      "id": "setup-gpu-003",
+      "title": "Local GPU reranking over a 3-PDF folder",
+      "complexity": 3,
+      "complexity_axis": "Adds folder-level ingest and puts the spotlight on the local GPU RERANKER (the third model class the row requires on-device). The reranked order must differ from dense-only order, and the reranker must run via the local --reranker-backend hf, not a hosted endpoint.",
+      "prompt": "On my GPU machine, load the whole data/ folder and find — best match first, reranked on-device — which Robert Frost collection was published in 1923.",
+      "data_files": ["cases/setup-gpu-003/data/woods_frost.pdf", "cases/setup-gpu-003/data/multimodal_test.pdf", "cases/setup-gpu-003/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query --rerank (local backend)"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/",
+        "$RETRIEVER query \"Robert Frost collection published in 1923\" --top-k 5 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --query-embed-backend hf --reranker-backend hf --rerank"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 3 file(s) → N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:3)",
+        "answer": "New Hampshire (1923); cite woods_frost.pdf p2 (collection table)",
+        "rerank_note": "--reranker-backend hf loads the local GPU reranker; reranked order != dense-only order; no hosted reranker call"
+      },
+      "pass_when": [
+        "single `retriever ingest` ingests all 3 PDFs",
+        "reranker runs locally (--reranker-backend hf) — no ai.api.nvidia.com reranking call",
+        "correct collection (New Hampshire) at/near top, citing woods_frost.pdf p2"
+      ]
+    },
+    {
+      "id": "setup-gpu-004",
+      "title": "Local GPU visual extraction (page-elements / OCR / table on the card)",
+      "complexity": 4,
+      "complexity_axis": "The genuinely hard clause: making EXTRACTION run on the local GPU instead of the hosted ai.api.nvidia.com default. A table PDF forces page-elements → OCR → table-structure. The agent must route these to local GPU (local NIM endpoints OR batch run-mode with --*-gpus-per-actor) so the no-hosted-egress invariant still holds while a table cell is recovered.",
+      "prompt": "Everything must stay on my GPU — no cloud calls, including the document parsing. Load data/table_test.pdf on-device and tell me what value James had in 2019.",
+      "data_files": ["cases/setup-gpu-004/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest (local GPU extraction)", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf --run-mode batch --page-elements-gpus-per-actor 1 --ocr-gpus-per-actor 1 --table-structure-gpus-per-actor 1   # OR pin local NIM endpoints via --page-elements-invoke-url/--ocr-invoke-url/--table-structure-invoke-url http://localhost:...",
+        "$RETRIEVER query \"James value in 2019\" --top-k 5 --content-types text,table --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --query-embed-backend hf --reranker-backend hf --rerank"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) → N row(s) in LanceDB lancedb/nemo-retriever. (table rows present)",
+        "answer": "James 2019 = 978; cite table_test.pdf p1",
+        "egress_assertion": "no ai.api.nvidia.com extraction call — page-elements/OCR/table ran on the local GPU (or a localhost NIM)"
+      },
+      "pass_when": [
+        "extraction (page-elements/OCR/table) runs on the local GPU or a localhost NIM — NOT the hosted default",
+        "table rows present; query returns 978 citing table_test.pdf p1",
+        "no hosted egress during ingest"
+      ],
+      "known_caveat": "A bare '.[local]' pip install gives GPU embedding + reranking out of the box; on-device VISUAL extraction additionally needs the local GPU extraction actors (batch run-mode) or local NIM endpoints. If neither is configured, default extraction silently falls back to the hosted ai.api.nvidia.com endpoints — which this test is designed to catch as a fail of the 'extraction on local GPU' clause."
+    },
+    {
+      "id": "setup-gpu-005",
+      "title": "Full operational-pass acceptance: all 3 model classes on GPU, fresh named index, citation, no egress, <= 30 min",
+      "complexity": 5,
+      "complexity_axis": "Composed acceptance gate for the row: a clean [local] install → ingest into a custom-named index (table name aligned across ingest AND query) → a cited answer, while asserting that embedding, reranking AND extraction all ran on the local GPU (VRAM), zero outbound build.nvidia.com calls occurred, and the whole thing finished in <= 30 min.",
+      "prompt": "Do a clean on-device setup on this GPU machine: install local GPU support, load data/ into a fresh index called 'gpu_smoke', then answer with a citation — in which poem does the speaker say they have 'miles to go before I sleep'? Confirm embedding, reranking, and extraction all ran on the GPU with no cloud calls, and that it finished under 30 minutes.",
+      "data_files": ["cases/setup-gpu-005/data/woods_frost.pdf", "cases/setup-gpu-005/data/table_test.pdf", "cases/setup-gpu-005/data/multimodal_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["install [local]", "ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/ --lancedb-uri lancedb --table-name gpu_smoke --run-mode batch --page-elements-gpus-per-actor 1 --ocr-gpus-per-actor 1 --table-structure-gpus-per-actor 1 --embed-gpus-per-actor 1",
+        "$RETRIEVER query \"miles to go before I sleep\" --table-name gpu_smoke --top-k 5 --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --query-embed-backend hf --reranker-backend hf --rerank"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 3 file(s) → N row(s) in LanceDB lancedb/gpu_smoke.",
+        "answer": "'Stopping by Woods on a Snowy Evening' by Robert Frost; cite woods_frost.pdf p1",
+        "assertions": [
+          "query reads the SAME table (gpu_smoke) the ingest wrote — not the default nemo-retriever",
+          "every returned hit carries non-null source + page_number",
+          "embedding + reranking + extraction all occupied VRAM (nvidia-smi)",
+          "zero outbound calls to ai.api.nvidia.com / integrate.api.nvidia.com / build.nvidia.com",
+          "wall clock (clean state → query answer) <= 30 min"
+        ]
+      },
+      "pass_when": [
+        "ingest writes lancedb/gpu_smoke and query reads gpu_smoke (table names aligned)",
+        "answer correct + citation (woods_frost.pdf p1) present",
+        "all three model classes ran on the local GPU; no hosted egress; end-to-end <= 30 min"
+      ]
+    }
+  ]
+}

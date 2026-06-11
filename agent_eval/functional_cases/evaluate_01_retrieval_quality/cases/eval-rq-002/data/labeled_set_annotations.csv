@@ -1,0 +1,4 @@
+modality,query,answer,pdf,page
+text,Which Robert Frost collection was published in 1923?,New Hampshire,woods_frost,1
+table,What value did James have in 2019?,978,table_test,0
+text,What does the narrator say about miles to go?,miles to go before I sleep,woods_frost,0

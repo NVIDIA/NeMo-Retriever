@@ -1,0 +1,200 @@
+{
+  "suite_id": "setup_03_k8s_gpu",
+  "jtbd": "SETUP",
+  "user_task": "Nemo Retriever library setup on K8s GPU machine: Extraction, Embedding, Reranking NIMs helm charts downloaded and deployed. (On request, the agent should validate GPU, Kubernetes, and Helm prerequisites, ask before installing missing K8s/Helm, then deploy NRL via Helm.)",
+  "user_task_priority": "P1",
+  "source": "JTBD & user tasks tab, SETUP bucket, row 3. No seed queries were provided for this row in the spec — the prompts below are synthesized from the user-task wording and the defining behaviors (validate GPU+K8s+Helm prereqs; ASK before installing missing K8s/Helm; deploy the extraction/embedding/reranking NIMs via Helm; then point the CLI at the in-cluster NIM endpoints for a smoke ingest+query).",
+  "success_criteria": {
+    "quality": "operational pass — (1) clean library install, (2) deploy the Extraction/Embedding/Reranking NIMs helm charts on a GPU node and confirm pods/services healthy (<= 30 min), (3) ingest 1 PDF against the in-cluster NIM endpoints, (4) retrieve a grounded query, all binary pass/fail",
+    "time": "Helm deploy of the NIMs on a GPU node <= 30 min; full end-to-end (clean -> deploy -> ingest -> cited query) <= 40 min",
+    "trigger_rate": ">= 95% — a 'deploy NeMo Retriever on my GPU Kubernetes cluster with Helm' prompt must fire the skill",
+    "subcommand_accuracy": ">= 90% — must (a) validate prereqs and ASK before installing missing k8s/helm (no auto-install), (b) deploy the NIMs via `helm install/upgrade` of the nemo_retriever chart, and (c) run `retriever ingest` then `retriever query` with the in-cluster NIM invoke-urls (NOT hosted ai.api.nvidia.com / integrate.api.nvidia.com defaults)",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "gpu": "present on at least one schedulable K8s node (nvidia.com/gpu allocatable >= 1; NVIDIA device plugin / GPU Operator installed)",
+    "kubernetes": "a reachable cluster (kubectl context set; `kubectl version` / `kubectl get nodes` succeed). Chart requires kubeVersion >= 1.25.0.",
+    "helm": "Helm 3 on PATH (`helm version`).",
+    "nim_operator": "The NIM templates are gated on the apps.nvidia.com/v1alpha1 API group (NVIDIA NIM Operator). If absent, NIMCache/NIMService templates short-circuit and the chart degrades to 'external NIM URLs only' mode. Operator install (when missing, AFTER asking the user): `helm install k8s-nim-operator nvidia/k8s-nim-operator --namespace nim-operator --create-namespace`.",
+    "ask_before_install": "If kubectl/helm/the NIM Operator/the GPU device-plugin is MISSING, the agent must REPORT what is missing and ASK for confirmation before installing anything. It must NOT silently install Kubernetes/Helm/operator components.",
+    "chart": {
+      "path": "./nemo_retriever/helm",
+      "name": "nemo-retriever",
+      "version": "26.5.0",
+      "service_port": 7670,
+      "deploy_command_template": "helm upgrade --install retriever ./nemo_retriever/helm -n <ns> --create-namespace --set ngcImagePullSecret.create=true --set ngcImagePullSecret.password=$NGC_API_KEY --set ngcApiSecret.create=true --set ngcApiSecret.password=$NGC_API_KEY",
+      "core_nims_auto_wired": [
+        "page_elements -> Service nemotron-page-elements-v3, port 8000, path /v1/infer",
+        "table_structure -> Service nemotron-table-structure-v1, port 8000, path /v1/infer",
+        "ocr -> Service nemotron-ocr-v1, port 8000, path /v1/infer",
+        "vlm_embed -> Service llama-nemotron-embed-vl-1b-v2, port 8000, path /v1/embeddings"
+      ],
+      "reranker_nim": "rerankqa is OPTIONAL and disabled by default (not auto-wired). Enable with --set nimOperator.rerankqa.enabled=true -> Service llama-nemotron-rerank-vl-1b-v2, port 8000. The row explicitly requires the Reranking NIM, so this suite turns it on.",
+      "verify_commands": [
+        "kubectl get nodes -o wide   # confirm a GPU node (nvidia.com/gpu allocatable)",
+        "helm version",
+        "kubectl get nimcache,nimservice -n <ns>",
+        "kubectl get pods -n <ns> -w   # wait for NIMService + service pods Ready",
+        "kubectl port-forward svc/retriever 7670:7670 -n <ns>   # then curl http://localhost:7670/v1/health"
+      ]
+    },
+    "in_cluster_nim_endpoints": {
+      "page_elements_invoke_url": "http://nemotron-page-elements-v3:8000/v1/infer",
+      "table_structure_invoke_url": "http://nemotron-table-structure-v1:8000/v1/infer",
+      "ocr_invoke_url": "http://nemotron-ocr-v1:8000/v1/infer",
+      "embed_invoke_url": "http://llama-nemotron-embed-vl-1b-v2:8000/v1/embeddings",
+      "reranker_invoke_url": "http://llama-nemotron-rerank-vl-1b-v2:8000",
+      "note": "These DNS names resolve in-cluster. When driving the CLI from outside the cluster, port-forward each Service (or use the retriever-service HTTP API) and substitute http://localhost:<port>. The CLI itself talks to these via --page-elements-invoke-url / --ocr-invoke-url / --table-structure-invoke-url / --embed-invoke-url / --reranker-invoke-url."
+    },
+    "models": {
+      "embed_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
+      "reranker_model_name": "llama-nemotron-rerank-vl-1b-v2"
+    },
+    "defaults": {"lancedb_uri": "lancedb", "table_name": "nemo-retriever"}
+  },
+  "cases": [
+    {
+      "id": "setup-k8s-001",
+      "title": "Prerequisite validation only: detect GPU + Kubernetes + Helm, report readiness, ASK before installing anything missing",
+      "complexity": 1,
+      "complexity_axis": "Baseline: validate the three prerequisites the row names (GPU on a K8s node, a reachable Kubernetes cluster, Helm 3) and report a readiness verdict. The DEFINING discipline of this row — if something (kubectl/helm/NIM Operator/GPU device-plugin) is missing the agent must ASK before installing, never auto-install. No deploy and no ingest yet.",
+      "prompt": "I want to run NeMo Retriever on my GPU Kubernetes cluster. Before doing anything, check that I'm actually ready: do I have a GPU node, a working kubectl/cluster, and Helm? Tell me what's present and what's missing — and if something needs installing, ask me first, don't just install it.",
+      "data_files": ["cases/setup-k8s-001/data/test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["kubectl version", "kubectl get nodes", "helm version", "(GPU node check)"],
+      "expected_commands": [
+        "kubectl version   # cluster reachable, server >= 1.25",
+        "kubectl get nodes -o wide   # at least one Ready node",
+        "kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\\.com/gpu}'   # >= 1 GPU allocatable (device plugin / GPU Operator present)",
+        "helm version   # Helm 3 on PATH",
+        "kubectl api-resources | grep nimservices   # is the NVIDIA NIM Operator (apps.nvidia.com/v1alpha1) installed?"
+      ],
+      "expected_output": {
+        "readiness_report": "A per-prerequisite verdict: GPU node (present/absent), Kubernetes (reachable, version >= 1.25), Helm 3 (present), NIM Operator CRDs (present/absent).",
+        "ask_discipline": "If any of kubectl/helm/NIM Operator/GPU device-plugin is MISSING, the agent states what it would install (e.g. NIM Operator via `helm install k8s-nim-operator nvidia/k8s-nim-operator --namespace nim-operator --create-namespace`) and ASKS for confirmation rather than running it.",
+        "no_deploy": "No `helm install` of the retriever chart and no `retriever ingest`/`query` are run in this case."
+      },
+      "pass_when": [
+        "agent checks all three prereqs: a GPU node, a reachable Kubernetes cluster, and Helm",
+        "agent reports a clear present/missing verdict per prereq",
+        "if anything is missing, the agent ASKS before installing — it does NOT auto-install kubectl/helm/the NIM Operator",
+        "no retriever chart deploy and no ingest/query in this rung"
+      ]
+    },
+    {
+      "id": "setup-k8s-002",
+      "title": "Helm deploy of the Extraction/Embedding/Reranking NIMs to a GPU node + verify pods/services healthy",
+      "complexity": 2,
+      "complexity_axis": "Adds the deploy step the row is named for: after prereqs pass, `helm upgrade --install` the nemo_retriever chart so the four core NIMs (page-elements, table-structure, OCR, VLM embed) plus the opt-in reranker NIM land as NIMCache+NIMService on the GPU node, then verify pods/services are Ready. Still no ingest/query — the deliverable here is a healthy deployment within the <= 30 min Helm SLA.",
+      "prompt": "Prereqs are good. Deploy the NeMo Retriever NIMs to my GPU cluster with Helm — I need extraction, embedding, AND reranking — into namespace 'nrl'. Then show me the pods and services are healthy before we load any documents.",
+      "data_files": ["cases/setup-k8s-002/data/test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["helm upgrade --install", "kubectl get nimcache,nimservice", "kubectl get pods", "kubectl get svc"],
+      "expected_commands": [
+        "helm upgrade --install retriever ./nemo_retriever/helm -n nrl --create-namespace --set ngcImagePullSecret.create=true --set ngcImagePullSecret.password=$NGC_API_KEY --set ngcApiSecret.create=true --set ngcApiSecret.password=$NGC_API_KEY --set nimOperator.rerankqa.enabled=true",
+        "kubectl get nimcache,nimservice -n nrl",
+        "kubectl get pods -n nrl -w   # wait for NIMService pods + retriever-service pod Ready",
+        "kubectl get svc -n nrl"
+      ],
+      "expected_output": {
+        "helm_release": "Release 'retriever' deployed in namespace nrl (chart nemo-retriever 26.5.0).",
+        "nims_reconciled": "NIMService objects created and Ready for the 3 model classes the row requires: extraction (nemotron-page-elements-v3, nemotron-table-structure-v1, nemotron-ocr-v1), embedding (llama-nemotron-embed-vl-1b-v2), reranking (llama-nemotron-rerank-vl-1b-v2). First-time NIMCache reconciliation downloads weights to a PVC — allow several minutes.",
+        "services_up": "ClusterIP Services exist for each NIM (port 8000) and for the retriever service (port 7670); health check `curl http://localhost:7670/v1/health` via port-forward returns OK.",
+        "sla": "Helm deploy to all-pods-Ready within <= 30 min."
+      },
+      "pass_when": [
+        "agent runs `helm upgrade --install` of the nemo_retriever chart (not a hand-rolled kubectl apply)",
+        "all three NIM classes deploy: extraction (page-elements + table-structure + OCR), embedding (VLM embed), and reranking (rerankqa enabled)",
+        "NIMService + retriever-service pods reach Ready and Services are present",
+        "deploy completes within the 30-minute Helm SLA"
+      ]
+    },
+    {
+      "id": "setup-k8s-003",
+      "title": "Smoke ingest of 1 PDF against the in-cluster NIM endpoints",
+      "complexity": 3,
+      "complexity_axis": "Adds the first real CLI work: ingest a single PDF, with the CLI pointed at the IN-CLUSTER NIM service URLs (not the hosted ai.api.nvidia.com defaults). Proves the deployed extraction + embedding NIMs are reachable and write rows to LanceDB. No query yet.",
+      "prompt": "Now that the NIMs are running in the cluster, load data/woods_frost.pdf through them — use the in-cluster extraction and embedding endpoints, not NVIDIA's cloud — and confirm it wrote rows.",
+      "data_files": ["cases/setup-k8s-003/data/woods_frost.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/woods_frost.pdf --page-elements-invoke-url http://nemotron-page-elements-v3:8000/v1/infer --ocr-invoke-url http://nemotron-ocr-v1:8000/v1/infer --table-structure-invoke-url http://nemotron-table-structure-v1:8000/v1/infer --embed-invoke-url http://llama-nemotron-embed-vl-1b-v2:8000/v1/embeddings --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) → N row(s) in LanceDB lancedb/nemo-retriever.",
+        "endpoint_assertion": "Extraction + embedding hit the in-cluster Service DNS names (nemotron-*:8000 / llama-nemotron-embed-vl-1b-v2:8000), NOT ai.api.nvidia.com / integrate.api.nvidia.com.",
+        "note": "From outside the cluster the agent may port-forward each NIM Service and substitute http://localhost:<port>; the requirement is that the URLs are the deployed in-cluster NIMs, not the hosted defaults."
+      },
+      "pass_when": [
+        "single `retriever ingest` runs against woods_frost.pdf and writes rows to lancedb/nemo-retriever",
+        "the extraction + embedding invoke-urls point at the in-cluster NIM Services (not hosted ai.api.nvidia.com / integrate.api.nvidia.com)",
+        "ingest summary line reports 1 file ingested"
+      ]
+    },
+    {
+      "id": "setup-k8s-004",
+      "title": "Retrieve a grounded query against the in-cluster embed + rerank NIMs",
+      "complexity": 4,
+      "complexity_axis": "Adds the query leg and exercises the deployed RERANKING NIM (the third model class the row requires). Ingest a table PDF via the in-cluster extraction+embed NIMs, then query with the in-cluster embed AND reranker endpoints to surface a specific table cell. This is the first rung that closes ingest -> query end to end against the cluster.",
+      "prompt": "Using the NIMs deployed in my cluster (including the reranker), load data/table_test.pdf and then tell me — reranked, best match first — what value James had in 2019.",
+      "data_files": ["cases/setup-k8s-004/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query --rerank"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/table_test.pdf --page-elements-invoke-url http://nemotron-page-elements-v3:8000/v1/infer --ocr-invoke-url http://nemotron-ocr-v1:8000/v1/infer --table-structure-invoke-url http://nemotron-table-structure-v1:8000/v1/infer --embed-invoke-url http://llama-nemotron-embed-vl-1b-v2:8000/v1/embeddings --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2",
+        "$RETRIEVER query \"James value in 2019\" --top-k 5 --content-types text,table --embed-invoke-url http://llama-nemotron-embed-vl-1b-v2:8000/v1/embeddings --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2 --reranker-invoke-url http://llama-nemotron-rerank-vl-1b-v2:8000 --reranker-model-name llama-nemotron-rerank-vl-1b-v2 --rerank"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 1 file(s) → N row(s) in LanceDB lancedb/nemo-retriever. (table rows present)",
+        "answer": "James 2019 = 978; cite table_test.pdf p1",
+        "rerank_assertion": "--reranker-invoke-url points at the in-cluster llama-nemotron-rerank-vl-1b-v2 Service; reranked order != dense-only order; no hosted reranker call",
+        "query_shape": "JSON array of hits; each {source, page_number, text}; page_number 1-indexed"
+      },
+      "pass_when": [
+        "ingest + query round-trip uses the in-cluster embed AND reranker NIM endpoints (not hosted defaults)",
+        "query returns the correct cell value (978) citing table_test.pdf p1",
+        "--rerank is on and routed to the deployed reranker NIM",
+        "if --content-types is used it is text,table"
+      ]
+    },
+    {
+      "id": "setup-k8s-005",
+      "title": "Full operational-pass acceptance: clean -> ask-before-install -> Helm deploy (<=30 min) -> ingest -> cited query, end-to-end <= 40 min",
+      "complexity": 5,
+      "complexity_axis": "Composed acceptance gate for the row: a clean library install, prereq validation WITH the ask-before-installing discipline honored, a Helm deploy of all three NIM classes onto the GPU node within 30 min, ingest of a folder into a custom-named index against the in-cluster NIMs, and a cited query routed through the in-cluster embed+rerank NIMs — all end-to-end within 40 minutes, with zero hosted egress.",
+      "prompt": "Do a clean end-to-end setup on my GPU Kubernetes cluster. First validate GPU/Kubernetes/Helm and, if anything is missing, ask me before installing it. Then deploy the extraction, embedding, and reranking NIMs with Helm into namespace 'nrl', load data/ into a fresh index called 'k8s_smoke' through the in-cluster NIMs, and answer with a citation: in which poem does the speaker say they have 'miles to go before I sleep'? Confirm the deploy finished under 30 minutes, the whole thing under 40, and that nothing called NVIDIA's cloud endpoints.",
+      "data_files": ["cases/setup-k8s-005/data/woods_frost.pdf", "cases/setup-k8s-005/data/table_test.pdf", "cases/setup-k8s-005/data/multimodal_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["(prereq validation + ask)", "helm upgrade --install", "ingest", "query"],
+      "expected_commands": [
+        "kubectl get nodes -o wide ; helm version   # validate; ASK before installing anything missing",
+        "helm upgrade --install retriever ./nemo_retriever/helm -n nrl --create-namespace --set ngcImagePullSecret.create=true --set ngcImagePullSecret.password=$NGC_API_KEY --set ngcApiSecret.create=true --set ngcApiSecret.password=$NGC_API_KEY --set nimOperator.rerankqa.enabled=true",
+        "kubectl get pods -n nrl -w   # wait Ready (<= 30 min)",
+        "$RETRIEVER ingest data/ --lancedb-uri lancedb --table-name k8s_smoke --page-elements-invoke-url http://nemotron-page-elements-v3:8000/v1/infer --ocr-invoke-url http://nemotron-ocr-v1:8000/v1/infer --table-structure-invoke-url http://nemotron-table-structure-v1:8000/v1/infer --embed-invoke-url http://llama-nemotron-embed-vl-1b-v2:8000/v1/embeddings --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2",
+        "$RETRIEVER query \"miles to go before I sleep\" --table-name k8s_smoke --top-k 5 --embed-invoke-url http://llama-nemotron-embed-vl-1b-v2:8000/v1/embeddings --embed-model-name nvidia/llama-nemotron-embed-vl-1b-v2 --reranker-invoke-url http://llama-nemotron-rerank-vl-1b-v2:8000 --reranker-model-name llama-nemotron-rerank-vl-1b-v2 --rerank"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 3 file(s) → N row(s) in LanceDB lancedb/k8s_smoke. (branch_summary pdf:3)",
+        "answer": "'Stopping by Woods on a Snowy Evening' by Robert Frost; cite woods_frost.pdf p1",
+        "assertions": [
+          "prereqs validated and, if anything was missing, the agent ASKED before installing (no silent install of k8s/helm/operator)",
+          "helm deploy of all three NIM classes (extraction + embedding + reranking) reached Ready <= 30 min",
+          "query reads the SAME table (k8s_smoke) the ingest wrote — not the default nemo-retriever",
+          "every returned hit carries non-null source + page_number",
+          "ingest + query routed through the in-cluster NIM Services; zero calls to ai.api.nvidia.com / integrate.api.nvidia.com / build.nvidia.com",
+          "wall clock (clean state -> cited answer) <= 40 min"
+        ]
+      },
+      "pass_when": [
+        "prereq validation done AND ask-before-installing discipline honored",
+        "Helm deploy of extraction+embedding+reranking NIMs Ready <= 30 min",
+        "ingest writes lancedb/k8s_smoke and query reads k8s_smoke (table names aligned)",
+        "answer correct + citation (woods_frost.pdf p1) present",
+        "all CLI work routed through in-cluster NIMs; no hosted egress; end-to-end <= 40 min"
+      ],
+      "known_caveat": "The Reranking NIM is OPTIONAL in the chart (nimOperator.rerankqa disabled by default, not auto-wired). Because this row explicitly names the Reranking NIM, the deploy must pass --set nimOperator.rerankqa.enabled=true; a default install would deploy only extraction + embedding and the reranking clause would fail. Also: NIM templates require the NVIDIA NIM Operator (apps.nvidia.com/v1alpha1); without it the chart installs but the NIMs do not reconcile and the service falls back to external NIM URLs — which this acceptance gate is designed to catch."
+    }
+  ]
+}

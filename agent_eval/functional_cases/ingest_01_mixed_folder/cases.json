@@ -1,0 +1,190 @@
+{
+  "suite_id": "ingest_01_mixed_folder",
+  "jtbd": "INGEST",
+  "user_task": "Ingest a folder of mixed-format, multi-modal documents in a single skill invocation.",
+  "user_task_priority": "P0",
+  "source": "JTBD & user tasks tab, INGEST bucket; seed queries from 'NeMo Retriever — JTBD seed queries' tab, INGEST -> 'Load this whole folder and let me query it later — it has PDFs, scans, slide decks, the works' / 'Make this mixed folder of docs searchable' / 'Process everything in here and tell me when it's ready'.",
+  "success_criteria": {
+    "quality": "operational pass — a SINGLE `retriever ingest <folder>/` invocation auto-detects each file's format and routes it to the modality-specific extractor by extension (pdf/docx -> pdf branch, png/jpg -> image branch, html -> html branch, wav/mp3/mp4 -> audio/video branch); unsupported extensions (e.g. .xlsx) are SKIPPED while the supported files still index (ingest does NOT error out on the folder); the run returns an end-of-run summary (total files, by_type / branch_summary, total rows, index path); the LanceDB index lands at the expected uri/table with the canonical schema (vector, source_id, page_number, pdf_page, filename, path, text, metadata, source, content_type, bbox_xyxy_norm, stored_image_uri) and is loadable in a fresh process. Binary pass/fail.",
+    "time": "slow — completion <= 10 min on a small (3-6 file) mixed folder (the spec's <=10 min on a 50-doc mixed folder, scaled to a small functional fixture).",
+    "trigger_rate": ">= 95% — a 'load/ingest/process this whole folder and let me query it' prompt must fire the skill",
+    "subcommand_accuracy": ">= 90% — must run a SINGLE `retriever ingest <folder>/` on the directory (no per-file loop, no --input-type flag which does not exist), then `retriever query` to prove the combined index; format is auto-detected from extension.",
+    "token_usage": "tracked, not gated"
+  },
+  "environment": {
+    "retriever_bin": "$RETRIEVER_VENV/bin/retriever",
+    "single_invocation": "`retriever ingest <folder>/` accepts a directory and globs every supported file under it in ONE call (DOCUMENTS... arg: 'One or more files, directories, or globs. Supported file types are detected automatically.'). NO per-file loop is needed and NO --input-type flag exists.",
+    "routing_by_extension": "Grounded with `retriever ingest <folder>/ --dry-run` (offline, no network). The resolved plan reports a `branch_summary` and a `branches` list, one branch per modality family: pdf (.pdf, and .docx/.pptx after libreoffice->pdf conversion), image (.png/.jpg/.jpeg/.bmp/.tif/.tiff/.svg), html (.html), audio (.wav/.mp3/.m4a), video (.mp4/.mkv/.mov). Auto-detected extensions: .pdf .docx .pptx .html .txt .png .jpg .jpeg .bmp .tif .tiff .svg .wav .mp3 .m4a .mp4 .mkv .mov.",
+    "unsupported_skip_behavior": "A directory ingest globs ONLY supported extensions (resolve_input_files via INPUT_TYPE_PATTERNS['auto']). An unsupported file (e.g. .xlsx) inside the folder is therefore EXCLUDED from the resolved `documents`/`branches` and the supported files still ingest — ingest does NOT error. Verified: a folder containing fy27_bookings.xlsx + multimodal_test.pdf + test.html resolves to branch_summary `pdf:1, html:1` (xlsx dropped). CAVEAT: the shipped CLI skips by exclusion (the unsupported file simply never enters the plan); it does not emit an explicit per-file 'skipped: <reason>' log line. By contrast, pointing ingest DIRECTLY at a single .xlsx (not via a folder) RAISES `Unsupported input file type(s) for retriever ingest: ...`. The 'logged + skipped with a per-file reason' wording in the validation path is aspirational; the live-equivalent assertion here is 'supported files indexed, unsupported skipped, no error on the folder'.",
+    "canonical_lancedb_schema": {
+      "source": "src/nemo_retriever/common/vdb/lancedb_schema.py :: lancedb_schema()",
+      "fields": ["vector (fixed-size list<float32>, dim 2048)", "pdf_page (string)", "filename (string)", "pdf_basename (string)", "page_number (int32)", "source (string, JSON {source_id})", "source_id (string)", "path (string)", "text (string)", "metadata (string, JSON)", "stored_image_uri (string)", "content_type (string)", "bbox_xyxy_norm (string, JSON)"],
+      "note": "All twelve canonical fields named in the validation path are present (the table additionally carries pdf_basename). content_type is one of text/table/chart/image/infographic; bbox_xyxy_norm and stored_image_uri are populated for image/table/chart regions."
+    },
+    "defaults": {"lancedb_uri": "lancedb", "table_name": "nemo-retriever"},
+    "ingest_success_line": "Ingested N file(s) -> M row(s) in LanceDB lancedb/<table>. (branch_summary like `pdf:2, image:1, html:1` appears in --dry-run)",
+    "query_hit_shape": "JSON array; each hit has exactly {source, page_number, text}; page_number is a 1-indexed int. (content_type/bbox_xyxy_norm/stored_image_uri live in the table, not in the CLI hit shape.)",
+    "prereqs": {
+      "libreoffice": ".docx / .pptx members are converted to PDF by libreoffice (host pkg: `sudo apt-get install -y libreoffice`) and then run through the pdf branch. Without it, those members fail to convert.",
+      "multimedia": "audio/video members (.wav/.mp3/.mp4/...) need the `[multimedia]` extra + ffmpeg. This suite's fixtures do not include audio/video members, so [multimedia] is not required to run these five cases; it is noted for completeness because a real 'the works' folder may contain them."
+    }
+  },
+  "cases": [
+    {
+      "id": "ingest-mix-001",
+      "title": "Baseline: one ingest call over a folder of 2 same-format PDFs -> combined index",
+      "complexity": 1,
+      "complexity_axis": "Satisfies the INGEST core (a SINGLE `retriever ingest <folder>/` over a directory produces one combined index) in its simplest form: a folder of two same-format PDFs. Rung 1 only asserts that the directory is ingested in one call (no per-file loop) and that both files land in one queryable index. It is the floor; adds nothing over a prior rung.",
+      "prompt": "Load everything in the data/ folder so I can query it later, then tell me: from the documents, what value did James have in 2019?",
+      "data_files": ["cases/ingest-mix-001/data/multimodal_test.pdf", "cases/ingest-mix-001/data/table_test.pdf"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/",
+        "$RETRIEVER query \"James value in 2019\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 2 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:2)",
+        "single_invocation_assertion": "ONE `retriever ingest data/` call ingests both PDFs (no per-file loop); --dry-run branch_summary is `pdf:2`",
+        "query_shape": "JSON array of hits; each {source, page_number, text}",
+        "answer": "James 2019 = 978; cite table_test.pdf p1"
+      },
+      "pass_when": [
+        "a SINGLE `retriever ingest data/` call (folder arg, no per-file loop, no --input-type) ingests BOTH PDFs into one index",
+        "ingest summary reports 2 files -> non-zero rows (branch_summary pdf:2)",
+        "query returns >= 1 grounded hit; answer is exactly 978 citing table_test.pdf p1"
+      ]
+    },
+    {
+      "id": "ingest-mix-002",
+      "title": "Mixed formats in one call: PDF + DOCX + HTML routed by extension",
+      "complexity": 2,
+      "complexity_axis": "Satisfies the 'mixed-format folder, each file routed to its modality-specific extractor by extension' clause. Adds over rung 1 exactly one dimension: the folder is no longer same-format — it holds a .pdf, a .docx, and a .html, which must be auto-detected and routed to different branches in ONE invocation (dry-run branch_summary `pdf:2, html:1`: docx joins the pdf branch via libreoffice, html its own branch). New dimension: per-extension routing across distinct text/office formats; introduces the libreoffice prereq.",
+      "prompt": "Make this whole data/ folder searchable in one go — it's a mix of a PDF, a Word doc, and an HTML page. Then tell me what heading the HTML page starts with, and from Table 1 what activity the Giraffe is doing.",
+      "data_files": ["cases/ingest-mix-002/data/multimodal_test.pdf", "cases/ingest-mix-002/data/multimodal_test.docx", "cases/ingest-mix-002/data/test.html"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure", "query --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/ --use-table-structure",
+        "$RETRIEVER query \"What heading does the HTML page start with?\" --top-k 5",
+        "$RETRIEVER query \"What activity is the Giraffe doing in Table 1?\" --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 3 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:2, html:1)",
+        "routing": "auto-detect: .pdf + .docx -> pdf branch (docx converted by libreoffice), .html -> html branch; dry-run branch_summary `pdf:2, html:1`",
+        "answers": {
+          "html": "'My First Heading' (with body 'My first paragraph.'); cite test.html",
+          "table": "Giraffe -> Driving a car -> At the beach (Table 1); cite multimodal_test.pdf or multimodal_test.docx p1"
+        }
+      },
+      "pass_when": [
+        "a SINGLE `retriever ingest data/` call ingests all 3 files; dry-run branch_summary is `pdf:2, html:1` (per-extension routing, no --input-type)",
+        "html member queryable: answer reflects 'My First Heading' citing test.html",
+        "office+pdf member queryable: Giraffe -> Driving a car -> At the beach (Table 1)",
+        "docx routed through libreoffice->pdf branch (requires libreoffice host pkg)"
+      ],
+      "known_caveat": "DOCX members require the libreoffice host package (`sudo apt-get install -y libreoffice`); without it the .docx -> pdf conversion fails for that member (the .pdf and .html still ingest)."
+    },
+    {
+      "id": "ingest-mix-003",
+      "title": "True multi-MODAL folder: add an image/scan alongside PDF+DOCX+HTML",
+      "complexity": 3,
+      "complexity_axis": "Satisfies the 'multi-modal' part of the task (not just multi-format). Adds over rung 2 exactly one dimension: a raster image / scan (.png) joins the folder, so the single ingest now fans out across THREE branch families at once — pdf (pdf+docx), image (png), and html (dry-run branch_summary `pdf:2, image:1, html:1`). The image goes through the image extraction branch (OCR/captioning), not the pdf branch. New dimension: a non-document image modality indexed together with the docs in one call.",
+      "prompt": "This folder has the works — a PDF, a Word doc, a scanned PNG, and an HTML page. Ingest all of it at once and confirm the image was processed by its own image pipeline (not treated as a PDF). Then, from Table 1, what activity is the Giraffe doing and where?",
+      "data_files": ["cases/ingest-mix-003/data/multimodal_test.pdf", "cases/ingest-mix-003/data/multimodal_test.docx", "cases/ingest-mix-003/data/multimodal_test.png", "cases/ingest-mix-003/data/test.html"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --dry-run", "ingest --use-table-structure", "query --content-types text,table,image"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/ --dry-run",
+        "$RETRIEVER ingest data/ --use-table-structure",
+        "$RETRIEVER query \"Giraffe activity and place in Table 1\" --top-k 5 --content-types text,table,image"
+      ],
+      "expected_output": {
+        "dry_run_assertions": [
+          "branch_summary == `pdf:2, image:1, html:1`",
+          "branches list includes a branch (family=image, extraction_mode=image) whose input_paths contains multimodal_test.png",
+          "the .png is NOT placed in the pdf branch"
+        ],
+        "ingest_summary_line": "Ingested 4 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:2, image:1, html:1)",
+        "answer": "Giraffe -> Driving a car -> At the beach (Table 1); cite a pdf/docx member p1",
+        "modality_assertion": "the png is routed to the image branch (image OCR/caption), confirming a non-document modality indexed alongside the docs"
+      },
+      "pass_when": [
+        "a SINGLE `retriever ingest data/` call ingests all 4 files across 3 branch families",
+        "dry-run proves the .png routes to the IMAGE branch (family=image), not the pdf branch; branch_summary `pdf:2, image:1, html:1`",
+        "combined index is queryable; Table 1 answer = Giraffe -> Driving a car -> At the beach",
+        "no per-file loop, no --input-type flag"
+      ],
+      "known_caveat": "Image-branch extraction (OCR/caption) for the .png runs on the configured extraction backend (hosted ai.api.nvidia.com or local GPU). DOCX still needs libreoffice. Whether the png's text is recovered depends on the OCR/caption leg; the routing assertion (png -> image branch) holds regardless."
+    },
+    {
+      "id": "ingest-mix-004",
+      "title": "Unsupported file in the folder -> skipped (not errored), supported files still index",
+      "complexity": 4,
+      "complexity_axis": "Satisfies the 'unsupported extensions are skipped (not errored out), supported files still index' clause. Adds over rung 3 exactly one dimension: the folder now contains an UNSUPPORTED member (.xlsx) next to a supported .pdf and .html. The single ingest must SKIP the .xlsx and still index the rest, returning a clean summary — it must NOT abort the whole folder. New dimension: graceful skip of an unsupported modality during a folder ingest.",
+      "prompt": "Process everything in data/ and tell me when it's ready. Heads up: there's an Excel spreadsheet (.xlsx) in there that you can't handle yet — skip it but don't let it block the rest. Then tell me what heading the HTML page starts with.",
+      "data_files": ["cases/ingest-mix-004/data/multimodal_test.pdf", "cases/ingest-mix-004/data/test.html", "cases/ingest-mix-004/data/fy27_bookings.xlsx"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --dry-run", "ingest", "query"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/ --dry-run",
+        "$RETRIEVER ingest data/",
+        "$RETRIEVER query \"What heading does the HTML page start with?\" --top-k 5"
+      ],
+      "expected_output": {
+        "dry_run_assertions": [
+          "branch_summary == `pdf:1, html:1` (the .xlsx is excluded from the plan)",
+          "resolved `documents` list contains multimodal_test.pdf and test.html but NOT fy27_bookings.xlsx",
+          "the run resolves successfully (no `Unsupported input file type(s)` error) because the unsupported member is filtered out by the directory globber"
+        ],
+        "ingest_summary_line": "Ingested 2 file(s) -> N row(s) in LanceDB lancedb/nemo-retriever. (branch_summary pdf:1, html:1; xlsx skipped)",
+        "answer": "'My First Heading'; cite test.html"
+      },
+      "pass_when": [
+        "a SINGLE `retriever ingest data/` call completes WITHOUT erroring despite the .xlsx in the folder",
+        "the .xlsx is skipped (excluded from the resolved documents/branches; summary reports 2 files, not 3)",
+        "the supported .pdf and .html still index; query answers 'My First Heading' citing test.html",
+        "agent surfaces that the xlsx was skipped (the unsupported-modality reason), and reports readiness"
+      ],
+      "known_caveat": "Behavior grounded in source: a DIRECTORY ingest globs only supported extensions (resolve_input_files), so the .xlsx is dropped before validation and the folder ingest does NOT error. The shipped CLI does this by EXCLUSION — it does not print an explicit per-file 'skipped: unsupported .xlsx' log line in --dry-run. (Pointing ingest directly at the lone .xlsx file, by contrast, RAISES `Unsupported input file type(s) for retriever ingest`.) The operational assertion is 'supported indexed + unsupported skipped + no folder error'; the explicit per-file reason in the validation-path wording is a known gap from the shipped CLI."
+    },
+    {
+      "id": "ingest-mix-005",
+      "title": "Acceptance: one-shot mixed multi-modal folder ingest -> summary + canonical schema, fresh-load, cross-file query",
+      "complexity": 5,
+      "complexity_axis": "Composed operational-pass / acceptance gate for the INGEST row. Adds over rung 4: a mixed multi-modal folder (PDF + PDF + image + HTML, branch_summary `pdf:2, image:1, html:1`) ingested in ONE invocation that must (a) return an end-of-run summary (total files, by_type/branch_summary, total rows, index path), (b) land the LanceDB index at the expected uri/table with the CANONICAL schema (all 12 named fields), (c) be loadable in a FRESH process, and (d) answer a query that spans TWO different source files, returning a hit from each. This is the gate the others build up to.",
+      "prompt": "Ingest this entire data/ folder in one shot into a fresh index called 'mixed_smoke' and tell me when it's ready: how many files of each type went in, how many total rows, and where the index lives. Then prove it's queryable from scratch by answering, with citations from TWO different source files: which Robert Frost collection was published in 1923, and what value did James have in 2019?",
+      "data_files": ["cases/ingest-mix-005/data/woods_frost.pdf", "cases/ingest-mix-005/data/table_test.pdf", "cases/ingest-mix-005/data/multimodal_test.png", "cases/ingest-mix-005/data/test.html"],
+      "expected_skill": "nemo-retriever",
+      "expected_subcommands": ["ingest --use-table-structure --table-name", "query --table-name --content-types text,table"],
+      "expected_commands": [
+        "$RETRIEVER ingest data/ --lancedb-uri lancedb --table-name mixed_smoke --use-table-structure",
+        "$RETRIEVER query \"Robert Frost collection published in 1923\" --table-name mixed_smoke --top-k 5",
+        "$RETRIEVER query \"James value in 2019\" --table-name mixed_smoke --top-k 5 --content-types text,table"
+      ],
+      "expected_output": {
+        "ingest_summary_line": "Ingested 4 file(s) -> N row(s) in LanceDB lancedb/mixed_smoke. (branch_summary pdf:2, image:1, html:1)",
+        "end_of_run_summary": {
+          "total_files": 4,
+          "by_type": "pdf:2, image:1, html:1 (from branch_summary)",
+          "total_rows": "N (non-zero)",
+          "index_path": "lancedb/mixed_smoke"
+        },
+        "schema_assertion": "the lancedb/mixed_smoke table carries the canonical schema: vector, source_id, page_number, pdf_page, filename, path, text, metadata, source, content_type, bbox_xyxy_norm, stored_image_uri (per src/nemo_retriever/common/vdb/lancedb_schema.py)",
+        "fresh_load_assertion": "open lancedb/mixed_smoke in a fresh process (e.g. `lancedb.connect('lancedb').open_table('mixed_smoke')`) -> schema + non-zero row count load without re-ingesting",
+        "cross_file_answers": {
+          "woods_frost": "New Hampshire (1923); cite woods_frost.pdf p2 (collection table)",
+          "table_test": "James 2019 = 978; cite table_test.pdf p1"
+        }
+      },
+      "pass_when": [
+        "a SINGLE `retriever ingest data/` call ingests all 4 mixed multi-modal members into lancedb/mixed_smoke (no per-file loop)",
+        "an end-of-run summary is returned: total_files=4, by_type/branch_summary `pdf:2, image:1, html:1`, total_rows non-zero, index_path lancedb/mixed_smoke",
+        "the index lands at lancedb/mixed_smoke with the canonical schema (all 12 named fields present) and is loadable in a fresh process",
+        "query (same --table-name mixed_smoke) spanning TWO source files returns a hit from each: New Hampshire/1923 citing woods_frost.pdf p2 AND James 2019=978 citing table_test.pdf p1",
+        "completion within the <= 10 min slow SLA"
+      ],
+      "known_caveat": "DOCX-free folder so libreoffice is not required for this gate; the .png image member needs the image-branch extraction backend (hosted or local GPU) and the cross-file answers come from the two PDF members. A live run would capture real per-branch row counts, the materialized schema, fresh-load row totals, and wall-clock latency."
+    }
+  ]
+}

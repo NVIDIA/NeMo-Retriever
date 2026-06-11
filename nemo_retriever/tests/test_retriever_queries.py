@@ -87,6 +87,15 @@ class TestQueriesGraphExecution:
         p = r._merge_embed_params({"model_name": "call"})
         assert p.model_name == "call"
 
+    def test_local_query_embedding_defaults_to_hf(self) -> None:
+        p = _make_retriever()._merge_embed_params()
+        assert p.local_ingest_embed_backend == "hf"
+
+    def test_local_query_embedding_backend_can_be_overridden(self) -> None:
+        r = _make_retriever(embed_kwargs={"local_ingest_embed_backend": "vllm"})
+        p = r._merge_embed_params()
+        assert p.local_ingest_embed_backend == "vllm"
+
     def test_rerank_inflates_retrieval_top_k(self, monkeypatch: pytest.MonkeyPatch) -> None:
         resolved = _install_mock_graph(monkeypatch, [[{"text": "x"}]])
         retriever = _make_retriever(top_k=3, rerank=True, rerank_kwargs={"refine_factor": 4})

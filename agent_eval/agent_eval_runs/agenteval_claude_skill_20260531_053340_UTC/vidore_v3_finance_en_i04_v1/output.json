@@ -1,0 +1,27 @@
+{
+  "query_id": "vidore_v3_finance_en:i04:v1",
+  "final_answer": "The Bank of America 2024 PDF (./pdfs/bank_of_america_2024.pdf) has been ingested into the LanceDB knowledge base at ./lancedb/nemo-retriever.lance and is ready for future queries. Verification: a query against the index returns content from this document, including the Executive Summary (page 30) confirming Bank of America Corporation's 2024 financial highlights ($3.3 trillion in assets, ~213,000 employees, net income of $27.1 billion / $3.21 diluted EPS).",
+  "selected_chunks": [
+    {
+      "rank": 1,
+      "doc_id": "bank_of_america_2024",
+      "modality": "pdf_page",
+      "locator": {
+        "page_number": 30
+      },
+      "content": "Executive Summary — Business Overview: The Corporation is a Delaware corporation, a bank holding company (BHC) and a financial holding company. Through our various bank and nonbank subsidiaries, we provide a diversified range of banking and nonbank financial services through four business segments: Consumer Banking, Global Wealth & Investment Management (GWIM), Global Banking and Global Markets, with the remaining operations recorded in All Other. At December 31, 2024, the Corporation had $3.3 trillion in assets and a headcount of approximately 213,000 employees. Net income was $27.1 billion, or $3.21 per diluted share in 2024 compared to $26.5 billion, or $3.08 per diluted share in 2023.",
+      "score": null
+    },
+    {
+      "rank": 2,
+      "doc_id": "bank_of_america_2024",
+      "modality": "pdf_page",
+      "locator": {
+        "page_number": 93
+      },
+      "content": "Consolidated Statement of Income (In millions): 2024 Net interest income $56,060; Total noninterest income $45,827; Total revenue, net of interest expense $101,887; Provision for credit losses $5,821; Total noninterest expense $66,812; Income before income taxes $29,254; Net income $27,132.",
+      "score": null
+    }
+  ],
+  "schema_version": 1
+}
