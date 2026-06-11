@@ -5,13 +5,9 @@ Use this documentation to attach per-document metadata during ingestion and to n
 ## On this page { #on-this-page }
 
 - [Attach metadata at ingestion](#attach-metadata-at-ingestion)
+- [Best practices](#best-practices)
+- [Filter results during retrieval](#filter-results-during-retrieval)
 - [How metadata is stored](#how-metadata-is-stored)
-- [Filter results at query time](#filter-results-at-query-time)
-- [Writing `where` predicates](#writing-where-predicates)
-- [Server-side vs client-side filters](#server-side-vs-client-side-filters)
-- [Inspect hit metadata](#inspect-hit-metadata)
-- [Limitations](#limitations)
-- [Related content](#related-content)
 
 ## Attach metadata at ingestion { #attach-metadata-at-ingestion }
 
@@ -24,6 +20,8 @@ Pass a **sidecar metadata table** on `vdb_upload` so selected columns are merged
 | `meta_fields` | Non-empty list of column names to copy into `content_metadata` |
 
 Optional `meta_join_key` controls how rows are matched to documents: `auto` (try full path then basename), `source_id` (full path), or `source_name` (basename only).
+
+For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
 ```python
 import pandas as pd
@@ -39,7 +37,7 @@ meta_df = pd.DataFrame(
 
 hostname = "localhost"
 table_name = "nemo_retriever_collection"
-lancedb_uri = "./lancedb_data"
+lancedb_uri = "s3://your-bucket/lancedb"
 
 ingestor = (
     create_ingestor(run_mode="service", base_url=f"http://{hostname}:7670")
@@ -54,22 +52,18 @@ ingestor = (
         .embed()
         .vdb_upload(
             vdb_op="lancedb",
-            uri=lancedb_uri,
-            table_name=table_name,
+            vdb_kwargs={"lancedb_uri": lancedb_uri, "table_name": table_name},
+            meta_dataframe=meta_df,
+            meta_source_field="source",
+            meta_fields=["meta_a", "meta_b"],
         )
 )
 results = ingestor.ingest_async().result()
 ```
 
-Merge values from `meta_df` (or `file_path`) into each document's `content_metadata` before `vdb_upload`, or follow the step-by-step pattern in [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb), so category, department, and timestamp are present on the chunks LanceDB indexes.
+Set `hostname`, `table_name`, and a **remote** `lancedb_uri` (for example `s3://bucket/path`) to match your deployment—the retriever service rejects local filesystem paths. The client uploads in-memory sidecar metadata to the service before ingest; do not pass a raw local file path as `meta_dataframe` on the REST spec. For local LanceDB directories, use `run_mode="batch"` instead (refer to [Vector databases](vdbs.md)). For a step-by-step walkthrough with additional fields such as category, department, and timestamp, refer to [Vector DB operators and LanceDB — Metadata filtering](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering).
 
-## How metadata is stored { #how-metadata-is-stored }
-
-During ingestion, each chunk's `content_metadata` is serialized as a **compact JSON string** (no spaces after `:` or `,`) in the LanceDB table's `metadata` column. Sidecar columns from `meta_dataframe`, `meta_source_field`, and `meta_fields` are merged into that JSON object before upload, so custom keys live in the same string—not separate columns. That is why `Retriever.query` filters often use `metadata LIKE '%\"key\":\"value\"%'`. For operator behavior and predicate examples, see [Vector DB operators and LanceDB — Metadata filtering](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering).
-
-## Best Practices
-
-The following are the best practices when you work with custom metadata:
+## Best practices { #best-practices }
 
 - Plan metadata structure before ingestion.
 - Test filter expressions with small datasets first.
@@ -78,13 +72,9 @@ The following are the best practices when you work with custom metadata:
 - Handle missing metadata fields gracefully.
 - Log invalid filter expressions.
 
+## Filter results during retrieval { #filter-results-during-retrieval }
 
-
-## Use Custom Metadata to Filter Results During Retrieval
-
-You can use custom metadata to filter documents during retrieval operations.
-For **predicate pushdown**, pass a `where` SQL predicate through [`Retriever.query`](nemo-retriever-api-reference.md) (see [Vector databases](vdbs.md)) or chain `.where(...)` on a native LanceDB `table.search(...)` query. Application-side filtering on returned hits does not change what the database evaluates—raise `top_k` if matches might sit outside the first neighbors.
-
+You can use custom metadata to filter documents during retrieval operations. For **predicate pushdown**, pass a `where` SQL predicate through [`Retriever.query`](nemo-retriever-api-reference.md) (refer to [Vector databases](vdbs.md)) or chain `.where(...)` on a native LanceDB `table.search(...)` query. Application-side filtering on returned hits does not change what the database evaluates—raise `top_k` if matches might sit outside the first neighbors.
 
 ### Example filter ideas
 
@@ -92,15 +82,14 @@ Typical keys to filter on include `category`, `department`, `priority`, and `tim
 
 ### Example: Use a Filter Expression in Search
 
-After ingestion is complete, and documents are uploaded to LanceDB with metadata,
-you can narrow results in the database with a **`where`** clause, or in Python on the returned hits.
+After ingestion is complete and documents are uploaded to LanceDB with metadata, you can narrow results in the database with a **`where`** clause, or in Python on the returned hits.
 
-**Native LanceDB (SQL pushdown):** connect, embed the query yourself (same model as ingestion), then chain `.where("<LanceDB SQL predicate>")` on `table.search(...)` so filtering happens before the `limit`. Exact SQL depends on how `metadata` is stored; see [LanceDB SQL](https://lancedb.github.io/lancedb/sql/).
+**Native LanceDB (SQL pushdown):** connect, embed the query yourself (same model as ingestion), then chain `.where("<LanceDB SQL predicate>")` on `table.search(...)` so filtering happens before the `limit`. Exact SQL depends on how `metadata` is stored; refer to [LanceDB metadata filtering](https://docs.lancedb.com/search/filtering#filtering-with-sql).
 
 ```python
 import lancedb
 
-# Pseudocode sketch — replace YOUR_VECTOR and YOUR_PREDICATE with real values.
+# pseudocode — replace YOUR_VECTOR and YOUR_PREDICATE with real values.
 db = lancedb.connect("./lancedb_data")
 table = db.open_table("nemo_retriever_collection")
 # table.search(YOUR_VECTOR, vector_column_name="vector").where(YOUR_PREDICATE).limit(10).to_list()
@@ -126,11 +115,11 @@ hits = retriever.query(
 )
 ```
 
-For a runnable end-to-end flow (ingest, `Retriever.query`, and both filter modes), see [nemo_retriever_retriever_query_metadata_filter.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb).
+For a runnable end-to-end flow (ingest, `Retriever.query`, and both filter modes), refer to [nemo_retriever_retriever_query_metadata_filter.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb).
 
 When you ingest through the **retriever service**, upload the sidecar with [`POST /v1/ingest/sidecar`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/routers/ingest.py#L1040-L1129) (multipart file; response [`SidecarUploadResponse`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/models/responses.py#L60-L68)), then pass the returned `sidecar_id` as `meta_dataframe_id` with `meta_source_field` and `meta_fields` in `pipeline.vdb_upload_params` on [`POST /v1/ingest`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/models/requests.py#L15-L32) ([`PipelineSpec`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/models/pipeline_spec.py#L55-L78)). Request and response shapes, form fields, and auth headers are in the service OpenAPI UI at `/docs` (or `/openapi.json`) on your retriever base URL (for example `http://localhost:7670/docs` after `retriever service start`). Do not send a raw local path as `meta_dataframe` on the service spec.
 
-## Related content { #related-content }
+## How metadata is stored { #how-metadata-is-stored }
 
 - [Vector databases](vdbs.md) — canonical LanceDB upload and retrieval guide
-- [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb) — CLI and graph ingest with sidecar metadata
+- [nemo_retriever_retriever_query_metadata_filter.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) — runnable notebook for sidecar metadata at ingest and filtered `Retriever.query`

@@ -64,7 +64,7 @@ Highlights for the 26.05 release include:
 
 ### Packaging and platform
 
-- GA PyPI install: `uv pip install nemo-retriever==26.5.0` (see the library [quickstart](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05/nemo_retriever#setup-your-environment))
+- GA PyPI install: `uv pip install nemo-retriever==26.5.0` (refer to the library [quickstart](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05/nemo_retriever#setup-your-environment))
 - Optional install extras (`[local]`, `[multimedia]`, `[llm]`, `[tabular]`, `[nemotron-parse]`, `[service]`, and others), including slim remote/NIM-only installs on Mac and Windows  
 
 ### Helm chart
@@ -73,21 +73,21 @@ Highlights for the 26.05 release include:
 
 ### Documentation
 
-- Documentation aligned to a Helm-first supported path; [Docker Compose for local development](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/docker.md) documented as unsupported developer tooling (not a production NIM deployment path)  
+- Documentation aligned to a Helm-first supported path for NIM and service deployment
 - Documentation consolidates extraction concepts, ingest workflow, embeddings, audio/video guides, prerequisites and support matrix, and UDF/custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)  
 
 ## Release Notes for Previous Versions
 
-| [26.03](https://docs.nvidia.com/nemo/retriever/26.3.0/extraction/releasenotes/)
-| [26.1.2](https://docs.nvidia.com/nemo/retriever/26.1.2/extraction/releasenotes/)
-| [26.1.1](https://docs.nvidia.com/nemo/retriever/26.1.1/extraction/releasenotes/)
-| [25.9.0](https://docs.nvidia.com/nemo/retriever/25.9.0/extraction/releasenotes/) 
-| [25.6.3](https://docs.nvidia.com/nemo/retriever/25.6.3/extraction/releasenotes/) 
-| [25.6.2](https://docs.nvidia.com/nemo/retriever/25.6.2/extraction/releasenotes/) 
-| [25.4.2](https://docs.nvidia.com/nemo/retriever/25.4.2/extraction/releasenotes/) 
-| [25.3.0](https://docs.nvidia.com/nemo/retriever/25.3.0/extraction/releasenotes/) 
-| [24.12.1](https://docs.nvidia.com/nemo/retriever/25.3.0/extraction/releasenotes/#release-24121) 
-| [24.12.0](https://docs.nvidia.com/nemo/retriever/25.3.0/extraction/releasenotes/#release-2412) 
+| [26.03](https://docs.nvidia.com/nemo/retriever/26.3.0/extraction/releasenotes-nv-ingest/)
+| [26.1.2](https://docs.nvidia.com/nemo/retriever/26.1.2/extraction/releasenotes-nv-ingest/)
+| [26.1.1](https://docs.nvidia.com/nemo/retriever/26.1.1/extraction/releasenotes-nv-ingest/)
+| [25.9.0](https://docs.nvidia.com/nemo/retriever/25.9.0/extraction/releasenotes-nv-ingest/) 
+| [25.6.3](https://docs.nvidia.com/nemo/retriever/25.6.3/extraction/releasenotes-nv-ingest/) 
+| [25.6.2](https://docs.nvidia.com/nemo/retriever/25.6.2/extraction/releasenotes-nv-ingest/) 
+| [25.4.2](https://docs.nvidia.com/nemo/retriever/25.4.2/extraction/releasenotes-nv-ingest/) 
+| [25.3.0](https://docs.nvidia.com/nemo/retriever/25.3.0/extraction/releasenotes-nv-ingest/) 
+| [24.12.1](https://docs.nvidia.com/nemo/retriever/25.3.0/extraction/releasenotes-nv-ingest/#release-24121) 
+| [24.12.0](https://docs.nvidia.com/nemo/retriever/25.3.0/extraction/releasenotes-nv-ingest/#release-2412) 
 
 ## Related Topics
 

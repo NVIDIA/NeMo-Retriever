@@ -186,4 +186,3 @@ ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
 - [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
 - [NeMo Retriever Library — prerequisites / deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (supported **Helm** charts)
-- [Docker Compose (unsupported, developer)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md)
