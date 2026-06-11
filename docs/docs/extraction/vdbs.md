@@ -91,10 +91,11 @@ Semantic retrieval uses dense embeddings to find content that is similar in mean
 
 ## Metadata and filtering { #metadata-and-filtering }
 
-This page covers LanceDB upload and retrieval. **Metadata is not duplicated here.**
+Attach sidecar metadata at ingest with `meta_dataframe`, `meta_source_field`, and `meta_fields` on `vdb_upload`. Values merge into each chunk's `content_metadata` and are stored as compact JSON in LanceDB. Narrow results at query time with server-side `where` on [`Retriever.query`](nemo-retriever-api-reference.md) or client-side `filter_hits_by_content_metadata`.
 
-- **Published guide** — [Custom metadata and filtering](custom-metadata.md) (sidecar `meta_*` on `vdb_upload`, compact JSON in LanceDB, server-side `where` on `Retriever.query`, and client-side `filter_hits_by_content_metadata`).
-- **Canonical reference** — [Vector DB operators and LanceDB — Metadata filtering](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering) in `nemo_retriever/src/nemo_retriever/vdb/README.md` (operator behavior and examples).
+- [Metadata filtering notebook](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) — end-to-end ingest, `Retriever.query`, and both filter modes
+- [Sidecar metadata ingest](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb) — CLI and graph workflow
+- [VDB README (metadata filtering)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering) — operator behavior, SQL predicates, and examples
 
 ## LanceDB deployment characteristics { #lancedb-deployment-characteristics }
 
@@ -144,7 +145,7 @@ Testing and release cadence for these integrations follow the owning project (RA
 
 ### More information (embeddings & custom `VDB`) { #vector-database-partners-more-info }
 
-- [Custom metadata and filtering](custom-metadata.md) and the package [VDB README (metadata filtering)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering)
+- [Metadata filtering notebook](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) and the package [VDB README (metadata filtering)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering)
 - [Multimodal embeddings (VLM)](embedding.md)
 - [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html)
 - [NVIDIA NIM catalog](https://build.nvidia.com/) for embedding and retrieval-related NIMs
@@ -157,7 +158,7 @@ To implement a custom operator, follow the `VDB` abstract interface described in
 
 ## Related Topics { #related-topics }
 
-- [Custom metadata and filtering](custom-metadata.md)
+- [Metadata filtering: add sidecar metadata and filter searches](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb)
 - [Vector DB operators and LanceDB (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb)
 - [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md)
 - [Store Extracted Images](nemo-retriever-api-reference.md)
