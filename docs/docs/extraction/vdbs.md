@@ -58,7 +58,7 @@ LanceDB uses the `LanceDB` operator class from the client library. You can confi
 Pass `vdb_op="lancedb"` to `vdb_upload`, or construct a `LanceDB` instance and pass it as `vdb_op`:
 
 ```python
-from nemo_retriever.vdb.lancedb import LanceDB
+from nemo_retriever.common.vdb.lancedb import LanceDB
 
 vdb = LanceDB(
     uri="./lancedb_data",    # Path to LanceDB database directory

@@ -40,7 +40,7 @@ Together, repartition + full batch mean **`process()`** receives **every row at 
 - **Direct API**:
 
 ```python
-from nemo_retriever.vdb import IngestVdbOperator
+from nemo_retriever.operators.vdb import IngestVdbOperator
 
 op = IngestVdbOperator(
     vdb_op="lancedb",
@@ -108,7 +108,7 @@ Notable kwargs: `top_k`, `refine_factor`, `n_probe` / `nprobes`, `where` or `_fi
 Example of **direct** operator use (you supply vectors):
 
 ```python
-from nemo_retriever.vdb import RetrieveVdbOperator
+from nemo_retriever.operators.vdb import RetrieveVdbOperator
 
 op = RetrieveVdbOperator(
     vdb_op="lancedb",
@@ -142,7 +142,7 @@ On **`query` / `queries`**, `Retriever`:
 Typical construction:
 
 ```python
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.graph.retriever import Retriever
 
 retriever = Retriever(
     vdb_kwargs={
@@ -209,7 +209,7 @@ Escape single quotes in SQL strings by doubling them (`''`). Because matching is
 Use **`where`** when the predicate fits SQL and you want LanceDB to prune candidates before vector ranking — it also avoids the wasted work of materializing hits you'd discard. Use **`filter_hits_by_content_metadata`** when the predicate is easier to express in Python (e.g. combined numeric ranges, membership in a Python set, or fields that need parsing). They compose well — run a wide `top_k` with a `where` to prune broadly, then post-filter client-side for finer logic:
 
 ```python
-from nemo_retriever.vdb import filter_hits_by_content_metadata
+from nemo_retriever.common.vdb.sidecar_metadata import filter_hits_by_content_metadata
 
 hits = retriever.query(
     "budget assumptions",
@@ -223,7 +223,7 @@ hits = filter_hits_by_content_metadata(
 
 ### Inspecting hit metadata
 
-Each hit's `metadata` field is a JSON string. Use **`parse_hit_content_metadata(hit)`** to get a `dict` you can read directly (this is what `filter_hits_by_content_metadata` uses internally). Both helpers are exported from `nemo_retriever.vdb`.
+Each hit's `metadata` field is a JSON string. Use **`parse_hit_content_metadata(hit)`** to get a `dict` you can read directly (this is what `filter_hits_by_content_metadata` uses internally). Both helpers are exported from `nemo_retriever.common.vdb`.
 
 ### Hybrid retrieval
 
