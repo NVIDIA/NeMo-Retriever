@@ -117,7 +117,6 @@ class IngestorCreateParams(_ParamsModel):
 class IngestExecuteParams(_ParamsModel):
     show_progress: bool = False
     return_failures: bool = False
-    save_to_disk: bool = False
     return_traces: bool = False
     return_results: bool = True
     parallel: bool = False
