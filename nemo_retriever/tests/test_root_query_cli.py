@@ -277,3 +277,74 @@ def test_root_query_reports_os_errors(monkeypatch) -> None:
 
     assert result.exit_code == 1
     assert "Error: database unavailable" in result.output
+
+
+def test_root_query_service_mode_uses_service_options_and_prints_json(monkeypatch) -> None:
+    requests: list[Any] = []
+
+    def fake_query_documents(request: Any) -> list[dict[str, Any]]:
+        requests.append(request)
+        return [
+            {
+                "text": "service passage",
+                "source": "doc.pdf",
+                "page_number": 3,
+                "metadata": {"type": "text"},
+                "_distance": 0.2,
+            }
+        ]
+
+    monkeypatch.setattr(cli_main, "query_documents", fake_query_documents)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "Which passages mention deployment?",
+            "--run-mode",
+            "service",
+            "--service-url",
+            "http://svc:7670",
+            "--service-api-token",
+            "secret",
+            "--top-k",
+            "2",
+            "--candidate-k",
+            "5",
+            "--page-dedup",
+            "--content-types",
+            "text",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.runtime.run_mode == "service"
+    assert request.service.service_url == "http://svc:7670"
+    assert request.service.service_api_token == "secret"
+    assert request.retrieval.top_k == 2
+    assert request.retrieval.candidate_k == 5
+    assert request.retrieval.page_dedup is True
+    assert request.retrieval.content_types == "text"
+    assert json.loads(result.output) == [
+        {"page_number": 3, "source": "doc.pdf", "text": "service passage"},
+    ]
+
+
+def test_root_query_service_mode_rejects_local_storage_flags() -> None:
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "deployment?",
+            "--run-mode",
+            "service",
+            "--lancedb-uri",
+            "/tmp/lancedb",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--run-mode=service queries the retriever service" in result.output
+    assert "--lancedb-uri" in result.output
