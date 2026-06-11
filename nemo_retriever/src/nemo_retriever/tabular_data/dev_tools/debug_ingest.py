@@ -28,7 +28,7 @@ from nemo_retriever.operators.embed.operators import _BatchEmbedActor
 from nemo_retriever.graph.retriever import Retriever
 from nemo_retriever.tabular_data.retrieval.text_to_sql.main import get_agent_response
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentPayload
-from nemo_retriever.vdb import IngestVdbOperator
+from nemo_retriever.operators.vdb import IngestVdbOperator
 from nemo_retriever.common.params import (
     EmbedParams,
     TabularExtractParams,

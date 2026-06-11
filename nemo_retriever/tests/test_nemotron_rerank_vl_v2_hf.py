@@ -215,7 +215,7 @@ class TestModelRegistration:
 
 class TestRerankHitsVL:
     def test_rerank_hits_loads_images_for_vl_model(self):
-        from nemo_retriever.rerank import rerank_hits
+        from nemo_retriever.operators.rerank import rerank_hits
 
         model = MagicMock()
         model.model_name = "nvidia/llama-nemotron-rerank-vl-1b-v2"
@@ -237,7 +237,7 @@ class TestRerankHitsVL:
         assert len(out) == 2
 
     def test_rerank_hits_no_images_for_text_model(self):
-        from nemo_retriever.rerank import rerank_hits
+        from nemo_retriever.operators.rerank import rerank_hits
 
         model = MagicMock()
         model.model_name = "nvidia/llama-nemotron-rerank-1b-v2"
@@ -252,7 +252,7 @@ class TestRerankHitsVL:
         assert len(out) == 1
 
     def test_rerank_hits_graceful_without_uri(self):
-        from nemo_retriever.rerank import rerank_hits
+        from nemo_retriever.operators.rerank import rerank_hits
 
         model = MagicMock()
         model.model_name = "nvidia/llama-nemotron-rerank-vl-1b-v2"

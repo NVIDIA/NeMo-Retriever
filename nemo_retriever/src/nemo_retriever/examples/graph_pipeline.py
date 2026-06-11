@@ -26,7 +26,7 @@ patches or imports them from this module.
 
 from __future__ import annotations
 
-from nemo_retriever.audio import asr_params_from_env
+from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
 from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
 from nemo_retriever.cli.pipeline import __main__ as _pipeline_main
 

@@ -57,7 +57,7 @@ import pandas as pd
 import typer
 
 from nemo_retriever.cli.sdk_workflow import execute_ingest_plan, resolve_ingest_plan
-from nemo_retriever.audio import asr_params_from_env
+from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
 from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
 from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
 from nemo_retriever.common.params import (

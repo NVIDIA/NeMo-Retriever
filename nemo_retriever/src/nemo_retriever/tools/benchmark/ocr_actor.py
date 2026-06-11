@@ -10,7 +10,7 @@ from typing import Optional
 import ray.data as rd
 import typer
 
-from nemo_retriever.ocr import OCRActor
+from nemo_retriever.operators.extract.ocr.gpu_ocr import OCRActor
 
 from nemo_retriever.tools.benchmark.common import (
     benchmark_sweep,

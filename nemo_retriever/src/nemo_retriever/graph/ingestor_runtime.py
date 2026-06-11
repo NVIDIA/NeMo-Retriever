@@ -12,8 +12,8 @@ from typing import cast
 from typing import Any
 
 from nemo_retriever.operators.extract.caption.caption import CaptionActor
-from nemo_retriever.audio import ASRActor
-from nemo_retriever.audio import MediaChunkActor
+from nemo_retriever.operators.extract.audio.asr_actor import ASRActor
+from nemo_retriever.operators.extract.audio.chunk_actor import MediaChunkActor
 from nemo_retriever.operators.extract.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.operators.dedup import dedup_images
 from nemo_retriever.graph import Graph, StoreOperator, UDFOperator, WebhookNotifyOperator
@@ -24,12 +24,10 @@ from nemo_retriever.common.modality.content_transforms import (
 )
 from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractOperator
 from nemo_retriever.operators.embed.operators import _BatchEmbedActor
-from nemo_retriever.video import (
-    AudioVisualFuser,
-    VideoFrameOCRActor,
-    VideoFrameTextDedup,
-    VideoSplitActor,
-)
+from nemo_retriever.operators.extract.video.audio_visual_fuser import AudioVisualFuser
+from nemo_retriever.operators.extract.video.ocr_actor import VideoFrameOCRActor
+from nemo_retriever.operators.extract.video.text_dedup import VideoFrameTextDedup
+from nemo_retriever.operators.extract.video.split import VideoSplitActor
 from nemo_retriever.operators.extract.ocr.ocr import resolve_ocr_archetype
 from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor
 from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionActor
@@ -37,7 +35,7 @@ from nemo_retriever.operators.extract.table.table_detection import TableStructur
 from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor
 from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
 from nemo_retriever.common.params import TextChunkParams, VdbUploadParams, resolve_split_params
-from nemo_retriever.vdb import IngestVdbOperator
+from nemo_retriever.operators.vdb import IngestVdbOperator
 from nemo_retriever.operators.extract.txt.ray_data import TextChunkActor
 from nemo_retriever.common.modality.convert.to_pdf import DocToPdfConversionActor
 from nemo_retriever.ingestor.plans import IngestExecutionPlan

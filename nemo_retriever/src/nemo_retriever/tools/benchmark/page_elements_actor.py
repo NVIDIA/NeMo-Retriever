@@ -10,7 +10,7 @@ from typing import Optional
 import ray.data as rd
 import typer
 
-from nemo_retriever.page_elements import PageElementDetectionActor
+from nemo_retriever.operators.extract.page_elements.gpu_actor import PageElementDetectionActor
 
 from nemo_retriever.tools.benchmark.common import (
     benchmark_sweep,

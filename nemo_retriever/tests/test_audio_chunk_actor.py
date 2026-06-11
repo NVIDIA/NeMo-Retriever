@@ -35,7 +35,7 @@ def _make_small_wav(path: Path, duration_sec: float = 0.5, sample_rate: int = 80
 
 @pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_media_chunk_actor_empty_batch():
-    from nemo_retriever.audio import MediaChunkActor
+    from nemo_retriever.operators.extract.audio.chunk_actor import MediaChunkActor
 
     params = AudioChunkParams(split_type="size", split_interval=1000)
     actor = MediaChunkActor(params=params)
@@ -48,7 +48,7 @@ def test_media_chunk_actor_empty_batch():
 
 @pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
 def test_media_chunk_actor_single_small_file(tmp_path: Path):
-    from nemo_retriever.audio import MediaChunkActor
+    from nemo_retriever.operators.extract.audio.chunk_actor import MediaChunkActor
 
     wav = tmp_path / "tiny.wav"
     _make_small_wav(wav, duration_sec=0.3)

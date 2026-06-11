@@ -345,13 +345,13 @@ class TestRerankHits:
         return [{"text": f"{prefix}{i}", "_distance": float(i)} for i in range(n)]
 
     def test_empty_hits_returns_empty(self):
-        from nemo_retriever.rerank import rerank_hits
+        from nemo_retriever.operators.rerank import rerank_hits
 
         model = MagicMock()
         assert rerank_hits("q", [], model=model) == []
 
     def test_results_sorted_by_score_descending(self):
-        from nemo_retriever.rerank import rerank_hits
+        from nemo_retriever.operators.rerank import rerank_hits
 
         hits = self._make_hits(3)
         model = MagicMock()
@@ -363,7 +363,7 @@ class TestRerankHits:
         assert scores == sorted(scores, reverse=True)
 
     def test_rerank_score_added_to_each_hit(self):
-        from nemo_retriever.rerank import rerank_hits
+        from nemo_retriever.operators.rerank import rerank_hits
 
         hits = [{"text": "hello"}, {"text": "world"}]
         model = MagicMock()
@@ -373,7 +373,7 @@ class TestRerankHits:
         assert all("_rerank_score" in h for h in out)
 
     def test_top_n_truncates_output(self):
-        from nemo_retriever.rerank import rerank_hits
+        from nemo_retriever.operators.rerank import rerank_hits
 
         hits = self._make_hits(5)
         model = MagicMock()
@@ -383,7 +383,7 @@ class TestRerankHits:
         assert len(out) == 3
 
     def test_model_score_called_with_query_and_texts(self):
-        from nemo_retriever.rerank import rerank_hits
+        from nemo_retriever.operators.rerank import rerank_hits
 
         hits = [{"text": "first"}, {"text": "second"}]
         model = MagicMock()
@@ -394,13 +394,13 @@ class TestRerankHits:
         model.score.assert_called_once_with("my query", ["first", "second"], max_length=512, batch_size=32)
 
     def test_raises_without_model_or_endpoint(self):
-        from nemo_retriever.rerank import rerank_hits
+        from nemo_retriever.operators.rerank import rerank_hits
 
         with pytest.raises(ValueError, match="model.*rerank_invoke_url"):
             rerank_hits("q", [{"text": "doc"}])
 
     def test_custom_text_key(self):
-        from nemo_retriever.rerank import rerank_hits
+        from nemo_retriever.operators.rerank import rerank_hits
 
         hits = [{"content": "alpha"}, {"content": "beta"}]
         model = MagicMock()
@@ -410,7 +410,7 @@ class TestRerankHits:
         assert len(out) == 2
 
     def test_original_hit_keys_preserved(self):
-        from nemo_retriever.rerank import rerank_hits
+        from nemo_retriever.operators.rerank import rerank_hits
 
         hits = [{"text": "t", "metadata": "m", "_distance": 0.5}]
         model = MagicMock()

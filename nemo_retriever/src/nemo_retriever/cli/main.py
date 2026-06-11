@@ -45,11 +45,11 @@ app.add_typer(service_app, name="service")
 # dependencies (tritonclient, torch, …) don't prevent the service
 # from starting.
 _LAZY_SUBAPPS: list[tuple[str, str, str]] = [
-    ("audio", "nemo_retriever.audio", "app"),
+    ("audio", "nemo_retriever.cli.audio.cli", "app"),
     ("image", "nemo_retriever.cli.image", "app"),
-    ("pdf", "nemo_retriever.pdf", "app"),
+    ("pdf", "nemo_retriever.cli.pdf.__main__", "app"),
     ("local", "nemo_retriever.cli.local", "app"),
-    ("chart", "nemo_retriever.chart", "app"),
+    ("chart", "nemo_retriever.cli.chart.commands", "app"),
     ("compare", "nemo_retriever.cli.compare", "app"),
     ("eval", "nemo_retriever.tools.evaluation.cli", "app"),
     ("benchmark", "nemo_retriever.tools.benchmark", "app"),

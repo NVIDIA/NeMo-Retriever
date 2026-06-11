@@ -15,9 +15,9 @@ from typing import Any
 
 import pandas as pd
 
-from nemo_retriever.audio import ASRActor
-from nemo_retriever.audio import MediaChunkActor
-from nemo_retriever.audio import asr_params_from_env
+from nemo_retriever.operators.extract.audio.asr_actor import ASRActor
+from nemo_retriever.operators.extract.audio.chunk_actor import MediaChunkActor
+from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
 from nemo_retriever.operators.extract.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.extract.html.ray_data import HtmlSplitActor
@@ -45,12 +45,12 @@ from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
 from nemo_retriever.operators.extract.table.table_detection import TableStructureActor
 from nemo_retriever.operators.extract.txt.ray_data import TextChunkCPUActor, TxtSplitActor
 from nemo_retriever.common.modality.convert.to_pdf import DocToPdfConversionActor
-from nemo_retriever.video import AudioVisualFuser
-from nemo_retriever.video import VideoFrameActor
-from nemo_retriever.video import VideoFrameOCRActor
-from nemo_retriever.video import VideoFrameTextDedup
-from nemo_retriever.video import dedup_video_frames
-from nemo_retriever.video import video_asr_audio_chunk_params
+from nemo_retriever.operators.extract.video.audio_visual_fuser import AudioVisualFuser
+from nemo_retriever.operators.extract.video.frame_actor import VideoFrameActor
+from nemo_retriever.operators.extract.video.ocr_actor import VideoFrameOCRActor
+from nemo_retriever.operators.extract.video.text_dedup import VideoFrameTextDedup
+from nemo_retriever.operators.extract.video.frame_actor import dedup_video_frames
+from nemo_retriever.operators.extract.video.split import video_asr_audio_chunk_params
 from nemo_retriever.graph.designer import designer_component
 from nemo_retriever.common.input_files import INPUT_TYPE_EXTENSIONS
 from nemo_retriever.common import ray_resource_hueristics as _rrh

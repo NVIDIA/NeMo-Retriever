@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from nemo_retriever.common.params import VdbUploadParams
-from nemo_retriever.vdb import IngestVdbOperator
+from nemo_retriever.operators.vdb import IngestVdbOperator
 from nemo_retriever.common.vdb.sidecar_metadata import (
     apply_sidecar_metadata_to_client_batches,
     filter_hits_by_content_metadata,

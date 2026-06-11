@@ -216,6 +216,6 @@ def resolve_branch_extraction_inputs(
 
 
 def _default_asr_params() -> ASRParams:
-    from nemo_retriever.audio import asr_params_from_env
+    from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
 
     return asr_params_from_env().model_copy(update={"segment_audio": False})

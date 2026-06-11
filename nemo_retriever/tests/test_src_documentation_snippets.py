@@ -58,7 +58,7 @@ _PUBLIC_RETRIEVER_DOCS = (
     "nemo_retriever/docs/cli/README.md",
     "nemo_retriever/retriever.md",
     "nemo_retriever/src/nemo_retriever/tools/evaluation/README.md",
-    "nemo_retriever/src/nemo_retriever/vdb/README.md",
+    "nemo_retriever/src/nemo_retriever/common/vdb/README.md",
 )
 _PUBLIC_GRAPH_PIPELINE_DOCS = (
     "docs/docs/extraction/workflow-document-ingestion.md",
