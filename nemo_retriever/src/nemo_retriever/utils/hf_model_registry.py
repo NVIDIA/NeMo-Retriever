@@ -64,6 +64,13 @@ def get_hf_revision(model_id: str, *, strict: bool = True) -> str | None:
     if revision is not None:
         return revision
 
+    # A local filesystem checkpoint has no Hub commit to pin, so the revision
+    # gate does not apply: load the on-disk files as-is. This is scoped to
+    # directories only -- unregistered *Hub* ids still hit the strict gate
+    # below, preserving the supply-chain pin for remote models.
+    if model_id and os.path.isdir(str(model_id)):
+        return None
+
     msg = (
         f"No pinned HuggingFace revision for model '{model_id}'. "
         "Add an entry to HF_MODEL_REVISIONS in hf_model_registry.py to pin it."
