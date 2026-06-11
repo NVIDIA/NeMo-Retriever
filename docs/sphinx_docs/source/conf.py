@@ -43,7 +43,7 @@ html_theme_options = {
     "public_docs_features": True,
     "header_links": [
         ("Home", "index"),
-        ("GitHub", "https://github.com/NVIDIA/nvidia-sphinx-theme", True, "fab fa-github"),
+        ("GitHub", "https://github.com/NVIDIA/NeMo-Retriever", True, "fab fa-github"),
     ],
     "show_prev_next": True,  # Show next/previous buttons at bottom
 }
