@@ -46,19 +46,19 @@ app.add_typer(service_app, name="service")
 # from starting.
 _LAZY_SUBAPPS: list[tuple[str, str, str]] = [
     ("audio", "nemo_retriever.audio", "app"),
-    ("image", "nemo_retriever.utils.image", "app"),
+    ("image", "nemo_retriever.cli.image", "app"),
     ("pdf", "nemo_retriever.pdf", "app"),
-    ("local", "nemo_retriever.local", "app"),
+    ("local", "nemo_retriever.cli.local", "app"),
     ("chart", "nemo_retriever.chart", "app"),
-    ("compare", "nemo_retriever.utils.compare", "app"),
-    ("eval", "nemo_retriever.evaluation.cli", "app"),
-    ("benchmark", "nemo_retriever.utils.benchmark", "app"),
+    ("compare", "nemo_retriever.cli.compare", "app"),
+    ("eval", "nemo_retriever.tools.evaluation.cli", "app"),
+    ("benchmark", "nemo_retriever.tools.benchmark", "app"),
     ("harness", "nemo_retriever.harness", "app"),
-    ("recall", "nemo_retriever.recall", "app"),
-    ("skill-eval", "nemo_retriever.skill_eval", "app"),
-    ("txt", "nemo_retriever.txt.__main__", "app"),
-    ("html", "nemo_retriever.html.__main__", "app"),
-    ("pipeline", "nemo_retriever.pipeline.__main__", "app"),
+    ("recall", "nemo_retriever.tools.recall", "app"),
+    ("skill-eval", "nemo_retriever.tools.skill_eval", "app"),
+    ("txt", "nemo_retriever.cli.txt.__main__", "app"),
+    ("html", "nemo_retriever.cli.html.__main__", "app"),
+    ("pipeline", "nemo_retriever.cli.pipeline.__main__", "app"),
 ]
 
 for _name, _module, _attr in _LAZY_SUBAPPS:

@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from nemo_retriever.tools.evaluation.eval_operator import EvalOperator
+from nemo_retriever.operators.graph_ops.eval_operator import EvalOperator
 
 if TYPE_CHECKING:
     from nemo_retriever.graph.retriever import Retriever

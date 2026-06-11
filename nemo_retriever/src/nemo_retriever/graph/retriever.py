@@ -631,7 +631,7 @@ class RetrieverPipelineBuilder:
 
     def score(self) -> "RetrieverPipelineBuilder":
         """Append a :class:`ScoringOperator` step (Tier 1 + Tier 2)."""
-        from nemo_retriever.tools.evaluation.scoring_operator import ScoringOperator
+        from nemo_retriever.operators.graph_ops.scoring_operator import ScoringOperator
 
         self._steps.append(ScoringOperator())
         return self

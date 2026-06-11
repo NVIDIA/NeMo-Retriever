@@ -600,7 +600,7 @@ def _build_mock_operator(class_name: str, process_fn):
     ``EvalOperator`` so required-column validation does not fire, and
     simply override ``process``.
     """
-    from nemo_retriever.tools.evaluation.eval_operator import EvalOperator
+    from nemo_retriever.operators.graph_ops.eval_operator import EvalOperator
 
     class _Mock(EvalOperator):
         required_columns = ()

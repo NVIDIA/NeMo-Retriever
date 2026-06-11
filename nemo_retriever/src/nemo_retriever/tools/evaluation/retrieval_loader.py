@@ -11,7 +11,7 @@ from typing import Any, ClassVar
 
 import pandas as pd
 
-from nemo_retriever.tools.evaluation.eval_operator import EvalOperator
+from nemo_retriever.operators.graph_ops.eval_operator import EvalOperator
 
 logger = logging.getLogger(__name__)
 

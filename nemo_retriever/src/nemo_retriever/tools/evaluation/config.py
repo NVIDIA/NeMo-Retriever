@@ -269,7 +269,7 @@ def build_eval_chain(
     from nemo_retriever.tools.evaluation.generation import QAGenerationOperator
     from nemo_retriever.tools.evaluation.judging import JudgingOperator
     from nemo_retriever.tools.evaluation.retrieval_loader import RetrievalLoaderOperator
-    from nemo_retriever.tools.evaluation.scoring_operator import ScoringOperator
+    from nemo_retriever.operators.graph_ops.scoring_operator import ScoringOperator
 
     generators = config["generators"]
     if not generators:
