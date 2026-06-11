@@ -1,5 +1,0 @@
-{
-  "query_id": "vidore_v3_finance_en:i12:v1",
-  "final_answer": "6 documents were loaded into the LanceDB index (lancedb/nemo-retriever) from ./pdfs/, producing 4336 indexed rows across 2942 total pages. The corpus is now queryable.",
-  "selected_chunks": []
-}

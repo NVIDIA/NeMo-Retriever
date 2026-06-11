@@ -1,6 +1,0 @@
-{
-  "query_id": "vidore_v3_finance_en:i10:v1",
-  "final_answer": "6 documents were successfully loaded into the knowledge base (bank_of_america_2024, citigroup_2024, goldman_sachs_2024, jpmorgan_chase_2024, morgan_stanley_2024, wells_fargo_2024), producing 470 rows in the LanceDB table lancedb/nemo-retriever.",
-  "selected_chunks": [],
-  "schema_version": 1
-}

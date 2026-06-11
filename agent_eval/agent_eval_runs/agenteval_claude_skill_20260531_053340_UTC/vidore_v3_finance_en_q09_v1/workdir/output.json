@@ -1,7 +1,0 @@
-{
-  "query_id": "vidore_v3_finance_en:q09:v1",
-  "final_answer": "The corpus does not support this question. The only document present is citigroup_2024.pdf (Citigroup's 2024 Annual Report on Form 10-K) — there is no Bank of America annual report, and no mention of 'Globex Corp' anywhere in the indexed content. No contracts between Bank of America and Globex Corp can be listed from this corpus.",
-  "selected_chunks": [
-    {"rank": 1, "doc_id": "citigroup_2024", "modality": "pdf_page", "locator": {"page_number": 4}, "content": "CITIGROUP'S 2024 ANNUAL REPORT ON FORM 10-K — OVERVIEW, Citigroup Reportable Operating Segments, MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS, Executive Summary, Citi's Multiyear Transformation, Summary of Selected Financial Data, Segment Revenues and Income (Loss), Services, Markets, Banking, Wealth, U.S. Personal Banking, CAPITAL RESOURCES, RISK FACTORS, NET ZERO AND SUSTAINABILITY, HUMAN CAPITAL RESOURCES AND MANAGEMENT, MANAGING GLOBAL RISK, SIGNIFICANT ACCOUNTING POLICIES, FORWARD-LOOKING STATEMENTS, REPORT OF INDEPENDENT REGISTERED PUBLIC ACCOUNTING FIRM, CONSOLIDATED FINANCIAL STATEMENTS, NOTES TO CONSOLIDATED FINANCIAL STATEMENTS, FINANCIAL DATA SUPPLEMENT, SUPERVISION, REGULATION AND OTHER, CORPORATE INFORMATION, Executive Officers, Citigroup Board of Directors, GLOSSARY OF TERMS AND ACRONYMS, EXHIBIT INDEX, SIGNATURES — this is the table of contents of the Citigroup (not Bank of America) 2024 10-K, and the only document indexed in the corpus."}
-  ]
-}
