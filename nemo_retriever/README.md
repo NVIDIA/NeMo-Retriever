@@ -95,7 +95,7 @@ Skip this step if you are using remote NIM inference only.
 
 The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
 
-> **Note:** `batch` is the primary intended run_mode of operation for this library. Other modes are experimental and subject to change or removal.
+> **Note:** `retriever ingest` and `retriever pipeline run` default to `--run-mode inprocess` (single-process pandas). Pass `--run-mode batch` for Ray Data scale-out on larger workloads. Other modes are experimental and subject to change or removal.
 
 The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, see [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
 
