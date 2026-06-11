@@ -8,8 +8,8 @@ import click
 import typer
 from typer.core import TyperGroup
 
-from nemo_retriever.adapters.cli.ingest.graph import batch_command, local_command
-from nemo_retriever.adapters.cli.ingest.service import service_command
+from nemo_retriever.adapters.cli.ingest.graph import _batch_command, _local_command
+from nemo_retriever.adapters.cli.ingest.service import _service_command
 
 _DEFAULT_COMMAND = "local"
 _GROUP_OPTIONS = {"--help", "-h", "--install-completion", "--show-completion"}
@@ -28,6 +28,6 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-app.command("local")(local_command)
-app.command("batch")(batch_command)
-app.command("service")(service_command)
+app.command("local")(_local_command)
+app.command("batch")(_batch_command)
+app.command("service")(_service_command)

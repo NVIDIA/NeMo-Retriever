@@ -4,11 +4,14 @@
 
 from __future__ import annotations
 
+from typing import Any, Mapping
+
+import typer
+
 from nemo_retriever.adapters.cli.ingest import options as opts
 from nemo_retriever.adapters.cli.ingest.shared import run_cli_workflow
 from nemo_retriever.adapters.cli.ingest_workflow import run_ingest_workflow
 from nemo_retriever.ingest.plan import (
-    AudioSplitTypeValue,
     IngestCaptionOptions,
     IngestChunkOptions,
     IngestDedupOptions,
@@ -19,13 +22,10 @@ from nemo_retriever.ingest.plan import (
     IngestImageStoreOptions,
     IngestMediaOptions,
     IngestPlanRequest,
+    IngestRunModeValue,
     IngestRuntimeOptions,
     IngestSourceOptions,
     IngestStorageOptions,
-    LocalIngestEmbedBackendValue,
-    OcrLangValue,
-    OcrVersionValue,
-    TableOutputFormatValue,
     resolve_ingest_plan,
 )
 
@@ -37,125 +37,170 @@ def _run_graph_ingest_request(request: IngestPlanRequest, *, dry_run: bool, quie
     )
 
 
-def _extract_options(
-    *,
-    method: str | None,
-    dpi: int | None,
-    extract_text: bool | None,
-    extract_images: bool | None,
-    extract_tables: bool | None,
-    extract_charts: bool | None,
-    extract_infographics: bool | None,
-    extract_page_as_image: bool | None,
-    use_page_elements: bool | None,
-    use_graphic_elements: bool | None,
-    use_table_structure: bool | None,
-    page_elements_invoke_url: str | None,
-    ocr_invoke_url: str | None,
-    ocr_version: OcrVersionValue | None,
-    ocr_lang: OcrLangValue | None,
-    graphic_elements_invoke_url: str | None,
-    table_structure_invoke_url: str | None,
-    table_output_format: TableOutputFormatValue | None,
-    api_key: str | None,
-    batch: IngestExtractBatchOptions | None = None,
-) -> IngestExtractOptions:
+def _source_options(values: Mapping[str, Any]) -> IngestSourceOptions:
+    return IngestSourceOptions(documents=values["documents"], profile=values["profile"])
+
+
+def _runtime_options(values: Mapping[str, Any], *, run_mode: IngestRunModeValue) -> IngestRuntimeOptions:
+    return IngestRuntimeOptions(
+        run_mode=run_mode,
+        ray_address=values.get("ray_address"),
+        ray_log_to_driver=values.get("ray_log_to_driver"),
+    )
+
+
+def _extract_batch_options(values: Mapping[str, Any], *, enabled: bool) -> IngestExtractBatchOptions:
+    if not enabled:
+        return IngestExtractBatchOptions()
+    return IngestExtractBatchOptions(
+        pdf_split_batch_size=values.get("pdf_split_batch_size"),
+        pdf_extract_workers=values.get("pdf_extract_workers"),
+        pdf_extract_batch_size=values.get("pdf_extract_batch_size"),
+        pdf_extract_cpus_per_task=values.get("pdf_extract_cpus_per_task"),
+        page_elements_workers=values.get("page_elements_workers"),
+        page_elements_batch_size=values.get("page_elements_batch_size"),
+        page_elements_cpus_per_actor=values.get("page_elements_cpus_per_actor"),
+        page_elements_gpus_per_actor=values.get("page_elements_gpus_per_actor"),
+        ocr_workers=values.get("ocr_workers"),
+        ocr_batch_size=values.get("ocr_batch_size"),
+        ocr_cpus_per_actor=values.get("ocr_cpus_per_actor"),
+        ocr_gpus_per_actor=values.get("ocr_gpus_per_actor"),
+        table_structure_workers=values.get("table_structure_workers"),
+        table_structure_batch_size=values.get("table_structure_batch_size"),
+        table_structure_cpus_per_actor=values.get("table_structure_cpus_per_actor"),
+        table_structure_gpus_per_actor=values.get("table_structure_gpus_per_actor"),
+        nemotron_parse_workers=values.get("nemotron_parse_workers"),
+        nemotron_parse_batch_size=values.get("nemotron_parse_batch_size"),
+        nemotron_parse_gpus_per_actor=values.get("nemotron_parse_gpus_per_actor"),
+    )
+
+
+def _extract_options(values: Mapping[str, Any], *, batch: IngestExtractBatchOptions) -> IngestExtractOptions:
     return IngestExtractOptions(
-        method=method,
-        dpi=dpi,
-        extract_text=extract_text,
-        extract_images=extract_images,
-        extract_tables=extract_tables,
-        extract_charts=extract_charts,
-        extract_infographics=extract_infographics,
-        extract_page_as_image=extract_page_as_image,
-        use_page_elements=use_page_elements,
-        use_graphic_elements=use_graphic_elements,
-        use_table_structure=use_table_structure,
-        page_elements_invoke_url=page_elements_invoke_url,
-        ocr_invoke_url=ocr_invoke_url,
-        ocr_version=ocr_version,
-        ocr_lang=ocr_lang,
-        graphic_elements_invoke_url=graphic_elements_invoke_url,
-        table_structure_invoke_url=table_structure_invoke_url,
-        table_output_format=table_output_format,
-        extract_api_key=api_key,
-        batch=batch or IngestExtractBatchOptions(),
+        method=values.get("method"),
+        dpi=values.get("dpi"),
+        extract_text=values.get("extract_text"),
+        extract_images=values.get("extract_images"),
+        extract_tables=values.get("extract_tables"),
+        extract_charts=values.get("extract_charts"),
+        extract_infographics=values.get("extract_infographics"),
+        extract_page_as_image=values.get("extract_page_as_image"),
+        use_page_elements=values.get("use_page_elements"),
+        use_graphic_elements=values.get("use_graphic_elements"),
+        use_table_structure=values.get("use_table_structure"),
+        page_elements_invoke_url=values.get("page_elements_invoke_url"),
+        ocr_invoke_url=values.get("ocr_invoke_url"),
+        ocr_version=values.get("ocr_version"),
+        ocr_lang=values.get("ocr_lang"),
+        graphic_elements_invoke_url=values.get("graphic_elements_invoke_url"),
+        table_structure_invoke_url=values.get("table_structure_invoke_url"),
+        table_output_format=values.get("table_output_format"),
+        extract_api_key=values.get("api_key"),
+        batch=batch,
     )
 
 
-def _media_options(
-    *,
-    segment_audio: bool | None,
-    audio_split_type: AudioSplitTypeValue,
-    audio_split_interval: int | None,
-    video_extract_audio: bool | None,
-    video_extract_frames: bool | None,
-    video_frame_fps: float | None,
-    video_frame_dedup: bool | None,
-    video_frame_text_dedup: bool | None,
-    video_frame_text_dedup_max_dropped_frames: int | None,
-    video_av_fuse: bool | None,
-) -> IngestMediaOptions:
+def _media_options(values: Mapping[str, Any]) -> IngestMediaOptions:
     return IngestMediaOptions(
-        segment_audio=segment_audio,
-        audio_split_type=audio_split_type,
-        audio_split_interval=audio_split_interval,
-        video_extract_audio=video_extract_audio,
-        video_extract_frames=video_extract_frames,
-        video_frame_fps=video_frame_fps,
-        video_frame_dedup=video_frame_dedup,
-        video_frame_text_dedup=video_frame_text_dedup,
-        video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
-        video_av_fuse=video_av_fuse,
+        segment_audio=values.get("segment_audio"),
+        audio_split_type=values["audio_split_type"],
+        audio_split_interval=values.get("audio_split_interval"),
+        video_extract_audio=values.get("video_extract_audio"),
+        video_extract_frames=values.get("video_extract_frames"),
+        video_frame_fps=values.get("video_frame_fps"),
+        video_frame_dedup=values.get("video_frame_dedup"),
+        video_frame_text_dedup=values.get("video_frame_text_dedup"),
+        video_frame_text_dedup_max_dropped_frames=values.get("video_frame_text_dedup_max_dropped_frames"),
+        video_av_fuse=values.get("video_av_fuse"),
     )
 
 
-def _caption_options(
-    *,
-    caption: bool,
-    api_key: str | None,
-    caption_invoke_url: str | None,
-    caption_model_name: str | None,
-    caption_context_text_max_chars: int | None,
-    caption_infographics: bool | None,
-) -> IngestCaptionOptions:
+def _caption_options(values: Mapping[str, Any]) -> IngestCaptionOptions:
     return IngestCaptionOptions(
-        enabled=caption,
-        caption_invoke_url=caption_invoke_url,
-        caption_api_key=api_key,
-        caption_model_name=caption_model_name,
-        caption_context_text_max_chars=caption_context_text_max_chars,
-        caption_infographics=caption_infographics,
+        enabled=values["caption"],
+        caption_invoke_url=values.get("caption_invoke_url"),
+        caption_api_key=values.get("api_key"),
+        caption_model_name=values.get("caption_model_name"),
+        caption_context_text_max_chars=values.get("caption_context_text_max_chars"),
+        caption_infographics=values.get("caption_infographics"),
     )
 
 
-def _embed_options(
-    *,
-    embed_invoke_url: str | None,
-    embed_model_name: str | None,
-    local_ingest_embed_backend: LocalIngestEmbedBackendValue | None,
-    api_key: str | None,
-    embed_modality: str | None,
-    embed_granularity: str | None,
-    text_elements_modality: str | None,
-    structured_elements_modality: str | None,
-    batch: IngestEmbedBatchOptions | None = None,
-) -> IngestEmbedOptions:
+def _dedup_options(values: Mapping[str, Any]) -> IngestDedupOptions:
+    return IngestDedupOptions(enabled=values["dedup"], iou_threshold=values.get("dedup_iou_threshold"))
+
+
+def _chunk_options(values: Mapping[str, Any]) -> IngestChunkOptions:
+    return IngestChunkOptions(
+        enabled=values["text_chunk"],
+        text_chunk_max_tokens=values.get("text_chunk_max_tokens"),
+        text_chunk_overlap_tokens=values.get("text_chunk_overlap_tokens"),
+    )
+
+
+def _embed_batch_options(values: Mapping[str, Any], *, enabled: bool) -> IngestEmbedBatchOptions:
+    if not enabled:
+        return IngestEmbedBatchOptions()
+    return IngestEmbedBatchOptions(
+        embed_workers=values.get("embed_workers"),
+        embed_batch_size=values.get("embed_batch_size"),
+        embed_cpus_per_actor=values.get("embed_cpus_per_actor"),
+        embed_gpus_per_actor=values.get("embed_gpus_per_actor"),
+    )
+
+
+def _embed_options(values: Mapping[str, Any], *, batch: IngestEmbedBatchOptions) -> IngestEmbedOptions:
     return IngestEmbedOptions(
-        embed_invoke_url=embed_invoke_url,
-        embed_model_name=embed_model_name,
-        local_ingest_embed_backend=local_ingest_embed_backend,
-        embed_api_key=api_key,
-        embed_modality=embed_modality,
-        embed_granularity=embed_granularity,
-        text_elements_modality=text_elements_modality,
-        structured_elements_modality=structured_elements_modality,
-        batch=batch or IngestEmbedBatchOptions(),
+        embed_invoke_url=values.get("embed_invoke_url"),
+        embed_model_name=values.get("embed_model_name"),
+        local_ingest_embed_backend=values.get("local_ingest_embed_backend"),
+        embed_api_key=values.get("api_key"),
+        embed_modality=values.get("embed_modality"),
+        embed_granularity=values.get("embed_granularity"),
+        text_elements_modality=values.get("text_elements_modality"),
+        structured_elements_modality=values.get("structured_elements_modality"),
+        batch=batch,
     )
 
 
-def local_command(
+def _image_store_options(values: Mapping[str, Any]) -> IngestImageStoreOptions:
+    return IngestImageStoreOptions(images_uri=values.get("store_images_uri"))
+
+
+def _storage_options(values: Mapping[str, Any]) -> IngestStorageOptions:
+    return IngestStorageOptions(
+        lancedb_uri=values["lancedb_uri"],
+        table_name=values["table_name"],
+        overwrite=values["overwrite"],
+    )
+
+
+def _graph_ingest_request(values: Mapping[str, Any], *, run_mode: IngestRunModeValue) -> IngestPlanRequest:
+    batch_enabled = run_mode == "batch"
+    extract_batch = _extract_batch_options(values, enabled=batch_enabled)
+    embed_batch = _embed_batch_options(values, enabled=batch_enabled)
+
+    return IngestPlanRequest(
+        source=_source_options(values),
+        runtime=_runtime_options(values, run_mode=run_mode),
+        extract=_extract_options(values, batch=extract_batch),
+        media=_media_options(values),
+        caption=_caption_options(values),
+        dedup=_dedup_options(values),
+        chunk=_chunk_options(values),
+        embed=_embed_options(values, batch=embed_batch),
+        image_store=_image_store_options(values),
+        storage=_storage_options(values),
+    )
+
+
+def _run_graph_command(ctx: typer.Context, *, run_mode: IngestRunModeValue) -> None:
+    request = _graph_ingest_request(ctx.params, run_mode=run_mode)
+    _run_graph_ingest_request(request, dry_run=ctx.params["dry_run"], quiet=ctx.params["quiet"])
+
+
+def _local_command(
+    ctx: typer.Context,
     documents: opts.DocumentsArgument,
     profile: opts.ProfileOption = "auto",
     lancedb_uri: opts.LanceDbUriOption = "lancedb",
@@ -211,73 +256,11 @@ def local_command(
     text_chunk_overlap_tokens: opts.TextChunkOverlapTokensOption = None,
     quiet: opts.QuietOption = True,
 ) -> None:
-    request = IngestPlanRequest(
-        source=IngestSourceOptions(documents=documents, profile=profile),
-        runtime=IngestRuntimeOptions(run_mode="inprocess"),
-        extract=_extract_options(
-            method=method,
-            dpi=dpi,
-            extract_text=extract_text,
-            extract_images=extract_images,
-            extract_tables=extract_tables,
-            extract_charts=extract_charts,
-            extract_infographics=extract_infographics,
-            extract_page_as_image=extract_page_as_image,
-            use_page_elements=use_page_elements,
-            use_graphic_elements=use_graphic_elements,
-            use_table_structure=use_table_structure,
-            page_elements_invoke_url=page_elements_invoke_url,
-            ocr_invoke_url=ocr_invoke_url,
-            ocr_version=ocr_version,
-            ocr_lang=ocr_lang,
-            graphic_elements_invoke_url=graphic_elements_invoke_url,
-            table_structure_invoke_url=table_structure_invoke_url,
-            table_output_format=table_output_format,
-            api_key=api_key,
-        ),
-        media=_media_options(
-            segment_audio=segment_audio,
-            audio_split_type=audio_split_type,
-            audio_split_interval=audio_split_interval,
-            video_extract_audio=video_extract_audio,
-            video_extract_frames=video_extract_frames,
-            video_frame_fps=video_frame_fps,
-            video_frame_dedup=video_frame_dedup,
-            video_frame_text_dedup=video_frame_text_dedup,
-            video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
-            video_av_fuse=video_av_fuse,
-        ),
-        caption=_caption_options(
-            caption=caption,
-            api_key=api_key,
-            caption_invoke_url=caption_invoke_url,
-            caption_model_name=caption_model_name,
-            caption_context_text_max_chars=caption_context_text_max_chars,
-            caption_infographics=caption_infographics,
-        ),
-        dedup=IngestDedupOptions(enabled=dedup, iou_threshold=dedup_iou_threshold),
-        chunk=IngestChunkOptions(
-            enabled=text_chunk,
-            text_chunk_max_tokens=text_chunk_max_tokens,
-            text_chunk_overlap_tokens=text_chunk_overlap_tokens,
-        ),
-        embed=_embed_options(
-            embed_invoke_url=embed_invoke_url,
-            embed_model_name=embed_model_name,
-            local_ingest_embed_backend=local_ingest_embed_backend,
-            api_key=api_key,
-            embed_modality=embed_modality,
-            embed_granularity=embed_granularity,
-            text_elements_modality=text_elements_modality,
-            structured_elements_modality=structured_elements_modality,
-        ),
-        image_store=IngestImageStoreOptions(images_uri=store_images_uri),
-        storage=IngestStorageOptions(lancedb_uri=lancedb_uri, table_name=table_name, overwrite=overwrite),
-    )
-    _run_graph_ingest_request(request, dry_run=dry_run, quiet=quiet)
+    _run_graph_command(ctx, run_mode="inprocess")
 
 
-def batch_command(
+def _batch_command(
+    ctx: typer.Context,
     documents: opts.DocumentsArgument,
     profile: opts.ProfileOption = "auto",
     lancedb_uri: opts.LanceDbUriOption = "lancedb",
@@ -358,100 +341,4 @@ def batch_command(
     embed_gpus_per_actor: opts.EmbedGpusPerActorOption = None,
     quiet: opts.QuietOption = True,
 ) -> None:
-    extract_batch = IngestExtractBatchOptions(
-        pdf_split_batch_size=pdf_split_batch_size,
-        pdf_extract_workers=pdf_extract_workers,
-        pdf_extract_batch_size=pdf_extract_batch_size,
-        pdf_extract_cpus_per_task=pdf_extract_cpus_per_task,
-        page_elements_workers=page_elements_workers,
-        page_elements_batch_size=page_elements_batch_size,
-        page_elements_cpus_per_actor=page_elements_cpus_per_actor,
-        page_elements_gpus_per_actor=page_elements_gpus_per_actor,
-        ocr_workers=ocr_workers,
-        ocr_batch_size=ocr_batch_size,
-        ocr_cpus_per_actor=ocr_cpus_per_actor,
-        ocr_gpus_per_actor=ocr_gpus_per_actor,
-        table_structure_workers=table_structure_workers,
-        table_structure_batch_size=table_structure_batch_size,
-        table_structure_cpus_per_actor=table_structure_cpus_per_actor,
-        table_structure_gpus_per_actor=table_structure_gpus_per_actor,
-        nemotron_parse_workers=nemotron_parse_workers,
-        nemotron_parse_batch_size=nemotron_parse_batch_size,
-        nemotron_parse_gpus_per_actor=nemotron_parse_gpus_per_actor,
-    )
-    embed_batch = IngestEmbedBatchOptions(
-        embed_workers=embed_workers,
-        embed_batch_size=embed_batch_size,
-        embed_cpus_per_actor=embed_cpus_per_actor,
-        embed_gpus_per_actor=embed_gpus_per_actor,
-    )
-    request = IngestPlanRequest(
-        source=IngestSourceOptions(documents=documents, profile=profile),
-        runtime=IngestRuntimeOptions(
-            run_mode="batch",
-            ray_address=ray_address,
-            ray_log_to_driver=ray_log_to_driver,
-        ),
-        extract=_extract_options(
-            method=method,
-            dpi=dpi,
-            extract_text=extract_text,
-            extract_images=extract_images,
-            extract_tables=extract_tables,
-            extract_charts=extract_charts,
-            extract_infographics=extract_infographics,
-            extract_page_as_image=extract_page_as_image,
-            use_page_elements=use_page_elements,
-            use_graphic_elements=use_graphic_elements,
-            use_table_structure=use_table_structure,
-            page_elements_invoke_url=page_elements_invoke_url,
-            ocr_invoke_url=ocr_invoke_url,
-            ocr_version=ocr_version,
-            ocr_lang=ocr_lang,
-            graphic_elements_invoke_url=graphic_elements_invoke_url,
-            table_structure_invoke_url=table_structure_invoke_url,
-            table_output_format=table_output_format,
-            api_key=api_key,
-            batch=extract_batch,
-        ),
-        media=_media_options(
-            segment_audio=segment_audio,
-            audio_split_type=audio_split_type,
-            audio_split_interval=audio_split_interval,
-            video_extract_audio=video_extract_audio,
-            video_extract_frames=video_extract_frames,
-            video_frame_fps=video_frame_fps,
-            video_frame_dedup=video_frame_dedup,
-            video_frame_text_dedup=video_frame_text_dedup,
-            video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
-            video_av_fuse=video_av_fuse,
-        ),
-        caption=_caption_options(
-            caption=caption,
-            api_key=api_key,
-            caption_invoke_url=caption_invoke_url,
-            caption_model_name=caption_model_name,
-            caption_context_text_max_chars=caption_context_text_max_chars,
-            caption_infographics=caption_infographics,
-        ),
-        dedup=IngestDedupOptions(enabled=dedup, iou_threshold=dedup_iou_threshold),
-        chunk=IngestChunkOptions(
-            enabled=text_chunk,
-            text_chunk_max_tokens=text_chunk_max_tokens,
-            text_chunk_overlap_tokens=text_chunk_overlap_tokens,
-        ),
-        embed=_embed_options(
-            embed_invoke_url=embed_invoke_url,
-            embed_model_name=embed_model_name,
-            local_ingest_embed_backend=local_ingest_embed_backend,
-            api_key=api_key,
-            embed_modality=embed_modality,
-            embed_granularity=embed_granularity,
-            text_elements_modality=text_elements_modality,
-            structured_elements_modality=structured_elements_modality,
-            batch=embed_batch,
-        ),
-        image_store=IngestImageStoreOptions(images_uri=store_images_uri),
-        storage=IngestStorageOptions(lancedb_uri=lancedb_uri, table_name=table_name, overwrite=overwrite),
-    )
-    _run_graph_ingest_request(request, dry_run=dry_run, quiet=quiet)
+    _run_graph_command(ctx, run_mode="batch")

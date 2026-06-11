@@ -21,7 +21,7 @@ from nemo_retriever.ingest.service import (
 )
 
 
-def service_command(
+def _service_command(
     documents: opts.DocumentsArgument,
     profile: opts.ProfileOption = "auto",
     service_url: opts.ServiceUrlOption = "http://localhost:7670",
