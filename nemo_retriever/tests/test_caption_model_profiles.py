@@ -45,7 +45,7 @@ _MISSING = object()
 
 
 def _reload_model_profiles_with_fake_revision_lookup(monkeypatch, fake_get_hf_revision):
-    import nemo_retriever.caption as caption_pkg
+    import nemo_retriever.common.modality.caption as caption_pkg
     import nemo_retriever.models.hf_model_registry as hf_model_registry
 
     module_name = "nemo_retriever.common.modality.caption.model_profiles"
