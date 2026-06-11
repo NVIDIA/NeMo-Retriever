@@ -19,12 +19,39 @@ import time
 import traceback
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import typer
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_runner_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise typer.BadParameter("must be an ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _runner_time_has_passed(value: str | None) -> bool:
+    parsed = _parse_runner_time(value)
+    if parsed is None:
+        return False
+    return datetime.now(timezone.utc) >= parsed
+
+
+def _seconds_until_runner_time(value: str | None) -> float | None:
+    parsed = _parse_runner_time(value)
+    if parsed is None:
+        return None
+    return max(0.0, (parsed - datetime.now(timezone.utc)).total_seconds())
 
 
 # ---------------------------------------------------------------------------
@@ -1657,6 +1684,12 @@ def _build_registration_payload(
     heartbeat_interval: int = 30,
     ray_address: str | None = None,
     num_gpus: int | None = None,
+    valid_until: str | None = None,
+    lease_expires_at: str | None = None,
+    lease_id: str | None = None,
+    resource_name: str | None = None,
+    orchestrator_run: str | None = None,
+    status: str = "online",
 ) -> dict[str, Any]:
     """Build the JSON payload used to register (or re-register) with the portal."""
     return {
@@ -1666,11 +1699,16 @@ def _build_registration_payload(
         "gpu_count": num_gpus if num_gpus is not None else meta.get("gpu_count"),
         "cpu_count": meta.get("cpu_count"),
         "memory_gb": meta.get("memory_gb"),
-        "status": "online",
+        "status": status,
         "tags": tags,
         "heartbeat_interval": heartbeat_interval,
         "git_commit": _get_current_git_commit(),
         "ray_address": _resolve_ray_address(ray_address),
+        "valid_until": valid_until,
+        "lease_expires_at": lease_expires_at,
+        "lease_id": lease_id,
+        "resource_name": resource_name,
+        "orchestrator_run": orchestrator_run,
         "metadata": {
             "cuda_driver": meta.get("cuda_driver"),
             "ray_version": meta.get("ray_version"),
@@ -1704,6 +1742,19 @@ def runner_start_command(
         "--num-gpus",
         help="Number of GPUs to report for this runner. Overrides auto-detected count.",
     ),
+    valid_until: str | None = typer.Option(
+        None,
+        "--valid-until",
+        help="ISO-8601 timestamp after which this runner must stop accepting work.",
+    ),
+    lease_expires_at: str | None = typer.Option(
+        None,
+        "--lease-expires-at",
+        help="Optional lease expiry timestamp reported to the portal.",
+    ),
+    lease_id: str | None = typer.Option(None, "--lease-id", help="Optional external lease identifier."),
+    resource_name: str | None = typer.Option(None, "--resource-name", help="Optional external resource name."),
+    orchestrator_run: str | None = typer.Option(None, "--orchestrator-run", help="Optional orchestrator run name."),
     dataset_cache_dir: str | None = typer.Option(
         None,
         "--dataset-cache-dir",
@@ -1750,6 +1801,9 @@ def runner_start_command(
     _runner_num_gpus = num_gpus if num_gpus is not None else meta.get("gpu_count")
     typer.echo(f"  Num GPUs : {_runner_num_gpus or 'auto'}")
 
+    _parse_runner_time(valid_until)
+    _parse_runner_time(lease_expires_at)
+
     update_marker = _read_and_clear_update_marker()
     if update_marker:
         saved_ray = update_marker.get("ray_address")
@@ -1769,6 +1823,7 @@ def runner_start_command(
 
     if manager_url:
         base_url = manager_url.rstrip("/")
+        initial_status = "offline" if _runner_time_has_passed(valid_until) else "online"
         reg_payload = _build_registration_payload(
             runner_name,
             meta,
@@ -1776,7 +1831,19 @@ def runner_start_command(
             heartbeat_interval,
             ray_address=_runner_ray_address,
             num_gpus=_runner_num_gpus,
+            valid_until=valid_until,
+            lease_expires_at=lease_expires_at,
+            lease_id=lease_id,
+            resource_name=resource_name,
+            orchestrator_run=orchestrator_run,
+            status=initial_status,
         )
+        if initial_status == "offline":
+            typer.echo(f"\nRunner validity expired at {valid_until}; registering offline and exiting.")
+            runner_id = _register_with_portal(base_url, reg_payload)
+            if runner_id is not None:
+                typer.echo(f"Registered as offline runner #{runner_id}")
+            return
         typer.echo(f"\nRegistering with {base_url} ...")
         runner_id = _register_with_portal(base_url, reg_payload)
         if runner_id is not None:
@@ -1807,7 +1874,17 @@ def runner_start_command(
 
     try:
         while not stop:
-            time.sleep(heartbeat_interval)
+            if _runner_time_has_passed(valid_until):
+                logger.info("Runner validity expired at %s; stopping", valid_until)
+                break
+            sleep_for = heartbeat_interval
+            seconds_until_expiry = _seconds_until_runner_time(valid_until)
+            if seconds_until_expiry is not None:
+                sleep_for = min(sleep_for, seconds_until_expiry)
+            time.sleep(sleep_for)
+            if _runner_time_has_passed(valid_until):
+                logger.info("Runner validity expired at %s; stopping", valid_until)
+                break
             if not base_url:
                 continue
 

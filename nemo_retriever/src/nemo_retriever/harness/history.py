@@ -58,7 +58,12 @@ CREATE TABLE IF NOT EXISTS runners (
     registered_at TEXT NOT NULL,
     last_heartbeat TEXT,
     tags TEXT,
-    metadata TEXT
+    metadata TEXT,
+    valid_until TEXT,
+    lease_expires_at TEXT,
+    lease_id TEXT,
+    resource_name TEXT,
+    orchestrator_run TEXT
 );
 """
 
@@ -266,6 +271,11 @@ _MIGRATIONS = [
     "ALTER TABLE runners ADD COLUMN git_commit TEXT",
     "ALTER TABLE runners ADD COLUMN pending_update_commit TEXT",
     "ALTER TABLE runners ADD COLUMN ray_address TEXT",
+    "ALTER TABLE runners ADD COLUMN valid_until TEXT",
+    "ALTER TABLE runners ADD COLUMN lease_expires_at TEXT",
+    "ALTER TABLE runners ADD COLUMN lease_id TEXT",
+    "ALTER TABLE runners ADD COLUMN resource_name TEXT",
+    "ALTER TABLE runners ADD COLUMN orchestrator_run TEXT",
     "ALTER TABLE runs ADD COLUMN execution_commit TEXT",
     "ALTER TABLE runs ADD COLUMN num_gpus INTEGER",
     "ALTER TABLE presets ADD COLUMN overrides TEXT",
@@ -1302,6 +1312,11 @@ _RUNNER_SCALAR_FIELDS = (
     "git_commit",
     "pending_update_commit",
     "ray_address",
+    "valid_until",
+    "lease_expires_at",
+    "lease_id",
+    "resource_name",
+    "orchestrator_run",
 )
 
 
@@ -1315,6 +1330,28 @@ def _deserialize_runner_row(d: dict[str, Any]) -> dict[str, Any]:
         elif field == "tags":
             d[field] = []
     return d
+
+
+def _parse_runner_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def runner_is_expired(runner: dict[str, Any], *, now: datetime | None = None) -> bool:
+    valid_until = _parse_runner_time(runner.get("valid_until"))
+    if valid_until is None:
+        return False
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return current >= valid_until
 
 
 def register_runner(data: dict[str, Any], db_path: str | None = None) -> dict[str, Any]:
@@ -1342,7 +1379,8 @@ def register_runner(data: dict[str, Any], db_path: str | None = None) -> dict[st
             conn.execute(
                 "UPDATE runners SET name=?, url=?, gpu_type=?, gpu_count=?, cpu_count=?,"
                 " memory_gb=?, status=?, last_heartbeat=?, tags=?, metadata=?,"
-                " heartbeat_interval=?, git_commit=?, ray_address=? WHERE id=?",
+                " heartbeat_interval=?, git_commit=?, ray_address=?, valid_until=?,"
+                " lease_expires_at=?, lease_id=?, resource_name=?, orchestrator_run=? WHERE id=?",
                 (
                     data.get("name", ex.get("name")),
                     data.get("url", ex.get("url")),
@@ -1357,6 +1395,15 @@ def register_runner(data: dict[str, Any], db_path: str | None = None) -> dict[st
                     data.get("heartbeat_interval", 30),
                     new_git if new_git else ex.get("git_commit"),
                     data.get("ray_address") if "ray_address" in data else ex.get("ray_address"),
+                    data.get("valid_until") if "valid_until" in data else ex.get("valid_until"),
+                    data.get("lease_expires_at")
+                    if "lease_expires_at" in data
+                    else ex.get("lease_expires_at"),
+                    data.get("lease_id") if "lease_id" in data else ex.get("lease_id"),
+                    data.get("resource_name") if "resource_name" in data else ex.get("resource_name"),
+                    data.get("orchestrator_run")
+                    if "orchestrator_run" in data
+                    else ex.get("orchestrator_run"),
                     runner_id,
                 ),
             )
@@ -1383,6 +1430,11 @@ def register_runner(data: dict[str, Any], db_path: str | None = None) -> dict[st
             "heartbeat_interval": data.get("heartbeat_interval", 30),
             "git_commit": data.get("git_commit"),
             "ray_address": data.get("ray_address"),
+            "valid_until": data.get("valid_until"),
+            "lease_expires_at": data.get("lease_expires_at"),
+            "lease_id": data.get("lease_id"),
+            "resource_name": data.get("resource_name"),
+            "orchestrator_run": data.get("orchestrator_run"),
         }
         columns = ", ".join(row_data.keys())
         placeholders = ", ".join("?" * len(row_data))
@@ -1454,15 +1506,29 @@ def heartbeat_runner(runner_id: int, db_path: str | None = None, git_commit: str
     """Update heartbeat timestamp. Returns current status, or None if runner not found.
 
     Preserves the ``paused`` status — heartbeats from a paused runner keep it
-    paused rather than flipping it back to online.
+    paused rather than flipping it back to online. Expired runners are kept
+    offline even if they continue heartbeating.
     """
     now = _now_iso()
     conn = _connect(db_path)
     try:
-        row = conn.execute("SELECT status FROM runners WHERE id = ?", (runner_id,)).fetchone()
+        row = conn.execute("SELECT status, valid_until FROM runners WHERE id = ?", (runner_id,)).fetchone()
         if row is None:
             return None
         current_status = row[0]
+        if runner_is_expired({"valid_until": row[1]}):
+            if git_commit:
+                conn.execute(
+                    "UPDATE runners SET last_heartbeat = ?, status = 'offline', git_commit = ? WHERE id = ?",
+                    (now, git_commit, runner_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE runners SET last_heartbeat = ?, status = 'offline' WHERE id = ?",
+                    (now, runner_id),
+                )
+            conn.commit()
+            return "offline"
         new_status = current_status if current_status == "paused" else "online"
         if git_commit:
             conn.execute(
@@ -1575,7 +1641,7 @@ def resume_runner(runner_id: int, db_path: str | None = None) -> bool:
 
 
 def mark_stale_runners_offline(db_path: str | None = None) -> list[dict[str, Any]]:
-    """Mark runners as offline if they missed N heartbeats. Returns newly-offline runners."""
+    """Mark runners offline after missed heartbeats or validity expiry."""
     conn = _connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
@@ -1588,6 +1654,11 @@ def mark_stale_runners_offline(db_path: str | None = None) -> list[dict[str, Any
 
         for row in rows:
             r = dict(row)
+            if runner_is_expired(r, now=now):
+                conn.execute("UPDATE runners SET status = 'offline' WHERE id = ?", (r["id"],))
+                newly_offline.append(_deserialize_runner_row(r))
+                continue
+
             interval = r.get("heartbeat_interval") or 30
             timeout_secs = interval * RUNNER_MISSED_HEARTBEATS_THRESHOLD
 

@@ -255,6 +255,11 @@ class RunnerCreateRequest(BaseModel):
     heartbeat_interval: int = 30
     git_commit: str | None = None
     ray_address: str | None = None
+    valid_until: str | None = None
+    lease_expires_at: str | None = None
+    lease_id: str | None = None
+    resource_name: str | None = None
+    orchestrator_run: str | None = None
 
 
 class RunnerUpdateRequest(BaseModel):
@@ -269,6 +274,11 @@ class RunnerUpdateRequest(BaseModel):
     tags: list[str] | None = None
     metadata: dict[str, Any] | None = None
     ray_address: str | None = None
+    valid_until: str | None = None
+    lease_expires_at: str | None = None
+    lease_id: str | None = None
+    resource_name: str | None = None
+    orchestrator_run: str | None = None
 
 
 class ScheduleCreateRequest(BaseModel):
@@ -2756,7 +2766,7 @@ async def runner_heartbeat(runner_id: int, req: HeartbeatRequest | None = None):
             cancel_job_id = req.current_job_id
 
     next_job = None
-    if runner_status != "paused":
+    if runner_status == "online":
         jobs = history.get_pending_jobs_for_runner(runner_id)
         next_job = _pick_job_for_runner(jobs, runner_id)
 
@@ -2824,7 +2834,7 @@ async def runner_get_work(runner_id: int):
     runner = history.get_runner_by_id(runner_id)
     if not runner:
         raise HTTPException(status_code=404, detail="Runner not found")
-    if runner.get("status") in ("offline", "paused"):
+    if runner.get("status") in ("offline", "paused") or history.runner_is_expired(runner):
         return Response(status_code=204)
     jobs = history.get_pending_jobs_for_runner(runner_id)
     job = _pick_job_for_runner(jobs, runner_id)

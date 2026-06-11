@@ -49,7 +49,7 @@ def match_runner(
     """
     global _round_robin_index
     runners = history.get_runners()
-    online = [r for r in runners if r.get("status") == "online"]
+    online = [r for r in runners if r.get("status") == "online" and not history.runner_is_expired(r)]
 
     pref_set: set[int] | None = None
     if preferred_runner_ids:
