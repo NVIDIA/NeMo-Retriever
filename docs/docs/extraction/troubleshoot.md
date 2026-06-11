@@ -33,7 +33,7 @@ VideoFrameActor requires media dependencies; missing: ffprobe.
 The `ffmpeg-python` wrapper and `nemo-retriever[multimedia]` do not install the
 `ffmpeg` or `ffprobe` binaries the pipeline executes.
 
-For air-gapped or locked-down clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+For air-gapped or locked-down clusters, refer to [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
 
 **Connected environments:**
 
@@ -126,7 +126,7 @@ For local GPU inference with Nemotron Parse, combine extras:
 pip install "nemo-retriever[local,nemotron-parse]"
 ```
 
-See also [What is NeMo Retriever Library?](overview.md) and [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#software-requirements).
+Also refer to [What is NeMo Retriever Library?](overview.md) and [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#software-requirements).
 
 ## Extract method nemotron-parse doesn't support image files
 

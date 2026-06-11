@@ -282,7 +282,7 @@ ingest API) in Python.
 Remote OCR NIM endpoints choose their own model and language behavior. Local
 `--ocr-lang` and `--ocr-version` are not sent on remote requests. For hosted
 examples until OCR v2 is published on build.nvidia.com, keep
-`--ocr-invoke-url` pointed at `nemotron-ocr-v1` (see [Quick start](#quick-start)).
+`--ocr-invoke-url` pointed at `nemotron-ocr-v1` (refer to [Quick start](#quick-start)).
 
 ### PDF and Office documents
 
