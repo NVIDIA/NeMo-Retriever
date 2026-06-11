@@ -13,6 +13,8 @@ For advanced usage patterns, refer to the existing model interfaces in `nemo_ret
 
 ## Quick Start
 
+For ingest and pipeline APIs used with NimClient in UDFs, refer to the [Python API guide](nemo-retriever-api-reference.md).
+
 ### Basic NimClient Creation
 
 ```python

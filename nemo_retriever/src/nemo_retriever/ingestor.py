@@ -79,6 +79,7 @@ def create_ingestor(
         ray_log_to_driver=parsed.ray_log_to_driver,
         debug=parsed.debug,
         allow_no_gpu=parsed.allow_no_gpu,
+        node_overrides=parsed.node_overrides,
         error_policy=parsed.error_policy,
     )
 

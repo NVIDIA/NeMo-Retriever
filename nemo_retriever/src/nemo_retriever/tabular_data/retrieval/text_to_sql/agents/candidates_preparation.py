@@ -141,9 +141,6 @@ class CandidatePreparationAgent(BaseAgent):
         relevant_tables = get_relevant_tables_from_candidates(candidates)
         self.logger.info("Tables from candidates: %s", [t["name"] for t in relevant_tables])
 
-        connector = state.get("connector")
-        database_name = getattr(connector, "database_name", None) if connector else None
-
         additional_tables = []
         search_queries = [question] + path_state.get("entities", [])
         k_per_query = max(1, 10 // len(search_queries))
@@ -153,7 +150,6 @@ class CandidatePreparationAgent(BaseAgent):
                     state["retriever"],
                     query,
                     k=k_per_query,
-                    database_name=database_name,
                 )
                 additional_tables.extend(tables)
             except Exception:
@@ -161,7 +157,6 @@ class CandidatePreparationAgent(BaseAgent):
         additional_tables = dedupe_merge_relevant_tables(additional_tables)[:10]
         relevant_tables.extend(additional_tables)
 
-        relevant_tables = dedupe_merge_relevant_tables(relevant_tables)[:20]
         self.logger.info(
             "Found %d relevant tables (after dedupe, capped at 20): %s",
             len(relevant_tables),

@@ -12,7 +12,9 @@ import logging
 from typing import Any, Dict, Optional
 
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
+from nemo_retriever.tabular_data.retrieval.text_to_sql.connector_routing import resolve_connector_from_tables
 from nemo_retriever.tabular_data.retrieval.text_to_sql.state import AgentState
+from nemo_retriever.tabular_data.sql_database import SQLDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +26,22 @@ class QueryResponse:
         self.error = error
 
 
-def _run_sql(sql: str, state: AgentState) -> QueryResponse:
-    """Execute SQL via the injected ``connector``."""
-    connector = state.get("connector")
-    if connector is not None:
-        try:
-            df = connector.execute(sql)
-        except Exception as e:
-            logger.exception("SQL execution failed (injected connector)")
-            return QueryResponse(result=None, sliced=False, error=str(e))
-        payload = df.to_json(orient="records", default_handler=str) if len(df) else "[]"
-        return QueryResponse(result=[payload], sliced=False, error=None)
+def _run_sql(sql: str, connector: SQLDatabase | None) -> QueryResponse:
+    """Execute SQL against the supplied ``connector``.
+
+    Caller is responsible for picking the right connector for ``sql``
+    (e.g. by matching ``relevant_tables[*].database_name`` against
+    ``connector.database_name``).
+    """
+    if connector is None:
+        return QueryResponse(result=None, sliced=False, error="No connector available to execute SQL.")
+    try:
+        df = connector.execute(sql)
+    except Exception as e:
+        logger.exception("SQL execution failed (injected connector)")
+        return QueryResponse(result=None, sliced=False, error=str(e))
+    payload = df.to_json(orient="records", default_handler=str) if len(df) else "[]"
+    return QueryResponse(result=[payload], sliced=False, error=None)
 
 
 class SQLExecutionAgent(BaseAgent):
@@ -43,7 +50,7 @@ class SQLExecutionAgent(BaseAgent):
 
     Input:
     - ``path_state["sql_code"]`` (from validation) or ``sql_generation_result.sql_code``
-    - ``connector``: injected DB connector.
+    - ``connectors``: list of injected DB connectors (the first is used to execute).
 
     Output:
     - ``path_state["sql_response_from_db"]``: :class:`QueryResponse`
@@ -70,7 +77,11 @@ class SQLExecutionAgent(BaseAgent):
             llm = path_state.get("sql_generation_result")
             sql_code = getattr(llm, "sql_code", "") if llm else ""
 
-        response_from_db = _run_sql(sql_code, state)
+        connectors = state.get("connectors") or []
+        relevant_tables = path_state.get("relevant_tables", [])
+        connector = resolve_connector_from_tables(relevant_tables, connectors)
+
+        response_from_db = _run_sql(sql_code, connector)
 
         if response_from_db.error:
             self.logger.info("SQL execution error: %s", response_from_db.error)

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import importlib
 import itertools
 import json
@@ -18,15 +19,20 @@ import pytest
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
-import nemo_retriever.adapters.cli.sdk_workflow as sdk_workflow
+import nemo_retriever.ingest.execution as ingest_execution
+import nemo_retriever.ingest.plan as ingest_plan
+import nemo_retriever.adapters.cli.ingest_workflow as ingest_workflow
 from nemo_retriever.graph_ingestor import GraphIngestor
 from nemo_retriever.params import (
     ASRParams,
     AudioChunkParams,
     AudioVisualFuseParams,
     CaptionParams,
+    DedupParams,
     EmbedParams,
     ExtractParams,
+    HtmlChunkParams,
+    StoreParams,
     TextChunkParams,
     VideoFrameParams,
     VideoFrameTextDedupParams,
@@ -41,21 +47,23 @@ cli_main = importlib.import_module("nemo_retriever.adapters.cli.main")
 def _successful_row_count(monkeypatch: pytest.MonkeyPatch) -> None:
     # Most tests fake GraphIngestor; default row counts should look like a successful write.
     counts = itertools.count(1)
-    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: next(counts))
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: next(counts))
 
 
 def _make_fake_ingestor() -> Any:
     fake_ingestor = create_autospec(GraphIngestor, instance=True, spec_set=True)
     fake_ingestor.files.return_value = fake_ingestor
     fake_ingestor.extract.return_value = fake_ingestor
+    fake_ingestor.dedup.return_value = fake_ingestor
     fake_ingestor.caption.return_value = fake_ingestor
     fake_ingestor.embed.return_value = fake_ingestor
+    fake_ingestor.store.return_value = fake_ingestor
     fake_ingestor.vdb_upload.return_value = fake_ingestor
     fake_ingestor.ingest.return_value = [{"status": "ok"}]
     return fake_ingestor
 
 
-def test_root_ingest_runs_default_sdk_chain(monkeypatch, tmp_path) -> None:
+def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     create_calls: list[dict[str, Any]] = []
     document = tmp_path / "multimodal_test.pdf"
@@ -65,8 +73,8 @@ def test_root_ingest_runs_default_sdk_chain(monkeypatch, tmp_path) -> None:
         create_calls.append(kwargs)
         return fake_ingestor
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", fake_create_ingestor)
-    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 7)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fake_create_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 7)
 
     result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
 
@@ -80,7 +88,11 @@ def test_root_ingest_runs_default_sdk_chain(monkeypatch, tmp_path) -> None:
         "ingest",
     ]
     assert fake_ingestor.files.call_args.args == ([str(document)],)
-    assert isinstance(fake_ingestor.extract.call_args.args[0], ExtractParams)
+    extract_params = fake_ingestor.extract.call_args.args[0]
+    assert isinstance(extract_params, ExtractParams)
+    assert extract_params.dpi == 200
+    assert extract_params.extract_infographics is False
+    assert extract_params.extract_page_as_image is True
     assert fake_ingestor.extract.call_args.kwargs == {}
     assert fake_ingestor.embed.call_args.args == ()
     vdb_upload_params = fake_ingestor.vdb_upload.call_args.args[0]
@@ -102,8 +114,8 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> N
         create_calls.append(kwargs)
         return fake_ingestor
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", fake_create_ingestor)
-    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 12)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fake_create_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 12)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -138,7 +150,7 @@ def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> N
     document = tmp_path / "multimodal_test.pdf"
     document.write_bytes(b"%PDF-1.4\n")
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
 
     result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--append"])
 
@@ -155,8 +167,8 @@ def test_root_ingest_fails_when_no_rows_landed(monkeypatch, tmp_path) -> None:
     document = tmp_path / "silent-stage-failure.pdf"
     document.write_bytes(b"%PDF-1.4\n")
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
-    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 0)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 0)
 
     result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
 
@@ -166,14 +178,31 @@ def test_root_ingest_fails_when_no_rows_landed(monkeypatch, tmp_path) -> None:
     assert "Ingested 1 file(s)" not in result.output
 
 
+def test_root_ingest_fails_when_current_run_is_empty_but_table_has_stale_rows(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    fake_ingestor.ingest.return_value = []
+    document = tmp_path / "stale-table.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 3)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
+
+    assert result.exit_code == 1
+    assert "retriever ingest produced 0 rows before LanceDB write" in result.output
+    assert "may still contain rows from an earlier run" in result.output
+    assert "Ingested 1 file(s)" not in result.output
+
+
 def test_root_ingest_append_fails_when_row_count_does_not_increase(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "silent-append-failure.pdf"
     document.write_bytes(b"%PDF-1.4\n")
     counts = iter([3, 3])
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
-    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: next(counts))
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: next(counts))
 
     result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--append"])
 
@@ -190,7 +219,7 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
     def fake_create_ingestor(**_kwargs: Any) -> Any:
         return fake_ingestor
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", fake_create_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fake_create_ingestor)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -231,12 +260,125 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
     assert embed_params.embed_model_name == "nvidia/llama-nemotron-embed-1b-v2"
 
 
+def test_root_ingest_passes_migrated_extraction_and_embedding_flags(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "jp20-style.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--use-graphic-elements",
+            "--use-table-structure",
+            "--embed-modality",
+            "text_image",
+            "--embed-granularity",
+            "element",
+            "--text-elements-modality",
+            "text",
+            "--structured-elements-modality",
+            "image",
+        ],
+    )
+
+    assert result.exit_code == 0
+    extract_params = fake_ingestor.extract.call_args.args[0]
+    assert isinstance(extract_params, ExtractParams)
+    assert extract_params.use_graphic_elements is True
+    assert extract_params.use_table_structure is True
+
+    embed_params = fake_ingestor.embed.call_args.args[0]
+    assert isinstance(embed_params, EmbedParams)
+    assert embed_params.embed_modality == "text_image"
+    assert embed_params.embed_granularity == "element"
+    assert embed_params.text_elements_modality == "text"
+    assert embed_params.structured_elements_modality == "image"
+
+
+def test_root_ingest_text_chunk_builds_split_config(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "chunked.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--text-chunk",
+            "--text-chunk-max-tokens",
+            "512",
+            "--text-chunk-overlap-tokens",
+            "64",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert fake_ingestor.extract.call_args.kwargs["split_config"] == {
+        "pdf": {
+            "max_tokens": 512,
+            "overlap_tokens": 64,
+            "tokenizer_model_id": None,
+            "encoding": "utf-8",
+            "tokenizer_cache_dir": None,
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    ("filename", "param_key", "param_type"),
+    [
+        ("notes.txt", "text_params", TextChunkParams),
+        ("page.html", "html_params", HtmlChunkParams),
+    ],
+)
+def test_root_ingest_text_chunk_uses_dedicated_text_params(
+    monkeypatch,
+    tmp_path,
+    filename: str,
+    param_key: str,
+    param_type: type[TextChunkParams | HtmlChunkParams],
+) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / filename
+    document.write_text("chunk me", encoding="utf-8")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--text-chunk",
+            "--text-chunk-max-tokens",
+            "512",
+            "--text-chunk-overlap-tokens",
+            "64",
+        ],
+    )
+
+    assert result.exit_code == 0
+    extract_kwargs = fake_ingestor.extract.call_args.kwargs
+    assert "split_config" not in extract_kwargs
+    chunk_params = extract_kwargs[param_key]
+    assert isinstance(chunk_params, param_type)
+    assert chunk_params.max_tokens == 512
+    assert chunk_params.overlap_tokens == 64
+
+
 def test_root_ingest_passes_ocr_lang_option(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "english-ocr.pdf"
     document.write_bytes(b"%PDF-1.4\n")
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
 
     result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--ocr-lang", "english"])
 
@@ -252,7 +394,7 @@ def test_root_ingest_rejects_ocr_lang_with_legacy_ocr_version(monkeypatch, tmp_p
     document = tmp_path / "legacy-ocr.pdf"
     document.write_bytes(b"%PDF-1.4\n")
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -276,8 +418,8 @@ def test_root_ingest_passes_batch_tuning_options(monkeypatch, tmp_path) -> None:
         create_calls.append(kwargs)
         return fake_ingestor
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", fake_create_ingestor)
-    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 42)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fake_create_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 42)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -345,28 +487,131 @@ def test_root_ingest_passes_batch_tuning_options(monkeypatch, tmp_path) -> None:
     assert "Ingested 1 file(s) → 42 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
 
-def test_ingest_documents_accepts_legacy_public_api_kwargs(monkeypatch, tmp_path) -> None:
+def test_root_ingest_passes_public_parity_options(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
-    document = tmp_path / "legacy-public-api.pdf"
+    document = tmp_path / "parity.pdf"
+    image_store = tmp_path / "images"
     document.write_bytes(b"%PDF-1.4\n")
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 14)
 
-    result = sdk_workflow.ingest_documents(
-        [str(document)],
-        input_type="pdf",
-        table_output_format="markdown",
-        local_ingest_embed_backend="hf",
-        page_elements_gpus_per_actor=0.2,
-        ocr_gpus_per_actor=0.3,
-        table_structure_workers=6,
-        table_structure_batch_size=12,
-        table_structure_cpus_per_actor=0.4,
-        table_structure_gpus_per_actor=0.25,
-        embed_gpus_per_actor=0.5,
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(document),
+            "--api-key",
+            "nvapi-secret",
+            "--dedup",
+            "--dedup-iou-threshold",
+            "0.6",
+            "--caption",
+            "--caption-invoke-url",
+            "http://vlm:8000/v1/chat/completions",
+            "--store-images-uri",
+            str(image_store),
+            "--method",
+            "nemotron_parse",
+            "--pdf-split-batch-size",
+            "2",
+            "--nemotron-parse-workers",
+            "3",
+            "--nemotron-parse-batch-size",
+            "4",
+            "--nemotron-parse-gpus-per-actor",
+            "0.5",
+        ],
     )
 
-    assert result["documents"] == [str(document)]
+    assert result.exit_code == 0
+    assert [method_call[0] for method_call in fake_ingestor.method_calls] == [
+        "files",
+        "extract",
+        "dedup",
+        "caption",
+        "embed",
+        "store",
+        "vdb_upload",
+        "ingest",
+    ]
+
+    extract_params = fake_ingestor.extract.call_args.args[0]
+    assert isinstance(extract_params, ExtractParams)
+    assert extract_params.method == "nemotron_parse"
+    assert extract_params.api_key == "nvapi-secret"
+    assert extract_params.batch_tuning.pdf_split_batch_size == 2
+    assert extract_params.batch_tuning.nemotron_parse_workers == 3
+    assert extract_params.batch_tuning.nemotron_parse_batch_size == 4
+    assert extract_params.batch_tuning.gpu_nemotron_parse == 0.5
+
+    dedup_params = fake_ingestor.dedup.call_args.args[0]
+    assert isinstance(dedup_params, DedupParams)
+    assert dedup_params.iou_threshold == 0.6
+
+    caption_params = fake_ingestor.caption.call_args.args[0]
+    assert isinstance(caption_params, CaptionParams)
+    assert caption_params.api_key == "nvapi-secret"
+
+    embed_params = fake_ingestor.embed.call_args.args[0]
+    assert isinstance(embed_params, EmbedParams)
+    assert embed_params.api_key == "nvapi-secret"
+
+    store_params = fake_ingestor.store.call_args.args[0]
+    assert isinstance(store_params, StoreParams)
+    assert store_params.storage_uri == str(image_store.resolve())
+    assert "Ingested 1 file(s) → 14 row(s) in LanceDB lancedb/nemo-retriever." in result.output
+
+
+def test_root_ingest_rejects_dedup_threshold_without_dedup(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "dedup-threshold.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--dedup-iou-threshold", "0.6"])
+
+    assert result.exit_code == 1
+    assert "Dedup options require --dedup" in result.output
+    fake_ingestor.dedup.assert_not_called()
+    fake_ingestor.embed.assert_not_called()
+
+
+def test_resolved_ingest_plan_runs_through_workflow(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "programmatic-plan.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    plan = ingest_plan.resolve_ingest_plan(
+        ingest_plan.IngestPlanRequest(
+            source=ingest_plan.IngestSourceOptions(documents=[str(document)], input_type="pdf"),
+            extract=ingest_plan.IngestExtractOptions(
+                table_output_format="markdown",
+                batch=ingest_plan.IngestExtractBatchOptions(
+                    page_elements_gpus_per_actor=0.2,
+                    ocr_gpus_per_actor=0.3,
+                    table_structure_workers=6,
+                    table_structure_batch_size=12,
+                    table_structure_cpus_per_actor=0.4,
+                    table_structure_gpus_per_actor=0.25,
+                    pdf_split_batch_size=9,
+                    nemotron_parse_workers=10,
+                    nemotron_parse_batch_size=11,
+                    nemotron_parse_gpus_per_actor=0.6,
+                ),
+            ),
+            embed=ingest_plan.IngestEmbedOptions(
+                local_ingest_embed_backend="hf",
+                batch=ingest_plan.IngestEmbedBatchOptions(embed_gpus_per_actor=0.5),
+            ),
+        )
+    )
+    result = ingest_workflow.run_ingest_workflow(plan)
+
+    assert result["n_documents"] == 1
+    assert fake_ingestor.files.call_args.args == ([str(document)],)
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
     assert extract_params.use_table_structure is True
@@ -377,11 +622,105 @@ def test_ingest_documents_accepts_legacy_public_api_kwargs(monkeypatch, tmp_path
     assert extract_params.batch_tuning.table_structure_batch_size == 12
     assert extract_params.batch_tuning.table_structure_cpus_per_actor == 0.4
     assert extract_params.batch_tuning.gpu_table_structure == 0.25
+    assert extract_params.batch_tuning.pdf_split_batch_size == 9
+    assert extract_params.batch_tuning.nemotron_parse_workers == 10
+    assert extract_params.batch_tuning.nemotron_parse_batch_size == 11
+    assert extract_params.batch_tuning.gpu_nemotron_parse == 0.6
 
     embed_params = fake_ingestor.embed.call_args.args[0]
     assert isinstance(embed_params, EmbedParams)
     assert embed_params.local_ingest_embed_backend == "hf"
     assert embed_params.batch_tuning.gpu_embed == 0.5
+
+
+def test_build_ingest_pipeline_attaches_store_after_embed_with_tuning(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "stored.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    plan = ingest_plan.resolve_ingest_plan(
+        ingest_plan.IngestPlanRequest(
+            source=ingest_plan.IngestSourceOptions(documents=[str(document)], input_type="pdf"),
+            image_store=ingest_plan.IngestImageStoreOptions(
+                images_uri=str(tmp_path / "stored-images"),
+                workers=4,
+            ),
+        )
+    )
+    ingestor = ingest_execution.build_ingest_pipeline(plan)
+
+    assert ingestor is fake_ingestor
+    assert [method_call[0] for method_call in fake_ingestor.method_calls] == [
+        "files",
+        "extract",
+        "embed",
+        "store",
+        "vdb_upload",
+    ]
+    store_params = fake_ingestor.store.call_args.args[0]
+    assert isinstance(store_params, StoreParams)
+    assert store_params.storage_uri.endswith("/stored-images")
+    assert store_params.batch_tuning.store_workers == 4
+
+
+def test_execute_ingest_plan_returns_structured_execution_data(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "execution-result.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 9)
+
+    plan = ingest_plan.resolve_ingest_plan(
+        ingest_plan.IngestPlanRequest(
+            source=ingest_plan.IngestSourceOptions(documents=[str(document)]),
+            runtime=ingest_plan.IngestRuntimeOptions(run_mode="inprocess"),
+            storage=ingest_plan.IngestStorageOptions(
+                lancedb_uri="/tmp/nemo-test-lancedb",
+                table_name="execution_result",
+            ),
+        )
+    )
+    execution = ingest_execution.execute_ingest_plan(plan)
+
+    assert execution.documents == [str(document)]
+    assert execution.lancedb_uri == "/tmp/nemo-test-lancedb"
+    assert execution.table_name == "execution_result"
+    assert execution.lancedb_target == "/tmp/nemo-test-lancedb/execution_result"
+    assert execution.n_rows == 9
+    assert execution.result_n_rows == 1
+    assert execution.result == [{"status": "ok"}]
+    assert execution.run_metadata["branch_summary"]
+    summary = execution.to_summary_dict()
+    assert summary == {
+        "n_documents": 1,
+        "lancedb_uri": "/tmp/nemo-test-lancedb",
+        "table_name": "execution_result",
+        "n_rows": 9,
+        "result_n_rows": 1,
+    }
+
+
+def test_execute_ingest_plan_requires_vdb_stage_for_row_verification(monkeypatch, tmp_path) -> None:
+    document = tmp_path / "no-vdb.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    def fail_create_ingestor(**_kwargs: Any) -> Any:
+        raise AssertionError("create_ingestor should not be called when row verification has no VDB stage")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fail_create_ingestor)
+    plan = ingest_plan.resolve_ingest_plan(
+        ingest_plan.IngestPlanRequest(
+            source=ingest_plan.IngestSourceOptions(documents=[str(document)]),
+            runtime=ingest_plan.IngestRuntimeOptions(run_mode="inprocess"),
+        )
+    )
+    plan = replace(plan, vdb_params=None)
+
+    with pytest.raises(ValueError, match="Row verification checks the effective VDB upload target"):
+        ingest_execution.execute_ingest_plan(plan)
 
 
 def test_root_ingest_reports_empty_directory_error(tmp_path) -> None:
@@ -406,7 +745,7 @@ def test_root_ingest_routes_text_inputs_by_default_to_auto_planner(monkeypatch, 
     document = tmp_path / "notes.txt"
     document.write_text("not a pdf", encoding="utf-8")
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
 
     result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
 
@@ -424,9 +763,22 @@ def test_root_ingest_help_does_not_expose_input_type() -> None:
     assert "--profile" in result.output
     assert "[auto|fast-text]" in result.output
     assert "--extract-images" in result.output
+    # Rich help truncates long option names in narrow test terminals.
+    assert "--use-graphic-el" in result.output
+    assert "--use-table-stru" in result.output
+    assert "--embed-modality" in result.output
+    assert "--embed-granular" in result.output
+    assert "--text-elements-" in result.output
+    assert "--structured-ele" in result.output
+    assert "--text-chunk" in result.output
+    assert "--store-images-" in result.output
+    assert "--api-key" in result.output
+    assert "--dedup" in result.output
+    assert "--nemotron-par" in result.output
     assert "--caption" in result.output
-    assert "--run-mode" in result.output
-    assert "[inprocess|batch" in result.output
+    assert "Defaults to" in result.output
+    plain_output = re.sub(r"\s+", " ", result.output.replace("│", " "))
+    assert "[default: inprocess]" in plain_output
     assert re.search(r"--no-caption(?!-)", result.output) is None
 
 
@@ -437,7 +789,7 @@ def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, 
     def fail_create_ingestor(**_kwargs: Any) -> Any:
         raise AssertionError("create_ingestor should not be called for --dry-run")
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", fail_create_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fail_create_ingestor)
 
     result = RUNNER.invoke(cli_main.app, ["ingest", str(document), "--profile", "fast-text", "--dry-run"])
 
@@ -452,11 +804,43 @@ def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, 
     assert payload["extract"]["extract_tables"] is False
 
 
+def test_dry_run_secret_redaction_covers_common_credential_names() -> None:
+    payload = {
+        "api_key": "nvapi-test",
+        "auth_token": "token-test",
+        "password": "pw-test",
+        "client_secret": "secret-test",
+        "bearer_token": "bearer-test",
+        "credential_path": "/tmp/credentials",
+        "nested": [{"refreshToken": "refresh-test", "plain": "value"}],
+        "max_tokens": 1024,
+        "num_tokens_per_batch": 256,
+        "tokenizer_path": "/tmp/tokenizer",
+        "safe": "visible",
+    }
+
+    redacted = ingest_workflow._strip_secret_values(payload)
+
+    assert redacted == {
+        "api_key": "<redacted>",
+        "auth_token": "<redacted>",
+        "password": "<redacted>",
+        "client_secret": "<redacted>",
+        "bearer_token": "<redacted>",
+        "credential_path": "<redacted>",
+        "nested": [{"refreshToken": "<redacted>", "plain": "value"}],
+        "max_tokens": 1024,
+        "num_tokens_per_batch": 256,
+        "tokenizer_path": "/tmp/tokenizer",
+        "safe": "visible",
+    }
+
+
 def test_root_ingest_passes_extract_overrides_without_ocr_profile(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -494,7 +878,7 @@ def test_root_ingest_caption_is_optional_and_passes_minimal_caption_params(monke
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "captioned.pdf"
     document.write_bytes(b"%PDF-1.4\n")
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -533,7 +917,7 @@ def test_root_ingest_rejects_caption_options_without_caption(monkeypatch, tmp_pa
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "not-captioned.pdf"
     document.write_bytes(b"%PDF-1.4\n")
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -550,7 +934,7 @@ def test_root_ingest_auto_passes_audio_params(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "meeting.wav"
     document.write_bytes(b"audio")
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
     monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
 
     result = RUNNER.invoke(
@@ -579,7 +963,7 @@ def test_root_ingest_auto_passes_video_params(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "demo.mp4"
     document.write_bytes(b"video")
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
     monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
 
     result = RUNNER.invoke(
@@ -630,7 +1014,7 @@ def test_root_ingest_routes_tiff_inputs_by_default_to_auto_planner(monkeypatch, 
     document = tmp_path / "scan.tiff"
     document.write_bytes(b"tiff")
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
 
     result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
 
@@ -652,7 +1036,7 @@ def test_root_ingest_auto_mixed_directory_uses_auto_extraction(monkeypatch, tmp_
     text.write_text("notes", encoding="utf-8")
     image.write_bytes(b"png")
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
 
     result = RUNNER.invoke(cli_main.app, ["ingest", str(dataset)])
 
@@ -663,10 +1047,10 @@ def test_root_ingest_auto_mixed_directory_uses_auto_extraction(monkeypatch, tmp_
 
 
 def test_root_ingest_reports_os_errors(monkeypatch) -> None:
-    def fail_ingest_documents(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+    def fail_resolve_ingest_plan(*_args: Any, **_kwargs: Any) -> None:
         raise PermissionError("permission denied")
 
-    monkeypatch.setattr(cli_main, "ingest_documents", fail_ingest_documents)
+    monkeypatch.setattr(cli_main, "resolve_ingest_plan", fail_resolve_ingest_plan)
 
     result = RUNNER.invoke(cli_main.app, ["ingest", "blocked.pdf"])
 
@@ -678,14 +1062,19 @@ def test_root_cli_error_handler_includes_pydantic_validation_error() -> None:
     assert ValidationError in cli_main._ROOT_CLI_ERRORS
 
 
-def test_ingest_documents_validates_run_mode_before_creating_ingestor(monkeypatch) -> None:
+def test_resolve_ingest_plan_validates_run_mode_before_creating_ingestor(monkeypatch) -> None:
     def fail_create_ingestor(**_kwargs: Any) -> Any:
         raise AssertionError("create_ingestor should not be called for an invalid run mode")
 
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", fail_create_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fail_create_ingestor)
 
     with pytest.raises(ValueError, match="run_mode must be one of"):
-        sdk_workflow.ingest_documents(["ignored.pdf"], run_mode="parallel")  # type: ignore[arg-type]
+        ingest_plan.resolve_ingest_plan(
+            ingest_plan.IngestPlanRequest(
+                source=ingest_plan.IngestSourceOptions(documents=["ignored.pdf"]),
+                runtime=ingest_plan.IngestRuntimeOptions(run_mode="parallel"),  # type: ignore[arg-type]
+            )
+        )
 
 
 def test_silence_noisy_libraries_sets_env_vars(monkeypatch) -> None:
@@ -746,8 +1135,8 @@ def test_root_ingest_quiet_invokes_silencing_and_capture(monkeypatch, tmp_path) 
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "quiet.pdf"
     document.write_bytes(b"%PDF-1.4\n")
-    monkeypatch.setattr(sdk_workflow, "create_ingestor", lambda **_kwargs: fake_ingestor)
-    monkeypatch.setattr(sdk_workflow, "_count_lancedb_rows", lambda *_, **__: 3)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 3)
 
     silenced: list[bool] = []
     monkeypatch.setattr(cli_main, "_silence_noisy_libraries", lambda: silenced.append(True))

@@ -10,7 +10,7 @@ from typing import Any
 
 from typer.testing import CliRunner
 
-import nemo_retriever.adapters.cli.sdk_workflow as sdk_workflow
+import nemo_retriever.query.workflow as query_core
 
 
 RUNNER = CliRunner()
@@ -49,7 +49,7 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
             query_calls.append(query)
             return hits
 
-    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -88,7 +88,7 @@ def test_root_query_passes_candidate_dedup_and_content_filters(monkeypatch) -> N
                 {"text": "text row", "metadata": {"type": "text"}, "page_number": 1, "source": "doc.pdf"},
             ]
 
-    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -124,7 +124,7 @@ def test_root_query_passes_embed_options(monkeypatch) -> None:
             query_calls.append(query)
             return []
 
-    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -169,7 +169,7 @@ def test_root_query_passes_reranker_url(monkeypatch) -> None:
             query_calls.append(query)
             return []
 
-    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -208,7 +208,7 @@ def test_root_query_rerank_flag_enables_local_rerank(monkeypatch) -> None:
         def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
             return []
 
-    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
 
     result = RUNNER.invoke(cli_main.app, ["query", "hello", "--rerank"])
 
@@ -234,7 +234,7 @@ def test_root_query_rerank_off_by_default(monkeypatch) -> None:
         def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
             return []
 
-    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
 
     result = RUNNER.invoke(cli_main.app, ["query", "hello"])
 
@@ -256,7 +256,7 @@ def test_root_query_reranker_model_name_override(monkeypatch) -> None:
         def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
             return []
 
-    monkeypatch.setattr(sdk_workflow, "Retriever", FakeRetriever)
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
 
     result = RUNNER.invoke(
         cli_main.app,

@@ -105,6 +105,7 @@ class IngestorCreateParams(_ParamsModel):
     debug: bool = False
     base_url: str = "http://localhost:7670"
     allow_no_gpu: bool = False
+    node_overrides: Optional[dict[str, dict[str, Any]]] = None
     api_key: Optional[str] = None
     error_policy: Literal["raise", "collect"] = "raise"
     # service run mode: maximum number of concurrent page uploads.  Lower
@@ -301,8 +302,8 @@ class ExtractParams(_ParamsModel):
     extract_images: bool = True
     extract_tables: bool = True
     extract_charts: bool = True
-    extract_infographics: bool = True
-    extract_page_as_image: Optional[bool] = None
+    extract_infographics: bool = False
+    extract_page_as_image: Optional[bool] = True
 
     # Extraction options
     method: str = "pdfium"

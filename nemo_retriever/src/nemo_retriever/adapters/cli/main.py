@@ -16,18 +16,39 @@ import tempfile
 from pydantic import ValidationError
 import typer
 
-from nemo_retriever.adapters.cli.sdk_workflow import (
+from nemo_retriever.ingest.plan import (
     AudioSplitTypeValue,
-    DEFAULT_LANCEDB_URI,
-    DEFAULT_TABLE_NAME,
+    IngestCaptionOptions,
+    IngestChunkOptions,
+    IngestDedupOptions,
+    IngestEmbedBatchOptions,
+    IngestEmbedOptions,
+    IngestExtractBatchOptions,
+    IngestExtractOptions,
+    IngestImageStoreOptions,
+    IngestMediaOptions,
+    IngestPlanRequest,
     IngestProfileValue,
+    IngestRuntimeOptions,
     IngestRunModeValue,
+    IngestSourceOptions,
+    IngestStorageOptions,
     LocalIngestEmbedBackendValue,
     OcrLangValue,
     OcrVersionValue,
     TableOutputFormatValue,
-    ingest_documents,
-    query_documents,
+    resolve_ingest_plan,
+)
+from nemo_retriever.adapters.cli.ingest_workflow import (
+    run_ingest_workflow,
+)
+from nemo_retriever.adapters.cli.query_workflow import query_documents
+from nemo_retriever.query.options import (
+    QueryEmbedOptions,
+    QueryRerankOptions,
+    QueryRequest,
+    QueryRetrievalOptions,
+    QueryStorageOptions,
 )
 from nemo_retriever.vdb.records import RetrievalHit
 from nemo_retriever.version import get_version_info
@@ -164,8 +185,8 @@ def ingest_command(
         "--profile",
         help="Ingest profile: auto or fast-text.",
     ),
-    lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
-    table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),
+    lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
+    table_name: str = typer.Option("nemo-retriever", "--table-name", help="LanceDB table name."),
     run_mode: IngestRunModeValue = typer.Option(
         "inprocess",
         "--run-mode",
@@ -212,6 +233,16 @@ def ingest_command(
         None,
         "--use-page-elements/--no-use-page-elements",
         help="Enable or disable page-element detection for OCR/table/chart extraction.",
+    ),
+    use_graphic_elements: bool | None = typer.Option(
+        None,
+        "--use-graphic-elements/--no-use-graphic-elements",
+        help="Enable or disable graphic-element extraction for chart/infographic rows.",
+    ),
+    use_table_structure: bool | None = typer.Option(
+        None,
+        "--use-table-structure/--no-use-table-structure",
+        help="Enable or disable table-structure extraction for markdown table text.",
     ),
     segment_audio: bool | None = typer.Option(
         None,
@@ -279,6 +310,11 @@ def ingest_command(
             "CPU-only runs use the hosted default endpoint with NVIDIA_API_KEY/NGC_API_KEY."
         ),
     ),
+    api_key: str | None = typer.Option(
+        None,
+        "--api-key",
+        help="Bearer token for remote extract, embed, and caption endpoints.",
+    ),
     caption_model_name: str | None = typer.Option(
         None,
         "--caption-model-name",
@@ -294,6 +330,23 @@ def ingest_command(
         None,
         "--caption-infographics/--no-caption-infographics",
         help="Caption infographic crops in addition to extracted images.",
+    ),
+    dedup: bool = typer.Option(
+        False,
+        "--dedup/--no-dedup",
+        help="Add a deduplication stage before optional captioning and embedding.",
+    ),
+    dedup_iou_threshold: float | None = typer.Option(
+        None,
+        "--dedup-iou-threshold",
+        min=0.0,
+        max=1.0,
+        help="Image bounding-box IoU threshold for --dedup. Defaults to 0.45.",
+    ),
+    store_images_uri: str | None = typer.Option(
+        None,
+        "--store-images-uri",
+        help="Store extracted images at this local path or fsspec-compatible URI.",
     ),
     overwrite: bool = typer.Option(
         True,
@@ -350,6 +403,49 @@ def ingest_command(
         None,
         "--local-ingest-embed-backend",
         help="Local ingest-time text embedder when --embed-invoke-url is unset.",
+    ),
+    embed_modality: str | None = typer.Option(
+        None,
+        "--embed-modality",
+        help="Embedding modality for emitted rows: text, image, or text_image.",
+    ),
+    embed_granularity: str | None = typer.Option(
+        None,
+        "--embed-granularity",
+        help="Embedding granularity: element or page.",
+    ),
+    text_elements_modality: str | None = typer.Option(
+        None,
+        "--text-elements-modality",
+        help="Embedding modality override for page text elements.",
+    ),
+    structured_elements_modality: str | None = typer.Option(
+        None,
+        "--structured-elements-modality",
+        help="Embedding modality override for table/chart/infographic elements.",
+    ),
+    text_chunk: bool = typer.Option(
+        False,
+        "--text-chunk",
+        help="Enable token chunking during extraction. Defaults to 1024 tokens with 150-token overlap.",
+    ),
+    text_chunk_max_tokens: int | None = typer.Option(
+        None,
+        "--text-chunk-max-tokens",
+        min=1,
+        help="Maximum tokens per text chunk. Implies --text-chunk.",
+    ),
+    text_chunk_overlap_tokens: int | None = typer.Option(
+        None,
+        "--text-chunk-overlap-tokens",
+        min=0,
+        help="Token overlap between adjacent text chunks. Implies --text-chunk.",
+    ),
+    pdf_split_batch_size: int | None = typer.Option(
+        None,
+        "--pdf-split-batch-size",
+        min=1,
+        help="PDF split batch size in batch mode.",
     ),
     pdf_extract_workers: int | None = typer.Option(
         None,
@@ -441,6 +537,24 @@ def ingest_command(
         min=0.0,
         help="GPUs reserved per local table-structure actor in batch mode.",
     ),
+    nemotron_parse_workers: int | None = typer.Option(
+        None,
+        "--nemotron-parse-workers",
+        min=1,
+        help="Number of Ray actors for Nemotron Parse in batch mode.",
+    ),
+    nemotron_parse_batch_size: int | None = typer.Option(
+        None,
+        "--nemotron-parse-batch-size",
+        min=1,
+        help="Nemotron Parse batch size per actor in batch mode.",
+    ),
+    nemotron_parse_gpus_per_actor: float | None = typer.Option(
+        None,
+        "--nemotron-parse-gpus-per-actor",
+        min=0.0,
+        help="GPUs reserved per local Nemotron Parse actor in batch mode.",
+    ),
     embed_workers: int | None = typer.Option(
         None,
         "--embed-workers",
@@ -482,69 +596,112 @@ def ingest_command(
     capture = _quiet_capture() if quiet else contextlib.nullcontext()
     try:
         with capture:
-            summary = ingest_documents(
-                documents,
-                profile=profile,
-                run_mode=run_mode,
+            ingest_plan = resolve_ingest_plan(
+                IngestPlanRequest(
+                    source=IngestSourceOptions(documents=documents, profile=profile),
+                    runtime=IngestRuntimeOptions(
+                        run_mode=run_mode,
+                        ray_address=ray_address,
+                        ray_log_to_driver=ray_log_to_driver,
+                    ),
+                    extract=IngestExtractOptions(
+                        method=method,
+                        dpi=dpi,
+                        extract_text=extract_text,
+                        extract_images=extract_images,
+                        extract_tables=extract_tables,
+                        extract_charts=extract_charts,
+                        extract_infographics=extract_infographics,
+                        extract_page_as_image=extract_page_as_image,
+                        use_page_elements=use_page_elements,
+                        use_graphic_elements=use_graphic_elements,
+                        use_table_structure=use_table_structure,
+                        page_elements_invoke_url=page_elements_invoke_url,
+                        ocr_invoke_url=ocr_invoke_url,
+                        ocr_version=ocr_version,
+                        ocr_lang=ocr_lang,
+                        graphic_elements_invoke_url=graphic_elements_invoke_url,
+                        table_structure_invoke_url=table_structure_invoke_url,
+                        table_output_format=table_output_format,
+                        extract_api_key=api_key,
+                        batch=IngestExtractBatchOptions(
+                            pdf_split_batch_size=pdf_split_batch_size,
+                            pdf_extract_workers=pdf_extract_workers,
+                            pdf_extract_batch_size=pdf_extract_batch_size,
+                            pdf_extract_cpus_per_task=pdf_extract_cpus_per_task,
+                            page_elements_workers=page_elements_workers,
+                            page_elements_batch_size=page_elements_batch_size,
+                            page_elements_cpus_per_actor=page_elements_cpus_per_actor,
+                            page_elements_gpus_per_actor=page_elements_gpus_per_actor,
+                            ocr_workers=ocr_workers,
+                            ocr_batch_size=ocr_batch_size,
+                            ocr_cpus_per_actor=ocr_cpus_per_actor,
+                            ocr_gpus_per_actor=ocr_gpus_per_actor,
+                            table_structure_workers=table_structure_workers,
+                            table_structure_batch_size=table_structure_batch_size,
+                            table_structure_cpus_per_actor=table_structure_cpus_per_actor,
+                            table_structure_gpus_per_actor=table_structure_gpus_per_actor,
+                            nemotron_parse_workers=nemotron_parse_workers,
+                            nemotron_parse_batch_size=nemotron_parse_batch_size,
+                            nemotron_parse_gpus_per_actor=nemotron_parse_gpus_per_actor,
+                        ),
+                    ),
+                    media=IngestMediaOptions(
+                        segment_audio=segment_audio,
+                        audio_split_type=audio_split_type,
+                        audio_split_interval=audio_split_interval,
+                        video_extract_audio=video_extract_audio,
+                        video_extract_frames=video_extract_frames,
+                        video_frame_fps=video_frame_fps,
+                        video_frame_dedup=video_frame_dedup,
+                        video_frame_text_dedup=video_frame_text_dedup,
+                        video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
+                        video_av_fuse=video_av_fuse,
+                    ),
+                    caption=IngestCaptionOptions(
+                        enabled=caption,
+                        caption_invoke_url=caption_invoke_url,
+                        caption_api_key=api_key,
+                        caption_model_name=caption_model_name,
+                        caption_context_text_max_chars=caption_context_text_max_chars,
+                        caption_infographics=caption_infographics,
+                    ),
+                    dedup=IngestDedupOptions(
+                        enabled=dedup,
+                        iou_threshold=dedup_iou_threshold,
+                    ),
+                    chunk=IngestChunkOptions(
+                        enabled=text_chunk,
+                        text_chunk_max_tokens=text_chunk_max_tokens,
+                        text_chunk_overlap_tokens=text_chunk_overlap_tokens,
+                    ),
+                    embed=IngestEmbedOptions(
+                        embed_invoke_url=embed_invoke_url,
+                        embed_model_name=embed_model_name,
+                        local_ingest_embed_backend=local_ingest_embed_backend,
+                        embed_api_key=api_key,
+                        embed_modality=embed_modality,
+                        embed_granularity=embed_granularity,
+                        text_elements_modality=text_elements_modality,
+                        structured_elements_modality=structured_elements_modality,
+                        batch=IngestEmbedBatchOptions(
+                            embed_workers=embed_workers,
+                            embed_batch_size=embed_batch_size,
+                            embed_cpus_per_actor=embed_cpus_per_actor,
+                            embed_gpus_per_actor=embed_gpus_per_actor,
+                        ),
+                    ),
+                    image_store=IngestImageStoreOptions(images_uri=store_images_uri),
+                    storage=IngestStorageOptions(
+                        lancedb_uri=lancedb_uri,
+                        table_name=table_name,
+                        overwrite=overwrite,
+                    ),
+                )
+            )
+            summary = run_ingest_workflow(
+                ingest_plan,
                 dry_run=dry_run,
-                method=method,
-                dpi=dpi,
-                extract_text=extract_text,
-                extract_images=extract_images,
-                extract_tables=extract_tables,
-                extract_charts=extract_charts,
-                extract_infographics=extract_infographics,
-                extract_page_as_image=extract_page_as_image,
-                use_page_elements=use_page_elements,
-                segment_audio=segment_audio,
-                audio_split_type=audio_split_type,
-                audio_split_interval=audio_split_interval,
-                video_extract_audio=video_extract_audio,
-                video_extract_frames=video_extract_frames,
-                video_frame_fps=video_frame_fps,
-                video_frame_dedup=video_frame_dedup,
-                video_frame_text_dedup=video_frame_text_dedup,
-                video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
-                video_av_fuse=video_av_fuse,
-                caption=caption,
-                caption_invoke_url=caption_invoke_url,
-                caption_model_name=caption_model_name,
-                caption_context_text_max_chars=caption_context_text_max_chars,
-                caption_infographics=caption_infographics,
-                ray_address=ray_address,
-                ray_log_to_driver=ray_log_to_driver,
-                lancedb_uri=lancedb_uri,
-                table_name=table_name,
-                overwrite=overwrite,
-                page_elements_invoke_url=page_elements_invoke_url,
-                ocr_invoke_url=ocr_invoke_url,
-                ocr_version=ocr_version,
-                ocr_lang=ocr_lang,
-                graphic_elements_invoke_url=graphic_elements_invoke_url,
-                table_structure_invoke_url=table_structure_invoke_url,
-                table_output_format=table_output_format,
-                embed_invoke_url=embed_invoke_url,
-                embed_model_name=embed_model_name,
-                local_ingest_embed_backend=local_ingest_embed_backend,
-                pdf_extract_workers=pdf_extract_workers,
-                pdf_extract_batch_size=pdf_extract_batch_size,
-                pdf_extract_cpus_per_task=pdf_extract_cpus_per_task,
-                page_elements_workers=page_elements_workers,
-                page_elements_batch_size=page_elements_batch_size,
-                page_elements_cpus_per_actor=page_elements_cpus_per_actor,
-                page_elements_gpus_per_actor=page_elements_gpus_per_actor,
-                ocr_workers=ocr_workers,
-                ocr_batch_size=ocr_batch_size,
-                ocr_cpus_per_actor=ocr_cpus_per_actor,
-                ocr_gpus_per_actor=ocr_gpus_per_actor,
-                table_structure_workers=table_structure_workers,
-                table_structure_batch_size=table_structure_batch_size,
-                table_structure_cpus_per_actor=table_structure_cpus_per_actor,
-                table_structure_gpus_per_actor=table_structure_gpus_per_actor,
-                embed_workers=embed_workers,
-                embed_batch_size=embed_batch_size,
-                embed_cpus_per_actor=embed_cpus_per_actor,
-                embed_gpus_per_actor=embed_gpus_per_actor,
             )
     except _ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -557,10 +714,10 @@ def ingest_command(
     # Report input-file count alongside the actual landed-row count from the
     # LanceDB table — they diverge whenever one document explodes into multiple
     # chunks (PDFs → page elements, video → audio_visual segments) or
-    # shrinks to zero rows when every NIM call failed. The SDK rejects empty
-    # or unverifiable ingests before we get here; ``n_rows`` is None when the
+    # shrinks to zero rows when every NIM call failed. The previous message
+    # only reported inputs and hid both cases. ``n_rows`` is None when the
     # table read itself failed (caller can still see file count + URI).
-    n_files = len(summary["documents"])
+    n_files = summary["n_documents"]
     table_path = f"{summary['lancedb_uri']}/{summary['table_name']}"
     n_rows = summary.get("n_rows")
     if n_rows is None:
@@ -592,8 +749,8 @@ def query_command(
         "--content-types",
         help="Comma-separated content types to keep, such as text,table; untyped hits are excluded.",
     ),
-    lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
-    table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),
+    lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
+    table_name: str = typer.Option("nemo-retriever", "--table-name", help="LanceDB table name."),
     embed_invoke_url: str | None = typer.Option(None, "--embed-invoke-url", help="Embedding NIM endpoint URL."),
     embed_model_name: str | None = typer.Option(
         None,
@@ -633,19 +790,29 @@ def query_command(
     try:
         with _quiet_capture():
             hits = query_documents(
-                query,
-                top_k=top_k,
-                candidate_k=candidate_k,
-                page_dedup=page_dedup,
-                content_types=content_types,
-                lancedb_uri=lancedb_uri,
-                table_name=table_name,
-                embed_invoke_url=embed_invoke_url,
-                embed_model_name=embed_model_name,
-                reranker_invoke_url=reranker_invoke_url,
-                reranker_model_name=reranker_model_name,
-                reranker_backend=reranker_backend,
-                rerank=rerank,
+                QueryRequest(
+                    query=query,
+                    retrieval=QueryRetrievalOptions(
+                        top_k=top_k,
+                        candidate_k=candidate_k,
+                        page_dedup=page_dedup,
+                        content_types=content_types,
+                    ),
+                    embed=QueryEmbedOptions(
+                        embed_invoke_url=embed_invoke_url,
+                        embed_model_name=embed_model_name,
+                    ),
+                    rerank=QueryRerankOptions(
+                        enabled=rerank,
+                        reranker_invoke_url=reranker_invoke_url,
+                        reranker_model_name=reranker_model_name,
+                        reranker_backend=reranker_backend,
+                    ),
+                    storage=QueryStorageOptions(
+                        lancedb_uri=lancedb_uri,
+                        table_name=table_name,
+                    ),
+                )
             )
     except _ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)

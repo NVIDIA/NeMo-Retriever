@@ -61,10 +61,13 @@ class JudgeResult:
     """Result from a single judge evaluation.
 
     ``score`` is ``None`` when the judge could not produce a score
-    (API error, parse failure, empty candidate).  Valid scores are 1-5.
+    (API error, empty candidate, or no valid rating).  Valid scores are
+    ragas ``AnswerAccuracy`` values on a ``0.0-1.0`` scale (higher is
+    better).  ``reasoning`` is empty -- ``AnswerAccuracy`` emits only a
+    numeric rating.
     """
 
-    score: Optional[int] = None
+    score: Optional[float] = None
     reasoning: str = ""
     error: Optional[str] = None
 
@@ -89,8 +92,9 @@ class AnswerResult:
         latency_s: Wall-clock latency of the generation call in seconds.
         error: Non-None when generation failed.  Scoring and judge are
             skipped when ``error`` is set.
-        judge_score: LLM-judge Tier-3 score (1-5) when a judge was run.
-        judge_reasoning: One-sentence rationale emitted by the judge.
+        judge_score: ragas AnswerAccuracy Tier-3 score (0.0-1.0) when a
+            judge was run.
+        judge_reasoning: Empty -- AnswerAccuracy emits only a numeric rating.
         judge_error: Non-None when the judge call failed.
         token_f1: Tier-2 token-level F1 between ``answer`` and the
             reference answer (0.0-1.0).
@@ -108,7 +112,7 @@ class AnswerResult:
     model: str
     latency_s: float
     error: Optional[str] = None
-    judge_score: Optional[int] = None
+    judge_score: Optional[float] = None
     judge_reasoning: Optional[str] = None
     judge_error: Optional[str] = None
     token_f1: Optional[float] = None

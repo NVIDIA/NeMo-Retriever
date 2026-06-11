@@ -241,28 +241,34 @@ def token_f1(reference: str, candidate: str) -> dict:
 
 def classify_failure(
     ref_in_chunks: bool,
-    judge_score: Optional[int],
+    judge_score: Optional[float],
     gen_error: Optional[str],
     candidate: str,
 ) -> str:
-    """Classify the failure mode for a single query + model combination."""
+    """Classify the failure mode for a single query + model combination.
+
+    ``judge_score`` is a ragas ``AnswerAccuracy`` value on a ``0.0-1.0``
+    scale.  The dual-judge metric yields one of ``{0.0, 0.25, 0.5, 0.75,
+    1.0}``; the bands below preserve the previous three-way correct /
+    partial / bad split from the legacy 1-5 rubric.
+    """
     if gen_error == "thinking_truncated":
         return "thinking_truncated"
 
     if judge_score is None:
         return "judge_error"
 
-    if judge_score >= 4:
+    if judge_score >= 0.75:
         return "correct"
 
     claims_no_context = bool(_NO_CONTEXT_RE.search(candidate))
 
-    if 2 <= judge_score <= 3:
+    if judge_score >= 0.25:
         if claims_no_context:
             return "refused_with_context" if ref_in_chunks else "refused_missing_context"
         return "partial"
 
-    if judge_score <= 1:
+    if judge_score < 0.25:
         if claims_no_context:
             return "refused_with_context" if ref_in_chunks else "refused_missing_context"
         if not ref_in_chunks:
@@ -301,7 +307,7 @@ def score_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         em_results.append(tf1.get("exact_match", False))
 
         judge_score_raw = row.get("judge_score")
-        judge_score = None if pd.isna(judge_score_raw) else int(judge_score_raw)
+        judge_score = None if pd.isna(judge_score_raw) else float(judge_score_raw)
         gen_error = row.get("gen_error")
         fm = classify_failure(
             ref_in_chunks=aic,

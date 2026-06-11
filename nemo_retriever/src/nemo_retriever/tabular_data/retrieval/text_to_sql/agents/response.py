@@ -70,13 +70,14 @@ class ResponseAgent(BaseAgent):
 
         # --- final dict assembly ---
         sql_columns = path_state.get("sql_columns", [])
+        sql_response_from_db = path_state.get("sql_response_from_db")
 
         response = {
             "response": formatted_response,
             "sql_code": sql_code,
             "sql_columns": sql_columns,
             "custom_analyses_used": [],
-            "sql_response_from_db": path_state.get("sql_response_from_db"),
+            "sql_response_from_db": sql_response_from_db,
         }
 
         self.logger.info("Calculation response prepared and returned")

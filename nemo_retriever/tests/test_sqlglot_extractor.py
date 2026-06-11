@@ -51,6 +51,7 @@ _SCHEMA = _MockSchema(
 )
 
 _ALL_SCHEMAS = {"ecommerce": _SCHEMA}
+_DIALECTS = ["duckdb"]
 
 # ---------------------------------------------------------------------------
 # SQL fixtures  (taken verbatim from duckdb_connector.py)
@@ -149,13 +150,13 @@ LIMIT 3
 
 def test_rfm_query_tables():
     """All three source tables are detected; no CTE names leak into the result."""
-    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_RFM, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert set(result.tables.keys()) == {"orders", "customers", "order_items"}
 
 
 def test_rfm_query_schema_name():
     """Each table resolves to the owning schema key."""
-    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_RFM, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert result.tables["orders"].schema_name == "ecommerce"
     assert result.tables["customers"].schema_name == "ecommerce"
     assert result.tables["order_items"].schema_name == "ecommerce"
@@ -164,56 +165,56 @@ def test_rfm_query_schema_name():
 def test_rfm_query_orders_columns():
     """orders: join-key customer_id, join-key order_id, filter order_status,
     aggregation column order_purchase_timestamp."""
-    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_RFM, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert result.tables["orders"].columns == {"order_id", "customer_id", "order_status", "order_purchase_timestamp"}
 
 
 def test_rfm_query_customers_columns():
     """customers: join-key customer_id, grouping/select customer_unique_id."""
-    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_RFM, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert result.tables["customers"].columns == {"customer_id", "customer_unique_id"}
 
 
 def test_rfm_query_order_items_columns():
     """order_items: join-key order_id, aggregation column price."""
-    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_RFM, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert result.tables["order_items"].columns == {"order_id", "price"}
 
 
 def test_clv_query_tables():
     """All three source tables are detected; CustomerData CTE does not appear."""
-    result = extract_tables_and_columns(_SQL_CLV, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_CLV, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert set(result.tables.keys()) == {"customers", "orders", "order_payments"}
 
 
 def test_clv_query_customers_columns():
     """customers: join-key customer_id, select/group-by customer_unique_id."""
-    result = extract_tables_and_columns(_SQL_CLV, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_CLV, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert result.tables["customers"].columns == {"customer_id", "customer_unique_id"}
 
 
 def test_clv_query_orders_columns():
     """orders: join-key customer_id, explicit order_id reference, timestamp aggregations."""
-    result = extract_tables_and_columns(_SQL_CLV, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_CLV, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert result.tables["orders"].columns == {"customer_id", "order_id", "order_purchase_timestamp"}
 
 
 def test_clv_query_order_payments_columns():
     """order_payments: join-key order_id, aggregation column payment_value."""
-    result = extract_tables_and_columns(_SQL_CLV, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_CLV, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert result.tables["order_payments"].columns == {"order_id", "payment_value"}
 
 
 def test_no_schema_name_when_schemas_empty():
     """Without all_schemas, schema_name is None for every table."""
-    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas={})
+    result = extract_tables_and_columns(_SQL_RFM, dialects=_DIALECTS, all_schemas={})
     for match in result.tables.values():
         assert match.schema_name is None
 
 
 def test_no_schema_returns_subset():
     """Without schema assistance qualify() still resolves explicitly-qualified columns."""
-    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas={})
+    result = extract_tables_and_columns(_SQL_RFM, dialects=_DIALECTS, all_schemas={})
     # join-key columns resolved via qualify's USING→ON expansion must be present
     assert "customer_id" in result.tables.get("orders", TableMatch()).columns
     assert "customer_id" in result.tables.get("customers", TableMatch()).columns
@@ -222,21 +223,21 @@ def test_no_schema_returns_subset():
 
 def test_ast_node_count_is_positive():
     """ast_node_count is populated with a positive value for valid SQL."""
-    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_RFM, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert result.ast_node_count > 0
 
 
 def test_empty_sql_raises_syntax_error():
     """An empty SQL string is a parse failure, not a "no tables found" outcome."""
     with pytest.raises(SQLSyntaxError):
-        extract_tables_and_columns("", all_schemas=_ALL_SCHEMAS)
+        extract_tables_and_columns("", dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
 
 
 def test_invalid_sql_raises_syntax_error():
     """sqlglot ParseError surfaces as a dedicated SQLSyntaxError so callers can
     distinguish unparseable SQL from valid SQL that references no known table."""
     with pytest.raises(SQLSyntaxError):
-        extract_tables_and_columns("NOT VALID SQL !!!", all_schemas=_ALL_SCHEMAS)
+        extract_tables_and_columns("NOT VALID SQL !!!", dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +257,7 @@ def _join_set(pairs: list[JoinPair]) -> set[tuple[str, str, str, str]]:
 
 def test_rfm_join_edges():
     """RFM query uses USING joins: orders↔customers on customer_id, orders↔order_items on order_id."""
-    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_RFM, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     joins = _join_set(result.joins)
     assert ("customers", "customer_id", "orders", "customer_id") in joins
     assert ("order_items", "order_id", "orders", "order_id") in joins
@@ -264,7 +265,7 @@ def test_rfm_join_edges():
 
 def test_clv_join_edges():
     """CLV query: customers↔orders on customer_id, orders↔order_payments on order_id."""
-    result = extract_tables_and_columns(_SQL_CLV, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_CLV, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     joins = _join_set(result.joins)
     assert ("customers", "customer_id", "orders", "customer_id") in joins
     assert ("order_payments", "order_id", "orders", "order_id") in joins
@@ -272,7 +273,7 @@ def test_clv_join_edges():
 
 def test_join_no_duplicates():
     """Same join key used in multiple CTEs should not produce duplicate pairs."""
-    result = extract_tables_and_columns(_SQL_RFM, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(_SQL_RFM, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     joins = _join_set(result.joins)
     assert len(joins) == len(result.joins)
 
@@ -284,7 +285,7 @@ def test_explicit_on_join():
     FROM orders o
     JOIN customers c ON o.customer_id = c.customer_id
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     joins = _join_set(result.joins)
     assert ("customers", "customer_id", "orders", "customer_id") in joins
 
@@ -297,7 +298,7 @@ def test_multi_table_join_chain():
     JOIN customers c ON o.customer_id = c.customer_id
     JOIN order_items oi ON o.order_id = oi.order_id
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     joins = _join_set(result.joins)
     assert len(joins) == 2
     assert ("customers", "customer_id", "orders", "customer_id") in joins
@@ -307,7 +308,7 @@ def test_multi_table_join_chain():
 def test_no_joins_returns_empty_list():
     """A query with no JOINs returns an empty joins list."""
     sql = "SELECT order_id, customer_id FROM orders"
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert result.joins == []
 
 
@@ -318,7 +319,7 @@ def test_join_without_schema():
     FROM orders o
     JOIN customers c ON o.customer_id = c.customer_id
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas={})
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas={})
     joins = _join_set(result.joins)
     assert ("customers", "customer_id", "orders", "customer_id") in joins
 
@@ -330,7 +331,7 @@ def test_using_join_with_schema():
     FROM orders
     JOIN customers USING (customer_id)
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     joins = _join_set(result.joins)
     assert ("customers", "customer_id", "orders", "customer_id") in joins
 
@@ -342,7 +343,7 @@ def test_using_join_without_schema():
     FROM orders
     JOIN customers USING (customer_id)
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas={})
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas={})
     joins = _join_set(result.joins)
     assert ("customers", "customer_id", "orders", "customer_id") in joins
 
@@ -354,7 +355,7 @@ def test_using_multi_column():
     FROM orders a
     JOIN order_items b ON a.order_id = b.order_id
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     joins = _join_set(result.joins)
     assert ("order_items", "order_id", "orders", "order_id") in joins
 
@@ -367,7 +368,7 @@ def test_derived_table_join():
     JOIN (SELECT order_id, SUM(price) AS total FROM order_items GROUP BY order_id) d
       ON t.order_id = d.order_id
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     joins = _join_set(result.joins)
     assert ("order_items", "order_id", "orders", "order_id") in joins
 
@@ -380,7 +381,7 @@ def test_different_column_names_join():
     INNER JOIN major AS T2 ON T1.link_to_major = T2.major_id
     WHERE T1.first_name = 'Angela'
     """
-    result = extract_tables_and_columns(sql, dialect="sqlite", all_schemas={})
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas={})
     assert len(result.joins) == 1
     jp = result.joins[0]
     assert {jp.left_column, jp.right_column} == {"link_to_major", "major_id"}
@@ -397,7 +398,7 @@ def test_multi_table_chain_join():
     INNER JOIN member AS T4 ON T3.link_to_member = T4.member_id
     WHERE T1.event_name = 'Yearly Kickoff'
     """
-    result = extract_tables_and_columns(sql, dialect="sqlite", all_schemas={})
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas={})
     joins = _join_set(result.joins)
     assert len(joins) == 3
     assert ("budget", "link_to_event", "event", "event_id") in joins
@@ -413,7 +414,7 @@ def test_multiple_conditions_in_on():
     INNER JOIN colour AS T2 ON T1.eye_colour_id = T2.id AND T1.hair_colour_id = T2.id
     WHERE T2.colour = 'Black'
     """
-    result = extract_tables_and_columns(sql, dialect="sqlite", all_schemas={})
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas={})
     joins = _join_set(result.joins)
     assert len(joins) == 2
     assert ("colour", "id", "superhero", "eye_colour_id") in joins
@@ -427,7 +428,7 @@ def test_left_join():
     FROM schools AS T2
     LEFT JOIN satscores AS T1 ON T2.CDSCode = T1.cds
     """
-    result = extract_tables_and_columns(sql, dialect="sqlite", all_schemas={})
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas={})
     assert len(result.joins) == 1
     jp = result.joins[0]
     assert {jp.left_column, jp.right_column} == {"cdscode", "cds"}
@@ -443,7 +444,7 @@ def test_except_with_join():
     EXCEPT
     SELECT T1.event_name FROM event AS T1 WHERE T1.type = 'Meeting'
     """
-    result = extract_tables_and_columns(sql, dialect="sqlite", all_schemas={})
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas={})
     joins = _join_set(result.joins)
     assert ("attendance", "link_to_event", "event", "event_id") in joins
 
@@ -459,7 +460,7 @@ def test_derived_table_from_sample():
         GROUP BY league_id
     ) AS t1 ON t1.league_id = t2.id
     """
-    result = extract_tables_and_columns(sql, dialect="sqlite", all_schemas={})
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas={})
     joins = _join_set(result.joins)
     assert ("league", "id", "match", "league_id") in joins
 
@@ -474,7 +475,7 @@ def test_derived_table_function_column_excluded():
         FROM customers
     ) d ON o.customer_name = d.full_name
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     joins = _join_set(result.joins)
     # full_name is a concatenation of two columns — not a real column, no edge
     assert len(joins) == 0
@@ -492,7 +493,7 @@ def test_cte_join_traces_to_real_table():
     FROM customers c
     JOIN order_stats os ON c.customer_id = os.customer_id
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     joins = _join_set(result.joins)
     # os.customer_id traces back to orders.customer_id
     assert ("customers", "customer_id", "orders", "customer_id") in joins
@@ -512,7 +513,7 @@ def test_cte_function_column_excluded():
     FROM orders o
     JOIN enriched e ON o.customer_name = e.full_name
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     joins = _join_set(result.joins)
     assert len(joins) == 0
 
@@ -525,8 +526,8 @@ def test_canonical_order_consistent():
     sql_b = """
     SELECT b.customer_id FROM customers b JOIN orders a ON b.customer_id = a.customer_id
     """
-    result_a = extract_tables_and_columns(sql_a, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
-    result_b = extract_tables_and_columns(sql_b, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result_a = extract_tables_and_columns(sql_a, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
+    result_b = extract_tables_and_columns(sql_b, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert _join_set(result_a.joins) == _join_set(result_b.joins)
     assert result_a.joins[0].left_table == result_b.joins[0].left_table
     assert result_a.joins[0].right_table == result_b.joins[0].right_table
@@ -535,7 +536,7 @@ def test_canonical_order_consistent():
 def test_empty_sql_raises_for_join_extraction():
     """Empty SQL is a parse failure; the join-extraction path must surface it."""
     with pytest.raises(SQLSyntaxError):
-        extract_tables_and_columns("", all_schemas=_ALL_SCHEMAS)
+        extract_tables_and_columns("", dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
 
 
 # ---------------------------------------------------------------------------
@@ -555,7 +556,7 @@ def test_simple_union():
     UNION
     SELECT order_id, order_status FROM orders
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     unions = _union_set(result.unions)
     assert ("customers", "customer_id", "orders", "order_id") in unions
     assert ("customers", "customer_unique_id", "orders", "order_status") in unions
@@ -569,7 +570,7 @@ def test_union_all():
     UNION ALL
     SELECT order_id, order_status FROM orders
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     unions = _union_set(result.unions)
     assert ("customers", "customer_id", "orders", "order_id") in unions
     assert ("customers", "customer_unique_id", "orders", "order_status") in unions
@@ -585,7 +586,7 @@ def test_three_way_union():
     UNION ALL
     SELECT order_id FROM order_items
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     unions = _union_set(result.unions)
     assert ("customers", "customer_id", "orders", "order_id") in unions
     assert ("customers", "customer_id", "order_items", "order_id") in unions
@@ -600,7 +601,7 @@ def test_union_excludes_function_columns():
     UNION
     SELECT order_id, order_status FROM orders
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     unions = _union_set(result.unions)
     # Position 0: customer_id ↔ order_id (both real columns)
     assert ("customers", "customer_id", "orders", "order_id") in unions
@@ -611,7 +612,7 @@ def test_union_excludes_function_columns():
 def test_union_no_set_op_returns_empty():
     """A query without UNION produces no union pairs."""
     sql = "SELECT customer_id FROM customers"
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     assert result.unions == []
 
 
@@ -622,7 +623,7 @@ def test_except_produces_union_pairs():
     EXCEPT
     SELECT order_id, order_status FROM orders
     """
-    result = extract_tables_and_columns(sql, dialect="duckdb", all_schemas=_ALL_SCHEMAS)
+    result = extract_tables_and_columns(sql, dialects=_DIALECTS, all_schemas=_ALL_SCHEMAS)
     unions = _union_set(result.unions)
     assert ("customers", "customer_id", "orders", "order_id") in unions
     assert ("customers", "customer_unique_id", "orders", "order_status") in unions

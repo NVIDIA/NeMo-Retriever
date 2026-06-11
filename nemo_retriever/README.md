@@ -44,7 +44,7 @@ For **local GPU inference** (Nemotron models running on your GPU), install with 
 ```bash
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install "nemo-retriever[local]==26.05-RC1"
+uv pip install "nemo-retriever[local]"
 ```
 
 Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (see the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
@@ -55,7 +55,7 @@ For **remote NIM inference only** (no local GPU required), the base package is s
 uv python install 3.12
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install nemo-retriever==26.05-RC1
+uv pip install nemo-retriever
 ```
 
 Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (see the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
@@ -65,7 +65,7 @@ This creates a dedicated Python environment and installs the `nemo-retriever` Py
 If your PDF pipeline uses `extract_method="nemotron_parse"`, install the Nemotron Parse client dependencies with the `nemotron-parse` extra:
 
 ```bash
-uv pip install "nemo-retriever[nemotron-parse]==26.05-RC1"
+uv pip install "nemo-retriever[nemotron-parse]"
 ```
 
 For local GPU inference with Nemotron Parse, combine the extras as `nemo-retriever[local,nemotron-parse]`.
@@ -388,7 +388,7 @@ Scoring tiers on `AnswerResult`:
 
 - **Tier 1** (`answer_in_context`) -- whether retrieval surfaced the evidence; requires `reference`.
 - **Tier 2** (`token_f1`, `exact_match`) -- token-level overlap; requires `reference`.
-- **Tier 3** (`judge_score`, `judge_reasoning`) -- LLM-as-judge 1-5 score; requires `reference` and `judge`.
+- **Tier 3** (`judge_score`) -- dual-judge `AnswerAccuracy` LLM-as-judge score (0.0-1.0), ported from ragas onto `litellm`; requires `reference` and `judge`. `judge_reasoning` is always empty (the metric emits only a rating).
 - `failure_mode` -- derived classification (`correct`, `partial`, `retrieval_miss`, `generation_miss`, `refused_*`, `thinking_truncated`).
 
 If only `reference` is supplied, Tier 1 + 2 run. If only `judge` is supplied (without `reference`), a `ValueError` is raised. On generation error, scoring and judge are skipped and `AnswerResult.error` is populated.
