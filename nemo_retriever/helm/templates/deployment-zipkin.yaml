@@ -1,0 +1,82 @@
+{{- $otel := .Values.topology.otel | default dict -}}
+{{- $zipkin := .Values.topology.zipkin | default dict -}}
+{{- if not (kindIs "map" $otel) -}}
+{{- fail "topology.otel must be a map" -}}
+{{- end -}}
+{{- if not (kindIs "map" $zipkin) -}}
+{{- fail "topology.zipkin must be a map" -}}
+{{- end -}}
+{{- if and (get $otel "enabled") (get $zipkin "enabled") }}
+{{- $startupProbe := $zipkin.startupProbe | default dict -}}
+{{- $livenessProbe := $zipkin.livenessProbe | default dict -}}
+{{- $readinessProbe := $zipkin.readinessProbe | default dict -}}
+{{- $resources := $zipkin.resources | default dict -}}
+{{- $zipkinImage := include "nemo-retriever.zipkin.image" . | fromYaml -}}
+{{- $zipkinPort := include "nemo-retriever.zipkin.port" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemo-retriever.zipkin.fullname" . }}
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "zipkin") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "zipkin") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "zipkin") | nindent 8 }}
+    spec:
+      {{- include "nemo-retriever.imagePullSecrets" . | nindent 6 }}
+      {{- with $zipkin.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $zipkin.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $zipkin.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $zipkin.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: zipkin
+          image: "{{ get $zipkinImage "repository" }}:{{ get $zipkinImage "tag" }}"
+          imagePullPolicy: {{ get $zipkinImage "pullPolicy" }}
+          {{- with $zipkin.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $zipkin.javaOpts }}
+          env:
+            - name: JAVA_OPTS
+              value: {{ . | quote }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $zipkinPort }}
+              protocol: TCP
+          {{- if get $startupProbe "enabled" }}
+          startupProbe:
+            {{- omit $startupProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if get $livenessProbe "enabled" }}
+          livenessProbe:
+            {{- omit $livenessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if get $readinessProbe "enabled" }}
+          readinessProbe:
+            {{- omit $readinessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- with $resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

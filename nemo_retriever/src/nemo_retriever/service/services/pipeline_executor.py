@@ -90,6 +90,39 @@ def _sanitize_result_data(df: Any) -> list[dict[str, Any]]:
     return dataframe_to_transport_records(df)
 
 
+def _pipeline_tracing() -> Any | None:
+    try:
+        from nemo_retriever.service import tracing
+    except Exception:
+        logger.debug("Service tracing helper unavailable for pipeline execution", exc_info=True)
+        return None
+    return tracing
+
+
+def _capture_trace_context_for_pipeline() -> dict[str, str]:
+    tracing = _pipeline_tracing()
+    if tracing is None:
+        return {}
+    try:
+        return dict(tracing.inject_trace_context())
+    except Exception as exc:
+        logger.warning("OpenTelemetry trace context capture failed for pipeline execution: %s", exc)
+        return {}
+
+
+def _extract_trace_context_for_pipeline(trace_context: dict[str, str] | None) -> Any | None:
+    if not trace_context:
+        return None
+    tracing = _pipeline_tracing()
+    if tracing is None:
+        return None
+    try:
+        return tracing.extract_trace_context(trace_context)
+    except Exception as exc:
+        logger.warning("OpenTelemetry trace context extraction failed for pipeline execution: %s", exc)
+        return None
+
+
 # ── Process pool registry ────────────────────────────────────────────
 
 _process_executors: list[ProcessPoolExecutor] = []
@@ -498,6 +531,9 @@ def _run_pipeline_in_process(
     pipeline_spec: dict[str, Any] | None = None,
     caption_params_dict: dict[str, Any] | None = None,
     asr_params_dict: dict[str, Any] | None = None,
+    trace_context: dict[str, str] | None = None,
+    pool_label: str | None = None,
+    service_role: str | None = None,
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
 
@@ -517,19 +553,32 @@ def _run_pipeline_in_process(
     When ``pipeline_spec`` is ``None`` (or empty) the behaviour exactly
     matches the original closure-baked pipeline.
     """
+    from nemo_retriever.service import tracing
+
     t0 = time.monotonic()
 
-    ingestor, _extraction_mode, has_per_request_vdb = _build_graph_ingestor_from_spec(
-        filename,
-        payload,
-        extract_params_dict,
-        embed_params_dict,
-        pipeline_spec,
-        caption_params_dict,
-        asr_params_dict,
-    )
+    tracing.configure_tracing(service_role=service_role or "worker-process")
+    span_context = _extract_trace_context_for_pipeline(trace_context)
+    span_attributes = {
+        "pool": (pool_label or "").lower(),
+        "document.filename": filename,
+    }
+    try:
+        with tracing.start_span("pipeline.ingest", context=span_context, attributes=span_attributes):
+            ingestor, _extraction_mode, has_per_request_vdb = _build_graph_ingestor_from_spec(
+                filename,
+                payload,
+                extract_params_dict,
+                embed_params_dict,
+                pipeline_spec,
+                caption_params_dict,
+                asr_params_dict,
+            )
 
-    result_df = ingestor.ingest()
+            result_df = ingestor.ingest()
+    finally:
+        tracing.force_flush(timeout_millis=500)
+
     elapsed = time.monotonic() - t0
 
     row_count = len(result_df)
@@ -718,6 +767,7 @@ def _make_work_fn(
         resolved_spec = _resolve_sidecar_in_spec(item.pipeline_spec)
 
         try:
+            trace_context = _capture_trace_context_for_pipeline()
             row_count, result_data, elapsed = await loop.run_in_executor(
                 executor_ref[0],
                 _run_pipeline_in_process,
@@ -729,6 +779,9 @@ def _make_work_fn(
                 resolved_spec,
                 caption_params_dict,
                 asr_params_dict,
+                trace_context,
+                label,
+                config.mode,
             )
         except BrokenProcessPool:
             logger.error(
