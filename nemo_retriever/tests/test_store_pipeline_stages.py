@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 
 from nemo_retriever.graph import InprocessExecutor, StoreOperator, UDFOperator
-from nemo_retriever.params import StoreParams
+from nemo_retriever.common.params import StoreParams
 
 
 def _make_tiny_png_b64(width: int = 4, height: int = 4, color=(255, 0, 0)) -> str:
@@ -137,7 +137,7 @@ class TestStoreOperatorInGraph:
             calls.append((path, mode, kwargs))
             return _Writer()
 
-        monkeypatch.setattr("nemo_retriever.graph.store_operator.fsspec.open", _fake_open)
+        monkeypatch.setattr("nemo_retriever.operators.graph_ops.store_operator.fsspec.open", _fake_open)
 
         params = StoreParams(
             storage_uri="s3://bucket/prefix",
@@ -174,7 +174,7 @@ class TestStoreOperatorInGraph:
             calls.append(path)
             return _Writer()
 
-        monkeypatch.setattr("nemo_retriever.graph.store_operator.fsspec.open", _fake_open)
+        monkeypatch.setattr("nemo_retriever.operators.graph_ops.store_operator.fsspec.open", _fake_open)
 
         result = StoreOperator(params=StoreParams(storage_uri="memory://stored")).process(df)
 
@@ -185,7 +185,7 @@ class TestStoreOperatorInGraph:
         assert calls[0] == f"memory://stored/{hashlib.sha1(raw).hexdigest()}.png"
 
     def test_embedding_preserves_image_b64_for_post_embed_store(self, monkeypatch):
-        from nemo_retriever.text_embed import runtime
+        from nemo_retriever.models.inference import runtime
 
         b64 = _make_tiny_png_b64()
         df = _make_embedded_df(b64)
@@ -208,12 +208,12 @@ class TestStoreOperatorInGraph:
             StoreParams(public_base_url="https://cdn.example.com")
 
     def test_explode_does_not_reload_stored_uri_for_embedding(self, monkeypatch):
-        from nemo_retriever.graph.content_transforms import explode_content_to_rows
+        from nemo_retriever.common.modality.content_transforms import explode_content_to_rows
 
         def _fail_load(uri):
             raise AssertionError(f"content transform attempted to reload stored image URI: {uri}")
 
-        monkeypatch.setattr("nemo_retriever.io.image_store.load_image_b64_from_uri", _fail_load)
+        monkeypatch.setattr("nemo_retriever.common.io.image_store.load_image_b64_from_uri", _fail_load)
 
         df = pd.DataFrame(
             {
@@ -227,12 +227,12 @@ class TestStoreOperatorInGraph:
         assert result.iloc[0]["_stored_image_uri"] == "file:///page.png"
 
     def test_collapse_does_not_reload_stored_uri_for_embedding(self, monkeypatch):
-        from nemo_retriever.graph.content_transforms import collapse_content_to_page_rows
+        from nemo_retriever.common.modality.content_transforms import collapse_content_to_page_rows
 
         def _fail_load(uri):
             raise AssertionError(f"content transform attempted to reload stored image URI: {uri}")
 
-        monkeypatch.setattr("nemo_retriever.io.image_store.load_image_b64_from_uri", _fail_load)
+        monkeypatch.setattr("nemo_retriever.common.io.image_store.load_image_b64_from_uri", _fail_load)
 
         df = pd.DataFrame(
             {

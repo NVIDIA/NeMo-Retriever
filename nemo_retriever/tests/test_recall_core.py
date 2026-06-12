@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from nemo_retriever.recall.core import _hit_to_audio_segment_key, _normalize_query_df, is_hit_at_k
+from nemo_retriever.tools.recall.core import _hit_to_audio_segment_key, _normalize_query_df, is_hit_at_k
 
 
 @pytest.mark.parametrize(

@@ -30,7 +30,7 @@ class TestLLMRemoteClientParams:
     """Validate LLMRemoteClientParams validators, defaults, and api_key auto-resolution."""
 
     def test_defaults(self):
-        from nemo_retriever.params.models import LLMRemoteClientParams
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
 
         p = LLMRemoteClientParams(model="nvidia_nim/meta/llama-3.1-70b-instruct")
         assert p.model == "nvidia_nim/meta/llama-3.1-70b-instruct"
@@ -40,39 +40,39 @@ class TestLLMRemoteClientParams:
         assert p.extra_params == {}
 
     def test_model_is_required(self):
-        from nemo_retriever.params.models import LLMRemoteClientParams
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
 
         with pytest.raises(ValueError):
             LLMRemoteClientParams()  # type: ignore[call-arg]
 
     def test_negative_num_retries_rejected(self):
-        from nemo_retriever.params.models import LLMRemoteClientParams
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
 
         with pytest.raises(ValueError, match="num_retries must be >= 0"):
             LLMRemoteClientParams(model="m", num_retries=-1)
 
     def test_zero_timeout_rejected(self):
-        from nemo_retriever.params.models import LLMRemoteClientParams
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
 
         with pytest.raises(ValueError, match="timeout must be > 0"):
             LLMRemoteClientParams(model="m", timeout=0.0)
 
     def test_negative_timeout_rejected(self):
-        from nemo_retriever.params.models import LLMRemoteClientParams
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
 
         with pytest.raises(ValueError, match="timeout must be > 0"):
             LLMRemoteClientParams(model="m", timeout=-1.0)
 
     def test_extra_forbid(self):
         """Unknown kwargs should be rejected by _ParamsModel(extra='forbid')."""
-        from nemo_retriever.params.models import LLMRemoteClientParams
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
 
         with pytest.raises(ValueError):
             LLMRemoteClientParams(model="m", unknown_field=123)  # type: ignore[call-arg]
 
     def test_api_key_auto_resolved_from_env(self, monkeypatch):
         """api_key=None should resolve from the remote-auth helper."""
-        from nemo_retriever.params import models as params_models
+        from nemo_retriever.common.params import models as params_models
 
         monkeypatch.setattr(params_models, "resolve_remote_api_key", lambda: "resolved-secret")
         p = params_models.LLMRemoteClientParams(model="m")
@@ -80,7 +80,7 @@ class TestLLMRemoteClientParams:
 
     def test_api_key_no_api_key_sentinel_yields_none(self):
         """Explicit NO_API_KEY sentinel suppresses auto-resolution."""
-        from nemo_retriever.params.models import NO_API_KEY, LLMRemoteClientParams
+        from nemo_retriever.common.params.models import NO_API_KEY, LLMRemoteClientParams
 
         p = LLMRemoteClientParams(model="m", api_key=NO_API_KEY)
         assert p.api_key is None
@@ -90,8 +90,8 @@ class TestLiteLLMClientConstruction:
     """LiteLLMClient should accept structured params and expose .model for back-compat."""
 
     def test_structured_construction(self):
-        from nemo_retriever.llm.clients import LiteLLMClient
-        from nemo_retriever.params.models import LLMInferenceParams, LLMRemoteClientParams
+        from nemo_retriever.models.llm.clients import LiteLLMClient
+        from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
 
         transport = LLMRemoteClientParams(model="openai/gpt-4o-mini", api_key="k")
         sampling = LLMInferenceParams(temperature=0.2, top_p=0.9, max_tokens=512)
@@ -110,8 +110,8 @@ class TestLiteLLMClientConstruction:
         ``temperature=0.0`` / ``max_tokens=4096`` so it agrees with
         :meth:`LiteLLMClient.from_kwargs`.
         """
-        from nemo_retriever.llm.clients import LiteLLMClient
-        from nemo_retriever.params.models import LLMInferenceParams, LLMRemoteClientParams
+        from nemo_retriever.models.llm.clients import LiteLLMClient
+        from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
 
         client = LiteLLMClient(transport=LLMRemoteClientParams(model="m"))
         assert isinstance(client.sampling, LLMInferenceParams)
@@ -120,7 +120,7 @@ class TestLiteLLMClientConstruction:
         assert client.sampling.max_tokens == 4096
 
     def test_from_kwargs_matches_explicit(self):
-        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.models.llm.clients import LiteLLMClient
 
         flat = LiteLLMClient.from_kwargs(
             model="openai/gpt-4o-mini",
@@ -143,7 +143,7 @@ class TestLiteLLMClientConstruction:
 
     def test_from_kwargs_defaults_top_p_to_none(self):
         """The old flat default of top_p=1.0 is now top_p=None (behavior fix)."""
-        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.models.llm.clients import LiteLLMClient
 
         client = LiteLLMClient.from_kwargs(model="m")
         assert client.sampling.top_p is None
@@ -160,7 +160,7 @@ class TestLiteLLMCompleteCallKwargs:
 
     @patch("litellm.completion")
     def test_top_p_omitted_when_none(self, mock_completion):
-        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.models.llm.clients import LiteLLMClient
 
         mock_completion.return_value = _fake_litellm_response("hi")
         client = LiteLLMClient.from_kwargs(model="openai/gpt-4o-mini", temperature=0.5)
@@ -176,7 +176,7 @@ class TestLiteLLMCompleteCallKwargs:
 
     @patch("litellm.completion")
     def test_top_p_forwarded_when_set(self, mock_completion):
-        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.models.llm.clients import LiteLLMClient
 
         mock_completion.return_value = _fake_litellm_response("hi")
         client = LiteLLMClient.from_kwargs(model="m", top_p=0.9)
@@ -187,7 +187,7 @@ class TestLiteLLMCompleteCallKwargs:
 
     @patch("litellm.completion")
     def test_max_tokens_override(self, mock_completion):
-        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.models.llm.clients import LiteLLMClient
 
         mock_completion.return_value = _fake_litellm_response("hi")
         client = LiteLLMClient.from_kwargs(model="m", max_tokens=4096)
@@ -198,7 +198,7 @@ class TestLiteLLMCompleteCallKwargs:
 
     @patch("litellm.completion")
     def test_api_key_and_api_base_forwarded(self, mock_completion):
-        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.models.llm.clients import LiteLLMClient
 
         mock_completion.return_value = _fake_litellm_response("hi")
         client = LiteLLMClient.from_kwargs(
@@ -215,7 +215,7 @@ class TestLiteLLMCompleteCallKwargs:
     @patch("litellm.completion")
     def test_extra_params_merged_last(self, mock_completion):
         """extra_params should win over keys it overlaps with."""
-        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.models.llm.clients import LiteLLMClient
 
         mock_completion.return_value = _fake_litellm_response("hi")
         client = LiteLLMClient.from_kwargs(
@@ -297,8 +297,8 @@ class TestLLMJudgeConstruction:
     """LLMJudge should use the current Nemotron judge defaults and expose .model."""
 
     def test_structured_construction_uses_defaults(self):
-        from nemo_retriever.llm.clients import LLMJudge
-        from nemo_retriever.params.models import LLMRemoteClientParams
+        from nemo_retriever.models.llm.clients import LLMJudge
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
 
         transport = LLMRemoteClientParams(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
         judge = LLMJudge(transport=transport)
@@ -307,8 +307,8 @@ class TestLLMJudgeConstruction:
         assert judge.sampling.max_tokens == 4096
 
     def test_custom_sampling_override(self):
-        from nemo_retriever.llm.clients import LLMJudge
-        from nemo_retriever.params.models import LLMInferenceParams, LLMRemoteClientParams
+        from nemo_retriever.models.llm.clients import LLMJudge
+        from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
 
         transport = LLMRemoteClientParams(model="m")
         sampling = LLMInferenceParams(temperature=0.4, max_tokens=1024)
@@ -317,7 +317,7 @@ class TestLLMJudgeConstruction:
         assert judge.sampling.max_tokens == 1024
 
     def test_from_kwargs_matches_structured(self):
-        from nemo_retriever.llm.clients import LLMJudge
+        from nemo_retriever.models.llm.clients import LLMJudge
 
         judge = LLMJudge.from_kwargs(
             model="m",
@@ -336,7 +336,7 @@ class TestLLMJudgeConstruction:
         assert judge.sampling.max_tokens == 4096
 
     def test_from_kwargs_accepts_sampling_overrides(self):
-        from nemo_retriever.llm.clients import LLMJudge
+        from nemo_retriever.models.llm.clients import LLMJudge
 
         judge = LLMJudge.from_kwargs(model="m", temperature=0.2, max_tokens=512)
 
@@ -344,7 +344,7 @@ class TestLLMJudgeConstruction:
         assert judge.sampling.max_tokens == 512
 
     def test_from_kwargs_uses_default_model(self):
-        from nemo_retriever.llm.clients import LLMJudge
+        from nemo_retriever.models.llm.clients import LLMJudge
 
         judge = LLMJudge.from_kwargs()
         assert judge.model == LLMJudge._DEFAULT_MODEL
@@ -352,7 +352,7 @@ class TestLLMJudgeConstruction:
     @patch("litellm.completion")
     def test_judge_returns_perfect_score(self, mock_completion):
         """Both judges rate 4 -> normalised 1.0 each -> averaged 1.0."""
-        from nemo_retriever.llm.clients import LLMJudge
+        from nemo_retriever.models.llm.clients import LLMJudge
 
         mock_completion.return_value = _fake_litellm_response('{"rating": 4}')
         judge = LLMJudge.from_kwargs(model="m")
@@ -366,7 +366,7 @@ class TestLLMJudgeConstruction:
     @patch("litellm.completion")
     def test_judge_averages_the_two_judges(self, mock_completion):
         """Judge 1 -> 4 (1.0), judge 2 -> 2 (0.5); average is 0.75."""
-        from nemo_retriever.llm.clients import LLMJudge
+        from nemo_retriever.models.llm.clients import LLMJudge
 
         mock_completion.side_effect = [
             _fake_litellm_response('{"rating": 4}'),
@@ -380,7 +380,7 @@ class TestLLMJudgeConstruction:
     @patch("litellm.completion")
     def test_judge_unparseable_rating_becomes_none(self, mock_completion):
         """When neither judge yields a valid 0/2/4 rating, score is None with an error."""
-        from nemo_retriever.llm.clients import LLMJudge
+        from nemo_retriever.models.llm.clients import LLMJudge
 
         mock_completion.return_value = _fake_litellm_response("I cannot rate this answer.")
         judge = LLMJudge.from_kwargs(model="m", num_retries=2)
@@ -391,7 +391,7 @@ class TestLLMJudgeConstruction:
     @patch("litellm.completion")
     def test_judge_transport_error_surfaced(self, mock_completion):
         """When every attempt raises, the last transport error is in the JudgeResult."""
-        from nemo_retriever.llm.clients import LLMJudge
+        from nemo_retriever.models.llm.clients import LLMJudge
 
         mock_completion.side_effect = RuntimeError("connection refused")
         judge = LLMJudge.from_kwargs(model="m", num_retries=2)
@@ -402,7 +402,7 @@ class TestLLMJudgeConstruction:
 
     def test_judge_empty_candidate_short_circuits(self):
         """Empty candidate is handled locally with no LLM call."""
-        from nemo_retriever.llm.clients import LLMJudge
+        from nemo_retriever.models.llm.clients import LLMJudge
 
         with patch("litellm.completion") as mock_completion:
             judge = LLMJudge.from_kwargs(model="m")
@@ -418,7 +418,7 @@ class TestBackCompatCallSites:
 
     @patch("litellm.completion")
     def test_qa_generation_operator_constructs_cleanly(self, mock_completion):
-        from nemo_retriever.evaluation.generation import QAGenerationOperator
+        from nemo_retriever.tools.evaluation.generation import QAGenerationOperator
 
         mock_completion.return_value = _fake_litellm_response("answer")
         op = QAGenerationOperator(model="m", temperature=0.0, max_tokens=128)
@@ -481,7 +481,7 @@ class TestBackCompatCallSites:
         assert generation_ops[0]._client.transport.reasoning_enabled is True
 
     def test_judging_operator_constructs_cleanly(self):
-        from nemo_retriever.evaluation.judging import JudgingOperator
+        from nemo_retriever.tools.evaluation.judging import JudgingOperator
 
         op = JudgingOperator(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
         assert op._judge.model == "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
@@ -496,7 +496,7 @@ class TestBackCompatCallSites:
         parameter, so the pre-built ``LLMJudge.transport.num_retries`` set by
         a pipeline caller was silently dropped at the operator boundary and
         the operator always ran with ``LLMJudge``'s default (3)."""
-        from nemo_retriever.evaluation.judging import JudgingOperator
+        from nemo_retriever.tools.evaluation.judging import JudgingOperator
 
         op = JudgingOperator(
             model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5",
@@ -510,9 +510,9 @@ class TestBackCompatCallSites:
         identical .generate() branch at retriever.py:762."""
         from unittest.mock import MagicMock
 
-        from nemo_retriever.evaluation.judging import JudgingOperator
-        from nemo_retriever.llm.clients import LLMJudge
-        from nemo_retriever.retriever import RetrieverPipelineBuilder
+        from nemo_retriever.tools.evaluation.judging import JudgingOperator
+        from nemo_retriever.models.llm.clients import LLMJudge
+        from nemo_retriever.graph.retriever import RetrieverPipelineBuilder
 
         retriever = MagicMock()
         retriever.top_k = 5
@@ -533,8 +533,8 @@ class TestBackCompatCallSites:
         num_retries to 3, preserving the current default behaviour."""
         from unittest.mock import MagicMock
 
-        from nemo_retriever.evaluation.judging import JudgingOperator
-        from nemo_retriever.retriever import RetrieverPipelineBuilder
+        from nemo_retriever.tools.evaluation.judging import JudgingOperator
+        from nemo_retriever.graph.retriever import RetrieverPipelineBuilder
 
         retriever = MagicMock()
         retriever.top_k = 5
@@ -558,7 +558,7 @@ class TestApiKeyRedaction:
     """
 
     def test_api_key_masked_in_repr(self):
-        from nemo_retriever.params.models import LLMRemoteClientParams
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
 
         p = LLMRemoteClientParams(model="m", api_key="nvapi-SECRET-TOKEN")
         rendered = repr(p)
@@ -566,14 +566,14 @@ class TestApiKeyRedaction:
         assert "api_key=***" in rendered
 
     def test_api_key_masked_in_str(self):
-        from nemo_retriever.params.models import LLMRemoteClientParams
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
 
         p = LLMRemoteClientParams(model="m", api_key="nvapi-SECRET-TOKEN")
         assert "nvapi-SECRET-TOKEN" not in str(p)
 
     def test_api_key_attribute_is_plain_str(self):
         """Redaction is display-only -- attribute access still yields the raw string."""
-        from nemo_retriever.params.models import LLMRemoteClientParams
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
 
         p = LLMRemoteClientParams(model="m", api_key="nvapi-SECRET-TOKEN")
         assert p.api_key == "nvapi-SECRET-TOKEN"
@@ -581,7 +581,7 @@ class TestApiKeyRedaction:
 
     def test_empty_api_key_not_masked(self):
         """Redaction only fires when a key is actually present."""
-        from nemo_retriever.params.models import NO_API_KEY, LLMRemoteClientParams
+        from nemo_retriever.common.params.models import NO_API_KEY, LLMRemoteClientParams
 
         p = LLMRemoteClientParams(model="m", api_key=NO_API_KEY)
         assert p.api_key is None
@@ -591,7 +591,7 @@ class TestApiKeyRedaction:
     @patch("litellm.completion")
     def test_plain_str_reaches_litellm_call_site(self, mock_completion):
         """The redacted __repr__ must not break the wire-format contract."""
-        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.models.llm.clients import LiteLLMClient
 
         mock_completion.return_value = _fake_litellm_response("ok")
         client = LiteLLMClient.from_kwargs(model="m", api_key="nvapi-SECRET-TOKEN")
@@ -603,7 +603,7 @@ class TestApiKeyRedaction:
 
     def test_nested_api_key_fields_also_masked(self):
         """Fields matching *_api_key (not only bare api_key) get redacted."""
-        from nemo_retriever.params.models import ExtractParams
+        from nemo_retriever.common.params.models import ExtractParams
 
         p = ExtractParams(
             page_elements_api_key="nvapi-PAGE-ELEM-TOKEN",
@@ -620,13 +620,13 @@ class TestLiteLLMDefaultModel:
     """Mirror of LLMJudge._DEFAULT_MODEL coverage for LiteLLMClient."""
 
     def test_from_kwargs_uses_default_model(self):
-        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.models.llm.clients import LiteLLMClient
 
         client = LiteLLMClient.from_kwargs()
         assert client.model == LiteLLMClient._DEFAULT_MODEL
 
     def test_default_model_is_a_non_empty_string(self):
-        from nemo_retriever.llm.clients import LiteLLMClient
+        from nemo_retriever.models.llm.clients import LiteLLMClient
 
         assert isinstance(LiteLLMClient._DEFAULT_MODEL, str)
         assert LiteLLMClient._DEFAULT_MODEL
@@ -644,15 +644,15 @@ class TestLiteLLMDefaultSamplingAlignment:
     """
 
     def test_structured_constructor_defaults_to_zero_temperature(self):
-        from nemo_retriever.llm.clients import LiteLLMClient
-        from nemo_retriever.params import LLMRemoteClientParams
+        from nemo_retriever.models.llm.clients import LiteLLMClient
+        from nemo_retriever.common.params import LLMRemoteClientParams
 
         client = LiteLLMClient(transport=LLMRemoteClientParams(model="m"))
         assert client.sampling.temperature == 0.0
 
     def test_structured_and_flat_paths_agree_on_defaults(self):
-        from nemo_retriever.llm.clients import LiteLLMClient
-        from nemo_retriever.params import LLMRemoteClientParams
+        from nemo_retriever.models.llm.clients import LiteLLMClient
+        from nemo_retriever.common.params import LLMRemoteClientParams
 
         structured = LiteLLMClient(transport=LLMRemoteClientParams(model="m"))
         flat = LiteLLMClient.from_kwargs(model="m")
@@ -662,8 +662,8 @@ class TestLiteLLMDefaultSamplingAlignment:
 
     def test_explicit_sampling_is_not_overridden(self):
         """Passing an explicit ``LLMInferenceParams`` must win over the default."""
-        from nemo_retriever.llm.clients import LiteLLMClient
-        from nemo_retriever.params import LLMInferenceParams, LLMRemoteClientParams
+        from nemo_retriever.models.llm.clients import LiteLLMClient
+        from nemo_retriever.common.params import LLMInferenceParams, LLMRemoteClientParams
 
         client = LiteLLMClient(
             transport=LLMRemoteClientParams(model="m"),

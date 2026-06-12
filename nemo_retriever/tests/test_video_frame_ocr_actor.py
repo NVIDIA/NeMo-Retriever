@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for nemo_retriever.video.ocr_actor."""
+"""Unit tests for nemo_retriever.operators.extract.video.ocr_actor."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from nemo_retriever.video.ocr_actor import (
+from nemo_retriever.operators.extract.video.ocr_actor import (
     VideoFrameOCRActor,
     VideoFrameOCRCPUActor,
     VideoFrameOCRGPUActor,
@@ -99,7 +99,7 @@ def test_gpu_actor_invokes_local_model_per_frame() -> None:
 
 
 def test_gpu_actor_loads_v2_model_with_legacy_selector(monkeypatch) -> None:
-    import nemo_retriever.model.local as local_models
+    import nemo_retriever.models.local as local_models
 
     mock_ocr_v2 = MagicMock()
     monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr_v2)
@@ -111,7 +111,7 @@ def test_gpu_actor_loads_v2_model_with_legacy_selector(monkeypatch) -> None:
 
 
 def test_gpu_actor_loads_v2_model_with_english_selector(monkeypatch) -> None:
-    import nemo_retriever.model.local as local_models
+    import nemo_retriever.models.local as local_models
 
     mock_ocr_v2 = MagicMock()
     monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr_v2)

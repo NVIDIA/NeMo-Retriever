@@ -25,12 +25,12 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from nemo_retriever.graph_ingestor import (
+from nemo_retriever.ingestor.graph_ingestor import (
     GraphIngestionError,
     GraphIngestor,
     _StageDiagnostic,
 )
-from nemo_retriever.params import EmbedParams, ExtractParams
+from nemo_retriever.common.params import EmbedParams, ExtractParams
 
 
 # ---------------------------------------------------------------------------

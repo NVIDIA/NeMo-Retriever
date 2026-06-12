@@ -31,9 +31,9 @@ def _guard(name, globals=None, locals=None, fromlist=(), level=0):
 
 builtins.__import__ = _guard
 
-from nemo_retriever.api.util.nim import create_inference_client  # noqa: F401
-from nemo_retriever.graph_ingestor import GraphIngestor  # noqa: F401
-from nemo_retriever.pipeline import __main__ as _pipeline_main  # noqa: F401
+from nemo_retriever.models.nim.util import create_inference_client  # noqa: F401
+from nemo_retriever.ingestor.graph_ingestor import GraphIngestor  # noqa: F401
+from nemo_retriever.cli.pipeline import __main__ as _pipeline_main  # noqa: F401
 
 print("slim_imports_ok")
 """

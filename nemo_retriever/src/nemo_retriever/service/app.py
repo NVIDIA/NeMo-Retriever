@@ -87,7 +87,7 @@ def _check_media_dependencies(mode: str) -> None:
     does (it computes the routing category before forwarding). The
     warning therefore applies to every service role.
     """
-    from nemo_retriever.audio.media_interface import (
+    from nemo_retriever.common.modality.audio.media_interface import (
         HELM_FFMPEG_INSTALL_VALUE,
         MANUAL_FFMPEG_INSTALL_COMMAND,
         is_media_available,

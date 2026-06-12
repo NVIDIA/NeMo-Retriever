@@ -1,0 +1,1909 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Development Typer CLI for the end-to-end graph ingestion pipeline.
+
+Registered on the ``retriever`` CLI as the ``pipeline`` subcommand.
+For user-facing workflows, prefer ``retriever ingest`` and ``retriever query``.
+
+Examples::
+
+    # Batch mode (Ray) with PDF extraction + embedding
+    retriever pipeline run /data/pdfs \\
+        --run-mode batch \\
+        --embed-invoke-url http://localhost:8000/v1
+
+    # In-process mode (no Ray) for quick local testing
+    retriever pipeline run /data/pdfs \\
+        --run-mode inprocess \\
+        --ocr-invoke-url http://localhost:9000/v1
+
+    # Service mode (delegate to a running retriever service)
+    retriever pipeline run /data/pdfs \\
+        --run-mode service \\
+        --service-url http://localhost:7670
+
+    # Save extraction Parquet for full-page markdown (page index / export)
+    retriever pipeline run /data/pdfs \\
+        --save-intermediate /path/to/extracted_parquet_dir
+
+    # Override the default VDB backend/configuration
+    retriever pipeline run /data/pdfs \\
+        --vdb-op <operator-key> \\
+        --vdb-kwargs-json '<operator kwargs JSON object>'
+
+    # Extract + embed only (skip in-graph VDB upload)
+    retriever pipeline run /data/pdfs \\
+        --no-vdb
+
+    # Sidecar metadata (merged into each chunk's content_metadata, same triplet as nv-ingest-client)
+    retriever pipeline run /data/pdfs \\
+        --meta-dataframe ./meta.csv \\
+        --meta-source-field source \\
+        --meta-fields meta_a,meta_b
+"""
+
+from __future__ import annotations
+
+import glob as _glob
+import json
+import logging
+import os
+import time
+from dataclasses import replace
+from pathlib import Path
+from typing import Any, Optional, TextIO
+
+import pandas as pd
+import typer
+
+from nemo_retriever.ingest.execution import execute_ingest_plan
+from nemo_retriever.ingest.plan import (
+    IngestCaptionOptions,
+    IngestChunkOptions,
+    IngestDedupOptions,
+    IngestEmbedBatchOptions,
+    IngestEmbedOptions,
+    IngestExtractBatchOptions,
+    IngestExtractOptions,
+    IngestImageStoreOptions,
+    IngestMediaOptions,
+    IngestPlanRequest,
+    IngestRuntimeOptions,
+    IngestSourceOptions,
+    IngestStorageOptions,
+    resolve_ingest_plan,
+)
+from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.common.params import (
+    CaptionParams,
+    DedupParams,
+    EmbedParams,
+    ExtractParams,
+    StoreParams,
+    TextChunkParams,
+    VdbUploadParams,
+)
+from nemo_retriever.common.params.models import BatchTuningParams
+from nemo_retriever.common.input_files import resolve_input_patterns
+from nemo_retriever.common.remote_auth import resolve_remote_api_key
+
+logger = logging.getLogger(__name__)
+
+app = typer.Typer(
+    help=(
+        "Development graph ingestion pipeline (compatibility wrapper around "
+        "retriever ingest/query paths; prefer retriever ingest and retriever query)."
+    )
+)
+
+DEFAULT_VDB_OP = "lancedb"
+
+# Help panel labels (keep stable so --help groupings read consistently).
+_PANEL_IO = "I/O and Execution"
+_PANEL_EXTRACT = "PDF / Document Extraction"
+_PANEL_REMOTE = "Remote NIM Endpoints"
+_PANEL_EMBED = "Embedding"
+_PANEL_DEDUP_CAPTION = "Dedup and Caption"
+_PANEL_STORE_CHUNK = "Storage and Text Chunking"
+_PANEL_AUDIO = "Audio"
+_PANEL_VIDEO = "Video"
+_PANEL_RAY = "Ray / Batch Tuning"
+_PANEL_VDB = "VDB and Outputs"
+_PANEL_EVAL = "Evaluation (Recall / BEIR)"
+_PANEL_OBS = "Observability"
+_PANEL_SERVICE = "Service Mode"
+
+
+# CLI flags that have no effect in --run-mode=service: either silently
+# overridden by retriever-service.yaml (server-owned endpoints / models),
+# bound to local execution (Ray actors, GPU placement), or never wired
+# through the service ingestor (VDB upload is handled server-side; audio
+# and video extract paths still run locally). Flags wired into the
+# service ``PipelineSpec`` by ``_build_service_ingestor`` — extract knobs, embed
+# granularity / modality, dedup threshold, caption behaviour, text chunk
+# config, ``--store-images-uri`` — are intentionally NOT in this list and
+# pass through to ``ServiceIngestor``; the server's
+# ``_DEFAULT_ALLOWED_*_KEYS`` allowlists are the final authority on which
+# keys survive.
+_SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
+    # Remote NIM endpoints + model names — server-owned via retriever-service.yaml
+    ("--page-elements-invoke-url", "page_elements_invoke_url"),
+    ("--ocr-invoke-url", "ocr_invoke_url"),
+    ("--ocr-lang", "ocr_lang"),
+    ("--graphic-elements-invoke-url", "graphic_elements_invoke_url"),
+    ("--table-structure-invoke-url", "table_structure_invoke_url"),
+    ("--caption-invoke-url", "caption_invoke_url"),
+    ("--caption-model-name", "caption_model_name"),
+    # Local-execution knobs (no in-cluster equivalent)
+    ("--local-ingest-embed-backend", "local_ingest_embed_backend"),
+    ("--caption-device", "caption_device"),
+    ("--caption-gpu-memory-utilization", "caption_gpu_memory_utilization"),
+    ("--caption-gpus-per-actor", "caption_gpus_per_actor"),
+    # Audio (service path is pdf-only today)
+    ("--segment-audio/--no-segment-audio", "segment_audio"),
+    ("--audio-split-type", "audio_split_type"),
+    ("--audio-split-interval", "audio_split_interval"),
+    # Video (service path is pdf-only today)
+    ("--video-extract-audio/--no-video-extract-audio", "video_extract_audio"),
+    ("--video-extract-frames/--no-video-extract-frames", "video_extract_frames"),
+    ("--video-frame-fps", "video_frame_fps"),
+    ("--video-frame-dedup/--no-video-frame-dedup", "video_frame_dedup"),
+    ("--video-frame-text-dedup/--no-video-frame-text-dedup", "video_frame_text_dedup"),
+    ("--video-frame-text-dedup-max-dropped-frames", "video_frame_text_dedup_max_dropped_frames"),
+    ("--video-av-fuse/--no-video-av-fuse", "video_av_fuse"),
+    # Ray / batch tuning — no analog when the worker is a service pod
+    ("--ray-address", "ray_address"),
+    ("--ray-log-to-driver/--no-ray-log-to-driver", "ray_log_to_driver"),
+    ("--ocr-actors", "ocr_actors"),
+    ("--ocr-batch-size", "ocr_batch_size"),
+    ("--ocr-cpus-per-actor", "ocr_cpus_per_actor"),
+    ("--ocr-gpus-per-actor", "ocr_gpus_per_actor"),
+    ("--page-elements-actors", "page_elements_actors"),
+    ("--page-elements-batch-size", "page_elements_batch_size"),
+    ("--page-elements-cpus-per-actor", "page_elements_cpus_per_actor"),
+    ("--page-elements-gpus-per-actor", "page_elements_gpus_per_actor"),
+    ("--embed-actors", "embed_actors"),
+    ("--embed-batch-size", "embed_batch_size"),
+    ("--embed-cpus-per-actor", "embed_cpus_per_actor"),
+    ("--embed-gpus-per-actor", "embed_gpus_per_actor"),
+    ("--store-actors", "store_actors"),
+    ("--pdf-split-batch-size", "pdf_split_batch_size"),
+    ("--pdf-extract-batch-size", "pdf_extract_batch_size"),
+    ("--pdf-extract-tasks", "pdf_extract_tasks"),
+    ("--pdf-extract-cpus-per-task", "pdf_extract_cpus_per_task"),
+    ("--nemotron-parse-actors", "nemotron_parse_actors"),
+    ("--nemotron-parse-gpus-per-actor", "nemotron_parse_gpus_per_actor"),
+    ("--nemotron-parse-batch-size", "nemotron_parse_batch_size"),
+    # In-graph VDB / sidecar metadata — service mode does VDB writes
+    # server-side via LanceDBWriteOperator and never wires these through
+    # the service ingestor (see ``enable_in_graph_vdb_upload`` gate).
+    ("--no-vdb", "no_vdb"),
+    ("--vdb-op", "vdb_op"),
+    ("--vdb-kwargs-json", "vdb_kwargs_json"),
+    ("--vdb-overwrite/--vdb-append", "vdb_overwrite"),
+    ("--meta-dataframe", "meta_dataframe"),
+    ("--meta-source-field", "meta_source_field"),
+    ("--meta-fields", "meta_fields"),
+    ("--meta-join-key", "meta_join_key"),
+)
+
+
+def _reject_service_incompatible_flags(ctx: typer.Context) -> None:
+    """Raise ``typer.BadParameter`` if any ingest-only flag was user-supplied.
+
+    Only flags whose click parameter source is ``COMMANDLINE`` or
+    ``ENVIRONMENT`` are treated as user-supplied — flags carrying their
+    declared default do not trigger the error.
+    """
+    # Compare by enum *name*, not identity: depending on the environment,
+    # typer may return a source from its vendored ``typer._click.core`` enum
+    # rather than ``click.core.ParameterSource``, and the two enums are
+    # distinct objects whose members never compare equal via ``in``.
+    user_set: list[str] = []
+    for cli_flag, param_name in _SERVICE_INCOMPATIBLE_FLAGS:
+        source = ctx.get_parameter_source(param_name)
+        if getattr(source, "name", None) in {"COMMANDLINE", "ENVIRONMENT"}:
+            user_set.append(cli_flag)
+    if not user_set:
+        return
+    raise typer.BadParameter(
+        "--run-mode=service delegates pipeline configuration to the "
+        "retriever service; the following flag(s) cannot be set on the "
+        "client and would be silently dropped: " + ", ".join(user_set) + ". "
+        "Remove them, or use --run-mode batch/inprocess to apply them locally. "
+        "Server-side pipeline configuration lives in retriever-service.yaml."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Logging helpers
+# ---------------------------------------------------------------------------
+
+
+class _TeeStream:
+    """Mirror stdout/stderr writes into a second stream (e.g. a log file)."""
+
+    def __init__(self, primary: TextIO, mirror: TextIO) -> None:
+        self._primary = primary
+        self._mirror = mirror
+
+    def write(self, data: str) -> int:
+        self._primary.write(data)
+        self._mirror.write(data)
+        return len(data)
+
+    def flush(self) -> None:
+        self._primary.flush()
+        self._mirror.flush()
+
+    def isatty(self) -> bool:
+        return bool(getattr(self._primary, "isatty", lambda: False)())
+
+    def fileno(self) -> int:
+        return int(getattr(self._primary, "fileno")())
+
+    def writable(self) -> bool:
+        return bool(getattr(self._primary, "writable", lambda: True)())
+
+    @property
+    def encoding(self) -> str:
+        return str(getattr(self._primary, "encoding", "utf-8"))
+
+
+def _configure_logging(log_file: Optional[Path], *, debug: bool = False) -> tuple[Optional[TextIO], TextIO, TextIO]:
+    original_stdout = os.sys.stdout
+    original_stderr = os.sys.stderr
+    log_level = logging.DEBUG if debug else logging.INFO
+    if log_file is None:
+        logging.basicConfig(
+            level=log_level,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+            force=True,
+        )
+        return None, original_stdout, original_stderr
+
+    target = Path(log_file).expanduser().resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(target, "a", encoding="utf-8", buffering=1)
+    os.sys.stdout = _TeeStream(os.sys.__stdout__, fh)
+    os.sys.stderr = _TeeStream(os.sys.__stderr__, fh)
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=[logging.StreamHandler(os.sys.stdout)],
+        force=True,
+    )
+    logger.info("Writing combined pipeline logs to %s", str(target))
+    return fh, original_stdout, original_stderr
+
+
+# ---------------------------------------------------------------------------
+# Small utilities (summaries, file patterns)
+# ---------------------------------------------------------------------------
+
+
+def _write_runtime_summary(
+    runtime_metrics_dir: Optional[Path],
+    runtime_metrics_prefix: Optional[str],
+    payload: dict[str, object],
+) -> None:
+    if runtime_metrics_dir is None and not runtime_metrics_prefix:
+        return
+
+    target_dir = Path(runtime_metrics_dir or Path.cwd()).expanduser().resolve()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    prefix = (runtime_metrics_prefix or "run").strip() or "run"
+    target = target_dir / f"{prefix}.runtime.summary.json"
+    target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _count_input_units(result_df) -> int:
+    if "source_id" in result_df.columns:
+        return int(result_df["source_id"].nunique())
+    if "source_path" in result_df.columns:
+        return int(result_df["source_path"].nunique())
+    return int(len(result_df.index))
+
+
+def _format_vdb_target(vdb_op: str, vdb_kwargs: Optional[dict[str, Any]]) -> str:
+    """``<uri>/<table>`` for a vdb destination, mirroring the lancedb-specific
+    fallbacks used downstream when those keys are absent from ``vdb_kwargs``."""
+    kw = vdb_kwargs or {}
+    uri = kw.get("uri") or kw.get("lancedb_uri") or ("lancedb" if vdb_op == "lancedb" else "?")
+    table = kw.get("table_name") or kw.get("lancedb_table") or ("nv-ingest" if vdb_op == "lancedb" else "?")
+    return f"{uri}/{table}"
+
+
+def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
+    """Resolve input paths to glob patterns, recursing into subdirectories.
+
+    Uses :func:`~nemo_retriever.utils.input_files.resolve_input_patterns` (``**``
+    segments) and keeps only patterns that match at least one file, matching the
+    historical ``graph_pipeline`` / main-branch behavior.
+    """
+
+    input_path = Path(input_path)
+    if input_path.is_file():
+        return [str(input_path)]
+    if not input_path.is_dir():
+        raise typer.BadParameter(f"Path does not exist: {input_path}")
+
+    if input_type not in {"pdf", "doc", "txt", "html", "image", "audio", "video"}:
+        raise typer.BadParameter(f"Unsupported --input-type: {input_type!r}")
+
+    patterns = resolve_input_patterns(input_path, input_type)
+    matched = [p for p in patterns if _glob.glob(p, recursive=True)]
+    if not matched:
+        raise typer.BadParameter(f"No files found for input_type={input_type!r} in {input_path}")
+    logger.debug("Using recursive input globs: %s", matched)
+    return matched
+
+
+# ---------------------------------------------------------------------------
+# Parameter builders (split out from the old monolithic main())
+# ---------------------------------------------------------------------------
+
+
+def _build_extract_params(
+    *,
+    method: Optional[str],
+    dpi: Optional[int],
+    extract_text: Optional[bool],
+    extract_tables: Optional[bool],
+    extract_charts: Optional[bool],
+    extract_infographics: Optional[bool],
+    extract_page_as_image: Optional[bool],
+    use_page_elements: Optional[bool],
+    use_graphic_elements: Optional[bool],
+    use_table_structure: Optional[bool],
+    table_output_format: Optional[str],
+    extract_remote_api_key: Optional[str],
+    page_elements_invoke_url: Optional[str],
+    ocr_invoke_url: Optional[str],
+    ocr_version: str,
+    ocr_lang: Optional[str],
+    graphic_elements_invoke_url: Optional[str],
+    table_structure_invoke_url: Optional[str],
+    pdf_split_batch_size: int,
+    pdf_extract_batch_size: Optional[int],
+    pdf_extract_tasks: Optional[int],
+    pdf_extract_cpus_per_task: Optional[float],
+    page_elements_actors: Optional[int],
+    page_elements_batch_size: Optional[int],
+    page_elements_cpus_per_actor: Optional[float],
+    page_elements_gpus_per_actor: Optional[float],
+    ocr_actors: Optional[int],
+    ocr_batch_size: Optional[int],
+    ocr_cpus_per_actor: Optional[float],
+    ocr_gpus_per_actor: Optional[float],
+    nemotron_parse_actors: Optional[int],
+    nemotron_parse_batch_size: Optional[int],
+    nemotron_parse_gpus_per_actor: Optional[float],
+) -> ExtractParams:
+    """Assemble :class:`ExtractParams` plus its :class:`BatchTuningParams`."""
+
+    extract_batch_tuning = BatchTuningParams(
+        **{
+            k: v
+            for k, v in {
+                "pdf_split_batch_size": pdf_split_batch_size,
+                "pdf_extract_batch_size": pdf_extract_batch_size or None,
+                "pdf_extract_workers": pdf_extract_tasks or None,
+                "pdf_extract_num_cpus": pdf_extract_cpus_per_task or None,
+                "page_elements_batch_size": page_elements_batch_size or None,
+                "page_elements_workers": page_elements_actors or None,
+                "page_elements_cpus_per_actor": page_elements_cpus_per_actor or None,
+                "gpu_page_elements": (
+                    0.0
+                    if page_elements_invoke_url
+                    else (page_elements_gpus_per_actor if page_elements_gpus_per_actor is not None else None)
+                ),
+                "ocr_inference_batch_size": ocr_batch_size or None,
+                "ocr_workers": ocr_actors or None,
+                "ocr_cpus_per_actor": ocr_cpus_per_actor or None,
+                "gpu_ocr": (
+                    0.0 if ocr_invoke_url else (ocr_gpus_per_actor if ocr_gpus_per_actor is not None else None)
+                ),
+                "nemotron_parse_batch_size": nemotron_parse_batch_size or None,
+                "nemotron_parse_workers": nemotron_parse_actors or None,
+                "gpu_nemotron_parse": (
+                    nemotron_parse_gpus_per_actor if nemotron_parse_gpus_per_actor is not None else None
+                ),
+            }.items()
+            if v is not None
+        }
+    )
+    return ExtractParams(
+        **{
+            k: v
+            for k, v in {
+                "method": method,
+                "dpi": int(dpi) if dpi is not None else None,
+                "extract_text": extract_text,
+                "extract_tables": extract_tables,
+                "extract_charts": extract_charts,
+                "extract_infographics": extract_infographics,
+                "extract_page_as_image": extract_page_as_image,
+                "use_page_elements": use_page_elements,
+                "api_key": extract_remote_api_key,
+                "page_elements_invoke_url": page_elements_invoke_url,
+                "ocr_invoke_url": ocr_invoke_url,
+                "ocr_version": ocr_version,
+                "ocr_lang": ocr_lang,
+                "graphic_elements_invoke_url": graphic_elements_invoke_url,
+                "table_structure_invoke_url": table_structure_invoke_url,
+                "use_graphic_elements": use_graphic_elements,
+                "use_table_structure": use_table_structure,
+                "table_output_format": table_output_format,
+                "inference_batch_size": page_elements_batch_size or None,
+                "batch_tuning": extract_batch_tuning,
+            }.items()
+            if v is not None
+        }
+    )
+
+
+def _build_embed_params(
+    *,
+    embed_model_name: str,
+    embed_invoke_url: Optional[str],
+    embed_remote_api_key: Optional[str],
+    embed_modality: str,
+    text_elements_modality: Optional[str],
+    structured_elements_modality: Optional[str],
+    embed_granularity: str,
+    embed_actors: Optional[int],
+    embed_batch_size: Optional[int],
+    embed_cpus_per_actor: Optional[float],
+    embed_gpus_per_actor: Optional[float],
+    local_ingest_embed_backend: str = "vllm",
+) -> EmbedParams:
+    """Assemble :class:`EmbedParams` plus its :class:`BatchTuningParams`."""
+
+    embed_batch_tuning = BatchTuningParams(
+        **{
+            k: v
+            for k, v in {
+                "embed_batch_size": embed_batch_size or None,
+                "embed_workers": embed_actors or None,
+                "embed_cpus_per_actor": embed_cpus_per_actor or None,
+                "gpu_embed": (
+                    0.0 if embed_invoke_url else (embed_gpus_per_actor if embed_gpus_per_actor is not None else None)
+                ),
+            }.items()
+            if v is not None
+        }
+    )
+    return EmbedParams(
+        **{
+            k: v
+            for k, v in {
+                "model_name": embed_model_name,
+                "embed_invoke_url": embed_invoke_url,
+                "api_key": embed_remote_api_key,
+                "embed_modality": embed_modality,
+                "text_elements_modality": text_elements_modality,
+                "structured_elements_modality": structured_elements_modality,
+                "embed_granularity": embed_granularity,
+                "local_ingest_embed_backend": local_ingest_embed_backend,
+                "batch_tuning": embed_batch_tuning,
+                "inference_batch_size": embed_batch_size or None,
+            }.items()
+            if v is not None
+        }
+    )
+
+
+def _service_extraction_mode(input_type: str) -> str:
+    """Map CLI ``--input-type`` to :class:`PipelineSpec` ``extraction_mode``."""
+    return {
+        "pdf": "pdf",
+        "doc": "pdf",
+        "txt": "text",
+        "html": "html",
+        "audio": "audio",
+        "video": "auto",
+    }.get(input_type, "auto")
+
+
+def _service_text_chunk_dict(text_chunk_params: TextChunkParams) -> dict[str, Any]:
+    """Serialize text-chunk knobs allowed by the service split_config policy."""
+    from nemo_retriever.common.policy import _DEFAULT_ALLOWED_SPLIT_KEYS
+
+    raw = text_chunk_params.model_dump(exclude_none=True)
+    return {key: value for key, value in raw.items() if key in _DEFAULT_ALLOWED_SPLIT_KEYS}
+
+
+def _attach_service_extract_stage(
+    ingestor: Any,
+    *,
+    input_type: str,
+    extract_params: ExtractParams,
+    enable_text_chunk: bool,
+    text_chunk_params: TextChunkParams,
+) -> Any:
+    """Wire the extraction stage for the remote service ingestor."""
+    chunk_dict = _service_text_chunk_dict(text_chunk_params) if enable_text_chunk else None
+    if input_type == "image":
+        return ingestor.extract_image_files(
+            extract_params,
+            split_config={"image": chunk_dict} if chunk_dict else None,
+        )
+    return ingestor.extract(
+        extract_params,
+        split_config=_split_config_for_input_type(input_type, chunk_dict),
+        extraction_mode=_service_extraction_mode(input_type),
+    )
+
+
+def _split_config_for_input_type(
+    input_type: str,
+    chunk_dict: Optional[dict[str, Any]],
+) -> Optional[dict[str, Any]]:
+    if chunk_dict is None:
+        return None
+    if input_type in {"pdf", "doc"}:
+        return {"pdf": chunk_dict}
+    if input_type == "txt":
+        return {"text": chunk_dict}
+    if input_type == "html":
+        return {"html": chunk_dict}
+    if input_type == "image":
+        return {"image": chunk_dict}
+    if input_type == "audio":
+        return {"audio": chunk_dict}
+    if input_type == "video":
+        return {"video": chunk_dict, "audio": chunk_dict}
+    return None
+
+
+def _parse_vdb_kwargs_json(vdb_kwargs_json: Optional[str]) -> dict[str, Any]:
+    """Parse opaque nv-ingest-client VDB constructor kwargs from CLI JSON."""
+    if vdb_kwargs_json:
+        try:
+            parsed = json.loads(vdb_kwargs_json)
+        except json.JSONDecodeError as exc:
+            raise typer.BadParameter(f"--vdb-kwargs-json must be valid JSON: {exc}") from exc
+        if not isinstance(parsed, dict):
+            raise typer.BadParameter("--vdb-kwargs-json must decode to a JSON object.")
+        return parsed
+    return {}
+
+
+def _build_service_ingestor(
+    *,
+    file_patterns: list[str],
+    input_type: str,
+    extract_params: ExtractParams,
+    embed_params: EmbedParams,
+    text_chunk_params: TextChunkParams,
+    enable_text_chunk: bool,
+    enable_dedup: bool,
+    enable_caption: bool,
+    dedup_iou_threshold: float,
+    caption_invoke_url: Optional[str],
+    caption_context_text_max_chars: int,
+    caption_temperature: float,
+    caption_top_p: Optional[float],
+    caption_max_tokens: int,
+    store_images_uri: Optional[str],
+    service_url: str = "http://localhost:7670",
+    service_concurrency: int = 8,
+    service_api_token: Optional[str] = None,
+) -> Any:
+    """Construct a remote-service ingestor with service-compatible stages."""
+    from nemo_retriever.service.service_ingestor import ServiceIngestor
+
+    resolved_files: list[str] = []
+    for pattern in file_patterns:
+        resolved_files.extend(sorted(_glob.glob(pattern, recursive=True)))
+    if not resolved_files:
+        raise typer.BadParameter("No files matched the input patterns for service mode.")
+
+    ingestor = ServiceIngestor(
+        base_url=service_url,
+        max_concurrency=service_concurrency,
+        api_token=service_api_token,
+    ).files(resolved_files)
+
+    ingestor = _attach_service_extract_stage(
+        ingestor,
+        input_type=input_type,
+        extract_params=extract_params,
+        enable_text_chunk=enable_text_chunk,
+        text_chunk_params=text_chunk_params,
+    )
+
+    if enable_dedup:
+        ingestor = ingestor.dedup(DedupParams(iou_threshold=dedup_iou_threshold))
+
+    if enable_caption:
+        if caption_invoke_url is not None:
+            logger.warning(
+                "Ignoring --caption-invoke-url in service mode; the retriever service "
+                "uses its operator-configured caption endpoint."
+            )
+        ingestor = ingestor.caption(
+            CaptionParams(
+                context_text_max_chars=caption_context_text_max_chars,
+                temperature=caption_temperature,
+                top_p=caption_top_p,
+                max_tokens=caption_max_tokens,
+            )
+        )
+
+    ingestor = ingestor.embed(embed_params)
+
+    if store_images_uri is not None:
+        ingestor = ingestor.store(StoreParams(storage_uri=store_images_uri))
+
+    return ingestor
+
+
+def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], Any, float, int]:
+    """Materialize the graph result into a list of records + DataFrame.
+
+    Ingest may return a ``pandas.DataFrame`` (in-process and batch graph paths,
+    where batch materializes via ``ds.to_pandas()`` in the executor) or a
+    :class:`~nemo_retriever.service_ingestor.ServiceIngestResult` (service mode);
+    normalize to a consistent ``(records, DataFrame, secs, units)`` tuple.
+
+    Returns ``(records, result_df, ray_download_secs, num_input_units)``.
+    """
+
+    if run_mode == "service":
+        records = list(result)
+        result_df = pd.DataFrame(records) if records else pd.DataFrame()
+        num_units = getattr(result, "total_pages", 0) or len(records)
+        return records, result_df, 0.0, num_units
+
+    if isinstance(result, pd.DataFrame):
+        result_df = result
+    else:
+        result_df = result.to_pandas()
+    records = result_df.to_dict("records")
+    ray_download_time = 0.0
+
+    return records, result_df, float(ray_download_time), _count_input_units(result_df)
+
+
+def _count_uploadable_vdb_records(records: list[dict[str, Any]]) -> int:
+    """Count records that will survive conversion into the client VDB record contract."""
+
+    from nemo_retriever.common.vdb.records import to_client_vdb_records
+
+    return sum(len(batch) for batch in to_client_vdb_records(records))
+
+
+def _run_evaluation(
+    *,
+    evaluation_mode: str,
+    vdb_op: str,
+    vdb_kwargs: dict[str, Any],
+    embed_model_name: str,
+    embed_invoke_url: Optional[str],
+    embed_remote_api_key: Optional[str],
+    embed_modality: str,
+    query_csv: Path,
+    recall_match_mode: str,
+    audio_match_tolerance_secs: float,
+    reranker: Optional[bool],
+    reranker_model_name: str,
+    reranker_invoke_url: Optional[str],
+    reranker_api_key: str,
+    local_reranker_backend: str,
+    local_hf_batch_size: int,
+    local_query_max_length: int,
+    beir_loader: Optional[str],
+    beir_dataset_name: Optional[str],
+    beir_split: str,
+    beir_query_language: Optional[str],
+    beir_doc_id_field: Optional[str],
+    beir_k: list[int],
+    local_query_embed_backend: str = "hf",
+    run_mode: str = "inprocess",
+    service_url: Optional[str] = None,
+    service_api_token: Optional[str] = None,
+) -> tuple[str, float, dict[str, float], Optional[int], bool]:
+    """Run audio recall or BEIR evaluation.
+
+    Returns ``(label, elapsed_secs, metrics, query_count, ran)``.  When the
+    query CSV is missing in audio recall mode, ``ran`` is ``False`` and the
+    caller should skip metric recording.
+    """
+
+    if evaluation_mode == "none":
+        return "None", 0.0, {}, None, False
+
+    from nemo_retriever.models import resolve_embed_model
+
+    embed_model = resolve_embed_model(str(embed_model_name))
+    eval_vdb_kwargs = dict(vdb_kwargs or {})
+
+    if evaluation_mode == "beir":
+        from nemo_retriever.tools.recall.beir import BeirConfig, resolve_beir_dataset_options
+
+        beir_options = resolve_beir_dataset_options(
+            dataset_name=beir_dataset_name,
+            loader=beir_loader,
+            doc_id_field=beir_doc_id_field,
+            ks=beir_k,
+        )
+        if not beir_options.loader:
+            raise ValueError("--beir-loader is required when --evaluation-mode=beir")
+        if not beir_options.dataset_name:
+            raise ValueError("--beir-dataset-name is required when --evaluation-mode=beir")
+
+        lancedb_uri = str(eval_vdb_kwargs.get("uri") or eval_vdb_kwargs.get("lancedb_uri") or "lancedb")
+        lancedb_table = str(eval_vdb_kwargs.get("table_name") or eval_vdb_kwargs.get("lancedb_table") or "nv-ingest")
+
+        cfg = BeirConfig(
+            lancedb_uri=lancedb_uri,
+            lancedb_table=lancedb_table,
+            embedding_model=embed_model,
+            loader=str(beir_options.loader),
+            dataset_name=str(beir_options.dataset_name),
+            split=str(beir_split),
+            query_language=beir_query_language,
+            doc_id_field=str(beir_options.doc_id_field),
+            ks=beir_options.ks,
+            embedding_http_endpoint=embed_invoke_url,
+            embedding_api_key=embed_remote_api_key or "",
+            hybrid=bool(eval_vdb_kwargs.get("hybrid", False)),
+            nprobes=int(eval_vdb_kwargs.get("nprobes", 0) or 0),
+            refine_factor=int(eval_vdb_kwargs.get("refine_factor", 10) or 10),
+            reranker=bool(reranker),
+            reranker_model_name=str(reranker_model_name),
+            reranker_endpoint=reranker_invoke_url,
+            reranker_api_key=reranker_api_key,
+            local_reranker_backend=local_reranker_backend,
+            local_hf_batch_size=int(local_hf_batch_size),
+            local_query_max_length=int(local_query_max_length),
+            local_query_embed_backend=local_query_embed_backend,
+            service_url=service_url if run_mode == "service" else None,
+            service_api_token=service_api_token,
+        )
+
+        evaluation_start = time.perf_counter()
+        if run_mode == "service" and service_url:
+            from nemo_retriever.tools.recall.beir import evaluate_service_beir
+
+            beir_dataset, _raw_hits, _run, metrics = evaluate_service_beir(cfg)
+        else:
+            if str(vdb_op).strip().lower() != "lancedb":
+                raise ValueError("--evaluation-mode=beir currently requires --vdb-op=lancedb")
+            from nemo_retriever.tools.recall.beir import evaluate_lancedb_beir
+
+            beir_dataset, _raw_hits, _run, metrics = evaluate_lancedb_beir(cfg)
+        return "BEIR", time.perf_counter() - evaluation_start, metrics, len(beir_dataset.query_ids), True
+
+    if evaluation_mode != "audio_recall":
+        raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
+
+    if recall_match_mode != "audio_segment":
+        raise ValueError("Audio recall evaluation is only supported for audio_segment matching")
+
+    # Legacy scorer is retained for audio segment evaluation only.
+    query_csv_path = Path(query_csv)
+    if not query_csv_path.exists():
+        logger.warning("Query CSV not found at %s; skipping audio recall evaluation.", query_csv_path)
+        return "Audio Recall", 0.0, {}, None, False
+
+    from nemo_retriever.tools.recall.core import RecallConfig, retrieve_and_score
+
+    recall_cfg = RecallConfig(
+        vdb_op=str(vdb_op),
+        vdb_kwargs=eval_vdb_kwargs,
+        query_embedder=embed_model,
+        embedding_endpoint=embed_invoke_url,
+        embedding_api_key=embed_remote_api_key or "",
+        embedding_use_grpc=False if embed_invoke_url else None,
+        top_k=10,
+        ks=(1, 5, 10),
+        match_mode=recall_match_mode,
+        audio_match_tolerance_secs=float(audio_match_tolerance_secs),
+        reranker=reranker_model_name if reranker else None,
+        reranker_endpoint=reranker_invoke_url,
+        reranker_api_key=reranker_api_key,
+        local_reranker_backend=local_reranker_backend,
+        local_hf_batch_size=int(local_hf_batch_size),
+        local_query_max_length=int(local_query_max_length),
+        embed_modality=embed_modality,
+        local_query_embed_backend=local_query_embed_backend,
+    )
+    evaluation_start = time.perf_counter()
+    df_query, _gold, _raw_hits, _retrieved_keys, metrics = retrieve_and_score(query_csv=query_csv_path, cfg=recall_cfg)
+    return "Audio Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
+
+
+# ---------------------------------------------------------------------------
+# Typer command: `retriever pipeline run`
+# ---------------------------------------------------------------------------
+
+
+@app.command("run")
+def run(
+    ctx: typer.Context,
+    input_path: Path = typer.Argument(
+        ...,
+        help="File or directory of documents to ingest.",
+        path_type=Path,
+    ),
+    # --- I/O and execution ------------------------------------------------
+    # Default to in-process execution for small-document initial testing; batch
+    # remains explicit for Ray Data throughput runs.
+    run_mode: str = typer.Option(
+        "inprocess",
+        "--run-mode",
+        help=(
+            "Execution mode: 'inprocess' (pandas, no Ray), 'batch' (Ray Data), "
+            "or 'service' (remote retriever service)."
+        ),
+        rich_help_panel=_PANEL_IO,
+    ),
+    input_type: str = typer.Option(
+        "pdf",
+        "--input-type",
+        help="Input type: 'pdf', 'doc', 'txt', 'html', 'image', or 'audio'.",
+        rich_help_panel=_PANEL_IO,
+    ),
+    debug: bool = typer.Option(
+        False, "--debug/--no-debug", help="Enable debug-level logging.", rich_help_panel=_PANEL_IO
+    ),
+    log_file: Optional[Path] = typer.Option(
+        None, "--log-file", path_type=Path, dir_okay=False, rich_help_panel=_PANEL_IO
+    ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        help=(
+            "Suppress verbose output on success: progress bars, HuggingFace "
+            "downloads, vLLM init logs, Ray worker stdout, and INFO-level "
+            "pipeline status lines. On error, the fd-captured output is "
+            "flushed to stderr for debugging. Implies --no-ray-log-to-driver."
+        ),
+        rich_help_panel=_PANEL_IO,
+    ),
+    # --- PDF / document extraction ---------------------------------------
+    method: Optional[str] = typer.Option(
+        None, "--method", help="PDF text extraction method.", rich_help_panel=_PANEL_EXTRACT
+    ),
+    dpi: Optional[int] = typer.Option(
+        None, "--dpi", min=72, help="Render DPI for PDF page images.", rich_help_panel=_PANEL_EXTRACT
+    ),
+    extract_text: Optional[bool] = typer.Option(
+        None, "--extract-text/--no-extract-text", rich_help_panel=_PANEL_EXTRACT
+    ),
+    extract_tables: Optional[bool] = typer.Option(
+        None, "--extract-tables/--no-extract-tables", rich_help_panel=_PANEL_EXTRACT
+    ),
+    extract_charts: Optional[bool] = typer.Option(
+        None, "--extract-charts/--no-extract-charts", rich_help_panel=_PANEL_EXTRACT
+    ),
+    extract_infographics: Optional[bool] = typer.Option(
+        None, "--extract-infographics/--no-extract-infographics", rich_help_panel=_PANEL_EXTRACT
+    ),
+    extract_page_as_image: Optional[bool] = typer.Option(
+        None,
+        "--extract-page-as-image/--no-extract-page-as-image",
+        rich_help_panel=_PANEL_EXTRACT,
+    ),
+    use_page_elements: Optional[bool] = typer.Option(
+        None,
+        "--use-page-elements/--no-use-page-elements",
+        rich_help_panel=_PANEL_EXTRACT,
+        help=(
+            "Run PageElementDetection (layout/yolox). Auto-skipped when no downstream stage "
+            "(TableStructure, GraphicElements, OCR) consumes its output. Pass --no-use-page-elements "
+            "to force-skip for a faster text-only ingest."
+        ),
+    ),
+    use_graphic_elements: Optional[bool] = typer.Option(None, "--use-graphic-elements", rich_help_panel=_PANEL_EXTRACT),
+    use_table_structure: Optional[bool] = typer.Option(None, "--use-table-structure", rich_help_panel=_PANEL_EXTRACT),
+    table_output_format: Optional[str] = typer.Option(None, "--table-output-format", rich_help_panel=_PANEL_EXTRACT),
+    # --- Remote NIM endpoints --------------------------------------------
+    api_key: Optional[str] = typer.Option(
+        None,
+        "--api-key",
+        help="Bearer token for remote NIM endpoints.",
+        rich_help_panel=_PANEL_REMOTE,
+    ),
+    page_elements_invoke_url: Optional[str] = typer.Option(
+        None, "--page-elements-invoke-url", rich_help_panel=_PANEL_REMOTE
+    ),
+    ocr_invoke_url: Optional[str] = typer.Option(None, "--ocr-invoke-url", rich_help_panel=_PANEL_REMOTE),
+    ocr_version: str = typer.Option(
+        "v2",
+        "--ocr-version",
+        help="OCR engine: 'v2' (default, multilingual, higher throughput) or 'v1' (legacy, English-only).",
+        rich_help_panel=_PANEL_REMOTE,
+    ),
+    ocr_lang: Optional[str] = typer.Option(
+        None,
+        "--ocr-lang",
+        help="OCR language selector for v2: 'multi' (default) or 'english'. Not valid with --ocr-version v1.",
+        rich_help_panel=_PANEL_REMOTE,
+    ),
+    graphic_elements_invoke_url: Optional[str] = typer.Option(
+        None, "--graphic-elements-invoke-url", rich_help_panel=_PANEL_REMOTE
+    ),
+    table_structure_invoke_url: Optional[str] = typer.Option(
+        None, "--table-structure-invoke-url", rich_help_panel=_PANEL_REMOTE
+    ),
+    embed_invoke_url: Optional[str] = typer.Option(None, "--embed-invoke-url", rich_help_panel=_PANEL_REMOTE),
+    # --- Embedding --------------------------------------------------------
+    embed_model_name: str = typer.Option(VL_EMBED_MODEL, "--embed-model-name", rich_help_panel=_PANEL_EMBED),
+    embed_modality: str = typer.Option("text", "--embed-modality", rich_help_panel=_PANEL_EMBED),
+    embed_granularity: str = typer.Option("element", "--embed-granularity", rich_help_panel=_PANEL_EMBED),
+    local_ingest_embed_backend: str = typer.Option(
+        "vllm",
+        "--local-ingest-embed-backend",
+        help="Local ingest-time text embedder when --embed-invoke-url is unset: vllm or hf. VL models always use hf.",
+        rich_help_panel=_PANEL_EMBED,
+    ),
+    text_elements_modality: Optional[str] = typer.Option(
+        None, "--text-elements-modality", rich_help_panel=_PANEL_EMBED
+    ),
+    structured_elements_modality: Optional[str] = typer.Option(
+        None, "--structured-elements-modality", rich_help_panel=_PANEL_EMBED
+    ),
+    # --- Dedup / caption -------------------------------------------------
+    dedup: Optional[bool] = typer.Option(None, "--dedup/--no-dedup", rich_help_panel=_PANEL_DEDUP_CAPTION),
+    dedup_iou_threshold: float = typer.Option(0.45, "--dedup-iou-threshold", rich_help_panel=_PANEL_DEDUP_CAPTION),
+    caption: bool = typer.Option(False, "--caption/--no-caption", rich_help_panel=_PANEL_DEDUP_CAPTION),
+    caption_invoke_url: Optional[str] = typer.Option(
+        None, "--caption-invoke-url", rich_help_panel=_PANEL_DEDUP_CAPTION
+    ),
+    caption_model_name: str = typer.Option(
+        "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16",
+        "--caption-model-name",
+        rich_help_panel=_PANEL_DEDUP_CAPTION,
+    ),
+    caption_device: Optional[str] = typer.Option(None, "--caption-device", rich_help_panel=_PANEL_DEDUP_CAPTION),
+    caption_context_text_max_chars: int = typer.Option(
+        0, "--caption-context-text-max-chars", rich_help_panel=_PANEL_DEDUP_CAPTION
+    ),
+    caption_gpu_memory_utilization: float = typer.Option(
+        0.5, "--caption-gpu-memory-utilization", rich_help_panel=_PANEL_DEDUP_CAPTION
+    ),
+    caption_gpus_per_actor: Optional[float] = typer.Option(
+        None, "--caption-gpus-per-actor", max=1.0, rich_help_panel=_PANEL_DEDUP_CAPTION
+    ),
+    caption_temperature: float = typer.Option(
+        1.0, "--caption-temperature", min=0.0, max=2.0, rich_help_panel=_PANEL_DEDUP_CAPTION
+    ),
+    caption_top_p: Optional[float] = typer.Option(
+        None, "--caption-top-p", min=0.0, max=1.0, rich_help_panel=_PANEL_DEDUP_CAPTION
+    ),
+    caption_max_tokens: int = typer.Option(1024, "--caption-max-tokens", min=1, rich_help_panel=_PANEL_DEDUP_CAPTION),
+    # --- Storage and text chunking --------------------------------------
+    store_images_uri: Optional[str] = typer.Option(
+        None,
+        "--store-images-uri",
+        help="Store extracted images to this URI.",
+        rich_help_panel=_PANEL_STORE_CHUNK,
+    ),
+    text_chunk: bool = typer.Option(False, "--text-chunk", rich_help_panel=_PANEL_STORE_CHUNK),
+    text_chunk_max_tokens: Optional[int] = typer.Option(
+        None, "--text-chunk-max-tokens", rich_help_panel=_PANEL_STORE_CHUNK
+    ),
+    text_chunk_overlap_tokens: Optional[int] = typer.Option(
+        None, "--text-chunk-overlap-tokens", rich_help_panel=_PANEL_STORE_CHUNK
+    ),
+    # --- Ray / batch tuning ---------------------------------------------
+    # *_gpus_per_actor defaults are None (not 0.0) so we can distinguish
+    # "not set -> use heuristic" from "explicitly 0 -> no GPU".  Other tuning
+    # defaults use 0/0.0 because those values are never valid explicit choices.
+    ray_address: Optional[str] = typer.Option(None, "--ray-address", rich_help_panel=_PANEL_RAY),
+    ray_log_to_driver: bool = typer.Option(
+        True, "--ray-log-to-driver/--no-ray-log-to-driver", rich_help_panel=_PANEL_RAY
+    ),
+    ocr_actors: Optional[int] = typer.Option(0, "--ocr-actors", rich_help_panel=_PANEL_RAY),
+    ocr_batch_size: Optional[int] = typer.Option(0, "--ocr-batch-size", rich_help_panel=_PANEL_RAY),
+    ocr_cpus_per_actor: Optional[float] = typer.Option(0.0, "--ocr-cpus-per-actor", rich_help_panel=_PANEL_RAY),
+    ocr_gpus_per_actor: Optional[float] = typer.Option(
+        None, "--ocr-gpus-per-actor", max=1.0, rich_help_panel=_PANEL_RAY
+    ),
+    page_elements_actors: Optional[int] = typer.Option(0, "--page-elements-actors", rich_help_panel=_PANEL_RAY),
+    page_elements_batch_size: Optional[int] = typer.Option(0, "--page-elements-batch-size", rich_help_panel=_PANEL_RAY),
+    page_elements_cpus_per_actor: Optional[float] = typer.Option(
+        0.0, "--page-elements-cpus-per-actor", rich_help_panel=_PANEL_RAY
+    ),
+    page_elements_gpus_per_actor: Optional[float] = typer.Option(
+        None, "--page-elements-gpus-per-actor", max=1.0, rich_help_panel=_PANEL_RAY
+    ),
+    embed_actors: Optional[int] = typer.Option(0, "--embed-actors", rich_help_panel=_PANEL_RAY),
+    embed_batch_size: Optional[int] = typer.Option(0, "--embed-batch-size", rich_help_panel=_PANEL_RAY),
+    embed_cpus_per_actor: Optional[float] = typer.Option(0.0, "--embed-cpus-per-actor", rich_help_panel=_PANEL_RAY),
+    embed_gpus_per_actor: Optional[float] = typer.Option(
+        None, "--embed-gpus-per-actor", max=1.0, rich_help_panel=_PANEL_RAY
+    ),
+    store_actors: Optional[int] = typer.Option(
+        0,
+        "--store-actors",
+        min=0,
+        help=(
+            "Maximum StoreOperator Ray actors. Store sinks autoscale from one actor to this cap; "
+            "0 uses the default cap."
+        ),
+        rich_help_panel=_PANEL_RAY,
+    ),
+    pdf_split_batch_size: int = typer.Option(1, "--pdf-split-batch-size", min=1, rich_help_panel=_PANEL_RAY),
+    pdf_extract_batch_size: Optional[int] = typer.Option(0, "--pdf-extract-batch-size", rich_help_panel=_PANEL_RAY),
+    pdf_extract_tasks: Optional[int] = typer.Option(0, "--pdf-extract-tasks", rich_help_panel=_PANEL_RAY),
+    pdf_extract_cpus_per_task: Optional[float] = typer.Option(
+        0.0, "--pdf-extract-cpus-per-task", rich_help_panel=_PANEL_RAY
+    ),
+    nemotron_parse_actors: Optional[int] = typer.Option(0, "--nemotron-parse-actors", rich_help_panel=_PANEL_RAY),
+    nemotron_parse_gpus_per_actor: Optional[float] = typer.Option(
+        None,
+        "--nemotron-parse-gpus-per-actor",
+        min=0.0,
+        max=1.0,
+        rich_help_panel=_PANEL_RAY,
+    ),
+    nemotron_parse_batch_size: Optional[int] = typer.Option(
+        0, "--nemotron-parse-batch-size", rich_help_panel=_PANEL_RAY
+    ),
+    # --- Audio ----------------------------------------------------------
+    segment_audio: bool = typer.Option(False, "--segment-audio/--no-segment-audio", rich_help_panel=_PANEL_AUDIO),
+    audio_split_type: str = typer.Option("size", "--audio-split-type", rich_help_panel=_PANEL_AUDIO),
+    audio_split_interval: int = typer.Option(500000, "--audio-split-interval", min=1, rich_help_panel=_PANEL_AUDIO),
+    audio_match_tolerance_secs: float = typer.Option(
+        2.0, "--audio-match-tolerance-secs", min=0.0, rich_help_panel=_PANEL_AUDIO
+    ),
+    # --- Video ----------------------------------------------------------
+    video_extract_audio: bool = typer.Option(
+        True,
+        "--video-extract-audio/--no-video-extract-audio",
+        help=(
+            "Extract the video's audio track and run ASR. Disable to "
+            "produce frame-OCR rows only (no audio, no fusion)."
+        ),
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    video_extract_frames: bool = typer.Option(
+        True,
+        "--video-extract-frames/--no-video-extract-frames",
+        help=(
+            "Extract video frames and run frame OCR. Disable to produce "
+            "audio-only rows from video input (no frames, no OCR, no fusion)."
+        ),
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    video_frame_fps: float = typer.Option(
+        0.5,
+        "--video-frame-fps",
+        min=0.001,
+        help="Frames per second to extract from videos (input_type=video).",
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    video_frame_dedup: bool = typer.Option(
+        True,
+        "--video-frame-dedup/--no-video-frame-dedup",
+        help="Drop content-hash-duplicate frames before OCR.",
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    video_frame_text_dedup: bool = typer.Option(
+        True,
+        "--video-frame-text-dedup/--no-video-frame-text-dedup",
+        help=(
+            "Merge consecutive frame OCR rows whose text is identical into "
+            "a single row spanning their combined time window."
+        ),
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    video_frame_text_dedup_max_dropped_frames: int = typer.Option(
+        2,
+        "--video-frame-text-dedup-max-dropped-frames",
+        min=0,
+        help=(
+            "Tolerated dropped-frame count between same-text frames before they are "
+            "treated as separate runs. Converted to seconds at runtime via "
+            "max_gap_seconds = max_dropped_frames / fps."
+        ),
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    video_av_fuse: bool = typer.Option(
+        True,
+        "--video-av-fuse/--no-video-av-fuse",
+        help="Emit fused per-utterance rows (audio transcript + concurrent OCR).",
+        rich_help_panel=_PANEL_VIDEO,
+    ),
+    # --- Service mode ---------------------------------------------------
+    service_url: str = typer.Option(
+        "http://localhost:7670",
+        "--service-url",
+        help="Base URL of the retriever service (used only when --run-mode=service).",
+        rich_help_panel=_PANEL_SERVICE,
+    ),
+    service_concurrency: int = typer.Option(
+        8,
+        "--service-concurrency",
+        min=1,
+        help="Maximum concurrent page uploads to the service (used only when --run-mode=service).",
+        rich_help_panel=_PANEL_SERVICE,
+    ),
+    service_api_token: Optional[str] = typer.Option(
+        None,
+        "--service-api-token",
+        help=(
+            "Bearer token for authenticating with the retriever service "
+            "(used only when --run-mode=service). "
+            "Falls back to $NEMO_RETRIEVER_API_TOKEN."
+        ),
+        envvar="NEMO_RETRIEVER_API_TOKEN",
+        rich_help_panel=_PANEL_SERVICE,
+    ),
+    # --- VDB / outputs --------------------------------------------------
+    vdb_op: str = typer.Option(
+        DEFAULT_VDB_OP,
+        "--vdb-op",
+        help="nv-ingest-client VDB operator key for in-graph upload after embed/store (skipped with --no-vdb).",
+        rich_help_panel=_PANEL_VDB,
+    ),
+    vdb_kwargs_json: Optional[str] = typer.Option(
+        None,
+        "--vdb-kwargs-json",
+        help=(
+            "JSON object forwarded as constructor kwargs to the selected VDB operator "
+            "(optional; backends such as LanceDB use sensible defaults when omitted)."
+        ),
+        rich_help_panel=_PANEL_VDB,
+    ),
+    vdb_overwrite: Optional[bool] = typer.Option(
+        None,
+        "--vdb-overwrite/--vdb-append",
+        help=(
+            "Overwrite the target VDB table by default. Use --vdb-append to add rows to an existing "
+            "table without duplicate checks; rerunning the same inputs in append mode creates duplicates."
+        ),
+        rich_help_panel=_PANEL_VDB,
+    ),
+    no_vdb: bool = typer.Option(
+        False,
+        "--no-vdb",
+        help="Skip in-graph vector DB upload (extract+embed only).",
+        rich_help_panel=_PANEL_VDB,
+    ),
+    meta_dataframe: Optional[Path] = typer.Option(
+        None,
+        "--meta-dataframe",
+        help="CSV/JSON/Parquet sidecar metadata (requires --meta-source-field and --meta-fields).",
+        path_type=Path,
+        exists=True,
+        dir_okay=False,
+        file_okay=True,
+        rich_help_panel=_PANEL_VDB,
+    ),
+    meta_source_field: Optional[str] = typer.Option(
+        None,
+        "--meta-source-field",
+        help="Column in the metadata file that matches document path (same as nv-ingest-client).",
+        rich_help_panel=_PANEL_VDB,
+    ),
+    meta_fields: Optional[str] = typer.Option(
+        None,
+        "--meta-fields",
+        help="Comma-separated metadata columns to copy onto each chunk's content_metadata.",
+        rich_help_panel=_PANEL_VDB,
+    ),
+    meta_join_key: str = typer.Option(
+        "auto",
+        "--meta-join-key",
+        help="Document match key: auto (try source_id then source_name), source_id, or source_name.",
+        rich_help_panel=_PANEL_VDB,
+    ),
+    save_intermediate: Optional[Path] = typer.Option(
+        None,
+        "--save-intermediate",
+        help="Directory to write extraction results as Parquet (for full-page markdown / page index).",
+        path_type=Path,
+        file_okay=False,
+        dir_okay=True,
+        rich_help_panel=_PANEL_VDB,
+    ),
+    detection_summary_file: Optional[Path] = typer.Option(
+        None, "--detection-summary-file", path_type=Path, rich_help_panel=_PANEL_VDB
+    ),
+    runtime_metrics_dir: Optional[Path] = typer.Option(
+        None, "--runtime-metrics-dir", path_type=Path, rich_help_panel=_PANEL_OBS
+    ),
+    runtime_metrics_prefix: Optional[str] = typer.Option(None, "--runtime-metrics-prefix", rich_help_panel=_PANEL_OBS),
+    # --- Evaluation -----------------------------------------------------
+    evaluation_mode: str = typer.Option(
+        "none",
+        "--evaluation-mode",
+        help="Post-ingest evaluation: none (default), audio_recall, beir, or qa.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    query_csv: Path = typer.Option(
+        "./data/bo767_query_gt.csv",
+        "--query-csv",
+        path_type=Path,
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    recall_match_mode: str = typer.Option("audio_segment", "--recall-match-mode", rich_help_panel=_PANEL_EVAL),
+    recall_details: bool = typer.Option(True, "--recall-details/--no-recall-details", rich_help_panel=_PANEL_EVAL),
+    local_query_embed_backend: str = typer.Option(
+        "hf",
+        "--local-query-embed-backend",
+        help="Local query embedding backend when --embed-invoke-url is unset: hf (default) or vllm.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    reranker: Optional[bool] = typer.Option(False, "--reranker/--no-reranker", rich_help_panel=_PANEL_EVAL),
+    reranker_model_name: str = typer.Option(VL_RERANK_MODEL, "--reranker-model-name", rich_help_panel=_PANEL_EVAL),
+    reranker_invoke_url: Optional[str] = typer.Option(
+        None,
+        "--reranker-invoke-url",
+        help="OpenAI-compatible reranker NIM HTTP endpoint (recall and BEIR evaluation).",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    reranker_api_key: Optional[str] = typer.Option(
+        None,
+        "--reranker-api-key",
+        help="Bearer token for the reranker NIM; defaults to --api-key / NVIDIA_API_KEY when omitted.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    local_reranker_backend: str = typer.Option(
+        "vllm",
+        "--local-reranker-backend",
+        help="Local reranker backend: 'vllm' (default) or 'hf'.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    local_hf_batch_size: int = typer.Option(
+        32,
+        "--local-hf-batch-size",
+        min=1,
+        help="Batch size for local HF query embedding during retrieval/reranking.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    local_query_max_length: int = typer.Option(
+        128,
+        "--local-query-max-length",
+        min=1,
+        help="Fixed token length for local HF query embeddings; longer queries are truncated.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    beir_loader: Optional[str] = typer.Option(None, "--beir-loader", rich_help_panel=_PANEL_EVAL),
+    beir_dataset_name: Optional[str] = typer.Option(None, "--beir-dataset-name", rich_help_panel=_PANEL_EVAL),
+    beir_split: str = typer.Option("test", "--beir-split", rich_help_panel=_PANEL_EVAL),
+    beir_query_language: Optional[str] = typer.Option(None, "--beir-query-language", rich_help_panel=_PANEL_EVAL),
+    beir_doc_id_field: Optional[str] = typer.Option(
+        None,
+        "--beir-doc-id-field",
+        help="BEIR document ID field. Defaults to the known dataset setting, or pdf_basename for custom datasets.",
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    beir_k: list[int] = typer.Option([], "--beir-k", rich_help_panel=_PANEL_EVAL),
+    eval_config: Optional[Path] = typer.Option(
+        None,
+        "--eval-config",
+        help="Path to QA sweep YAML/JSON (required when --evaluation-mode=qa; same as `retriever eval run --config`).",
+        path_type=Path,
+        dir_okay=False,
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    retrieval_save_path: Optional[Path] = typer.Option(
+        None,
+        "--retrieval-save-path",
+        help="Override retrieval.save_path in the QA config (page-index / export JSON, optional).",
+        path_type=Path,
+        rich_help_panel=_PANEL_EVAL,
+    ),
+    eval_page_index: Optional[Path] = typer.Option(
+        None,
+        "--page-index",
+        help="Override retrieval.page_index in the QA config (optional).",
+        path_type=Path,
+        dir_okay=False,
+        file_okay=True,
+        exists=True,
+        rich_help_panel=_PANEL_EVAL,
+    ),
+) -> None:
+    """Run the end-to-end graph ingestion pipeline against ``INPUT_PATH``."""
+
+    if quiet:
+        # Imported lazily to avoid a cycle (main.py lazy-imports this module).
+        from nemo_retriever.cli.main import _silence_noisy_libraries
+
+        _silence_noisy_libraries()
+    log_handle, original_stdout, original_stderr = _configure_logging(log_file, debug=bool(debug))
+    if quiet:
+        # Hide INFO-level "Building graph pipeline...", "Starting ingestion...",
+        # etc. Errors still propagate.
+        logging.getLogger("nemo_retriever").setLevel(logging.WARNING)
+    try:
+        if run_mode not in {"batch", "inprocess", "service"}:
+            raise ValueError(f"Unsupported --run-mode: {run_mode!r}")
+        if run_mode == "service":
+            _reject_service_incompatible_flags(ctx)
+        if audio_split_type not in {"size", "time", "frame"}:
+            raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
+        if evaluation_mode not in {"none", "audio_recall", "beir", "qa"}:
+            raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
+        if evaluation_mode == "audio_recall":
+            if input_type != "audio":
+                raise ValueError("--evaluation-mode=audio_recall is only supported with --input-type=audio")
+            if recall_match_mode != "audio_segment":
+                raise ValueError("--evaluation-mode=audio_recall requires --recall-match-mode=audio_segment")
+        if evaluation_mode == "qa" and eval_config is None:
+            raise typer.BadParameter(
+                "--evaluation-mode=qa requires --eval-config (QA sweep YAML/JSON). "
+                "Use the same file format as `retriever eval run --config` (dataset, retrieval, models, ...)."
+            )
+
+        if run_mode == "batch":
+            # --quiet implies --no-ray-log-to-driver: Ray flushes worker stdout
+            # (HF download lines, etc.) to the driver asynchronously, often
+            # after ingestor.ingest() returns and the fd capture has exited.
+            # The env var is cached at ray import time so we also override the
+            # variable that ultimately reaches ray.init(log_to_driver=...).
+            if quiet:
+                ray_log_to_driver = False
+            os.environ["RAY_LOG_TO_DRIVER"] = "1" if ray_log_to_driver else "0"
+
+        resolved_vdb_op = str(vdb_op or DEFAULT_VDB_OP)
+        resolved_vdb_kwargs = _parse_vdb_kwargs_json(vdb_kwargs_json)
+        if vdb_overwrite is None:
+            resolved_vdb_kwargs.setdefault("overwrite", True)
+        else:
+            resolved_vdb_kwargs["overwrite"] = bool(vdb_overwrite)
+
+        _sidecar_n = sum(1 for x in (meta_dataframe, meta_source_field, meta_fields) if x is not None)
+        if _sidecar_n not in (0, 3):
+            raise typer.BadParameter(
+                "Sidecar metadata: pass all of --meta-dataframe, --meta-source-field, and --meta-fields, or omit all."
+            )
+        if _sidecar_n == 3:
+            assert meta_dataframe is not None and meta_source_field is not None and meta_fields is not None
+            cols = [c.strip() for c in meta_fields.split(",") if c.strip()]
+            if not cols:
+                raise typer.BadParameter("--meta-fields must list at least one column name.")
+            if meta_join_key not in ("auto", "source_id", "source_name"):
+                raise typer.BadParameter("--meta-join-key must be one of: auto, source_id, source_name.")
+            resolved_vdb_kwargs = {
+                **resolved_vdb_kwargs,
+                "meta_dataframe": str(meta_dataframe.expanduser().resolve()),
+                "meta_source_field": meta_source_field.strip(),
+                "meta_fields": cols,
+                "meta_join_key": meta_join_key,
+            }
+
+        remote_api_key = resolve_remote_api_key(api_key)
+        extract_remote_api_key = remote_api_key
+        embed_remote_api_key = remote_api_key
+        caption_remote_api_key = remote_api_key
+        reranker_bearer = (
+            resolve_remote_api_key(reranker_api_key) if reranker_api_key is not None else remote_api_key
+        ) or ""
+
+        if (
+            any(
+                (
+                    page_elements_invoke_url,
+                    ocr_invoke_url,
+                    graphic_elements_invoke_url,
+                    table_structure_invoke_url,
+                    embed_invoke_url,
+                )
+            )
+            and remote_api_key is None
+        ):
+            logger.warning("Remote endpoint URL(s) were configured without an API key.")
+        if reranker_invoke_url and not reranker_bearer.strip():
+            logger.warning(
+                "Reranker invoke URL is set but no bearer token was resolved; "
+                "set --reranker-api-key or --api-key / NVIDIA_API_KEY."
+            )
+
+        # Zero out GPU fractions when a remote URL replaces the local model.
+        if page_elements_invoke_url and float(page_elements_gpus_per_actor or 0.0) != 0.0:
+            logger.warning("Forcing page-elements GPUs to 0.0 because --page-elements-invoke-url is set.")
+            page_elements_gpus_per_actor = 0.0
+        if ocr_invoke_url and float(ocr_gpus_per_actor or 0.0) != 0.0:
+            logger.warning("Forcing OCR GPUs to 0.0 because --ocr-invoke-url is set.")
+            ocr_gpus_per_actor = 0.0
+        if embed_invoke_url and float(embed_gpus_per_actor or 0.0) != 0.0:
+            logger.warning("Forcing embed GPUs to 0.0 because --embed-invoke-url is set.")
+            embed_gpus_per_actor = 0.0
+
+        text_chunk_params = TextChunkParams(
+            max_tokens=text_chunk_max_tokens or 1024,
+            overlap_tokens=text_chunk_overlap_tokens if text_chunk_overlap_tokens is not None else 150,
+        )
+
+        enable_text_chunk = text_chunk or text_chunk_max_tokens is not None or text_chunk_overlap_tokens is not None
+        enable_caption = caption or caption_invoke_url is not None
+        enable_dedup = dedup if dedup is not None else enable_caption
+
+        # In-graph VDB upload is enabled by default; opt out with --no-vdb.
+        enable_in_graph_vdb_upload = run_mode != "service" and not no_vdb
+        pipeline_vdb_upload: Optional[VdbUploadParams] = None
+        if enable_in_graph_vdb_upload:
+            pipeline_vdb_upload = VdbUploadParams(vdb_op=resolved_vdb_op, vdb_kwargs=resolved_vdb_kwargs)
+
+        logger.info("Building graph pipeline (run_mode=%s) for %s ...", run_mode, input_path)
+        ingestor = None
+        ingest_plan = None
+        local_execute_kwargs: dict[str, Any] = {}
+        if run_mode == "service":
+            file_patterns = _resolve_file_patterns(Path(input_path), input_type)
+            extract_params = _build_extract_params(
+                method=method,
+                dpi=dpi,
+                extract_text=extract_text,
+                extract_tables=extract_tables,
+                extract_charts=extract_charts,
+                extract_infographics=extract_infographics,
+                extract_page_as_image=extract_page_as_image,
+                use_page_elements=use_page_elements,
+                use_graphic_elements=use_graphic_elements,
+                use_table_structure=use_table_structure,
+                table_output_format=table_output_format,
+                extract_remote_api_key=extract_remote_api_key,
+                page_elements_invoke_url=page_elements_invoke_url,
+                ocr_invoke_url=ocr_invoke_url,
+                ocr_version=ocr_version,
+                ocr_lang=ocr_lang,
+                graphic_elements_invoke_url=graphic_elements_invoke_url,
+                table_structure_invoke_url=table_structure_invoke_url,
+                pdf_split_batch_size=pdf_split_batch_size,
+                pdf_extract_batch_size=pdf_extract_batch_size,
+                pdf_extract_tasks=pdf_extract_tasks,
+                pdf_extract_cpus_per_task=pdf_extract_cpus_per_task,
+                page_elements_actors=page_elements_actors,
+                page_elements_batch_size=page_elements_batch_size,
+                page_elements_cpus_per_actor=page_elements_cpus_per_actor,
+                page_elements_gpus_per_actor=page_elements_gpus_per_actor,
+                ocr_actors=ocr_actors,
+                ocr_batch_size=ocr_batch_size,
+                ocr_cpus_per_actor=ocr_cpus_per_actor,
+                ocr_gpus_per_actor=ocr_gpus_per_actor,
+                nemotron_parse_actors=nemotron_parse_actors,
+                nemotron_parse_batch_size=nemotron_parse_batch_size,
+                nemotron_parse_gpus_per_actor=nemotron_parse_gpus_per_actor,
+            )
+            embed_params = _build_embed_params(
+                embed_model_name=embed_model_name,
+                embed_invoke_url=embed_invoke_url,
+                embed_remote_api_key=embed_remote_api_key,
+                embed_modality=embed_modality,
+                text_elements_modality=text_elements_modality,
+                structured_elements_modality=structured_elements_modality,
+                embed_granularity=embed_granularity,
+                embed_actors=embed_actors,
+                embed_batch_size=embed_batch_size,
+                embed_cpus_per_actor=embed_cpus_per_actor,
+                embed_gpus_per_actor=embed_gpus_per_actor,
+                local_ingest_embed_backend=local_ingest_embed_backend,
+            )
+            ingestor = _build_service_ingestor(
+                file_patterns=file_patterns,
+                input_type=input_type,
+                extract_params=extract_params,
+                embed_params=embed_params,
+                text_chunk_params=text_chunk_params,
+                enable_text_chunk=enable_text_chunk,
+                enable_dedup=enable_dedup,
+                enable_caption=enable_caption,
+                dedup_iou_threshold=dedup_iou_threshold,
+                caption_invoke_url=caption_invoke_url,
+                caption_context_text_max_chars=caption_context_text_max_chars,
+                caption_temperature=caption_temperature,
+                caption_top_p=caption_top_p,
+                caption_max_tokens=caption_max_tokens,
+                store_images_uri=store_images_uri,
+                service_url=service_url,
+                service_concurrency=service_concurrency,
+                service_api_token=service_api_token,
+            )
+        else:
+            if store_actors and store_images_uri is None:
+                logger.warning("Ignoring --store-actors because --store-images-uri was not provided.")
+
+            plan_lancedb_uri = str(
+                resolved_vdb_kwargs.get("uri") or resolved_vdb_kwargs.get("lancedb_uri") or "lancedb"
+            )
+            plan_table_name = str(
+                resolved_vdb_kwargs.get("table_name") or resolved_vdb_kwargs.get("lancedb_table") or "nv-ingest"
+            )
+            ingest_plan = resolve_ingest_plan(
+                IngestPlanRequest(
+                    source=IngestSourceOptions(
+                        documents=[str(input_path)],
+                        input_type=input_type,
+                    ),
+                    runtime=IngestRuntimeOptions(
+                        run_mode=run_mode,
+                        ray_address=ray_address,
+                        ray_log_to_driver=ray_log_to_driver,
+                    ),
+                    extract=IngestExtractOptions(
+                        method=method,
+                        dpi=dpi,
+                        extract_text=extract_text,
+                        extract_tables=extract_tables,
+                        extract_charts=extract_charts,
+                        extract_infographics=extract_infographics,
+                        extract_page_as_image=extract_page_as_image,
+                        use_page_elements=use_page_elements,
+                        use_graphic_elements=use_graphic_elements,
+                        use_table_structure=use_table_structure,
+                        page_elements_invoke_url=page_elements_invoke_url,
+                        ocr_invoke_url=ocr_invoke_url,
+                        ocr_version=ocr_version,
+                        ocr_lang=ocr_lang,
+                        graphic_elements_invoke_url=graphic_elements_invoke_url,
+                        table_structure_invoke_url=table_structure_invoke_url,
+                        table_output_format=table_output_format,
+                        extract_api_key=extract_remote_api_key,
+                        batch=IngestExtractBatchOptions(
+                            pdf_split_batch_size=pdf_split_batch_size,
+                            pdf_extract_workers=pdf_extract_tasks or None,
+                            pdf_extract_batch_size=pdf_extract_batch_size or None,
+                            pdf_extract_cpus_per_task=pdf_extract_cpus_per_task or None,
+                            page_elements_workers=page_elements_actors or None,
+                            page_elements_batch_size=page_elements_batch_size or None,
+                            page_elements_cpus_per_actor=page_elements_cpus_per_actor or None,
+                            page_elements_gpus_per_actor=page_elements_gpus_per_actor,
+                            ocr_workers=ocr_actors or None,
+                            ocr_batch_size=ocr_batch_size or None,
+                            ocr_cpus_per_actor=ocr_cpus_per_actor or None,
+                            ocr_gpus_per_actor=ocr_gpus_per_actor,
+                            nemotron_parse_workers=nemotron_parse_actors or None,
+                            nemotron_parse_batch_size=nemotron_parse_batch_size or None,
+                            nemotron_parse_gpus_per_actor=nemotron_parse_gpus_per_actor,
+                        ),
+                    ),
+                    media=IngestMediaOptions(
+                        segment_audio=segment_audio,
+                        audio_split_type=audio_split_type,
+                        audio_split_interval=audio_split_interval,
+                        video_extract_audio=video_extract_audio,
+                        video_extract_frames=video_extract_frames,
+                        video_frame_fps=video_frame_fps,
+                        video_frame_dedup=video_frame_dedup,
+                        video_frame_text_dedup=video_frame_text_dedup,
+                        video_frame_text_dedup_max_dropped_frames=video_frame_text_dedup_max_dropped_frames,
+                        video_av_fuse=video_av_fuse,
+                    ),
+                    caption=IngestCaptionOptions(
+                        enabled=enable_caption,
+                        caption_invoke_url=caption_invoke_url if enable_caption else None,
+                        caption_api_key=caption_remote_api_key if enable_caption else None,
+                        caption_model_name=caption_model_name if enable_caption else None,
+                        caption_device=caption_device if enable_caption else None,
+                        caption_context_text_max_chars=caption_context_text_max_chars if enable_caption else None,
+                        caption_gpu_memory_utilization=(caption_gpu_memory_utilization if enable_caption else None),
+                        caption_temperature=caption_temperature if enable_caption else None,
+                        caption_top_p=caption_top_p if enable_caption else None,
+                        caption_max_tokens=caption_max_tokens if enable_caption else None,
+                    ),
+                    dedup=IngestDedupOptions(
+                        enabled=enable_dedup,
+                        iou_threshold=dedup_iou_threshold if enable_dedup else None,
+                    ),
+                    chunk=IngestChunkOptions(
+                        enabled=enable_text_chunk,
+                        text_chunk_max_tokens=text_chunk_params.max_tokens if enable_text_chunk else None,
+                        text_chunk_overlap_tokens=text_chunk_params.overlap_tokens if enable_text_chunk else None,
+                    ),
+                    embed=IngestEmbedOptions(
+                        embed_invoke_url=embed_invoke_url,
+                        embed_model_name=embed_model_name,
+                        embed_api_key=embed_remote_api_key,
+                        local_ingest_embed_backend=local_ingest_embed_backend,
+                        embed_modality=embed_modality,
+                        text_elements_modality=text_elements_modality,
+                        structured_elements_modality=structured_elements_modality,
+                        embed_granularity=embed_granularity,
+                        batch=IngestEmbedBatchOptions(
+                            embed_workers=embed_actors or None,
+                            embed_batch_size=embed_batch_size or None,
+                            embed_cpus_per_actor=embed_cpus_per_actor or None,
+                            embed_gpus_per_actor=embed_gpus_per_actor,
+                        ),
+                    ),
+                    image_store=IngestImageStoreOptions(
+                        images_uri=store_images_uri,
+                        workers=store_actors,
+                    ),
+                    storage=IngestStorageOptions(
+                        lancedb_uri=plan_lancedb_uri,
+                        table_name=plan_table_name,
+                        overwrite=bool(resolved_vdb_kwargs.get("overwrite", True)),
+                    ),
+                )
+            )
+            execution_create_kwargs = dict(ingest_plan.create_kwargs)
+            if caption_gpus_per_actor is not None:
+                execution_create_kwargs["node_overrides"] = {"CaptionActor": {"num_gpus": caption_gpus_per_actor}}
+            ingest_plan = replace(
+                ingest_plan,
+                create_kwargs=execution_create_kwargs,
+                vdb_params=pipeline_vdb_upload,
+            )
+            local_execute_kwargs = {
+                "verify_rows": False,
+                "raise_on_empty": False,
+            }
+
+        # --- Execute ---------------------------------------------------
+        logger.info("Starting ingestion of %s ...", input_path)
+        ingest_start = time.perf_counter()
+
+        def _run_ingest() -> Any:
+            if run_mode == "service":
+                return ingestor.ingest()
+            if ingest_plan is None:
+                raise RuntimeError("ingest_plan must be resolved before execution in non-service mode")
+            return execute_ingest_plan(ingest_plan, **local_execute_kwargs).result
+
+        if quiet:
+            from nemo_retriever.cli.main import _quiet_capture
+
+            with _quiet_capture():
+                raw_result = _run_ingest()
+        else:
+            raw_result = _run_ingest()
+        ingestion_only_total_time = time.perf_counter() - ingest_start
+        ingest_local_results, result_df, ray_download_time, num_rows = _collect_results(run_mode, raw_result)
+
+        if run_mode == "service":
+            # The service writes embeddings to LanceDB server-side during
+            # processing (via LanceDBWriteOperator); embedding vectors are
+            # stripped from SSE results to keep payloads small.  Client-side
+            # VDB upload is therefore skipped.
+            logger.info(
+                "Service-mode ingestion complete (%d results from %d input(s), %.1fs). "
+                "VDB writes are handled server-side.",
+                len(ingest_local_results),
+                num_rows,
+                ingestion_only_total_time,
+            )
+            uploadable_vdb_records = len(ingest_local_results)
+            vdb_upload_time = 0.0
+        else:
+            uploadable_vdb_records = _count_uploadable_vdb_records(ingest_local_results)
+            vdb_upload_time = 0.0
+            if uploadable_vdb_records == 0:
+                logger.warning(
+                    "No uploadable VDB records produced; skipping %s evaluation.",
+                    evaluation_mode,
+                )
+            elif enable_in_graph_vdb_upload:
+                logger.info(
+                    "Prepared %s uploadable VDB records (%s graph rows) for in-graph upload to %s "
+                    "(row conversion count, not backend-confirmed writes; see VDB/operator logs for persistence).",
+                    uploadable_vdb_records,
+                    len(ingest_local_results),
+                    resolved_vdb_op,
+                )
+
+        if save_intermediate is not None:
+            out_dir = Path(save_intermediate).expanduser().resolve()
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / "extraction.parquet"
+            result_df.to_parquet(out_path, index=False)
+            logger.info("Wrote extraction Parquet for intermediate use: %s", out_path)
+
+        if detection_summary_file is not None:
+            from nemo_retriever.common.detection_summary import (
+                collect_detection_summary_from_df,
+                write_detection_summary,
+            )
+
+            write_detection_summary(
+                Path(detection_summary_file),
+                collect_detection_summary_from_df(result_df),
+            )
+
+        if uploadable_vdb_records == 0 and run_mode != "service":
+            if run_mode == "batch":
+                import ray
+
+                ray.shutdown()
+            typer.echo(f"Pipeline complete: 0 uploadable records from {input_path}.")
+            return
+
+        if evaluation_mode == "qa":
+            from nemo_retriever.tools.evaluation.cli import run_qa_sweep_from_config_dict
+            from nemo_retriever.tools.evaluation.config import load_eval_config
+
+            assert eval_config is not None
+            cfg = load_eval_config(str(eval_config))
+            r = cfg.setdefault("retrieval", {})
+            if retrieval_save_path is not None:
+                r["save_path"] = str(Path(retrieval_save_path).resolve())
+            if eval_page_index is not None:
+                r["page_index"] = str(Path(eval_page_index).resolve())
+
+            qa_t0 = time.perf_counter()
+            qa_code = run_qa_sweep_from_config_dict(cfg)
+            evaluation_total_time = time.perf_counter() - qa_t0
+            total_time = time.perf_counter() - ingest_start
+
+            _write_runtime_summary(
+                runtime_metrics_dir,
+                runtime_metrics_prefix,
+                {
+                    "run_mode": run_mode,
+                    "input_path": str(Path(input_path).resolve()),
+                    "input_pages": int(num_rows),
+                    "num_pages": int(num_rows),
+                    "num_rows": int(len(result_df.index)),
+                    "ingestion_only_secs": float(ingestion_only_total_time),
+                    "ray_download_secs": float(ray_download_time),
+                    "vdb_upload_secs": float(vdb_upload_time),
+                    "evaluation_secs": float(evaluation_total_time),
+                    "total_secs": float(total_time),
+                    "evaluation_mode": "qa",
+                    "evaluation_metrics": {},
+                    "evaluation_count": None,
+                    "recall_details": bool(recall_details),
+                    "vdb_op": str(resolved_vdb_op),
+                    "qa_sweep_exit_code": qa_code,
+                },
+            )
+            if run_mode == "batch":
+                import ray
+
+                ray.shutdown()
+
+            from nemo_retriever.common.detection_summary import print_run_summary
+
+            print_run_summary(
+                processed_pages=num_rows,
+                input_path=Path(input_path),
+                vdb_op=str(resolved_vdb_op),
+                vdb_kwargs=resolved_vdb_kwargs,
+                total_time=total_time,
+                ingest_only_total_time=ingestion_only_total_time,
+                ray_dataset_download_total_time=ray_download_time,
+                vdb_upload_total_time=vdb_upload_time,
+                evaluation_total_time=evaluation_total_time,
+                evaluation_metrics={},
+                evaluation_label="QA",
+                evaluation_count=None,
+            )
+            typer.echo(
+                f"Pipeline complete (QA): {num_rows} page(s) → {resolved_vdb_op} "
+                f"{_format_vdb_target(resolved_vdb_op, resolved_vdb_kwargs)} ({total_time:.1f}s)."
+            )
+            if qa_code != 0:
+                raise typer.Exit(code=qa_code)
+            return
+
+        evaluation_label, evaluation_total_time, evaluation_metrics, evaluation_query_count, ran = _run_evaluation(
+            evaluation_mode=evaluation_mode,
+            vdb_op=resolved_vdb_op,
+            vdb_kwargs=resolved_vdb_kwargs,
+            embed_model_name=embed_model_name,
+            embed_invoke_url=embed_invoke_url,
+            embed_remote_api_key=embed_remote_api_key,
+            embed_modality=embed_modality,
+            query_csv=query_csv,
+            recall_match_mode=recall_match_mode,
+            audio_match_tolerance_secs=audio_match_tolerance_secs,
+            reranker=reranker,
+            reranker_model_name=reranker_model_name,
+            reranker_invoke_url=reranker_invoke_url,
+            reranker_api_key=reranker_bearer,
+            local_reranker_backend=local_reranker_backend,
+            local_hf_batch_size=local_hf_batch_size,
+            local_query_max_length=local_query_max_length,
+            beir_loader=beir_loader,
+            beir_dataset_name=beir_dataset_name,
+            beir_split=beir_split,
+            beir_query_language=beir_query_language,
+            beir_doc_id_field=beir_doc_id_field,
+            beir_k=beir_k,
+            local_query_embed_backend=local_query_embed_backend,
+            run_mode=run_mode,
+            service_url=service_url,
+            service_api_token=service_api_token,
+        )
+
+        if not ran:
+            no_eval_total_time = time.perf_counter() - ingest_start
+            _write_runtime_summary(
+                runtime_metrics_dir,
+                runtime_metrics_prefix,
+                {
+                    "run_mode": run_mode,
+                    "input_path": str(Path(input_path).resolve()),
+                    "input_pages": int(num_rows),
+                    "num_pages": int(num_rows),
+                    "num_rows": int(len(result_df.index)),
+                    "ingestion_only_secs": float(ingestion_only_total_time),
+                    "ray_download_secs": float(ray_download_time),
+                    "vdb_upload_secs": float(vdb_upload_time),
+                    "evaluation_secs": 0.0,
+                    "total_secs": float(no_eval_total_time),
+                    "evaluation_mode": evaluation_mode,
+                    "evaluation_metrics": {},
+                    "recall_details": bool(recall_details),
+                    "vdb_op": str(resolved_vdb_op),
+                },
+            )
+            if run_mode == "batch":
+                import ray
+
+                ray.shutdown()
+            typer.echo(
+                f"Pipeline complete: {num_rows} page(s) → {resolved_vdb_op} "
+                f"{_format_vdb_target(resolved_vdb_op, resolved_vdb_kwargs)} ({no_eval_total_time:.1f}s)."
+            )
+            return
+
+        total_time = time.perf_counter() - ingest_start
+
+        _write_runtime_summary(
+            runtime_metrics_dir,
+            runtime_metrics_prefix,
+            {
+                "run_mode": run_mode,
+                "input_path": str(Path(input_path).resolve()),
+                "input_pages": int(num_rows),
+                "num_pages": int(num_rows),
+                "num_rows": int(len(result_df.index)),
+                "ingestion_only_secs": float(ingestion_only_total_time),
+                "ray_download_secs": float(ray_download_time),
+                "vdb_upload_secs": float(vdb_upload_time),
+                "evaluation_secs": float(evaluation_total_time),
+                "total_secs": float(total_time),
+                "evaluation_mode": evaluation_mode,
+                "evaluation_metrics": dict(evaluation_metrics),
+                "evaluation_count": evaluation_query_count,
+                "recall_details": bool(recall_details),
+                "vdb_op": str(resolved_vdb_op),
+            },
+        )
+
+        if run_mode == "batch":
+            import ray
+
+            ray.shutdown()
+
+        from nemo_retriever.common.detection_summary import print_run_summary
+
+        print_run_summary(
+            processed_pages=num_rows,
+            input_path=Path(input_path),
+            vdb_op=str(resolved_vdb_op),
+            vdb_kwargs=resolved_vdb_kwargs,
+            total_time=total_time,
+            ingest_only_total_time=ingestion_only_total_time,
+            ray_dataset_download_total_time=ray_download_time,
+            vdb_upload_total_time=vdb_upload_time,
+            evaluation_total_time=evaluation_total_time,
+            evaluation_metrics=evaluation_metrics,
+            evaluation_label=evaluation_label,
+            evaluation_count=evaluation_query_count,
+        )
+
+        # Final one-line success report (mirrors `retriever ingest`). Important
+        # for --quiet where print_run_summary's output may otherwise be the
+        # only signal of completion.
+        typer.echo(
+            f"Pipeline complete: {num_rows} page(s) → {resolved_vdb_op} "
+            f"{_format_vdb_target(resolved_vdb_op, resolved_vdb_kwargs)} ({total_time:.1f}s)."
+        )
+    finally:
+        os.sys.stdout = original_stdout
+        os.sys.stderr = original_stderr
+        if log_handle is not None:
+            log_handle.close()
+
+
+def main() -> None:
+    """Entrypoint for ``python -m nemo_retriever.pipeline``."""
+    app()
+
+
+if __name__ == "__main__":
+    main()

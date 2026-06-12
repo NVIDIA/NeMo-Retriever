@@ -11,7 +11,7 @@ import pytest
 
 lancedb = pytest.importorskip("lancedb")
 
-from nemo_retriever.vdb.lancedb import LanceDB
+from nemo_retriever.common.vdb.lancedb import LanceDB
 
 
 def _records(text: str = "hello", vector: list[float] | None = None) -> list[list[dict]]:

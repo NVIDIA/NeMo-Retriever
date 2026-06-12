@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Sequence
 
 from nemo_retriever.ingest.plan import ResolvedIngestPlan
-from nemo_retriever.ingest_manifest import format_branch_summary
+from nemo_retriever.ingestor.manifest import format_branch_summary
 from nemo_retriever.ingestor import Ingestor, create_ingestor
 
 logger = logging.getLogger(__name__)

@@ -8,7 +8,7 @@ import pandas as pd
 from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
 from nemo_retriever.tabular_data.ingestion.utils import chunks
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import Edges, Labels
-from .schemas_dal import load_schema_from_graph, add_schemas_edge
+from nemo_retriever.tabular_data.ingestion.dal.schemas_dal import load_schema_from_graph, add_schemas_edge
 
 logger = logging.getLogger(__name__)
 

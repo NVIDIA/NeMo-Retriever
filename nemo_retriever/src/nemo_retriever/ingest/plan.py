@@ -8,13 +8,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Sequence, cast
 
-from nemo_retriever.ingest_manifest import (
+from nemo_retriever.ingestor.manifest import (
     ExtractionBranchPlan,
     build_input_manifest,
     plan_extraction_branches,
 )
-from nemo_retriever.ocr.config import OCRLang, OCRVersion
-from nemo_retriever.params import (
+from nemo_retriever.common.modality.ocr.config import OCRLang, OCRVersion
+from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
     AudioVisualFuseParams,
@@ -31,7 +31,7 @@ from nemo_retriever.params import (
     VideoFrameTextDedupParams,
     build_embed_option_kwargs,
 )
-from nemo_retriever.utils.input_files import (
+from nemo_retriever.common.input_files import (
     AUTO_INPUT_EXTENSIONS,
     INPUT_TYPE_EXTENSIONS,
     expand_input_file_patterns,
@@ -358,7 +358,7 @@ def _profile_extract_defaults(profile: IngestProfileValue) -> dict[str, Any]:
 def _build_asr_params(*, segment_audio: bool | None, needed: bool) -> ASRParams | None:
     if not needed and segment_audio is None:
         return None
-    from nemo_retriever.audio.asr_actor import asr_params_from_env
+    from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
 
     params = asr_params_from_env()
     if segment_audio is None:

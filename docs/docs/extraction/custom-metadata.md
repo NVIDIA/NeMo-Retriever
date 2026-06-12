@@ -57,7 +57,7 @@ ingestor = (
 results = ingestor.ingest_async().result()
 ```
 
-Set `hostname`, `table_name`, and a **remote** `lancedb_uri` (for example `s3://bucket/path`) to match your deployment—the retriever service rejects local filesystem paths. The client uploads in-memory sidecar metadata to the service before ingest; do not pass a raw local file path as `meta_dataframe` on the REST spec. For local LanceDB directories, use `run_mode="batch"` instead (refer to [Vector databases](vdbs.md)). For a step-by-step walkthrough with additional fields such as category, department, and timestamp, refer to [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb).
+Set `hostname`, `table_name`, and a **remote** `lancedb_uri` (for example `s3://bucket/path`) to match your deployment—the retriever service rejects local filesystem paths. The client uploads in-memory sidecar metadata to the service before ingest; do not pass a raw local file path as `meta_dataframe` on the REST spec. For local LanceDB directories, use `run_mode="batch"` instead (refer to [Vector databases](vdbs.md)). For a step-by-step walkthrough with additional fields such as category, department, and timestamp, refer to [Vector DB operators and LanceDB — Metadata filtering](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/vdb#metadata-filtering).
 
 ## Best practices { #best-practices }
 
@@ -80,7 +80,7 @@ Typical keys to filter on include `category`, `department`, `priority`, and `tim
 
 After ingestion is complete and documents are uploaded to LanceDB with metadata, you can narrow results in the database with a **`where`** clause, or in Python on the returned hits.
 
-**Native LanceDB (SQL pushdown):** connect, embed the query yourself (same model as ingestion), then chain `.where("<LanceDB SQL predicate>")` on `table.search(...)` so filtering happens before the `limit`. Exact SQL depends on how `metadata` is stored; refer to [LanceDB SQL](https://lancedb.github.io/lancedb/sql/).
+**Native LanceDB (SQL pushdown):** connect, embed the query yourself (same model as ingestion), then chain `.where("<LanceDB SQL predicate>")` on `table.search(...)` so filtering happens before the `limit`. Exact SQL depends on how `metadata` is stored; refer to [LanceDB metadata filtering](https://docs.lancedb.com/search/filtering#filtering-with-sql).
 
 ```python
 import lancedb
@@ -94,7 +94,7 @@ table = db.open_table("nemo_retriever_collection")
 **`Retriever.query` + `where`:** LanceDB applies the predicate before ranking. For post-filter logic in Python, use a wider `top_k` first.
 
 ```python
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.graph.retriever import Retriever
 
 retriever = Retriever(
     vdb_kwargs={"uri": "./lancedb_data", "table_name": "nemo_retriever_collection"},
@@ -118,4 +118,4 @@ When you ingest through the **retriever service**, upload the sidecar with [`POS
 ## How metadata is stored { #how-metadata-is-stored }
 
 - [Vector databases](vdbs.md) — canonical LanceDB upload and retrieval guide
-- [metadata_and_filtered_search.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb) — CLI and graph ingest with sidecar metadata
+- [nemo_retriever_retriever_query_metadata_filter.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) — runnable notebook for sidecar metadata at ingest and filtered `Retriever.query`

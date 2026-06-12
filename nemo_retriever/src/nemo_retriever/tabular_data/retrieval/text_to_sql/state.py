@@ -16,7 +16,7 @@ from typing import NotRequired, TypedDict
 from langchain_core.messages import HumanMessage
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.graph.retriever import Retriever
 from nemo_retriever.tabular_data.sql_database import SQLDatabase
 
 

@@ -829,7 +829,7 @@ async def get_run_lancedb_info(run_id: int):
     if not uri:
         return {"available": False, "uri": None, "row_count": 0}
     try:
-        from nemo_retriever.vdb.lancedb_read import lancedb_row_count
+        from nemo_retriever.common.vdb.lancedb_read import lancedb_row_count
 
         count = int(lancedb_row_count(uri, LANCEDB_TABLE))
         return {"available": True, "uri": uri, "row_count": count, "table": LANCEDB_TABLE}
@@ -857,7 +857,7 @@ async def run_retrieval_query(run_id: int, req: RetrievalQueryRequest):
         tc = raw.get("test_config") or {}
         embed_model = tc.get("embed_model_name", "nvidia/llama-nemotron-embed-1b-v2")
 
-        from nemo_retriever.retriever import Retriever
+        from nemo_retriever.graph.retriever import Retriever
 
         retriever = Retriever(
             vdb_kwargs={
@@ -1164,7 +1164,7 @@ async def test_embed_model(req: EmbedTestRequest):
     try:
         import time as _time
 
-        from nemo_retriever.model import create_local_embedder
+        from nemo_retriever.models import create_local_embedder
 
         prefixed = [f"{req.prefix}{t}" for t in req.texts] if req.prefix else list(req.texts)
         t0 = _time.perf_counter()
@@ -1220,7 +1220,7 @@ async def test_rerank_model(req: RerankTestRequest):
     try:
         import time as _time
 
-        from nemo_retriever.model.local.nemotron_rerank_v2 import NemotronRerankV2
+        from nemo_retriever.models.local.nemotron_rerank_v2 import NemotronRerankV2
 
         t0 = _time.perf_counter()
         reranker = NemotronRerankV2(model_name=req.model_id)
@@ -1277,8 +1277,8 @@ async def test_ocr_model(req: OCRTestRequest):
     try:
         import time as _time
 
-        from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2
-        from nemo_retriever.ocr.config import resolve_ocr_v2_lang
+        from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
+        from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_lang
 
         t0 = _time.perf_counter()
         lang = resolve_ocr_v2_lang("v2", req.ocr_lang)
@@ -1327,7 +1327,7 @@ async def test_parse_model(req: ParseTestRequest):
 
         from PIL import Image
 
-        from nemo_retriever.model.local.nemotron_parse_v1_2 import NemotronParseV12
+        from nemo_retriever.models.local.nemotron_parse_v1_2 import NemotronParseV12
 
         img_data = req.image_b64
         if "," in img_data:
@@ -1396,17 +1396,17 @@ async def test_detect_model(req: DetectTestRequest):
         t0 = _time.perf_counter()
 
         if req.model_id == "page_element_v3":
-            from nemo_retriever.model.local.nemotron_page_elements_v3 import NemotronPageElementsV3
+            from nemo_retriever.models.local.nemotron_page_elements_v3 import NemotronPageElementsV3
 
             model = NemotronPageElementsV3()
             label_names = ["table", "chart", "title", "infographic", "text", "header_footer"]
         elif req.model_id == "table_structure_v1":
-            from nemo_retriever.model.local.nemotron_table_structure_v1 import NemotronTableStructureV1
+            from nemo_retriever.models.local.nemotron_table_structure_v1 import NemotronTableStructureV1
 
             model = NemotronTableStructureV1()
             label_names = ["cell", "merged_cell", "row", "column"]
         elif req.model_id == "graphic_elements_v1":
-            from nemo_retriever.model.local.nemotron_graphic_elements_v1 import NemotronGraphicElementsV1
+            from nemo_retriever.models.local.nemotron_graphic_elements_v1 import NemotronGraphicElementsV1
 
             model = NemotronGraphicElementsV1()
             label_names = [

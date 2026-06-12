@@ -10,13 +10,13 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph import FileListLoaderOperator, MultiTypeExtractOperator, UDFOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
 from nemo_retriever.graph.ingestor_runtime import build_graph, build_post_extract_graph
-from nemo_retriever.graph.multi_type_extract_operator import (
+from nemo_retriever.operators.graph_ops.multi_type_extract_operator import (
     AUDIO_EXTENSIONS,
     HTML_EXTENSIONS,
     IMAGE_EXTENSIONS,
@@ -24,11 +24,17 @@ from nemo_retriever.graph.multi_type_extract_operator import (
     TEXT_EXTENSIONS,
     VIDEO_EXTENSIONS,
 )
-from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
-from nemo_retriever.params import ASRParams, EmbedParams, ExtractParams, TextChunkParams, VideoFrameTextDedupParams
-from nemo_retriever.utils.input_files import INPUT_TYPE_EXTENSIONS
-from nemo_retriever.utils.ray_resource_hueristics import Resources
+from nemo_retriever.common.params import (
+    ASRParams,
+    EmbedParams,
+    ExtractParams,
+    TextChunkParams,
+    VideoFrameTextDedupParams,
+)
+from nemo_retriever.common.input_files import INPUT_TYPE_EXTENSIONS
+from nemo_retriever.common.ray_resource_hueristics import Resources
 
 
 def _graph_node_names(graph: Graph) -> list[str]:
@@ -532,7 +538,7 @@ class TestGraphExecute:
     def test_execute_resolves_archetypes_locally(self, monkeypatch):
         resources = Resources(cpu_count=8, gpu_count=0)
         monkeypatch.setattr(
-            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
             lambda: resources,
         )
 
@@ -667,10 +673,10 @@ class TestGraphExecute:
 # =====================================================================
 class TestMultiTypeExtractOperator:
     def test_auto_mode_preserves_audio_video_compat_defaults(self, monkeypatch):
-        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+        from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
 
         monkeypatch.setattr(
-            "nemo_retriever.graph.multi_type_extract_operator.asr_params_from_env",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.asr_params_from_env",
             lambda: ASRParams(segment_audio=True),
         )
 
@@ -710,7 +716,7 @@ class TestMultiTypeExtractOperator:
 
     def test_default_media_params_match_root_ingest_defaults(self, monkeypatch):
         """Mixed auto uses the same audio/video defaults as root CLI typed media ingest."""
-        import nemo_retriever.graph.multi_type_extract_operator as multitype
+        import nemo_retriever.operators.graph_ops.multi_type_extract_operator as multitype
 
         monkeypatch.setattr(
             multitype,
@@ -749,7 +755,7 @@ class TestMultiTypeExtractOperator:
     def test_auto_mode_logs_and_skips_unsupported_extension_in_file_list(self, caplog):
         op = MultiTypeExtractOperator(extraction_mode="auto")
 
-        with caplog.at_level(logging.WARNING, logger="nemo_retriever.graph.multi_type_extract_operator"):
+        with caplog.at_level(logging.WARNING, logger="nemo_retriever.operators.graph_ops.multi_type_extract_operator"):
             grouped = op.preprocess(["/folder/known.txt", "/folder/unknown.xyz"])
 
         assert grouped["text"] == ["/folder/known.txt"]
@@ -761,12 +767,12 @@ class TestMultiTypeExtractOperator:
         assert "Unsupported file extension '.xyz'" in caplog.text
 
     def test_auto_mode_logs_and_skips_unsupported_extension_in_dataframe_batch(self, caplog):
-        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+        from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
 
         op = MultiTypeExtractCPUActor(extraction_mode="auto")
         batch = pd.DataFrame({"path": ["/folder/unknown.xyz"], "bytes": [b"unsupported"]})
 
-        with caplog.at_level(logging.WARNING, logger="nemo_retriever.graph.multi_type_extract_operator"):
+        with caplog.at_level(logging.WARNING, logger="nemo_retriever.operators.graph_ops.multi_type_extract_operator"):
             result = op.process(batch)
 
         assert isinstance(result, pd.DataFrame)
@@ -797,8 +803,8 @@ class TestMultiTypeExtractOperator:
         assert result == []
 
     def test_detection_pipeline_resolves_suboperators_through_archetype_resolution(self, monkeypatch):
-        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
-        from nemo_retriever.utils.ray_resource_hueristics import Resources
+        from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
+        from nemo_retriever.common.ray_resource_hueristics import Resources
 
         calls = []
 
@@ -813,9 +819,11 @@ class TestMultiTypeExtractOperator:
             calls.append((operator_class.__name__, resources))
             return _IdentityStage
 
-        monkeypatch.setattr("nemo_retriever.graph.multi_type_extract_operator.resolve_operator_class", _fake_resolve)
         monkeypatch.setattr(
-            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.resolve_operator_class", _fake_resolve
+        )
+        monkeypatch.setattr(
+            "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
             lambda: Resources(cpu_count=8, gpu_count=1),
         )
 
@@ -845,8 +853,8 @@ class TestMultiTypeExtractOperator:
         assert len({id(resources) for _name, resources in calls}) == 1
 
     def test_parse_pipeline_resolves_nemotron_parse_through_archetype_resolution(self, monkeypatch):
-        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
-        from nemo_retriever.utils.ray_resource_hueristics import Resources
+        from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
+        from nemo_retriever.common.ray_resource_hueristics import Resources
 
         calls = []
 
@@ -858,11 +866,11 @@ class TestMultiTypeExtractOperator:
                 return data
 
         monkeypatch.setattr(
-            "nemo_retriever.graph.multi_type_extract_operator.DocToPdfConversionActor.run",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.DocToPdfConversionActor.run",
             lambda self, data: data,
         )
         monkeypatch.setattr(
-            "nemo_retriever.graph.multi_type_extract_operator.PDFSplitActor.run",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.PDFSplitActor.run",
             lambda self, data: data,
         )
 
@@ -870,9 +878,11 @@ class TestMultiTypeExtractOperator:
             calls.append((operator_class.__name__, resources))
             return _IdentityStage
 
-        monkeypatch.setattr("nemo_retriever.graph.multi_type_extract_operator.resolve_operator_class", _fake_resolve)
         monkeypatch.setattr(
-            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.resolve_operator_class", _fake_resolve
+        )
+        monkeypatch.setattr(
+            "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
             lambda: Resources(cpu_count=8, gpu_count=1),
         )
 

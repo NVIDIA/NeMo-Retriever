@@ -11,7 +11,7 @@ import sys
 import types
 from pathlib import Path
 
-from nemo_retriever.io.image_store import load_image_b64_from_uri, render_page_image_b64
+from nemo_retriever.common.io.image_store import load_image_b64_from_uri, render_page_image_b64
 
 
 class TestLoadImageB64FromUri:
@@ -44,7 +44,7 @@ class TestRenderPageImageB64:
                 closed["value"] = True
 
         fake_pdfium = types.SimpleNamespace(PdfDocument=_FakePdfDocument)
-        fake_extract = types.ModuleType("nemo_retriever.pdf.extract")
+        fake_extract = types.ModuleType("nemo_retriever.operators.extract.pdf.extract")
 
         def _render_page_to_base64(page, *, dpi):
             assert page == "page-1"
@@ -53,7 +53,7 @@ class TestRenderPageImageB64:
 
         fake_extract._render_page_to_base64 = _render_page_to_base64
         monkeypatch.setitem(sys.modules, "pypdfium2", fake_pdfium)
-        monkeypatch.setitem(sys.modules, "nemo_retriever.pdf.extract", fake_extract)
+        monkeypatch.setitem(sys.modules, "nemo_retriever.operators.extract.pdf.extract", fake_extract)
 
         assert render_page_image_b64("/tmp/doc.pdf", 2, dpi=123) == "rendered"
         assert closed["value"] is True
@@ -70,9 +70,9 @@ class TestRenderPageImageB64:
                 pass
 
         fake_pdfium = types.SimpleNamespace(PdfDocument=_FakePdfDocument)
-        fake_extract = types.ModuleType("nemo_retriever.pdf.extract")
+        fake_extract = types.ModuleType("nemo_retriever.operators.extract.pdf.extract")
         fake_extract._render_page_to_base64 = lambda page, *, dpi: {"image_b64": "rendered"}
         monkeypatch.setitem(sys.modules, "pypdfium2", fake_pdfium)
-        monkeypatch.setitem(sys.modules, "nemo_retriever.pdf.extract", fake_extract)
+        monkeypatch.setitem(sys.modules, "nemo_retriever.operators.extract.pdf.extract", fake_extract)
 
         assert render_page_image_b64("/tmp/doc.pdf", 0) is None

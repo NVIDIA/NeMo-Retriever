@@ -60,7 +60,7 @@ Pass `vdb_op="lancedb"` to `vdb_upload`, or construct a `LanceDB` instance and p
 For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
 ```python
-from nemo_retriever.vdb.lancedb import LanceDB
+from nemo_retriever.common.vdb.lancedb import LanceDB
 
 vdb = LanceDB(
     uri="./lancedb_data",    # Path to LanceDB database directory

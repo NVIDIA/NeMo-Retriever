@@ -42,7 +42,7 @@ def _install_ocr_import_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
 def _install_upstream_ocr_v2_stub(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
     captured_kwargs: list[dict[str, object]] = []
 
-    from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2 as _WrapperOCRV2
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2 as _WrapperOCRV2
 
     class _NemotronOCRV2:
         def __init__(self, **kwargs: object) -> None:
@@ -65,32 +65,90 @@ def _install_upstream_ocr_v2_stub(monkeypatch: pytest.MonkeyPatch) -> list[dict[
     return captured_kwargs
 
 
-def test_local_extra_accepts_stable_ocr_2_and_newer_dev_releases() -> None:
+def _requirement(dependencies: list[str], name: str) -> Requirement:
+    return next(Requirement(dep) for dep in dependencies if Requirement(dep).name == name)
+
+
+def test_local_extra_is_stable_and_uv_dev_group_uses_nightly_nemotron_specs() -> None:
     pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    local_deps = pyproject["project"]["optional-dependencies"]["local"]
+    optional_deps = pyproject["project"]["optional-dependencies"]
+    dependency_groups = pyproject["dependency-groups"]
+    local_deps = optional_deps["local"]
+    dev_group = dependency_groups["dev"]
+    all_deps = optional_deps["all"]
     uv_tool = pyproject["tool"]["uv"]
     uv_sources = uv_tool["sources"]
+    uv_indexes = uv_tool["index"]
 
-    ocr_dep = next(dep for dep in local_deps if dep.startswith("nemotron-ocr"))
-    ocr_requirement = Requirement(ocr_dep)
+    assert "local-nightly" not in optional_deps
+    assert "local-base" not in optional_deps
+    assert "conflicts" not in uv_tool
+    assert "nemo_retriever[all]" in dev_group
+    assert "nemo_retriever[dev]" in dev_group
+    assert "uv-local" not in dependency_groups
+    assert {"include-group": "uv-local"} not in dev_group
+    assert "build>=1.2.2" not in dev_group
+    assert "pytest>=8.0.2" not in dev_group
+    assert "tritonclient" in local_deps
+    dev_nemotron_deps = [dep for dep in dev_group if isinstance(dep, str) and dep.startswith("nemotron-")]
+    assert len(dev_nemotron_deps) == 4
+    assert any("local" in dep for dep in all_deps)
+    assert not any("local-nightly" in dep or "uv-local" in dep for dep in all_deps)
 
-    assert ocr_requirement.specifier.contains("2.0.0")
-    assert not ocr_requirement.specifier.contains("3.0.0")
-    assert ocr_requirement.specifier.contains("2.0.1")
-    assert not ocr_requirement.specifier.contains("1.0.1")
-    assert str(ocr_requirement.marker) == (
+    stable_page_requirement = _requirement(local_deps, "nemotron-page-elements-v3")
+    assert stable_page_requirement.specifier.contains("3.0.1")
+    assert stable_page_requirement.specifier.contains("3.5.0")
+    assert stable_page_requirement.specifier.contains("3.0.2.dev1", prereleases=True)
+    assert not stable_page_requirement.specifier.contains("4.0.0")
+
+    for package in ("nemotron-graphic-elements-v1", "nemotron-table-structure-v1"):
+        stable_requirement = _requirement(local_deps, package)
+        assert stable_requirement.specifier.contains("1.0.0")
+        assert stable_requirement.specifier.contains("1.5.0")
+        assert stable_requirement.specifier.contains("1.0.1.dev1", prereleases=True)
+        assert not stable_requirement.specifier.contains("2.0.0")
+
+    stable_ocr_requirement = _requirement(local_deps, "nemotron-ocr")
+    assert stable_ocr_requirement.specifier.contains("2.0.0")
+    assert stable_ocr_requirement.specifier.contains("2.5.0")
+    assert stable_ocr_requirement.specifier.contains("2.0.1.dev1", prereleases=True)
+    assert not stable_ocr_requirement.specifier.contains("3.0.0")
+    assert not stable_ocr_requirement.specifier.contains("1.0.1")
+    assert str(stable_ocr_requirement.marker) == (
         'sys_platform == "linux" and (platform_machine == "x86_64" or platform_machine == "aarch64")'
     )
-    assert not any(dep.startswith("nemotron-ocr-v2") for dep in local_deps)
+
+    nightly_page_requirement = _requirement(dev_nemotron_deps, "nemotron-page-elements-v3")
+    assert nightly_page_requirement.specifier.contains("3.0.1.dev1", prereleases=True)
+    assert nightly_page_requirement.specifier.contains("3.0.2.dev1", prereleases=True)
+    assert not nightly_page_requirement.specifier.contains("3.0.1", prereleases=True)
+    assert not nightly_page_requirement.specifier.contains("3.0.2", prereleases=True)
+
+    for package in ("nemotron-graphic-elements-v1", "nemotron-table-structure-v1"):
+        nightly_requirement = _requirement(dev_nemotron_deps, package)
+        assert not nightly_requirement.specifier.contains("1.0.0.dev1", prereleases=True)
+        assert nightly_requirement.specifier.contains("1.0.1.dev1", prereleases=True)
+        assert not nightly_requirement.specifier.contains("1.0.0", prereleases=True)
+        assert not nightly_requirement.specifier.contains("1.0.1", prereleases=True)
+
+    nightly_ocr_requirement = _requirement(dev_nemotron_deps, "nemotron-ocr")
+    assert nightly_ocr_requirement.specifier.contains("2.0.1.dev1", prereleases=True)
+    assert not nightly_ocr_requirement.specifier.contains("2.0.0", prereleases=True)
+    assert not nightly_ocr_requirement.specifier.contains("2.0.1", prereleases=True)
+    assert str(nightly_ocr_requirement.marker) == str(stable_ocr_requirement.marker)
+
+    assert not any(dep.startswith("nemotron-ocr-v2") for dep in local_deps + dev_nemotron_deps)
     assert "nemotron-ocr" in uv_tool["no-build-package"]
     assert "nemotron-ocr-v2" not in uv_tool["no-build-package"]
     assert "nemotron-ocr" not in uv_sources
     assert "nemotron-ocr-v2" not in uv_sources
+    assert "test-pypi" not in {index["name"] for index in uv_indexes}
+    assert all("test.pypi.org" not in index["url"] for index in uv_indexes)
 
 
 def test_local_ocr_v2_wrapper_uses_original_namespace_and_package_lang_selectors() -> None:
-    source = (PROJECT_ROOT / "src" / "nemo_retriever" / "model" / "local" / "nemotron_ocr_v2.py").read_text(
+    source = (PROJECT_ROOT / "src" / "nemo_retriever" / "models" / "local" / "nemotron_ocr_v2.py").read_text(
         encoding="utf-8"
     )
 
@@ -107,7 +165,7 @@ def test_local_ocr_v2_wrapper_uses_original_namespace_and_package_lang_selectors
 def test_local_ocr_v2_wrapper_rejects_invalid_lang_selector(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_ocr_import_stubs(monkeypatch)
 
-    from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
 
     with pytest.raises(ValueError, match=r"Invalid lang selector 'v3'"):
         NemotronOCRV2(lang="v3")
@@ -122,7 +180,7 @@ def test_local_ocr_v2_wrapper_defaults_to_package_multi_selector(
     _install_ocr_import_stubs(monkeypatch)
     captured_kwargs = _install_upstream_ocr_v2_stub(monkeypatch)
 
-    from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
 
     NemotronOCRV2()
 
@@ -140,7 +198,7 @@ def test_local_ocr_v2_wrapper_accepts_package_lang_selectors_and_passes_them_thr
     _install_ocr_import_stubs(monkeypatch)
     captured_kwargs = _install_upstream_ocr_v2_stub(monkeypatch)
 
-    from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
 
     NemotronOCRV2(lang=selector)
 
@@ -151,7 +209,7 @@ def test_local_ocr_v2_wrapper_passes_package_lang_selector_with_model_dir(monkey
     _install_ocr_import_stubs(monkeypatch)
     captured_kwargs = _install_upstream_ocr_v2_stub(monkeypatch)
 
-    from nemo_retriever.model.local.nemotron_ocr_v2 import NemotronOCRV2
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
 
     NemotronOCRV2(model_dir="/models/ocr", lang="english")
 

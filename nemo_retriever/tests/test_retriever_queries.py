@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for the graph-based :class:`~nemo_retriever.retriever.Retriever` query surface."""
+"""Unit tests for the graph-based :class:`~nemo_retriever.graph.retriever.Retriever` query surface."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.retriever import Retriever, _shape_query_hits
+from nemo_retriever.graph.retriever import Retriever, _shape_query_hits
 
 
 def _make_hits(n: int, base_score: float = 0.5) -> list[dict[str, Any]]:
@@ -141,7 +141,7 @@ class TestRetrieverDefaults:
         assert Retriever().rerank is False
 
     def test_retriever_alias_is_class(self) -> None:
-        from nemo_retriever.retriever import retriever
+        from nemo_retriever.graph.retriever import retriever
 
         assert retriever is Retriever
 
@@ -254,7 +254,7 @@ class TestRunModeServiceRequiresHttpEmbed:
 
 class TestRetrieveVdbOperatorPreprocess:
     def test_dataframe_to_vectors(self) -> None:
-        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+        from nemo_retriever.operators.vdb import RetrieveVdbOperator
 
         df = pd.DataFrame(
             {
@@ -267,7 +267,7 @@ class TestRetrieveVdbOperatorPreprocess:
         assert vec == [[0.1, 0.2]]
 
     def test_dataframe_to_vectors_reads_payload_embedding_column(self) -> None:
-        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+        from nemo_retriever.operators.vdb import RetrieveVdbOperator
 
         df = pd.DataFrame(
             {
@@ -280,7 +280,7 @@ class TestRetrieveVdbOperatorPreprocess:
         assert vec == [[0.3, 0.4]]
 
     def test_dataframe_to_vectors_reads_direct_embedding_column(self) -> None:
-        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+        from nemo_retriever.operators.vdb import RetrieveVdbOperator
 
         df = pd.DataFrame(
             {
@@ -293,7 +293,7 @@ class TestRetrieveVdbOperatorPreprocess:
         assert vec == [[0.5, 0.6]]
 
     def test_dataframe_to_vectors_skips_non_numeric_list_columns(self) -> None:
-        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+        from nemo_retriever.operators.vdb import RetrieveVdbOperator
 
         df = pd.DataFrame(
             {
@@ -307,7 +307,7 @@ class TestRetrieveVdbOperatorPreprocess:
         assert vec == [[0.7, 0.8]]
 
     def test_dataframe_to_vectors_skips_numeric_non_embedding_list_columns(self) -> None:
-        from nemo_retriever.vdb.operators import RetrieveVdbOperator
+        from nemo_retriever.operators.vdb import RetrieveVdbOperator
 
         df = pd.DataFrame(
             {
@@ -323,7 +323,7 @@ class TestRetrieveVdbOperatorPreprocess:
 
 class TestRerankLongDataframe:
     def test_groups_by_query_order(self) -> None:
-        from nemo_retriever.retriever_graph_utils import rerank_long_dataframe_to_hits
+        from nemo_retriever.graph.retriever_utils import rerank_long_dataframe_to_hits
 
         df = pd.DataFrame(
             [

@@ -21,9 +21,9 @@ OMNI_FP8 = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8"
 OMNI_NVFP4 = "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4"
 OMNI_REMOTE = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 _LOCAL_CAPTIONER_NEMO_IMPORT_MODULES = (
-    "nemo_retriever.model.local.nemotron_vlm_captioner",
-    "nemo_retriever.utils.nvtx",
-    "nemo_retriever.model.model",
+    "nemo_retriever.models.local.nemotron_vlm_captioner",
+    "nemo_retriever.common.nvtx",
+    "nemo_retriever.models.model",
 )
 _LOCAL_CAPTIONER_DEPENDENCY_MODULES = (
     "torch",
@@ -34,9 +34,9 @@ _LOCAL_CAPTIONER_DEPENDENCY_MODULES = (
 )
 _LOCAL_CAPTIONER_IMPORT_MODULES = _LOCAL_CAPTIONER_NEMO_IMPORT_MODULES + _LOCAL_CAPTIONER_DEPENDENCY_MODULES
 _LOCAL_CAPTIONER_PARENT_ATTRS = (
-    ("nemo_retriever.model.local", "nemotron_vlm_captioner"),
+    ("nemo_retriever.models.local", "nemotron_vlm_captioner"),
     ("nemo_retriever.utils", "nvtx"),
-    ("nemo_retriever.model", "model"),
+    ("nemo_retriever.models", "model"),
     ("torch", "cuda"),
     ("torch", "nn"),
     ("torch.cuda", "nvtx"),
@@ -45,10 +45,10 @@ _MISSING = object()
 
 
 def _reload_model_profiles_with_fake_revision_lookup(monkeypatch, fake_get_hf_revision):
-    import nemo_retriever.caption as caption_pkg
-    import nemo_retriever.utils.hf_model_registry as hf_model_registry
+    import nemo_retriever.common.modality.caption as caption_pkg
+    import nemo_retriever.models.hf_model_registry as hf_model_registry
 
-    module_name = "nemo_retriever.caption.model_profiles"
+    module_name = "nemo_retriever.common.modality.caption.model_profiles"
     original_module = sys.modules.get(module_name, _MISSING)
     original_parent_attr = caption_pkg.__dict__.get("model_profiles", _MISSING)
 
@@ -138,7 +138,7 @@ def test_model_profiles_import_uses_non_strict_revision_lookup(monkeypatch):
 
 
 def test_nano_resolution_remains_unchanged():
-    from nemo_retriever.caption.model_profiles import resolve_caption_model_name
+    from nemo_retriever.common.modality.caption.model_profiles import resolve_caption_model_name
 
     assert resolve_caption_model_name("nvidia/nemotron-nano-12b-v2-vl", target="local") == NANO_BF16
     assert resolve_caption_model_name("nvidia/nemotron-nano-12b-v2-vl-bf16", target="local") == NANO_BF16
@@ -150,7 +150,7 @@ def test_nano_resolution_remains_unchanged():
 
 
 def test_legacy_local_captioner_resolve_caption_model_name_shim_warns():
-    from nemo_retriever.model.local.nemotron_vlm_captioner import resolve_caption_model_name
+    from nemo_retriever.models.local.nemotron_vlm_captioner import resolve_caption_model_name
 
     with pytest.warns(DeprecationWarning, match="nemo_retriever.caption.model_profiles"):
         resolved = resolve_caption_model_name("nvidia/nemotron-nano-12b-v2-vl", target="local")
@@ -171,7 +171,7 @@ def test_legacy_local_captioner_resolve_caption_model_name_shim_warns():
     ],
 )
 def test_omni_local_names_resolve_to_hf_ids(name, expected):
-    from nemo_retriever.caption.model_profiles import resolve_caption_model_name
+    from nemo_retriever.common.modality.caption.model_profiles import resolve_caption_model_name
 
     assert resolve_caption_model_name(name, target="local") == expected
 
@@ -189,20 +189,23 @@ def test_omni_local_names_resolve_to_hf_ids(name, expected):
     ],
 )
 def test_omni_remote_names_resolve_to_hosted_model(name):
-    from nemo_retriever.caption.model_profiles import resolve_caption_model_name
+    from nemo_retriever.common.modality.caption.model_profiles import resolve_caption_model_name
 
     assert resolve_caption_model_name(name, target="remote") == OMNI_REMOTE
 
 
 def test_unknown_remote_model_name_passes_through():
-    from nemo_retriever.caption.model_profiles import get_caption_model_profile, resolve_caption_model_name
+    from nemo_retriever.common.modality.caption.model_profiles import (
+        get_caption_model_profile,
+        resolve_caption_model_name,
+    )
 
     assert get_caption_model_profile("acme/custom-vlm", target="remote", strict=False) is None
     assert resolve_caption_model_name("acme/custom-vlm", target="remote") == "acme/custom-vlm"
 
 
 def test_unknown_local_profile_raises_clear_error():
-    from nemo_retriever.caption.model_profiles import get_caption_model_profile
+    from nemo_retriever.common.modality.caption.model_profiles import get_caption_model_profile
 
     with pytest.raises(ValueError) as exc_info:
         get_caption_model_profile("acme/custom-vlm", target="local")
@@ -215,7 +218,7 @@ def test_unknown_local_profile_raises_clear_error():
 
 
 def test_omni_profile_has_request_defaults_and_current_capabilities():
-    from nemo_retriever.caption.model_profiles import get_caption_model_profile
+    from nemo_retriever.common.modality.caption.model_profiles import get_caption_model_profile
 
     profile = get_caption_model_profile(OMNI_FP8, target="local")
 
@@ -233,7 +236,7 @@ def test_omni_profile_has_request_defaults_and_current_capabilities():
 
 
 def test_request_extras_are_defensive_copies():
-    from nemo_retriever.caption.model_profiles import get_caption_model_profile
+    from nemo_retriever.common.modality.caption.model_profiles import get_caption_model_profile
 
     profile = get_caption_model_profile(OMNI_BF16, target="local")
     extras = profile.request_extras_for("local")
@@ -243,7 +246,7 @@ def test_request_extras_are_defensive_copies():
 
 
 def test_merge_request_extras_deep_merges_with_user_values_winning():
-    from nemo_retriever.caption.model_profiles import merge_request_extras
+    from nemo_retriever.common.modality.caption.model_profiles import merge_request_extras
 
     defaults = {
         "chat_template_kwargs": {"enable_thinking": False, "reasoning_budget": 0},
@@ -263,7 +266,7 @@ def test_merge_request_extras_deep_merges_with_user_values_winning():
 
 
 def test_supported_local_names_include_ids_and_aliases():
-    from nemo_retriever.caption.model_profiles import supported_caption_model_names
+    from nemo_retriever.common.modality.caption.model_profiles import supported_caption_model_names
 
     names = supported_caption_model_names(target="local")
 
@@ -273,7 +276,7 @@ def test_supported_local_names_include_ids_and_aliases():
 
 
 def test_public_request_extra_fields_are_immutable():
-    from nemo_retriever.caption.model_profiles import get_caption_model_profile
+    from nemo_retriever.common.modality.caption.model_profiles import get_caption_model_profile
 
     profile = get_caption_model_profile(OMNI_BF16, target="local")
 
@@ -294,7 +297,7 @@ def test_public_request_extra_fields_are_immutable():
     ],
 )
 def test_modelopt_fp8_profiles_preserve_checkpoint_quantization(model_name, expected_engine):
-    from nemo_retriever.caption.model_profiles import get_caption_model_profile
+    from nemo_retriever.common.modality.caption.model_profiles import get_caption_model_profile
 
     profile = get_caption_model_profile(model_name, target="local")
 
@@ -306,7 +309,7 @@ def test_modelopt_fp8_profiles_preserve_checkpoint_quantization(model_name, expe
 
 
 def test_public_nano_fp8_engine_kwargs_are_immutable():
-    from nemo_retriever.caption.model_profiles import get_caption_model_profile
+    from nemo_retriever.common.modality.caption.model_profiles import get_caption_model_profile
 
     profile = get_caption_model_profile(NANO_FP8, target="local")
 
@@ -317,7 +320,7 @@ def test_public_nano_fp8_engine_kwargs_are_immutable():
 
 
 def test_public_omni_fp8_engine_kwargs_are_immutable():
-    from nemo_retriever.caption.model_profiles import get_caption_model_profile
+    from nemo_retriever.common.modality.caption.model_profiles import get_caption_model_profile
 
     profile = get_caption_model_profile(OMNI_FP8, target="local")
 
@@ -419,7 +422,7 @@ def test_local_captioner_uses_profile_metadata(
 ):
     FakeLLM, _FakeSamplingParams = _install_fake_vllm()
 
-    from nemo_retriever.model.local.nemotron_vlm_captioner import NemotronVLMCaptioner
+    from nemo_retriever.models.local.nemotron_vlm_captioner import NemotronVLMCaptioner
 
     captioner = NemotronVLMCaptioner(
         model_path=model_name,
@@ -445,7 +448,7 @@ def test_local_captioner_uses_profile_metadata(
 def test_local_captioner_passes_omni_no_think_chat_kwargs(isolated_local_captioner_imports):
     FakeLLM, _FakeSamplingParams = _install_fake_vllm()
 
-    from nemo_retriever.model.local.nemotron_vlm_captioner import NemotronVLMCaptioner
+    from nemo_retriever.models.local.nemotron_vlm_captioner import NemotronVLMCaptioner
 
     captioner = NemotronVLMCaptioner(model_path=OMNI_BF16)
 
@@ -458,7 +461,7 @@ def test_local_captioner_passes_omni_no_think_chat_kwargs(isolated_local_caption
 def test_local_captioner_user_extra_body_overrides_profile_extras(isolated_local_captioner_imports):
     FakeLLM, _FakeSamplingParams = _install_fake_vllm()
 
-    from nemo_retriever.model.local.nemotron_vlm_captioner import NemotronVLMCaptioner
+    from nemo_retriever.models.local.nemotron_vlm_captioner import NemotronVLMCaptioner
 
     captioner = NemotronVLMCaptioner(model_path=OMNI_BF16)
     captioner.caption_batch(
@@ -476,7 +479,7 @@ def test_local_captioner_rejects_unknown_model_before_vllm_import(isolated_local
     sys.modules.pop("vllm", None)
     monkeypatch.setattr(sys, "meta_path", [_VllmImportBlocker(), *sys.meta_path])
 
-    from nemo_retriever.model.local.nemotron_vlm_captioner import NemotronVLMCaptioner
+    from nemo_retriever.models.local.nemotron_vlm_captioner import NemotronVLMCaptioner
 
     with pytest.raises(ValueError, match="Unsupported caption model"):
         NemotronVLMCaptioner(model_path="acme/custom-vlm")

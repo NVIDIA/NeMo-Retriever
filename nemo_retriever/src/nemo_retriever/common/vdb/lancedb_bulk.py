@@ -1,0 +1,256 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Batch LanceDB writes, index creation, and JSON-dir ingestion (canonical under ``vdb``)."""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass
+from datetime import timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence
+
+import lancedb
+import pandas as pd
+
+from nemo_retriever.common.vdb.lancedb import LanceDB
+from nemo_retriever.common.vdb.lancedb_schema import build_lancedb_row, infer_vector_dim, lancedb_schema
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class LanceDBConfig:
+    """
+    Minimal config for writing embeddings into LanceDB.
+
+    Used by the text-embedding stage and by the VDB stage CLI.
+    """
+
+    uri: str = "lancedb"
+    table_name: str = "nv-ingest"
+    overwrite: bool = True
+
+    # Optional index creation (recommended for recall/search runs).
+    create_index: bool = True
+    index_type: str = "IVF_HNSW_SQ"
+    metric: str = "l2"
+    num_partitions: int = 16
+    num_sub_vectors: int = 256
+
+    hybrid: bool = False
+    fts_language: str = "English"
+
+
+def _read_text_embeddings_json_df(path: Path) -> pd.DataFrame:
+    """
+    Read a `*.text_embeddings.json` file emitted by `nemo_retriever.text_embed.stage`.
+
+    Expected wrapper shape:
+      {
+        ...,
+        "df_records": [ { "document_type": ..., "metadata": {...}, ... }, ... ],
+        ...
+      }
+    """
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception as e:
+        raise ValueError(f"Failed reading JSON {path}: {e}") from e
+
+    if isinstance(obj, dict):
+        recs = obj.get("df_records")
+        if isinstance(recs, list):
+            return pd.DataFrame([r for r in recs if isinstance(r, dict)])
+        return pd.DataFrame([obj])
+
+    if isinstance(obj, list):
+        return pd.DataFrame([r for r in obj if isinstance(r, dict)])
+
+    return pd.DataFrame([])
+
+
+def _iter_text_embeddings_json_files(input_dir: Path, *, recursive: bool) -> List[Path]:
+    if recursive:
+        files = list(input_dir.rglob("*.text_embeddings.json"))
+    else:
+        files = list(input_dir.glob("*.text_embeddings.json"))
+    return sorted([p for p in files if p.is_file()])
+
+
+class _MappingRow:
+    def __init__(self, values: Dict[str, Any]) -> None:
+        self._values = values
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self._values[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+
+def _build_lancedb_rows_from_df(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Transform embeddings-enriched primitive rows into the shared LanceDB row schema."""
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_out = build_lancedb_row(_MappingRow(row), provenance_page=row.get("_page_number"))
+        if row_out is not None:
+            out.append(row_out)
+    return out
+
+
+def create_lancedb_index(table: Any, *, cfg: LanceDBConfig, text_column: str = "text") -> None:
+    """Create vector (IVF_HNSW_SQ) and optionally FTS indices on a LanceDB table."""
+    try:
+        table.create_index(
+            index_type=cfg.index_type,
+            metric=cfg.metric,
+            num_partitions=int(cfg.num_partitions),
+            num_sub_vectors=int(cfg.num_sub_vectors),
+            vector_column_name="vector",
+        )
+    except TypeError:
+        table.create_index(vector_column_name="vector")
+
+    if cfg.hybrid:
+        try:
+            table.create_fts_index(text_column, replace=True, language=cfg.fts_language)
+        except Exception:
+            logger.warning(
+                "FTS index creation failed on column %r; continuing with vector-only search.",
+                text_column,
+                exc_info=True,
+            )
+
+    for index_stub in table.list_indices():
+        table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
+
+
+def _write_rows_to_lancedb(rows: Sequence[Dict[str, Any]], *, cfg: LanceDBConfig) -> None:
+    row_list = list(rows)
+    if not row_list:
+        logger.warning("No embeddings rows provided; nothing to write to LanceDB.")
+        return
+
+    dim = infer_vector_dim(row_list)
+    if dim <= 0:
+        raise ValueError("Failed to infer embedding dimension from rows.")
+
+    db = lancedb.connect(uri=cfg.uri)
+
+    schema = lancedb_schema(vector_dim=dim)
+
+    mode = "overwrite" if cfg.overwrite else "append"
+    table = db.create_table(cfg.table_name, data=row_list, schema=schema, mode=mode)
+
+    if cfg.create_index:
+        create_lancedb_index(table, cfg=cfg)
+
+
+def write_embeddings_to_lancedb(df_with_embeddings: pd.DataFrame, *, cfg: LanceDBConfig) -> None:
+    """
+    Write embeddings found in `df_with_embeddings.metadata.embedding` to LanceDB.
+
+    Used by `nemo_retriever.text_embed.stage.embed_text_from_primitives_df(...)`.
+    """
+    rows = _build_lancedb_rows_from_df(df_with_embeddings.to_dict("records"))
+    _write_rows_to_lancedb(rows, cfg=cfg)
+
+
+def write_text_embeddings_dir_to_lancedb(
+    input_dir: Path,
+    *,
+    cfg: LanceDBConfig,
+    recursive: bool = False,
+    limit: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Read `*.text_embeddings.json` files from `input_dir` and upload their embeddings to LanceDB."""
+    input_dir = Path(input_dir)
+    files = _iter_text_embeddings_json_files(input_dir, recursive=bool(recursive))
+    if limit is not None:
+        files = files[: int(limit)]
+
+    processed = 0
+    skipped = 0
+
+    ldb = LanceDB(
+        uri=cfg.uri,
+        table_name=cfg.table_name,
+        overwrite=cfg.overwrite,
+        create_index=cfg.create_index,
+        index_type=cfg.index_type,
+        metric=cfg.metric,
+        num_partitions=cfg.num_partitions,
+        num_sub_vectors=cfg.num_sub_vectors,
+        hybrid=cfg.hybrid,
+        fts_language=cfg.fts_language,
+    )
+
+    results: List[List[Dict[str, Any]]] = []
+
+    for p in files:
+        df = _read_text_embeddings_json_df(p)
+        rows = df.to_dict(orient="records")
+        if not rows:
+            skipped += 1
+            continue
+        results.append(rows)
+        processed += 1
+
+    if not results:
+        logger.warning("No uploadable rows found in %s; nothing to write.", input_dir)
+        return {
+            "input_dir": str(input_dir),
+            "n_files": len(files),
+            "processed": 0,
+            "skipped": skipped,
+            "lancedb": {"uri": cfg.uri, "table_name": cfg.table_name, "overwrite": cfg.overwrite},
+        }
+
+    ldb.run(results)
+
+    return {
+        "input_dir": str(input_dir),
+        "n_files": len(files),
+        "processed": processed,
+        "skipped": skipped,
+        "lancedb": {"uri": cfg.uri, "table_name": cfg.table_name, "overwrite": cfg.overwrite},
+    }
+
+
+def handle_lancedb(
+    rows: List[Dict[str, Any]],
+    uri: str,
+    table_name: str,
+    hybrid: bool = False,
+    mode: str = "overwrite",
+) -> Dict[str, Any]:
+    """Write flattened extraction rows into LanceDB and build indices.
+
+    ``mode`` accepts ``"overwrite"`` or ``"append"`` and is mapped to the
+    corresponding :class:`LanceDBConfig.overwrite` value.
+    """
+    mode_normalized = str(mode or "overwrite").strip().lower()
+    if mode_normalized not in {"overwrite", "append"}:
+        raise ValueError(f"mode must be 'overwrite' or 'append'; got {mode!r}")
+
+    lancedb_config = LanceDBConfig(
+        uri=uri,
+        table_name=table_name,
+        overwrite=mode_normalized == "overwrite",
+        hybrid=hybrid,
+    )
+    db = lancedb.connect(uri=lancedb_config.uri)
+    cleaned_rows = _build_lancedb_rows_from_df(rows)
+    if not cleaned_rows:
+        logger.warning("No embedding rows to write; skipping LanceDB index creation.")
+        return {}
+    _write_rows_to_lancedb(cleaned_rows, cfg=lancedb_config)
+    table = db.open_table(lancedb_config.table_name)
+    create_lancedb_index(table, cfg=lancedb_config)
+    return {"rows_written": len(cleaned_rows)}

@@ -73,7 +73,7 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
     ```python
     from nemo_retriever import create_ingestor
-    from nemo_retriever.params.models import ASRParams
+    from nemo_retriever.common.params.models import ASRParams
 
     ingestor = (
         create_ingestor(run_mode="batch")
@@ -90,7 +90,7 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
     To generate one extracted element for each sentence-like ASR segment, pass `asr_params=ASRParams(segment_audio=True)` to `.extract_audio(...)`. This option applies when audio extraction runs with a self-hosted Parakeet NIM or using build.nvidia.com hosted inference, but has no effect when using the local Hugging Face Parakeet model.
 
-    For more runnable examples, refer to the [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+    For more runnable examples, refer to [Workflow: Ingest documents](workflow-document-ingestion.md).
 
 ## Parakeet with hosted inference (build.nvidia.com) { #parakeet-hosted-inference-build-nvidia }
 
@@ -102,7 +102,7 @@ Instead of running the pipeline locally, you can call Parakeet through [build.nv
 
     ```python
     from nemo_retriever import create_ingestor
-    from nemo_retriever.params.models import ASRParams
+    from nemo_retriever.common.params.models import ASRParams
 
     ingestor = (
         create_ingestor(run_mode="batch")
@@ -121,7 +121,7 @@ Instead of running the pipeline locally, you can call Parakeet through [build.nv
 
     !!! tip
 
-        For more runnable examples, refer to the [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+        For more runnable examples, refer to [Workflow: Ingest documents](workflow-document-ingestion.md).
 
 ## Video and frame OCR { #video-and-frame-ocr }
 

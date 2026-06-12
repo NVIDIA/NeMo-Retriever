@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for nemo_retriever.model.create_local_embedder factory."""
+"""Unit tests for nemo_retriever.models.create_local_embedder factory."""
 
 import sys
 import warnings
@@ -11,14 +11,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nemo_retriever.model import create_local_embedder, create_local_query_embedder
+from nemo_retriever.models import create_local_embedder, create_local_query_embedder
 
 
 @pytest.fixture(autouse=True)
 def _patch_embedders(monkeypatch):
     """Prevent real model downloads by stubbing all four embedder classes.
 
-    The ``nemo_retriever.model.local`` package uses a custom ``__getattr__``
+    The ``nemo_retriever.models.local`` package uses a custom ``__getattr__``
     that only exposes specific class names — not submodule names.  Because
     ``monkeypatch.setattr`` resolves each path segment via ``getattr``, it
     cannot traverse to the submodule.  We work around this by injecting fake
@@ -30,19 +30,19 @@ def _patch_embedders(monkeypatch):
     fake_vl_hf = MagicMock(name="LlamaNemotronEmbedVL1BV2Embedder")
     fake_vl_vllm = MagicMock(name="LlamaNemotronEmbedVL1BV2VLLMEmbedder")
 
-    text_mod = ModuleType("nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder")
+    text_mod = ModuleType("nemo_retriever.models.local.llama_nemotron_embed_1b_v2_embedder")
     text_mod.LlamaNemotronEmbed1BV2Embedder = fake_text_vllm
 
-    text_hf_mod = ModuleType("nemo_retriever.model.local.llama_nemotron_embed_1b_v2_hf_embedder")
+    text_hf_mod = ModuleType("nemo_retriever.models.local.llama_nemotron_embed_1b_v2_hf_embedder")
     text_hf_mod.LlamaNemotronEmbed1BV2HFEmbedder = fake_text_hf
 
-    vl_mod = ModuleType("nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder")
+    vl_mod = ModuleType("nemo_retriever.models.local.llama_nemotron_embed_vl_1b_v2_embedder")
     vl_mod.LlamaNemotronEmbedVL1BV2Embedder = fake_vl_hf
     vl_mod.LlamaNemotronEmbedVL1BV2VLLMEmbedder = fake_vl_vllm
 
-    monkeypatch.setitem(sys.modules, "nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder", text_mod)
-    monkeypatch.setitem(sys.modules, "nemo_retriever.model.local.llama_nemotron_embed_1b_v2_hf_embedder", text_hf_mod)
-    monkeypatch.setitem(sys.modules, "nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder", vl_mod)
+    monkeypatch.setitem(sys.modules, "nemo_retriever.models.local.llama_nemotron_embed_1b_v2_embedder", text_mod)
+    monkeypatch.setitem(sys.modules, "nemo_retriever.models.local.llama_nemotron_embed_1b_v2_hf_embedder", text_hf_mod)
+    monkeypatch.setitem(sys.modules, "nemo_retriever.models.local.llama_nemotron_embed_vl_1b_v2_embedder", vl_mod)
 
     yield fake_text_vllm, fake_text_hf, fake_vl_hf, fake_vl_vllm
 
@@ -232,12 +232,12 @@ def test_llama_nemotron_text_embedder_deprecates_device(monkeypatch):
 
     monkeypatch.delitem(
         sys.modules,
-        "nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder",
+        "nemo_retriever.models.local.llama_nemotron_embed_1b_v2_embedder",
         raising=False,
     )
-    mod = importlib.import_module("nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder")
+    mod = importlib.import_module("nemo_retriever.models.local.llama_nemotron_embed_1b_v2_embedder")
     monkeypatch.setattr(
-        "nemo_retriever.text_embed.vllm.create_vllm_llm",
+        "nemo_retriever.models.inference.vllm.create_vllm_llm",
         MagicMock(return_value=MagicMock()),
     )
     Embed = mod.LlamaNemotronEmbed1BV2Embedder
