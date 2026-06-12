@@ -645,7 +645,7 @@ async def get_job_documents(
     else:
         filtered = docs
 
-    page = filtered[offset: offset + limit]
+    page = filtered[offset : offset + limit]
     return JobDocumentsPage(
         job_id=agg.job_id,
         total=len(docs),
