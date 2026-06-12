@@ -1,0 +1,260 @@
+# Root Ingest CLI Design
+
+This note explains the `retriever ingest` redesign for reviewers and future CLI
+maintainers. It is intentionally scoped to the root ingest CLI. It does not
+change `GraphIngestor`, `Retriever.query`, eval, harness logic, BEIR/QA/audio
+recall, or pipeline reporting.
+
+## Summary
+
+`retriever ingest` is now the first-class ingest CLI:
+
+```bash
+retriever ingest DOCUMENTS...          # default local graph ingest
+retriever ingest local DOCUMENTS...    # explicit local graph ingest
+retriever ingest batch DOCUMENTS...    # Ray/batch graph ingest
+retriever ingest service DOCUMENTS...  # remote service ingest
+```
+
+The public CLI no longer exposes a root `--run-mode` flag. Local and batch still
+map to the same internal graph `run_mode` values used by
+`create_ingestor(run_mode=...)`; the CLI chooses a command shape that keeps each
+mode's valid option set separate.
+
+## Public Contract
+
+| CLI Command | Internal Owner | Request Type | Execution |
+|---|---|---|---|
+| `retriever ingest DOCUMENTS...` | graph ingest | `IngestPlanRequest` | `run_mode="inprocess"` |
+| `retriever ingest local DOCUMENTS...` | graph ingest | `IngestPlanRequest` | `run_mode="inprocess"` |
+| `retriever ingest batch DOCUMENTS...` | graph ingest | `IngestPlanRequest` | `run_mode="batch"` |
+| `retriever ingest service DOCUMENTS...` | service ingest | `ServiceIngestPlanRequest` | `ServiceIngestor` client |
+
+Behavior intentionally preserved:
+
+- Local and batch use `resolve_ingest_plan(...)` and `run_ingest_workflow(...)`.
+- Service uses `resolve_service_ingest_request(...)` and
+  `run_service_ingest_workflow(...)`.
+- Dry-run still prints the resolved request/plan JSON for the selected mode.
+- Local and batch success summaries report files and LanceDB rows.
+- Service success summaries report files, service URL, and service-returned row
+  count when available.
+- `retriever pipeline run` compatibility behavior is left in place.
+
+Behavior intentionally changed:
+
+- Bare `retriever ingest DOCUMENTS...` now means local/in-process graph ingest.
+- Batch ingest is selected with `retriever ingest batch ...`, not
+  `--run-mode batch`.
+- Service ingest is selected with `retriever ingest service ...`, not
+  `--run-mode service`.
+- Service-local invalid options are parser-level unknown options instead of
+  runtime-denied options.
+
+## Why Not `--run-mode`
+
+`run_mode` is still the correct Python API and core graph concept. It is not the
+best user-facing CLI boundary because root ingest has two different ownership
+families:
+
+- graph ingest: local and batch runtime modes for `GraphIngestor`
+- service ingest: a client for a remote `ServiceIngestor` service
+
+A single command with `--run-mode` has to show many options that only some modes
+can honor. That forces either a denylist or late validation after Typer already
+accepted the flags. Subcommands make invalid states unrepresentable:
+
+- `retriever ingest local ...` cannot accept Ray tuning.
+- `retriever ingest batch ...` can accept Ray tuning.
+- `retriever ingest service ...` cannot accept LanceDB target flags, local NIM
+  endpoint URLs, local embed backend flags, Ray tuning, `--ocr-lang`, or local
+  audio/video controls.
+
+This is separation of concerns, not loss of parity. The CLI maps to
+`run_mode="inprocess"` or `run_mode="batch"` at the graph boundary. The Python
+factory keeps its `run_mode` API for programmatic use.
+
+## File Ownership
+
+Root ingest CLI files:
+
+| File | Responsibility |
+|---|---|
+| `cli/main.py` | Registers top-level Typer apps. It does not own ingest option construction. |
+| `cli/ingest/app.py` | Creates the `retriever ingest` sub-app and default-local router. |
+| `cli/ingest/graph.py` | Owns local and batch CLI callbacks and builds graph `IngestPlanRequest`. |
+| `cli/ingest/service.py` | Owns service CLI callback and builds `ServiceIngestPlanRequest`. |
+| `cli/ingest/options.py` | Typer option metadata only. No request construction or policy. |
+| `cli/ingest/shared.py` | Quiet output capture, CLI error handling, and success-summary helpers. |
+
+Canonical ingest files:
+
+| File | Responsibility |
+|---|---|
+| `ingest/plan.py` | Graph ingest policy, typed graph request dataclasses, plan resolution. |
+| `ingest/execution.py` | Executes resolved graph ingest plans through `GraphIngestor`. |
+| `ingest/service.py` | Service ingest request dataclasses, service request resolution, service execution. |
+
+The Typer layer is adapter-only. Typer callbacks are private Python
+functions (`_local_command`, `_batch_command`, `_service_command`) because the
+public surface is the shell command, not the callback symbol. Programmatic use
+should go through the ingest plan/service APIs or `create_ingestor(...)`.
+
+## Request Flow
+
+Local/default flow:
+
+```text
+retriever ingest docs/
+  -> nemo_retriever.cli.ingest.app routes to local
+  -> nemo_retriever.cli.ingest.graph builds IngestPlanRequest
+  -> ingest.plan.resolve_ingest_plan(...)
+  -> nemo_retriever.cli.ingest_workflow.run_ingest_workflow(...)
+  -> ingest.execution.execute_ingest_plan(...)
+  -> GraphIngestor
+  -> local LanceDB
+```
+
+Batch flow:
+
+```text
+retriever ingest batch docs/
+  -> nemo_retriever.cli.ingest.graph builds IngestPlanRequest(run_mode="batch")
+  -> ingest.plan.resolve_ingest_plan(...)
+  -> nemo_retriever.cli.ingest_workflow.run_ingest_workflow(...)
+  -> ingest.execution.execute_ingest_plan(...)
+  -> GraphIngestor
+  -> local LanceDB
+```
+
+Service flow:
+
+```text
+retriever ingest service docs/
+  -> nemo_retriever.cli.ingest.service builds ServiceIngestPlanRequest
+  -> ingest.service.resolve_service_ingest_request(...)
+  -> nemo_retriever.cli.ingest_workflow.run_service_ingest_workflow(...)
+  -> ServiceIngestor client
+  -> remote retriever service
+```
+
+## Handling The Large Option Surface
+
+The large number of flags is real public surface area, so the CLI keeps it
+visible. The cleanup is how those values move inward:
+
+- Typer command signatures declare the public knobs explicitly.
+- `options.py` centralizes repeated Typer metadata only when the flag spelling,
+  default, validation, and help text are identical.
+- `graph.py` immediately groups parsed values into typed `Ingest*Options`
+  dataclasses.
+- `service.py` immediately groups parsed values into typed
+  `ServiceIngest*Options` dataclasses.
+- `resolve_ingest_plan(...)` remains the only graph-mode planner.
+- `GraphIngestor` receives only resolved execution parameters, not raw CLI
+  options.
+
+There is no `locals()` funnel, reflection, dynamic command generation, mode
+registry, or generic option framework. The graph builders are narrow and
+explicit:
+
+- `_source_options`
+- `_runtime_options`
+- `_extract_options`
+- `_media_options`
+- `_caption_options`
+- `_dedup_options`
+- `_chunk_options`
+- `_embed_options`
+- `_image_store_options`
+- `_storage_options`
+
+The few name differences are semantic, not accidental. For example,
+`--api-key` fans out to extract, caption, and embed endpoint API keys, and
+`--store-images-uri` maps to the image-store `images_uri` field.
+
+## Batch-Only Fields
+
+Batch-only fields are attached only inside the batch graph command:
+
+- Ray runtime: `--ray-address`, `--ray-log-to-driver`
+- extraction tuning: PDF split/extract, page elements, OCR, table structure,
+  Nemotron Parse workers, batch sizes, CPUs, GPUs
+- embedding tuning: embed workers, batch size, CPUs, GPUs
+
+Local ingest never exposes those options. Service ingest never receives those
+dataclasses.
+
+## Service Mode
+
+`retriever ingest service` is a client for a running retriever service. The CLI
+does not expose `--lancedb-uri` or `--table-name` because service persistence is
+owned by the server deployment. The server decides its vector database through
+service configuration.
+
+Service mode exposes only the controls represented by
+`ServiceIngestPlanRequest`: connection settings, source/profile, service-side
+extract toggles, dedup, caption behavior, chunking, embed modality/granularity,
+image-store URI, dry-run, and quiet output.
+
+Service-backed query support belongs in the query CLI/service boundary, not in
+the ingest CLI.
+
+## Pipeline Compatibility
+
+`retriever pipeline run` is not the future public ingest interface. It remains
+the compatibility and development command for
+pipeline-only behavior such as:
+
+- intermediate Parquet artifacts
+- pipeline reports and runtime metrics
+- eval, recall, harness, BEIR/QA workflows
+- legacy callers not yet migrated to root ingest/query
+
+For graph ingest paths, pipeline compatibility should continue to reuse the
+canonical ingest plan/execution layer instead of shelling out to root CLI
+commands.
+
+## Adding Or Changing A Flag
+
+For an option that already exists in the graph ingest plan:
+
+1. Add or reuse a Typer alias in `cli/ingest/options.py`.
+2. Add the parameter to `_local_command`, `_batch_command`, or both.
+3. Add the explicit assignment to the narrow group builder in `graph.py`.
+4. Add or update a focused root CLI test that asserts the typed request field.
+5. Update CLI docs if the option is user-facing.
+
+For an option that does not exist in the graph ingest plan:
+
+1. Add the capability to the canonical graph layer first:
+   `ingest/plan.py` dataclass, resolver, and execution mapping.
+2. Then expose it through the CLI using the graph steps above.
+
+For a service option:
+
+1. Add the capability to `ServiceIngestPlanRequest` and
+   `resolve_service_ingest_request(...)` if needed.
+2. Add the Typer alias only if the public flag should exist.
+3. Add it to `_service_command`.
+4. Add or update service CLI request-construction tests.
+
+Do not add a generic kwargs funnel to avoid writing these mappings. The mapping
+is the ownership boundary that keeps CLI spelling, typed request fields, and
+core ingest behavior reviewable.
+
+## Reviewer Checklist
+
+When reviewing root ingest changes, check:
+
+- `cli/main.py` only registers top-level apps.
+- Typer-specific code stays under `cli/ingest/`.
+- Graph options build `IngestPlanRequest`; service options build
+  `ServiceIngestPlanRequest`.
+- Service mode does not regain local-only or batch-only flags.
+- Batch-only tuning remains batch-only.
+- The CLI does not shell out to itself.
+- Feature policy stays in `ingest/plan.py` or `ingest/service.py`, not in the
+  Typer layer.
+- Tests assert mode-specific request construction and parser-level rejection of
+  invalid service flags.

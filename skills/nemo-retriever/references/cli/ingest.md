@@ -1,28 +1,35 @@
 # retriever ingest
 
-End-to-end ingestion of supported documents and media into a LanceDB table — runs the full
-extract -> embed -> vector-DB flow in a single command.
+End-to-end ingestion of supported documents and media into a Retriever index.
+The command runs extraction, optional caption/chunk/dedup behavior, embedding,
+and vector-store insert in one workflow.
 
-If flags below look stale, re-check `retriever ingest --help`.
+If flags below look stale, re-check:
 
-## When to use this
+```bash
+<RETRIEVER_VENV>/bin/retriever ingest --help
+<RETRIEVER_VENV>/bin/retriever ingest local --help
+<RETRIEVER_VENV>/bin/retriever ingest batch --help
+<RETRIEVER_VENV>/bin/retriever ingest service --help
+```
 
-- You have one or more supported files (or a directory/glob of files) and want them
-  searchable via `retriever query`.
-- You want an auto-routed ingest: supported file families are detected from
-  the manifest, then routed through document/image/text/audio/video extraction
-  branches before embedding and LanceDB insert.
+## Modes
 
-**Use a different command when:**
+Use root ingest as the public CLI. Do not use `--run-mode` on this command.
+Mode is command structure:
 
-- You only need a single stage (e.g. just extract text, no embeddings) →
-  `retriever pdf`, `retriever chart`, `retriever image`, etc.
-- You need a long-running service rather than one-shot CLI → `retriever service`.
-- You're benchmarking throughput → `retriever benchmark`.
-- You're iterating on the pipeline locally and want a non-distributed runner →
-  `retriever local`.
+| Command | Use When | Storage |
+|---|---|---|
+| `retriever ingest DOCUMENTS...` | Default local/in-process ingest. Best for setup turns, CI, and small/medium corpora. | local LanceDB |
+| `retriever ingest local DOCUMENTS...` | Same as the default, but explicit. | local LanceDB |
+| `retriever ingest batch DOCUMENTS...` | Ray/batch ingest and batch tuning. | local LanceDB |
+| `retriever ingest service DOCUMENTS...` | Send ingest work to a running retriever service. | service-owned vector DB |
 
-## Canonical invocations
+Python `create_ingestor(run_mode=...)` still exists for programmatic use. The
+root CLI intentionally uses subcommands so each mode shows only the options it
+can honor.
+
+## Canonical Invocations
 
 Ingest a single file into the default table (`lancedb/nemo-retriever.lance`):
 
@@ -30,7 +37,7 @@ Ingest a single file into the default table (`lancedb/nemo-retriever.lance`):
 <RETRIEVER_VENV>/bin/retriever ingest data/multimodal_test.pdf
 ```
 
-Default PDF ingest:
+Ingest a directory of supported files:
 
 ```bash
 <RETRIEVER_VENV>/bin/retriever ingest data/corpus/
@@ -39,28 +46,33 @@ Default PDF ingest:
 Large text-only PDF fallback:
 
 ```bash
-retriever ingest data/pdfs/ --profile fast-text
+<RETRIEVER_VENV>/bin/retriever ingest data/pdfs/ --profile fast-text
+```
+
+Batch ingest with tuning:
+
+```bash
+<RETRIEVER_VENV>/bin/retriever ingest batch data/pdfs/ \
+  --profile fast-text \
+  --pdf-extract-workers 4 \
+  --embed-workers 2
 ```
 
 Optional local VLM captioning:
 
 ```bash
-retriever ingest data/pdfs/ --caption \
+<RETRIEVER_VENV>/bin/retriever ingest data/pdfs/ \
+  --caption \
   --caption-infographics
 ```
 
-Add `--caption-invoke-url` only when a remote OpenAI-compatible VLM endpoint is already deployed.
-
-Ingest a directory of supported files:
-
-```bash
-retriever ingest data/corpus/
-```
+Add `--caption-invoke-url` only when a remote OpenAI-compatible VLM endpoint is
+already deployed.
 
 Ingest via glob:
 
 ```bash
-retriever ingest "data/**/*"
+<RETRIEVER_VENV>/bin/retriever ingest "data/**/*"
 ```
 
 Write to a custom DB / table:
@@ -71,62 +83,93 @@ Write to a custom DB / table:
   --table-name my-corpus
 ```
 
+Service ingest:
+
+```bash
+<RETRIEVER_VENV>/bin/retriever ingest service data/corpus/ \
+  --service-url http://localhost:7670 \
+  --service-concurrency 8
+```
+
 ## Inputs
 
-- **Positional `DOCUMENTS...`** — one or more file paths, directories, or
-  shell globs. Required, repeatable.
-- **Supported input types** — `pdf`, `doc` (`.docx`, `.pptx`), `txt`, `html`,
-  `image` (`.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif`, `.bmp`, `.svg`),
-  `audio` (`.mp3`, `.wav`, `.m4a`), and `video` (`.mp4`, `.mov`, `.mkv`).
+- Positional `DOCUMENTS...` is required and repeatable.
+- Values may be file paths, directories, or shell globs.
+- Supported input families are detected automatically from extensions:
+  `pdf`, `docx`, `pptx`, `txt`, `html`, `jpg`, `jpeg`, `png`, `tiff`, `tif`,
+  `bmp`, `svg`, `mp3`, `wav`, `m4a`, `mp4`, `mov`, and `mkv`.
 
 ## Outputs
 
-- A LanceDB dataset at `<lancedb-uri>/<table-name>.lance`. Default:
-  `./lancedb/nemo-retriever.lance`.
-- One row per extracted primitive (text chunk, table, chart, image region),
-  each with: `text`, `source`, `page_number`, `metadata` (JSON: type, bbox, …),
-  and the embedding vector.
+Local and batch ingest write a LanceDB dataset at
+`<lancedb-uri>/<table-name>.lance`. Default:
+`./lancedb/nemo-retriever.lance`.
 
-## Key flags
+Each row includes extracted text or captions, source metadata, page information
+when available, and an embedding vector.
+
+Service ingest writes to the vector database configured by the remote service.
+The client does not expose `--lancedb-uri` or `--table-name` in service mode.
+
+## Key Flags
+
+Graph ingest (`retriever ingest`, `local`, `batch`):
 
 | Flag | Default | Notes |
 |---|---|---|
 | `--lancedb-uri` | `lancedb` | Path or URI of the LanceDB database. |
-| `--table-name` | `nemo-retriever` | LanceDB table to write into. Must match `retriever query`'s table on read. |
-| `--profile` | `auto` | `auto` is normal manifest-routed ingest. `fast-text` disables expensive PDF recall stages for a text-only fallback. |
-| `--caption` | `false` | Optional VLM captioning stage after extraction. Never enabled by profiles. |
-| `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, local VLM captioning is used. |
+| `--table-name` | `nemo-retriever` | LanceDB table to write into. Must match `retriever query` on read. |
+| `--profile` | `auto` | `fast-text` disables expensive PDF recall stages for a text-only fallback. |
+| `--overwrite/--append` | overwrite | Use `--append` only when duplicates are acceptable. |
+| `--caption` | `false` | Optional VLM captioning stage after extraction. |
+| `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, local/default caption behavior is used. |
 | `--caption-context-text-max-chars` | default | Include nearby extracted text in caption prompts. |
 | `--caption-infographics` | default | Caption infographic crops in addition to extracted images. |
-| `--run-mode` | `batch` | `batch` for the SDK batch ingestor; pass `inprocess` to skip Ray for local debug or CI. |
-| `--dry-run` | `false` | Print the resolved manifest/profile JSON without creating an ingestor. |
+| `--text-chunk` | `false` | Enable token chunking during extraction. |
+| `--dry-run` | `false` | Print the resolved request/plan JSON without creating an ingestor. |
 
-## Pipeline shape
+Batch-only flags:
 
-The default `ingest` entrypoint expands inputs, builds a manifest, resolves the
-selected profile into normal params, and calls `GraphIngestor.extract(...)`.
-The manifest planner routes PDF/document, image, text, HTML, audio, and video
-branches without relying on `retriever pipeline`.
+| Flag Family | Examples |
+|---|---|
+| Ray runtime | `--ray-address`, `--ray-log-to-driver` |
+| PDF/extract tuning | `--pdf-split-batch-size`, `--pdf-extract-workers`, `--ocr-workers` |
+| actor resources | `--page-elements-gpus-per-actor`, `--ocr-cpus-per-actor` |
+| embedding tuning | `--embed-workers`, `--embed-batch-size` |
 
-For text, HTML, image, audio, video, or mixed `auto` inputs, `ingest` routes
-through the same GraphIngestor extraction paths used by `retriever pipeline`.
+Service-only flags:
 
-## Common failure modes
+| Flag | Default | Notes |
+|---|---|---|
+| `--service-url` | `http://localhost:7670` | Retriever service base URL. |
+| `--service-concurrency` | `8` | Maximum concurrent document uploads. |
+| `--service-api-token` | env fallback | Also reads `NEMO_RETRIEVER_API_TOKEN`. |
 
-- **`Clamping num_partitions from 16 to 7`** — informational, not an error.
-  LanceDB IVF index needs `num_partitions < row_count`; happens on very small
-  ingests.
-- **First run is slow (~60s+ before any pages process)** — vLLM model load and
-  CUDA-graph capture for the embedder. Subsequent runs in the same process
-  are fast; one-shot CLI invocations always pay this cost.
-- **`No existing dataset at …/nemo-retriever.lance, it will be created`** — expected
-  on the first ingest into a new DB. Subsequent ingests append.
-- **HuggingFace download on first run** — the embedder and page-element
-  detector pull weights to `~/.cache/huggingface`. Needs network the first
-  time; cached afterwards.
+## Pipeline Shape
+
+The root ingest entrypoint expands inputs, builds a manifest, resolves the
+selected profile into typed ingest options, and calls the canonical ingest
+execution path. The manifest planner routes PDF/document, image, text, HTML,
+audio, and video branches without relying on `retriever pipeline run`.
+
+Use `retriever pipeline run` only for legacy or development behavior such as
+intermediate Parquet artifacts, pipeline reports, eval, recall, or harness work.
+
+## Common Failure Modes
+
+- **`Clamping num_partitions from 16 to 7`** - informational, not an error.
+  LanceDB IVF index needs `num_partitions < row_count`; this happens on very
+  small ingests.
+- **First run is slow (~60s+ before pages process)** - vLLM model load and
+  CUDA-graph capture for the embedder. One-shot CLI invocations pay this cost.
+- **`No existing dataset at .../nemo-retriever.lance, it will be created`** -
+  expected on the first ingest into a new DB.
+- **HuggingFace download on first run** - the embedder and page-element detector
+  may pull weights to `~/.cache/huggingface`. They need network the first time
+  and use cache afterwards.
 
 ## Related
 
-- [[query]] — search the table this command writes.
-- `retriever vector-store --help` — utilities for inspecting/moving LanceDB
+- [[query]] - search the table this command writes.
+- `retriever vector-store --help` - utilities for inspecting or moving LanceDB
   tables.

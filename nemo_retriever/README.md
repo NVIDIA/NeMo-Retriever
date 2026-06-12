@@ -21,7 +21,7 @@ Before starting, make sure your system meets the following requirements:
 - The host is running CUDA 13.x so that `libcudart.so.13` is available.
 - Your GPUs are visible to the system and compatible with CUDA 13.x.
 ​
-If optical character recognition (OCR) fails with a `libcudart.so.13` error, install the CUDA 13 runtime for your platform and update `LD_LIBRARY_PATH` to include the CUDA lib64 directory, then rerun the pipeline. 
+If optical character recognition (OCR) fails with a `libcudart.so.13` error, install the CUDA 13 runtime for your platform and update `LD_LIBRARY_PATH` to include the CUDA lib64 directory, then rerun the pipeline.
 
 For example, the following command can be used to update the `LD_LIBRARY_PATH` value.
 
@@ -516,7 +516,7 @@ ingestor = (
   .embed(
     model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
     #works with plain "text"s, "image"s, and "text_image" pairs
-    embed_modality="text_image"  
+    embed_modality="text_image"
   )
 )
 ```
@@ -528,7 +528,7 @@ ingestor = ingestor.files(documents).extract(method="nemotron_parse")
 
 ## Run with remote inference, no local GPU required:
 
-For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) as an environment variable (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)). 
+For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) as an environment variable (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)).
 
 ```python
 ingestor = (

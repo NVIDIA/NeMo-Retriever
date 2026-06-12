@@ -24,15 +24,20 @@ For an unlisted subcommand: `<RETRIEVER_VENV>/bin/retriever <subcommand> --help`
 - **Low-relevance top hit on tiny corpus** — look at `_distance` *gaps* between hits, not absolute values.
 - **Page-element-detection warnings during ingest** — non-fatal as long as the embedding step itself succeeds (and they're silenced on a successful run, since `ingest` is quiet by default).
 
-## Unsupported file types (silent filter — the v2 regression mode)
+## Unsupported file types
 
-`retriever ingest --input-type=auto` silently drops `.flac`, `.rtf`, `.eml`, `.py`, `.jsonl`, `.zip`, etc. The "Ingested N documents" line uses the count of supported files — N may be lower than the folder count with no error. Before ingest, inventory:
+`retriever ingest` auto-detects supported input types from file extensions. It
+supports `.pdf`, `.docx`, `.pptx`, `.txt`, `.html`, `.jpg`, `.jpeg`, `.png`,
+`.tiff`, `.tif`, `.bmp`, `.svg`, `.mp3`, `.wav`, `.m4a`, `.mp4`, `.mov`, and
+`.mkv`. Treat other extensions such as `.flac`, `.rtf`, `.eml`, `.py`, `.jsonl`,
+and `.zip` as setup issues. Before ingest, inventory:
 
 ```bash
 find <dir> -type f -name '*.*' | sed 's/.*\.//' | sort -u
 ```
 
-If unsupported extensions appear, name them in your reply and ask the user whether to skip or convert. Don't let the count silently drop.
+If unsupported extensions appear, name them in your reply and ask the user
+whether to skip or convert them.
 
 ## You ran more than 2 Bash calls on a query turn
 
