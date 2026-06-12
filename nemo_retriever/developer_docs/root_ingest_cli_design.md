@@ -197,14 +197,13 @@ Service mode exposes only the controls represented by
 extract toggles, dedup, caption behavior, chunking, embed modality/granularity,
 image-store URI, dry-run, and quiet output.
 
-Service-backed query support belongs to the query/service follow-up, not this
-ingest-only change. The draft follow-up is
-[NVIDIA/NeMo-Retriever#2228](https://github.com/NVIDIA/NeMo-Retriever/pull/2228).
+Service-backed query support belongs in the query CLI/service boundary, not in
+the ingest CLI.
 
 ## Pipeline Compatibility
 
-`retriever pipeline run` is not the future public ingest interface, but this PR
-does not remove it. It remains the compatibility and development command for
+`retriever pipeline run` is not the future public ingest interface. It remains
+the compatibility and development command for
 pipeline-only behavior such as:
 
 - intermediate Parquet artifacts
