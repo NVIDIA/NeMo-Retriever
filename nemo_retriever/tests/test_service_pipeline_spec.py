@@ -491,7 +491,9 @@ def test_run_pipeline_in_process_rejects_empty_text_like_output() -> None:
 
 def test_run_pipeline_in_process_html_txt_produce_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
-    monkeypatch.setattr("nemo_retriever.common.modality.html.convert._get_txt_tokenizer", lambda *_, **__: _TinyTokenizer())
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.html.convert._get_txt_tokenizer", lambda *_, **__: _TinyTokenizer()
+    )
     monkeypatch.setattr("nemo_retriever.common.modality.txt.split._get_tokenizer", lambda *_, **__: _TinyTokenizer())
     html_rows, _, _ = _run_pipeline_in_process(
         "page.html",
