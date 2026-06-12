@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Unit tests for nemo_retriever.html.convert: html_to_markdown, html_file_to_chunks_df, html_bytes_to_chunks_df.
+Unit tests for nemo_retriever.common.modality.html.convert:
+html_to_markdown, html_file_to_chunks_df, html_bytes_to_chunks_df.
 """
 
 from pathlib import Path
@@ -11,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nemo_retriever.html.convert import (
+from nemo_retriever.common.modality.html.convert import (
     html_bytes_to_chunks_df,
     html_file_to_chunks_df,
     html_to_markdown,
@@ -60,7 +61,8 @@ def test_html_file_to_chunks_df(tmp_path: Path, monkeypatch):
     pytest.importorskip("markitdown")
     pytest.importorskip("transformers")
     monkeypatch.setattr(
-        "nemo_retriever.html.convert._get_txt_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
+        "nemo_retriever.common.modality.html.convert._get_txt_tokenizer",
+        lambda model_id, cache_dir=None: _MockTokenizer(),
     )
     f = tmp_path / "doc.html"
     f.write_text(
@@ -96,7 +98,8 @@ def test_html_bytes_to_chunks_df(tmp_path: Path, monkeypatch):
     pytest.importorskip("markitdown")
     pytest.importorskip("transformers")
     monkeypatch.setattr(
-        "nemo_retriever.html.convert._get_txt_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
+        "nemo_retriever.common.modality.html.convert._get_txt_tokenizer",
+        lambda model_id, cache_dir=None: _MockTokenizer(),
     )
     html_bytes = b"<html><body><p>Chunk content from bytes.</p></body></html>"
     path = str(tmp_path / "virtual.html")
@@ -112,7 +115,8 @@ def test_html_bytes_to_chunks_df(tmp_path: Path, monkeypatch):
 def test_html_bytes_to_chunks_df_falls_back_when_markitdown_returns_empty(tmp_path: Path, monkeypatch):
     pytest.importorskip("markitdown")
     monkeypatch.setattr(
-        "nemo_retriever.html.convert._get_txt_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
+        "nemo_retriever.common.modality.html.convert._get_txt_tokenizer",
+        lambda model_id, cache_dir=None: _MockTokenizer(),
     )
 
     class _EmptyResult:

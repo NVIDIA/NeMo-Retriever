@@ -52,8 +52,8 @@ from nemo_retriever.graph import Graph
     tags=["pdf", "extraction"],
 )
 def _build_pdf_basic():
-    from nemo_retriever.pdf.split import PDFSplitActor
-    from nemo_retriever.pdf.extract import PDFExtractionActor
+    from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
+    from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor
 
     return (
         Graph()
@@ -128,8 +128,8 @@ print(format_graph_tree(graph, show_kwargs=True))
 ```
 
 ```
-PDFSplitActor  (nemo_retriever.pdf.split.PDFSplitActor)
-└── PDFExtractionActor  (nemo_retriever.pdf.extract.PDFExtractionActor)
+PDFSplitActor  (nemo_retriever.operators.extract.pdf.split.PDFSplitActor)
+└── PDFExtractionActor  (nemo_retriever.operators.extract.pdf.extract.PDFExtractionActor)
       ╰ dpi = 300
       ╰ method = 'pdfium'
 ```

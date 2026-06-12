@@ -531,7 +531,7 @@ Resolution order mirrors every other NIM endpoint (see the
 `serviceConfig.nimEndpoints.captionModelName` follows the same order —
 it defaults to the canonical Omni remote model id
 (`nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`, matching
-`nemo_retriever.caption.model_profiles.OMNI_REMOTE_MODEL_ID`) whenever
+`nemo_retriever.common.modality.caption.model_profiles.OMNI_REMOTE_MODEL_ID`) whenever
 the chart resolves any caption URL. Override only when pointing at a
 different VLM SKU.
 

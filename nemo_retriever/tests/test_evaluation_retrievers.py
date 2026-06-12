@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for :class:`nemo_retriever.evaluation.retrievers.FileRetriever`.
+"""Unit tests for :class:`nemo_retriever.tools.evaluation.retrievers.FileRetriever`.
 
 These tests pin the contract for both entry points -- the file-based
 ``__init__`` and the in-memory ``_from_dict`` -- and assert that both
@@ -19,8 +19,8 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_retriever.evaluation.retrievers import FileRetriever
-from nemo_retriever.llm.types import RetrievalResult
+from nemo_retriever.tools.evaluation.retrievers import FileRetriever
+from nemo_retriever.models.llm.types import RetrievalResult
 
 _SAMPLE_QUERIES: dict[str, dict] = {
     "What is the range of the 767?": {
@@ -162,10 +162,10 @@ def test_from_lancedb_save_path_sets_file_path(tmp_path: Path) -> None:
 
     with (
         patch(
-            "nemo_retriever.export.query_lancedb",
+            "nemo_retriever.common.io.export.query_lancedb",
             return_value=(_SAMPLE_QUERIES, fake_meta),
         ),
-        patch("nemo_retriever.export.write_retrieval_json") as mock_write,
+        patch("nemo_retriever.common.io.export.write_retrieval_json") as mock_write,
     ):
         retriever = FileRetriever.from_lancedb(
             qa_pairs=[{"query": "What is the range of the 767?"}],
@@ -180,7 +180,7 @@ def test_from_lancedb_save_path_sets_file_path(tmp_path: Path) -> None:
 def test_query_lancedb_constructs_vdb_backed_retriever(monkeypatch) -> None:
     import importlib
 
-    from nemo_retriever.export import query_lancedb
+    from nemo_retriever.common.io.export import query_lancedb
 
     captured_kwargs: dict[str, object] = {}
 
@@ -192,7 +192,7 @@ def test_query_lancedb_constructs_vdb_backed_retriever(monkeypatch) -> None:
             assert queries == ["What is the range of the 767?"]
             return [[{"text": "range chunk", "source": "spec.pdf", "page_number": 3, "_distance": 0.1}]]
 
-    retriever_module = importlib.import_module("nemo_retriever.retriever")
+    retriever_module = importlib.import_module("nemo_retriever.graph.retriever")
     monkeypatch.setattr(retriever_module, "Retriever", _FakeRetriever)
 
     all_results, meta = query_lancedb(
@@ -222,10 +222,10 @@ def test_from_lancedb_no_save_path_keeps_memory_label() -> None:
 
     with (
         patch(
-            "nemo_retriever.export.query_lancedb",
+            "nemo_retriever.common.io.export.query_lancedb",
             return_value=(_SAMPLE_QUERIES, fake_meta),
         ),
-        patch("nemo_retriever.export.write_retrieval_json") as mock_write,
+        patch("nemo_retriever.common.io.export.write_retrieval_json") as mock_write,
     ):
         retriever = FileRetriever.from_lancedb(
             qa_pairs=[{"query": "What is the range of the 767?"}],

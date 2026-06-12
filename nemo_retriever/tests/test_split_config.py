@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from nemo_retriever.params import HtmlChunkParams, TextChunkParams
-from nemo_retriever.params.utils import resolve_split_params
+from nemo_retriever.common.params import HtmlChunkParams, TextChunkParams
+from nemo_retriever.common.params.utils import resolve_split_params
 
 
 def test_resolve_split_params_behavior():

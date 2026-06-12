@@ -21,8 +21,15 @@ from nemo_retriever.ingest.plan import (
     validate_ingest_input_type,
     validate_ingest_profile,
 )
-from nemo_retriever.params import CaptionParams, DedupParams, EmbedParams, ExtractParams, StoreParams, TextChunkParams
-from nemo_retriever.utils.input_files import expand_input_file_patterns, input_type_for_path
+from nemo_retriever.common.params import (
+    CaptionParams,
+    DedupParams,
+    EmbedParams,
+    ExtractParams,
+    StoreParams,
+    TextChunkParams,
+)
+from nemo_retriever.common.input_files import expand_input_file_patterns, input_type_for_path
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +234,7 @@ def resolve_service_ingest_request(request: ServiceIngestPlanRequest) -> Service
 def build_service_ingestor(request: ServiceIngestRequest) -> Any:
     """Construct a remote-service ingestor with service-compatible stages."""
 
-    from nemo_retriever.service_ingestor import ServiceIngestor
+    from nemo_retriever.service.service_ingestor import ServiceIngestor
 
     resolved_files = expand_service_file_patterns(request.documents)
     if not resolved_files:
@@ -328,7 +335,7 @@ def _service_extraction_mode(input_type: str) -> str:
 def _service_text_chunk_dict(text_chunk_params: TextChunkParams) -> dict[str, Any]:
     """Serialize text-chunk knobs allowed by the service split_config policy."""
 
-    from nemo_retriever.service.policy import _DEFAULT_ALLOWED_SPLIT_KEYS
+    from nemo_retriever.common.policy import _DEFAULT_ALLOWED_SPLIT_KEYS
 
     raw = text_chunk_params.model_dump(exclude_none=True)
     return {key: value for key, value in raw.items() if key in _DEFAULT_ALLOWED_SPLIT_KEYS}

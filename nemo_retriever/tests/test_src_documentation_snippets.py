@@ -57,13 +57,13 @@ _PUBLIC_RETRIEVER_DOCS = (
     "nemo_retriever/README.md",
     "nemo_retriever/docs/cli/README.md",
     "nemo_retriever/retriever.md",
-    "nemo_retriever/src/nemo_retriever/evaluation/README.md",
-    "nemo_retriever/src/nemo_retriever/vdb/README.md",
+    "nemo_retriever/src/nemo_retriever/tools/evaluation/README.md",
+    "nemo_retriever/src/nemo_retriever/common/vdb/README.md",
 )
 _PUBLIC_GRAPH_PIPELINE_DOCS = (
     "docs/docs/extraction/workflow-document-ingestion.md",
     "nemo_retriever/README.md",
-    "nemo_retriever/src/nemo_retriever/evaluation/README.md",
+    "nemo_retriever/src/nemo_retriever/tools/evaluation/README.md",
 )
 _UNSUPPORTED_DIRECT_RETRIEVER_KWARGS = frozenset(
     {
@@ -294,7 +294,7 @@ def test_graph_readme_recommended_imports() -> None:
 
 def test_main_text_embed_module_doc_example() -> None:
     """``text_embed/main_text_embed.py`` module docstring — local embedder path."""
-    from nemo_retriever.text_embed.main_text_embed import create_text_embeddings_for_df
+    from nemo_retriever.models.inference.main_text_embed import create_text_embeddings_for_df
 
     df = pd.DataFrame([{"text": "hello", "metadata": {"source_path": "/tmp/a.pdf"}}])
 
@@ -310,7 +310,7 @@ def test_main_text_embed_module_doc_example() -> None:
 
 def test_clustering_doc_boxes_overlap_example() -> None:
     """``clustering.py`` docstring — close boxes overlap with threshold."""
-    from nemo_retriever.api.util.image_processing.clustering import boxes_are_close_or_overlap
+    from nemo_retriever.common.api.util.image_processing.clustering import boxes_are_close_or_overlap
 
     box1 = (100, 100, 150, 150)
     box2 = (160, 110, 200, 140)
@@ -319,7 +319,7 @@ def test_clustering_doc_boxes_overlap_example() -> None:
 
 def test_clustering_doc_remove_superset_bboxes() -> None:
     """``clustering.py`` docstring — strict superset removed."""
-    from nemo_retriever.api.util.image_processing.clustering import remove_superset_bboxes
+    from nemo_retriever.common.api.util.image_processing.clustering import remove_superset_bboxes
 
     bboxes = [
         [0, 0, 5, 5],
@@ -331,7 +331,7 @@ def test_clustering_doc_remove_superset_bboxes() -> None:
 
 def test_transforms_rgba_to_rgb_and_pad_image_doc() -> None:
     """``transforms.py`` docstring examples for RGBA conversion and padding."""
-    from nemo_retriever.api.util.image_processing.transforms import pad_image, rgba_to_rgb_white_bg
+    from nemo_retriever.common.api.util.image_processing.transforms import pad_image, rgba_to_rgb_white_bg
 
     rng = np.random.default_rng(0)
     rgba = rng.integers(0, 256, (100, 100, 4), dtype=np.uint8)
@@ -351,7 +351,7 @@ def test_transforms_rgba_to_rgb_and_pad_image_doc() -> None:
 
 def test_transforms_numpy_base64_roundtrip_doc() -> None:
     """``transforms.py`` — ``numpy_to_base64`` / ``base64_to_numpy`` as in docstrings."""
-    from nemo_retriever.api.util.image_processing.transforms import base64_to_numpy, numpy_to_base64
+    from nemo_retriever.common.api.util.image_processing.transforms import base64_to_numpy, numpy_to_base64
 
     rng = np.random.default_rng(1)
     array = rng.integers(0, 255, (100, 100, 3), dtype=np.uint8)
@@ -366,7 +366,7 @@ def test_transforms_numpy_base64_roundtrip_doc() -> None:
 
 def test_transforms_base64_to_disk_and_save_image_doc(tmp_path: Path) -> None:
     """``transforms.py`` — write base64 bytes and optional format conversion."""
-    from nemo_retriever.api.util.image_processing.transforms import base64_to_disk, save_image_to_disk
+    from nemo_retriever.common.api.util.image_processing.transforms import base64_to_disk, save_image_to_disk
 
     rng = np.random.default_rng(2)
     arr = rng.integers(0, 255, (32, 32, 3), dtype=np.uint8)
@@ -387,7 +387,7 @@ def test_transforms_base64_to_disk_and_save_image_doc(tmp_path: Path) -> None:
 
 def test_schemas_mixins_lowercase_protocol_doc() -> None:
     """``mixins.py`` docstring — protocol fields lowercased."""
-    from nemo_retriever.api.internal.schemas.mixins import LowercaseProtocolMixin
+    from nemo_retriever.common.api.internal.schemas.mixins import LowercaseProtocolMixin
 
     class MyConfigSchema(LowercaseProtocolMixin):
         yolox_infer_protocol: str = ""
@@ -400,7 +400,7 @@ def test_schemas_mixins_lowercase_protocol_doc() -> None:
 
 def test_pdf_exception_handler_doc_behaviour() -> None:
     """``pdf.py`` — decorator swallows errors; ``create_exception_tag`` returns validated metadata."""
-    from nemo_retriever.api.util.exception_handlers.pdf import create_exception_tag, pdfium_exception_handler
+    from nemo_retriever.common.api.util.exception_handlers.pdf import create_exception_tag, pdfium_exception_handler
 
     @pdfium_exception_handler("PDF Processing")
     def boom(path: str) -> list:
@@ -421,7 +421,7 @@ def test_datetools_exception_handler_doc_behaviour() -> None:
     """``converters.py`` (exception_handlers) — invalid dates yield ISO fallback."""
     from datetime import datetime
 
-    from nemo_retriever.api.util.exception_handlers.converters import datetools_exception_handler
+    from nemo_retriever.common.api.util.exception_handlers.converters import datetools_exception_handler
 
     @datetools_exception_handler
     def parse_date(date_str: str) -> datetime:
@@ -441,8 +441,8 @@ def test_langdetect_exception_handler_with_real_detect() -> None:
     """``detectors.py`` — when langdetect works, non-empty text returns a language enum."""
     import langdetect
 
-    from nemo_retriever.api.internal.enums.common import LanguageEnum
-    from nemo_retriever.api.util.exception_handlers.detectors import langdetect_exception_handler
+    from nemo_retriever.common.api.internal.enums.common import LanguageEnum
+    from nemo_retriever.common.api.util.exception_handlers.detectors import langdetect_exception_handler
 
     @langdetect_exception_handler
     def detect_language(text: str):
@@ -454,7 +454,7 @@ def test_langdetect_exception_handler_with_real_detect() -> None:
 
 def test_traceable_func_doc_example() -> None:
     """``tagging.py`` — ``traceable_func`` fills ``trace_info`` entry/exit keys."""
-    from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
+    from nemo_retriever.common.api.internal.primitives.tracing.tagging import traceable_func
 
     @traceable_func(trace_name="pdf_extractor::{model_name}")
     def extract_pdf(model_name: str) -> None:
@@ -470,7 +470,7 @@ def test_set_trace_timestamps_with_parent_context_doc() -> None:
     """``tagging.py`` docstring — keys gain parent namespace."""
     from datetime import datetime
 
-    from nemo_retriever.api.internal.primitives.tracing.tagging import set_trace_timestamps_with_parent_context
+    from nemo_retriever.common.api.internal.primitives.tracing.tagging import set_trace_timestamps_with_parent_context
 
     ts1 = datetime(2024, 1, 1, 12, 0, 0)
     ts2 = datetime(2024, 1, 1, 12, 0, 1)
@@ -516,8 +516,8 @@ def test_graph_pipeline_registry_register_docstring_pattern() -> None:
 
 def test_evaluation_readme_protocol_stubs_parse() -> None:
     """``evaluation/README.md`` — Protocol example bodies are syntactically valid."""
-    from nemo_retriever.llm.types import AnswerJudge, GenerationResult, JudgeResult, LLMClient, RetrievalResult
-    from nemo_retriever.llm.types import RetrieverStrategy
+    from nemo_retriever.models.llm.types import AnswerJudge, GenerationResult, JudgeResult, LLMClient, RetrievalResult
+    from nemo_retriever.models.llm.types import RetrieverStrategy
 
     class MyRetriever:
         def retrieve(self, query: str, top_k: int) -> RetrievalResult:

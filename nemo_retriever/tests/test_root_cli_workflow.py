@@ -22,11 +22,11 @@ from typer.testing import CliRunner
 import nemo_retriever.ingest.execution as ingest_execution
 import nemo_retriever.ingest.plan as ingest_plan
 import nemo_retriever.ingest.service as ingest_service
-import nemo_retriever.adapters.cli.ingest_workflow as ingest_workflow
-import nemo_retriever.adapters.cli.ingest.graph as ingest_cli_graph
-import nemo_retriever.adapters.cli.ingest.shared as ingest_cli_shared
-from nemo_retriever.graph_ingestor import GraphIngestor
-from nemo_retriever.params import (
+import nemo_retriever.cli.ingest_workflow as ingest_workflow
+import nemo_retriever.cli.ingest.graph as ingest_cli_graph
+import nemo_retriever.cli.ingest.shared as ingest_cli_shared
+from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
     AudioVisualFuseParams,
@@ -43,7 +43,7 @@ from nemo_retriever.params import (
 
 
 RUNNER = CliRunner()
-cli_main = importlib.import_module("nemo_retriever.adapters.cli.main")
+cli_main = importlib.import_module("nemo_retriever.cli.main")
 
 
 @pytest.fixture(autouse=True)
@@ -144,7 +144,7 @@ def test_root_ingest_without_mode_accepts_local_options_before_documents(monkeyp
 
 
 def test_root_ingest_service_mode_uses_service_ingest_core(tmp_path, monkeypatch) -> None:
-    import nemo_retriever.service_ingestor as service_ingestor_module
+    import nemo_retriever.service.service_ingestor as service_ingestor_module
 
     document = tmp_path / "service.pdf"
     document.write_bytes(b"%PDF-1.4\n")
@@ -245,7 +245,7 @@ def test_service_split_config_expands_glob_patterns_for_auto_input(tmp_path) -> 
 
 
 def test_root_ingest_service_dry_run_redacts_token(tmp_path, monkeypatch) -> None:
-    import nemo_retriever.service_ingestor as service_ingestor_module
+    import nemo_retriever.service.service_ingestor as service_ingestor_module
 
     document = tmp_path / "service.pdf"
     document.write_bytes(b"%PDF-1.4\n")
@@ -1161,7 +1161,9 @@ def test_root_ingest_auto_passes_audio_params(monkeypatch, tmp_path) -> None:
     document = tmp_path / "meeting.wav"
     document.write_bytes(b"audio")
     monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
-    monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
+    monkeypatch.setattr(
+        "nemo_retriever.operators.extract.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False)
+    )
 
     result = RUNNER.invoke(
         cli_main.app,
@@ -1191,7 +1193,9 @@ def test_root_ingest_auto_passes_video_params(monkeypatch, tmp_path) -> None:
     document = tmp_path / "demo.mp4"
     document.write_bytes(b"video")
     monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
-    monkeypatch.setattr("nemo_retriever.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False))
+    monkeypatch.setattr(
+        "nemo_retriever.operators.extract.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False)
+    )
 
     result = RUNNER.invoke(
         cli_main.app,

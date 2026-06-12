@@ -129,7 +129,17 @@ retriever query "annual revenue by region" \
 
 `--top-k` is the final number of hits returned. `--candidate-k` is the wider
 candidate pool retrieved before page deduplication, content-type filtering, and
-final truncation. It must be greater than or equal to `--top-k`.
+final truncation. It must be greater than or equal to `--top-k`, and should
+usually be larger when page deduplication or content-type filtering might
+otherwise remove too many of the top retrieved rows. Page deduplication and
+content-type filtering are applied after vector retrieval, preserving the
+retriever's ranking order and truncating the final output to `--top-k`.
+When querying a table ingested with an explicit embedding model, pass the same
+`--embed-model-name` to `retriever query`.
+`--content-types` accepts comma-separated content types such as `text`, `table`,
+`chart`, `image`, and `infographic`. `images` is accepted as an alias for
+captioned image rows emitted by ingest. Hits with missing or unknown content
+types are excluded while `--content-types` is active.
 
 <!-- --8<-- [end:quickstart] -->
 
@@ -216,7 +226,7 @@ retriever ingest ./data/scanned.pdf \
 For mixed-script documents, use `--ocr-lang multi` where supported by the local
 OCR engine.
 
-### Text Chunking
+### Text chunking
 
 ```bash
 retriever ingest ./data/test.pdf \

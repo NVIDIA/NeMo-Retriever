@@ -20,10 +20,10 @@ def test_embedded_ray_scripts_import_env_helpers_inside_try() -> None:
 
     for script in (harness_run._GRAPH_RUNNER_SCRIPT, _GRAPH_WRAPPER_SCRIPT):
         before_try, after_try = script.split("\ntry:\n", 1)
-        assert "from nemo_retriever.utils.hf_cache import collect_hf_runtime_env" not in before_try
-        assert "from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env" not in before_try
-        assert "from nemo_retriever.utils.hf_cache import collect_hf_runtime_env" in after_try
-        assert "from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env" in after_try
+        assert "from nemo_retriever.models.hf_cache import collect_hf_runtime_env" not in before_try
+        assert "from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env" not in before_try
+        assert "from nemo_retriever.models.hf_cache import collect_hf_runtime_env" in after_try
+        assert "from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env" in after_try
 
 
 def test_evaluate_run_outcome_passes_when_process_succeeds_and_recall_present() -> None:
@@ -928,7 +928,7 @@ def test_run_service_mode_uses_finalized_service_ingest_result_contract(monkeypa
         def ingest(self) -> FakeResult:
             return FakeResult()
 
-    import nemo_retriever.service_ingestor as service_ingestor
+    import nemo_retriever.service.service_ingestor as service_ingestor
 
     monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
     monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: [input_file])
@@ -983,7 +983,7 @@ def test_run_service_mode_counts_pdf_pages_not_completed_documents(monkeypatch, 
         def ingest(self) -> FakeResult:
             return FakeResult()
 
-    import nemo_retriever.service_ingestor as service_ingestor
+    import nemo_retriever.service.service_ingestor as service_ingestor
 
     monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
     monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: [input_file])
@@ -1044,7 +1044,7 @@ def test_run_service_mode_counts_failed_pdf_documents_as_pages(monkeypatch, tmp_
         def ingest(self) -> FakeResult:
             return FakeResult()
 
-    import nemo_retriever.service_ingestor as service_ingestor
+    import nemo_retriever.service.service_ingestor as service_ingestor
 
     monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
     monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: input_files)
@@ -1112,7 +1112,7 @@ def test_run_service_mode_does_not_reuse_page_count_for_unreadable_duplicate_bas
         def ingest(self) -> FakeResult:
             return FakeResult()
 
-    import nemo_retriever.service_ingestor as service_ingestor
+    import nemo_retriever.service.service_ingestor as service_ingestor
 
     input_files = [readable_pdf, unreadable_pdf]
     monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
@@ -1191,8 +1191,8 @@ def test_run_service_mode_evaluates_beir_recall_against_service(monkeypatch, tmp
             },
         )
 
-    import nemo_retriever.recall.beir as beir
-    import nemo_retriever.service_ingestor as service_ingestor
+    import nemo_retriever.tools.recall.beir as beir
+    import nemo_retriever.service.service_ingestor as service_ingestor
 
     monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
     monkeypatch.setattr(beir, "evaluate_service_beir", _fake_evaluate_service_beir)

@@ -26,7 +26,7 @@ from nemo_retriever.tabular_data.retrieval.data_access.semantic_search import (
 )
 
 if TYPE_CHECKING:
-    from nemo_retriever.retriever import Retriever
+    from nemo_retriever.graph.retriever import Retriever
 
 logger = logging.getLogger(__name__)
 

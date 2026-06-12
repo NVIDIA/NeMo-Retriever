@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for :mod:`nemo_retriever.evaluation.config`.
+"""Unit tests for :mod:`nemo_retriever.tools.evaluation.config`.
 
 Focus: the fail-fast contract in :func:`_normalize_config` that guards
 ``build_eval_chain`` / ``build_eval_pipeline`` from silently collapsing
@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nemo_retriever.evaluation.config import _normalize_config, build_eval_chain, build_eval_pipeline
+from nemo_retriever.tools.evaluation.config import _normalize_config, build_eval_chain, build_eval_pipeline
 
 
 def _make_multi_judge_config() -> dict:
@@ -141,10 +141,10 @@ def test_build_eval_chain_forwards_judge_num_retries() -> None:
     config = _make_minimal_legacy_config_with_judge_retries(num_retries=9)
 
     with (
-        patch("nemo_retriever.evaluation.retrieval_loader.RetrievalLoaderOperator"),
-        patch("nemo_retriever.evaluation.generation.QAGenerationOperator"),
-        patch("nemo_retriever.evaluation.scoring_operator.ScoringOperator"),
-        patch("nemo_retriever.evaluation.judging.JudgingOperator") as mock_judge_op,
+        patch("nemo_retriever.tools.evaluation.retrieval_loader.RetrievalLoaderOperator"),
+        patch("nemo_retriever.tools.evaluation.generation.QAGenerationOperator"),
+        patch("nemo_retriever.operators.graph_ops.scoring_operator.ScoringOperator"),
+        patch("nemo_retriever.tools.evaluation.judging.JudgingOperator") as mock_judge_op,
     ):
         mock_judge_op.return_value = MagicMock()
 
@@ -160,10 +160,10 @@ def test_build_eval_chain_defaults_judge_num_retries_when_absent() -> None:
     config["judge"].pop("num_retries")
 
     with (
-        patch("nemo_retriever.evaluation.retrieval_loader.RetrievalLoaderOperator"),
-        patch("nemo_retriever.evaluation.generation.QAGenerationOperator"),
-        patch("nemo_retriever.evaluation.scoring_operator.ScoringOperator"),
-        patch("nemo_retriever.evaluation.judging.JudgingOperator") as mock_judge_op,
+        patch("nemo_retriever.tools.evaluation.retrieval_loader.RetrievalLoaderOperator"),
+        patch("nemo_retriever.tools.evaluation.generation.QAGenerationOperator"),
+        patch("nemo_retriever.operators.graph_ops.scoring_operator.ScoringOperator"),
+        patch("nemo_retriever.tools.evaluation.judging.JudgingOperator") as mock_judge_op,
     ):
         mock_judge_op.return_value = MagicMock()
 
@@ -181,10 +181,10 @@ def test_build_eval_pipeline_forwards_judge_num_retries() -> None:
     config = _make_minimal_legacy_config_with_judge_retries(num_retries=11)
 
     with (
-        patch("nemo_retriever.evaluation.retrievers.FileRetriever"),
-        patch("nemo_retriever.llm.clients.LiteLLMClient"),
-        patch("nemo_retriever.evaluation.orchestrator.QAEvalPipeline"),
-        patch("nemo_retriever.llm.clients.LLMJudge.from_kwargs") as mock_from_kwargs,
+        patch("nemo_retriever.tools.evaluation.retrievers.FileRetriever"),
+        patch("nemo_retriever.models.llm.clients.LiteLLMClient"),
+        patch("nemo_retriever.tools.evaluation.orchestrator.QAEvalPipeline"),
+        patch("nemo_retriever.models.llm.clients.LLMJudge.from_kwargs") as mock_from_kwargs,
     ):
         mock_from_kwargs.return_value = MagicMock()
 

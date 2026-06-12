@@ -9,10 +9,10 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from nemo_retriever.vdb.adt_vdb import VDB
-from nemo_retriever.vdb import IngestVdbOperator, RetrieveVdbOperator
-from nemo_retriever.vdb import operators as vdb_operator_module
-from nemo_retriever.vdb.operators import PutVdbOperator
+from nemo_retriever.common.vdb.adt_vdb import VDB
+from nemo_retriever.operators.vdb import IngestVdbOperator, RetrieveVdbOperator
+from nemo_retriever.operators import vdb as vdb_operator_module
+from nemo_retriever.operators.vdb import PutVdbOperator
 
 
 class FakeVDB(VDB):

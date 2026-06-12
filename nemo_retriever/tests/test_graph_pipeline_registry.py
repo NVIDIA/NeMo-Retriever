@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.graph_pipeline_registry import (
     GraphBlueprint,

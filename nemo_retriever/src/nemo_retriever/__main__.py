@@ -4,6 +4,6 @@
 
 from __future__ import annotations
 
-from .adapters.cli.main import app, main
+from nemo_retriever.cli.main import app, main
 
 __all__ = ["app", "main"]

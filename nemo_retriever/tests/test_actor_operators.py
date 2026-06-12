@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 
 
 # ---------------------------------------------------------------------------
@@ -19,12 +19,12 @@ from nemo_retriever.graph.abstract_operator import AbstractOperator
 # ---------------------------------------------------------------------------
 class TestPDFSplitActor:
     def _make(self):
-        from nemo_retriever.pdf.split import PDFSplitActor
+        from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
 
         return PDFSplitActor()
 
     def test_inherits(self):
-        from nemo_retriever.pdf.split import PDFSplitActor
+        from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
 
         assert issubclass(PDFSplitActor, AbstractOperator)
 
@@ -38,7 +38,7 @@ class TestPDFSplitActor:
         df = pd.DataFrame({"bytes": [b"x"], "path": ["/tmp/a.pdf"]})
         pd.testing.assert_frame_equal(actor.postprocess(df), df)
 
-    @patch("nemo_retriever.pdf.split.split_pdf_batch")
+    @patch("nemo_retriever.operators.extract.pdf.split.split_pdf_batch")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"page": [1]})
         mock_fn.return_value = expected
@@ -48,7 +48,7 @@ class TestPDFSplitActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.pdf.split.split_pdf_batch")
+    @patch("nemo_retriever.operators.extract.pdf.split.split_pdf_batch")
     def test_call_delegates_to_run(self, mock_fn):
         expected = pd.DataFrame({"page": [1]})
         mock_fn.return_value = expected
@@ -62,12 +62,12 @@ class TestPDFSplitActor:
 # ---------------------------------------------------------------------------
 class TestPDFExtractionActor:
     def _make(self):
-        from nemo_retriever.pdf.extract import PDFExtractionActor
+        from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor
 
         return PDFExtractionActor(method="pdfium")
 
     def test_inherits(self):
-        from nemo_retriever.pdf.extract import PDFExtractionActor
+        from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor
 
         assert issubclass(PDFExtractionActor, AbstractOperator)
 
@@ -76,7 +76,7 @@ class TestPDFExtractionActor:
         df = pd.DataFrame({"bytes": [b"x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.pdf.extract.pdf_extraction")
+    @patch("nemo_retriever.operators.extract.pdf.extract.pdf_extraction")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"text": ["hello"]})
         mock_fn.return_value = expected
@@ -85,7 +85,7 @@ class TestPDFExtractionActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.pdf.extract.pdf_extraction")
+    @patch("nemo_retriever.operators.extract.pdf.extract.pdf_extraction")
     def test_call_delegates_to_run(self, mock_fn):
         expected = pd.DataFrame({"text": ["hello"]})
         mock_fn.return_value = expected
@@ -93,7 +93,7 @@ class TestPDFExtractionActor:
         result = actor(pd.DataFrame({"bytes": [b"x"]}))
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.pdf.extract.pdf_extraction", side_effect=RuntimeError("boom"))
+    @patch("nemo_retriever.operators.extract.pdf.extract.pdf_extraction", side_effect=RuntimeError("boom"))
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"bytes": [b"x"], "path": ["/tmp/a.pdf"]})
@@ -103,8 +103,8 @@ class TestPDFExtractionActor:
         assert record["metadata"]["error"]["type"] == "RuntimeError"
 
     def test_pdfium_output_can_have_empty_text_without_ocr_flag(self):
-        from nemo_retriever.pdf.extract import PDFExtractionActor
-        from nemo_retriever.pdf.split import PDFSplitActor
+        from nemo_retriever.operators.extract.pdf.extract import PDFExtractionActor
+        from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
 
         pdf_path = Path("/raid/data/jp20/1312679.pdf")
         if not pdf_path.exists():
@@ -135,12 +135,12 @@ class TestPDFExtractionActor:
 # ---------------------------------------------------------------------------
 class TestPageElementDetectionActor:
     def _make(self):
-        from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
+        from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionActor
 
         return PageElementDetectionActor(invoke_url="http://fake")
 
     def test_inherits(self):
-        from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
+        from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionActor
 
         assert issubclass(PageElementDetectionActor, AbstractOperator)
 
@@ -149,7 +149,7 @@ class TestPageElementDetectionActor:
         df = pd.DataFrame({"page_image": ["x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.page_elements.cpu_actor.detect_page_elements_v3")
+    @patch("nemo_retriever.operators.extract.page_elements.cpu_actor.detect_page_elements_v3")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"page_elements_v3": ["det"]})
         mock_fn.return_value = expected
@@ -158,7 +158,7 @@ class TestPageElementDetectionActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.page_elements.cpu_actor.detect_page_elements_v3")
+    @patch("nemo_retriever.operators.extract.page_elements.cpu_actor.detect_page_elements_v3")
     def test_call_delegates(self, mock_fn):
         expected = pd.DataFrame({"page_elements_v3": ["det"]})
         mock_fn.return_value = expected
@@ -166,7 +166,10 @@ class TestPageElementDetectionActor:
         result = actor(pd.DataFrame({"page_image": ["x"]}))
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.page_elements.cpu_actor.detect_page_elements_v3", side_effect=RuntimeError("boom"))
+    @patch(
+        "nemo_retriever.operators.extract.page_elements.cpu_actor.detect_page_elements_v3",
+        side_effect=RuntimeError("boom"),
+    )
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"page_image": ["x"]})
@@ -180,7 +183,7 @@ class TestPageElementDetectionActor:
 # ---------------------------------------------------------------------------
 class TestGraphicElementsActor:
     def _make(self):
-        from nemo_retriever.chart.chart_detection import GraphicElementsActor
+        from nemo_retriever.operators.extract.chart.chart_detection import GraphicElementsActor
 
         return GraphicElementsActor(
             graphic_elements_invoke_url="http://fake",
@@ -188,7 +191,7 @@ class TestGraphicElementsActor:
         )
 
     def test_inherits(self):
-        from nemo_retriever.chart.chart_detection import GraphicElementsActor
+        from nemo_retriever.operators.extract.chart.chart_detection import GraphicElementsActor
 
         assert issubclass(GraphicElementsActor, AbstractOperator)
 
@@ -197,7 +200,7 @@ class TestGraphicElementsActor:
         df = pd.DataFrame({"page_image": ["x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.chart.cpu_actor.graphic_elements_ocr_page_elements")
+    @patch("nemo_retriever.operators.extract.chart.cpu_actor.graphic_elements_ocr_page_elements")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"chart": [[]]})
         mock_fn.return_value = expected
@@ -206,7 +209,10 @@ class TestGraphicElementsActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.chart.cpu_actor.graphic_elements_ocr_page_elements", side_effect=RuntimeError("boom"))
+    @patch(
+        "nemo_retriever.operators.extract.chart.cpu_actor.graphic_elements_ocr_page_elements",
+        side_effect=RuntimeError("boom"),
+    )
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"page_image": ["x"]})
@@ -220,7 +226,7 @@ class TestGraphicElementsActor:
 # ---------------------------------------------------------------------------
 class TestGraphicElementsGPUActor:
     def test_init_signature_uses_ocr_version_selector(self):
-        from nemo_retriever.chart.gpu_actor import GraphicElementsActor as GPUActor
+        from nemo_retriever.operators.extract.chart.gpu_actor import GraphicElementsActor as GPUActor
 
         assert set(inspect.signature(GPUActor.__init__).parameters) == {
             "self",
@@ -238,8 +244,8 @@ class TestGraphicElementsGPUActor:
         }
 
     def test_init_with_no_kwargs_defaults_to_local_ocr_v2(self, monkeypatch):
-        import nemo_retriever.model.local as local_models
-        from nemo_retriever.chart.gpu_actor import GraphicElementsActor as GPUActor
+        import nemo_retriever.models.local as local_models
+        from nemo_retriever.operators.extract.chart.gpu_actor import GraphicElementsActor as GPUActor
 
         mock_graphic = MagicMock()
         mock_ocr_v2 = MagicMock()
@@ -255,8 +261,8 @@ class TestGraphicElementsGPUActor:
         assert actor._nim_client is None
 
     def test_init_can_explicitly_use_local_ocr_v1(self, monkeypatch):
-        import nemo_retriever.model.local as local_models
-        from nemo_retriever.chart.gpu_actor import GraphicElementsActor as GPUActor
+        import nemo_retriever.models.local as local_models
+        from nemo_retriever.operators.extract.chart.gpu_actor import GraphicElementsActor as GPUActor
 
         mock_graphic = MagicMock()
         mock_ocr_v2 = MagicMock()
@@ -276,12 +282,12 @@ class TestGraphicElementsGPUActor:
 # ---------------------------------------------------------------------------
 class TestTableStructureActor:
     def _make(self):
-        from nemo_retriever.table.table_detection import TableStructureActor
+        from nemo_retriever.operators.extract.table.table_detection import TableStructureActor
 
         return TableStructureActor(table_structure_invoke_url="http://fake")
 
     def test_inherits(self):
-        from nemo_retriever.table.table_detection import TableStructureActor
+        from nemo_retriever.operators.extract.table.table_detection import TableStructureActor
 
         assert issubclass(TableStructureActor, AbstractOperator)
 
@@ -290,7 +296,7 @@ class TestTableStructureActor:
         df = pd.DataFrame({"page_image": ["x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.table.cpu_actor.table_structure_ocr_page_elements")
+    @patch("nemo_retriever.operators.extract.table.cpu_actor.table_structure_ocr_page_elements")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"table": [[]]})
         mock_fn.return_value = expected
@@ -299,7 +305,10 @@ class TestTableStructureActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.table.cpu_actor.table_structure_ocr_page_elements", side_effect=RuntimeError("boom"))
+    @patch(
+        "nemo_retriever.operators.extract.table.cpu_actor.table_structure_ocr_page_elements",
+        side_effect=RuntimeError("boom"),
+    )
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"page_image": ["x"]})
@@ -314,7 +323,7 @@ class TestTableStructureActor:
 class TestTableStructureGPUActor:
     """Regression tests for the GPU variant of TableStructureActor.
 
-    The GPU variant lives in nemo_retriever.table.gpu_actor and is selected
+    The GPU variant lives in nemo_retriever.operators.extract.table.gpu_actor and is selected
     by the archetype resolver when GPUs are available and no CPU-only
     endpoint is configured. Prior to this fix, its __init__ referenced
     ``self._ocr_invoke_url`` without ever assigning it, raising
@@ -323,7 +332,7 @@ class TestTableStructureGPUActor:
     """
 
     def test_init_signature_uses_ocr_version_selector(self):
-        from nemo_retriever.table.gpu_actor import TableStructureActor as GPUActor
+        from nemo_retriever.operators.extract.table.gpu_actor import TableStructureActor as GPUActor
 
         assert set(inspect.signature(GPUActor.__init__).parameters) == {
             "self",
@@ -341,8 +350,8 @@ class TestTableStructureGPUActor:
         }
 
     def test_init_with_no_kwargs_defaults_to_local_ocr_v2(self, monkeypatch):
-        import nemo_retriever.model.local as local_models
-        from nemo_retriever.table.gpu_actor import TableStructureActor as GPUActor
+        import nemo_retriever.models.local as local_models
+        from nemo_retriever.operators.extract.table.gpu_actor import TableStructureActor as GPUActor
 
         mock_ts = MagicMock()
         mock_ocr_v2 = MagicMock()
@@ -358,8 +367,8 @@ class TestTableStructureGPUActor:
         assert actor._nim_client is None
 
     def test_init_can_explicitly_use_local_ocr_v1(self, monkeypatch):
-        import nemo_retriever.model.local as local_models
-        from nemo_retriever.table.gpu_actor import TableStructureActor as GPUActor
+        import nemo_retriever.models.local as local_models
+        from nemo_retriever.operators.extract.table.gpu_actor import TableStructureActor as GPUActor
 
         mock_ts = MagicMock()
         mock_ocr_v2 = MagicMock()
@@ -374,8 +383,8 @@ class TestTableStructureGPUActor:
         assert actor._nim_client is None
 
     def test_init_with_ocr_invoke_url_skips_local_ocr(self, monkeypatch):
-        import nemo_retriever.model.local as local_models
-        from nemo_retriever.table.gpu_actor import TableStructureActor as GPUActor
+        import nemo_retriever.models.local as local_models
+        from nemo_retriever.operators.extract.table.gpu_actor import TableStructureActor as GPUActor
 
         mock_ts = MagicMock()
         mock_ocr = MagicMock()
@@ -391,8 +400,8 @@ class TestTableStructureGPUActor:
         assert actor._nim_client is not None
 
     def test_init_with_both_urls_skips_all_local_models(self, monkeypatch):
-        import nemo_retriever.model.local as local_models
-        from nemo_retriever.table.gpu_actor import TableStructureActor as GPUActor
+        import nemo_retriever.models.local as local_models
+        from nemo_retriever.operators.extract.table.gpu_actor import TableStructureActor as GPUActor
 
         mock_ocr = MagicMock()
         monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr)
@@ -408,7 +417,7 @@ class TestTableStructureGPUActor:
         assert actor._nim_client is not None
 
     def test_init_strips_whitespace_from_ocr_invoke_url(self):
-        from nemo_retriever.table.gpu_actor import TableStructureActor as GPUActor
+        from nemo_retriever.operators.extract.table.gpu_actor import TableStructureActor as GPUActor
 
         actor = GPUActor(
             table_structure_invoke_url="http://ts.example/v1",
@@ -418,8 +427,8 @@ class TestTableStructureGPUActor:
         assert actor._ocr_invoke_url == "http://ocr.example/v1"
 
     def test_init_treats_none_ocr_invoke_url_as_empty(self, monkeypatch):
-        import nemo_retriever.model.local as local_models
-        from nemo_retriever.table.gpu_actor import TableStructureActor as GPUActor
+        import nemo_retriever.models.local as local_models
+        from nemo_retriever.operators.extract.table.gpu_actor import TableStructureActor as GPUActor
 
         mock_ocr = MagicMock()
         monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr)
@@ -438,12 +447,12 @@ class TestTableStructureGPUActor:
 # ---------------------------------------------------------------------------
 class TestOCRActor:
     def _make(self):
-        from nemo_retriever.ocr.ocr import OCRActor
+        from nemo_retriever.operators.extract.ocr.ocr import OCRActor
 
         return OCRActor(ocr_invoke_url="http://fake")
 
     def test_inherits(self):
-        from nemo_retriever.ocr.ocr import OCRActor
+        from nemo_retriever.operators.extract.ocr.ocr import OCRActor
 
         assert issubclass(OCRActor, AbstractOperator)
 
@@ -452,7 +461,7 @@ class TestOCRActor:
         df = pd.DataFrame({"page_image": ["x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.ocr.cpu_ocr.ocr_page_elements")
+    @patch("nemo_retriever.operators.extract.ocr.cpu_ocr.ocr_page_elements")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"ocr": ["res"]})
         mock_fn.return_value = expected
@@ -461,7 +470,7 @@ class TestOCRActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.ocr.cpu_ocr.ocr_page_elements", side_effect=RuntimeError("boom"))
+    @patch("nemo_retriever.operators.extract.ocr.cpu_ocr.ocr_page_elements", side_effect=RuntimeError("boom"))
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"page_image": ["x"]})
@@ -470,8 +479,8 @@ class TestOCRActor:
         assert "ocr" in result.columns
 
     def test_local_gpu_actor_defaults_to_v2_multi(self, monkeypatch):
-        import nemo_retriever.model.local as local_models
-        from nemo_retriever.ocr.gpu_ocr import OCRActor as OCRGPUActor
+        import nemo_retriever.models.local as local_models
+        from nemo_retriever.operators.extract.ocr.gpu_ocr import OCRActor as OCRGPUActor
 
         mock_ocr_v2 = MagicMock()
         monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr_v2)
@@ -481,8 +490,8 @@ class TestOCRActor:
         assert actor._nim_client is None
 
     def test_local_gpu_actor_passes_v2_ocr_lang(self, monkeypatch):
-        import nemo_retriever.model.local as local_models
-        from nemo_retriever.ocr.gpu_ocr import OCRActor as OCRGPUActor
+        import nemo_retriever.models.local as local_models
+        from nemo_retriever.operators.extract.ocr.gpu_ocr import OCRActor as OCRGPUActor
 
         mock_ocr_v2 = MagicMock()
         monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr_v2)
@@ -492,8 +501,8 @@ class TestOCRActor:
         assert actor._nim_client is None
 
     def test_local_gpu_actor_uses_v2_legacy_mode_for_v1(self, monkeypatch):
-        import nemo_retriever.model.local as local_models
-        from nemo_retriever.ocr.gpu_ocr import OCRActor as OCRGPUActor
+        import nemo_retriever.models.local as local_models
+        from nemo_retriever.operators.extract.ocr.gpu_ocr import OCRActor as OCRGPUActor
 
         mock_ocr_v2 = MagicMock()
         monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr_v2)
@@ -508,12 +517,12 @@ class TestOCRActor:
 # ---------------------------------------------------------------------------
 class TestNemotronParseActor:
     def _make(self):
-        from nemo_retriever.parse.nemotron_parse import NemotronParseActor
+        from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor
 
         return NemotronParseActor(nemotron_parse_invoke_url="http://fake")
 
     def test_inherits(self):
-        from nemo_retriever.parse.nemotron_parse import NemotronParseActor
+        from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor
 
         assert issubclass(NemotronParseActor, AbstractOperator)
 
@@ -522,7 +531,7 @@ class TestNemotronParseActor:
         df = pd.DataFrame({"page_image": ["x"]})
         pd.testing.assert_frame_equal(actor.preprocess(df), df)
 
-    @patch("nemo_retriever.parse.nemotron_parse.nemotron_parse_pages")
+    @patch("nemo_retriever.operators.extract.parse.nemotron_parse.nemotron_parse_pages")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"nemotron_parse_v1_2": ["res"]})
         mock_fn.return_value = expected
@@ -532,7 +541,7 @@ class TestNemotronParseActor:
         pd.testing.assert_frame_equal(result, expected)
 
     def test_remote_chat_completions_uses_v1_2_protocol(self):
-        from nemo_retriever.parse.nemotron_parse import (
+        from nemo_retriever.operators.extract.parse.nemotron_parse import (
             NEMOTRON_PARSE_DEFAULT_TASK_PROMPT,
             NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL,
             nemotron_parse_pages,
@@ -562,7 +571,7 @@ class TestNemotronParseActor:
         assert client.kwargs["extra_body"] == {"max_tokens": 8192}
 
     def test_remote_chat_completions_supports_legacy_tool_call_protocol(self):
-        from nemo_retriever.parse.nemotron_parse import nemotron_parse_pages
+        from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
 
         class _FakeNIMClient:
             def __init__(self):
@@ -593,7 +602,7 @@ class TestNemotronParseActor:
         }
 
     def test_remote_chat_completions_does_not_treat_v1_10_as_legacy(self):
-        from nemo_retriever.parse.nemotron_parse import nemotron_parse_pages
+        from nemo_retriever.operators.extract.parse.nemotron_parse import nemotron_parse_pages
 
         class _FakeNIMClient:
             def __init__(self):
@@ -618,7 +627,9 @@ class TestNemotronParseActor:
         assert client.kwargs["task_prompt"] is not None
         assert client.kwargs["extra_body"] == {"max_tokens": 8192}
 
-    @patch("nemo_retriever.parse.nemotron_parse.nemotron_parse_pages", side_effect=RuntimeError("boom"))
+    @patch(
+        "nemo_retriever.operators.extract.parse.nemotron_parse.nemotron_parse_pages", side_effect=RuntimeError("boom")
+    )
     def test_call_error_handling(self, mock_fn):
         actor = self._make()
         df = pd.DataFrame({"page_image": ["x"]})
@@ -632,12 +643,12 @@ class TestNemotronParseActor:
 # ---------------------------------------------------------------------------
 class TestTextChunkActor:
     def _make(self):
-        from nemo_retriever.txt.ray_data import TextChunkActor
+        from nemo_retriever.operators.extract.txt.ray_data import TextChunkActor
 
         return TextChunkActor()
 
     def test_inherits(self):
-        from nemo_retriever.txt.ray_data import TextChunkActor
+        from nemo_retriever.operators.extract.txt.ray_data import TextChunkActor
 
         assert issubclass(TextChunkActor, AbstractOperator)
 
@@ -657,7 +668,7 @@ class TestTextChunkActor:
         result = actor.process(df)
         assert result.empty
 
-    @patch("nemo_retriever.txt.split.split_df")
+    @patch("nemo_retriever.common.modality.txt.split.split_df")
     def test_call_delegates(self, mock_fn):
         expected = pd.DataFrame({"text": ["chunk1"]})
         mock_fn.return_value = expected
@@ -671,12 +682,12 @@ class TestTextChunkActor:
 # ---------------------------------------------------------------------------
 class TestImageLoadActor:
     def _make(self):
-        from nemo_retriever.image.ray_data import ImageLoadActor
+        from nemo_retriever.operators.extract.image.ray_data import ImageLoadActor
 
         return ImageLoadActor()
 
     def test_inherits(self):
-        from nemo_retriever.image.ray_data import ImageLoadActor
+        from nemo_retriever.operators.extract.image.ray_data import ImageLoadActor
 
         assert issubclass(ImageLoadActor, AbstractOperator)
 
@@ -690,7 +701,7 @@ class TestImageLoadActor:
         df = pd.DataFrame({"path": ["/tmp/a.png"]})
         pd.testing.assert_frame_equal(actor.postprocess(df), df)
 
-    @patch("nemo_retriever.image.ray_data.image_bytes_to_pages_df")
+    @patch("nemo_retriever.operators.extract.image.ray_data.image_bytes_to_pages_df")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"path": ["/tmp/a.png"], "page_number": [0]})
         mock_fn.return_value = expected
@@ -700,7 +711,7 @@ class TestImageLoadActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.image.ray_data.image_bytes_to_pages_df")
+    @patch("nemo_retriever.operators.extract.image.ray_data.image_bytes_to_pages_df")
     def test_call_delegates(self, mock_fn):
         expected = pd.DataFrame({"path": ["/tmp/a.png"], "page_number": [0]})
         mock_fn.return_value = expected
@@ -714,12 +725,12 @@ class TestImageLoadActor:
 # ---------------------------------------------------------------------------
 class TestTxtSplitActor:
     def _make(self):
-        from nemo_retriever.txt.ray_data import TxtSplitActor
+        from nemo_retriever.operators.extract.txt.ray_data import TxtSplitActor
 
         return TxtSplitActor()
 
     def test_inherits(self):
-        from nemo_retriever.txt.ray_data import TxtSplitActor
+        from nemo_retriever.operators.extract.txt.ray_data import TxtSplitActor
 
         assert issubclass(TxtSplitActor, AbstractOperator)
 
@@ -733,7 +744,7 @@ class TestTxtSplitActor:
         df = pd.DataFrame({"text": ["hello"]})
         pd.testing.assert_frame_equal(actor.postprocess(df), df)
 
-    @patch("nemo_retriever.txt.ray_data.txt_bytes_to_chunks_df")
+    @patch("nemo_retriever.operators.extract.txt.ray_data.txt_bytes_to_chunks_df")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"text": ["chunk"], "path": ["/a.txt"], "page_number": [0], "metadata": [{}]})
         mock_fn.return_value = expected
@@ -743,7 +754,7 @@ class TestTxtSplitActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.txt.ray_data.txt_bytes_to_chunks_df")
+    @patch("nemo_retriever.operators.extract.txt.ray_data.txt_bytes_to_chunks_df")
     def test_call_delegates(self, mock_fn):
         expected = pd.DataFrame({"text": ["chunk"], "path": ["/a.txt"], "page_number": [0], "metadata": [{}]})
         mock_fn.return_value = expected
@@ -757,12 +768,12 @@ class TestTxtSplitActor:
 # ---------------------------------------------------------------------------
 class TestHtmlSplitActor:
     def _make(self):
-        from nemo_retriever.html.ray_data import HtmlSplitActor
+        from nemo_retriever.operators.extract.html.ray_data import HtmlSplitActor
 
         return HtmlSplitActor()
 
     def test_inherits(self):
-        from nemo_retriever.html.ray_data import HtmlSplitActor
+        from nemo_retriever.operators.extract.html.ray_data import HtmlSplitActor
 
         assert issubclass(HtmlSplitActor, AbstractOperator)
 
@@ -771,7 +782,7 @@ class TestHtmlSplitActor:
         result = actor.preprocess(pd.DataFrame())
         assert list(result.columns) == ["text", "path", "page_number", "metadata"]
 
-    @patch("nemo_retriever.html.ray_data.html_bytes_to_chunks_df")
+    @patch("nemo_retriever.operators.extract.html.ray_data.html_bytes_to_chunks_df")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"text": ["chunk"], "path": ["/a.html"], "page_number": [0], "metadata": [{}]})
         mock_fn.return_value = expected
@@ -781,7 +792,7 @@ class TestHtmlSplitActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.html.ray_data.html_bytes_to_chunks_df")
+    @patch("nemo_retriever.operators.extract.html.ray_data.html_bytes_to_chunks_df")
     def test_call_delegates(self, mock_fn):
         expected = pd.DataFrame({"text": ["chunk"], "path": ["/a.html"], "page_number": [0], "metadata": [{}]})
         mock_fn.return_value = expected
@@ -795,14 +806,14 @@ class TestHtmlSplitActor:
 # ---------------------------------------------------------------------------
 class TestBatchEmbedActor:
     def _make(self):
-        from nemo_retriever.params import EmbedParams
-        from nemo_retriever.text_embed.operators import _BatchEmbedActor
+        from nemo_retriever.common.params import EmbedParams
+        from nemo_retriever.operators.embed.operators import _BatchEmbedActor
 
         params = EmbedParams(model_name="test-model", embed_invoke_url="http://fake")
         return _BatchEmbedActor(params=params)
 
     def test_inherits(self):
-        from nemo_retriever.text_embed.operators import _BatchEmbedActor
+        from nemo_retriever.operators.embed.operators import _BatchEmbedActor
 
         assert issubclass(_BatchEmbedActor, AbstractOperator)
 
@@ -816,7 +827,7 @@ class TestBatchEmbedActor:
         df = pd.DataFrame({"text": ["hello"]})
         pd.testing.assert_frame_equal(actor.postprocess(df), df)
 
-    @patch("nemo_retriever.text_embed.cpu_operator.embed_text_main_text_embed")
+    @patch("nemo_retriever.operators.embed.cpu_operator.embed_text_main_text_embed")
     def test_process(self, mock_fn):
         expected = pd.DataFrame({"text": ["hello"], "embedding": [[0.1, 0.2]]})
         mock_fn.return_value = expected
@@ -825,7 +836,7 @@ class TestBatchEmbedActor:
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.text_embed.cpu_operator.embed_text_main_text_embed")
+    @patch("nemo_retriever.operators.embed.cpu_operator.embed_text_main_text_embed")
     def test_call_delegates(self, mock_fn):
         expected = pd.DataFrame({"text": ["hello"], "embedding": [[0.1, 0.2]]})
         mock_fn.return_value = expected

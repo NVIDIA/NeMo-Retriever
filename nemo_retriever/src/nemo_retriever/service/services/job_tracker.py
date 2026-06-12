@@ -46,7 +46,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from nemo_retriever.service.models.base import RichModel
+from nemo_retriever.common.schemas.base import RichModel
 
 logger = logging.getLogger(__name__)
 

@@ -36,7 +36,7 @@ class TestRRFAggregatorOperator:
         )
 
     def test_rrf_scores_correct(self):
-        from nemo_retriever.graph.rrf_aggregator_operator import RRFAggregatorOperator
+        from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
 
         op = RRFAggregatorOperator(k=60)
         result = op.run(self._make_input())
@@ -51,7 +51,7 @@ class TestRRFAggregatorOperator:
         assert abs(q1.loc["d2", "rrf_score"] - expected_d2) < 1e-10
 
     def test_sorted_descending_per_query(self):
-        from nemo_retriever.graph.rrf_aggregator_operator import RRFAggregatorOperator
+        from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
 
         op = RRFAggregatorOperator(k=60)
         result = op.run(self._make_input())
@@ -61,7 +61,7 @@ class TestRRFAggregatorOperator:
             assert scores == sorted(scores, reverse=True), "Scores not sorted descending"
 
     def test_text_carried_through(self):
-        from nemo_retriever.graph.rrf_aggregator_operator import RRFAggregatorOperator
+        from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
 
         op = RRFAggregatorOperator(k=60)
         result = op.run(self._make_input())
@@ -69,14 +69,14 @@ class TestRRFAggregatorOperator:
         assert q1.loc["d1", "text"] == "t1"
 
     def test_output_schema(self):
-        from nemo_retriever.graph.rrf_aggregator_operator import RRFAggregatorOperator
+        from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
 
         op = RRFAggregatorOperator(k=60)
         result = op.run(self._make_input())
         assert set(result.columns) >= {"query_id", "query_text", "doc_id", "rrf_score", "text"}
 
     def test_missing_column_raises(self):
-        from nemo_retriever.graph.rrf_aggregator_operator import RRFAggregatorOperator
+        from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
 
         op = RRFAggregatorOperator(k=60)
         bad_df = pd.DataFrame({"query_id": ["q1"], "query_text": ["x"]})
@@ -91,7 +91,7 @@ class TestRRFAggregatorOperator:
 
 class TestPromptRendering:
     def test_react_prompt_no_extended_relevance(self):
-        from nemo_retriever.graph.react_agent_operator import _render_react_agent_prompt
+        from nemo_retriever.operators.graph_ops.react_agent_operator import _render_react_agent_prompt
 
         prompt = _render_react_agent_prompt(10, with_init_docs=True, enforce_top_k=True, extended_relevance=False)
         assert "<Goal>" in prompt
@@ -102,7 +102,7 @@ class TestPromptRendering:
         assert "TIP" in prompt
 
     def test_react_prompt_with_extended_relevance(self):
-        from nemo_retriever.graph.react_agent_operator import _render_react_agent_prompt
+        from nemo_retriever.operators.graph_ops.react_agent_operator import _render_react_agent_prompt
 
         prompt = _render_react_agent_prompt(5, with_init_docs=False, enforce_top_k=False, extended_relevance=True)
         assert "RELEVANCE_DEFINITION" in prompt
@@ -110,7 +110,7 @@ class TestPromptRendering:
         assert "TIP" not in prompt
 
     def test_selection_prompt_no_extended_relevance(self):
-        from nemo_retriever.graph.selection_agent_operator import _render_selection_prompt
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import _render_selection_prompt
 
         prompt = _render_selection_prompt(5, extended_relevance=False)
         assert "<ROLE>" in prompt
@@ -120,7 +120,7 @@ class TestPromptRendering:
         assert "5 most relevant" in prompt
 
     def test_selection_prompt_with_extended_relevance(self):
-        from nemo_retriever.graph.selection_agent_operator import _render_selection_prompt
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import _render_selection_prompt
 
         prompt = _render_selection_prompt(5, extended_relevance=True)
         assert "RELEVANCE_DEFINITION" in prompt
@@ -164,9 +164,9 @@ class TestSelectionAgentOperator:
             }
         )
 
-    @patch("nemo_retriever.graph.selection_agent_operator.invoke_chat_completion_step")
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
     def test_happy_path_selects_docs(self, mock_step):
-        from nemo_retriever.graph.selection_agent_operator import SelectionAgentOperator
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
         # LLM immediately calls log_selected_documents
         mock_step.return_value = _make_tool_call_response(
@@ -186,9 +186,9 @@ class TestSelectionAgentOperator:
         assert result["doc_id"].tolist() == ["d1", "d2"]
         assert result["rank"].tolist() == [1, 2]
 
-    @patch("nemo_retriever.graph.selection_agent_operator.invoke_chat_completion_step")
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
     def test_think_then_select(self, mock_step):
-        from nemo_retriever.graph.selection_agent_operator import SelectionAgentOperator
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
         # First call: think; second call: log_selected_documents
         mock_step.side_effect = [
@@ -206,9 +206,9 @@ class TestSelectionAgentOperator:
         assert result["doc_id"].tolist() == ["d3"]
         assert mock_step.call_count == 2
 
-    @patch("nemo_retriever.graph.selection_agent_operator.invoke_chat_completion_step")
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
     def test_extended_relevance_in_prompt(self, mock_step):
-        from nemo_retriever.graph.selection_agent_operator import SelectionAgentOperator
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
         captured_prompts = []
 
@@ -253,9 +253,9 @@ class TestReActAgentOperator:
 
         return retriever_fn
 
-    @patch("nemo_retriever.graph.react_agent_operator.invoke_chat_completion_step")
+    @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
     def test_simple_mode_retrieve_then_final(self, mock_step):
-        from nemo_retriever.graph.react_agent_operator import ReActAgentOperator
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
 
         # 1) agent calls retrieve("subquery"), 2) agent calls final_results
         mock_step.side_effect = [
@@ -281,9 +281,9 @@ class TestReActAgentOperator:
         assert 0 in result["step_idx"].values
         assert "d1" in result["doc_id"].values
 
-    @patch("nemo_retriever.graph.react_agent_operator.invoke_chat_completion_step")
+    @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
     def test_with_results_mode_initial_retrieval(self, mock_step):
-        from nemo_retriever.graph.react_agent_operator import ReActAgentOperator
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
 
         # with_results=True → retriever_fn called once before LLM, then LLM immediately calls final_results
         mock_step.return_value = _make_tool_call_response(
@@ -305,9 +305,9 @@ class TestReActAgentOperator:
         assert retriever.call_count >= 1
         assert 0 in result["step_idx"].values
 
-    @patch("nemo_retriever.graph.react_agent_operator.invoke_chat_completion_step")
+    @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
     def test_output_row_structure(self, mock_step):
-        from nemo_retriever.graph.react_agent_operator import ReActAgentOperator
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
 
         mock_step.side_effect = [
             _make_tool_call_response("retrieve", {"query": "q"}),
@@ -328,8 +328,8 @@ class TestReActAgentOperator:
         assert result["step_idx"].dtype in (int, "int64")
         assert result["doc_id"].notna().all()
 
-    @patch("nemo_retriever.graph.selection_agent_operator.invoke_chat_completion_step")
-    @patch("nemo_retriever.graph.react_agent_operator.invoke_chat_completion_step")
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
+    @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
     def test_pipeline_end_to_end_with_mocks(self, mock_react_step, mock_selection_step):
         """Wire ReAct → RRF → Selection with mocks; verify final output shape.
 
@@ -337,9 +337,9 @@ class TestReActAgentOperator:
         namespace, so both must be patched independently.
         """
         from nemo_retriever.graph.executor import InprocessExecutor
-        from nemo_retriever.graph.react_agent_operator import ReActAgentOperator
-        from nemo_retriever.graph.rrf_aggregator_operator import RRFAggregatorOperator
-        from nemo_retriever.graph.selection_agent_operator import SelectionAgentOperator
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+        from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
         # ReAct: retrieve once, then final_results
         mock_react_step.side_effect = [
@@ -387,7 +387,7 @@ class TestReActAgentOperator:
 
 class TestParseJsonList:
     def _parse(self, raw, fallback="orig"):
-        from nemo_retriever.graph.subquery_operator import _parse_json_list
+        from nemo_retriever.operators.graph_ops.subquery_operator import _parse_json_list
 
         return _parse_json_list(raw, fallback=fallback)
 
@@ -427,7 +427,7 @@ class TestParseJsonList:
 
 class TestSubQueryPreprocess:
     def _op(self):
-        from nemo_retriever.graph.subquery_operator import SubQueryGeneratorOperator
+        from nemo_retriever.operators.graph_ops.subquery_operator import SubQueryGeneratorOperator
 
         return SubQueryGeneratorOperator(llm_model="test-model")
 
@@ -470,7 +470,7 @@ class TestSubQueryGeneratorOperator:
     """Tests for _build_system_prompt and _generate_one."""
 
     def _op(self, **kwargs):
-        from nemo_retriever.graph.subquery_operator import SubQueryGeneratorOperator
+        from nemo_retriever.operators.graph_ops.subquery_operator import SubQueryGeneratorOperator
 
         return SubQueryGeneratorOperator(llm_model="test-model", **kwargs)
 
@@ -500,7 +500,7 @@ class TestSubQueryGeneratorOperator:
 
     # -- _generate_one --------------------------------------------------------
 
-    @patch("nemo_retriever.graph.subquery_operator.invoke_chat_completions")
+    @patch("nemo_retriever.operators.graph_ops.subquery_operator.invoke_chat_completions")
     def test_generate_one_happy_path(self, mock_invoke):
         mock_invoke.return_value = ['["sub1", "sub2", "sub3"]']
         op = self._op(max_subqueries=4)
@@ -508,19 +508,19 @@ class TestSubQueryGeneratorOperator:
         assert result == ["sub1", "sub2", "sub3"]
         mock_invoke.assert_called_once()
 
-    @patch("nemo_retriever.graph.subquery_operator.invoke_chat_completions")
+    @patch("nemo_retriever.operators.graph_ops.subquery_operator.invoke_chat_completions")
     def test_generate_one_fenced_json(self, mock_invoke):
         mock_invoke.return_value = ['```json\n["a", "b"]\n```']
         op = self._op()
         assert op._generate_one("q", "sys") == ["a", "b"]
 
-    @patch("nemo_retriever.graph.subquery_operator.invoke_chat_completions")
+    @patch("nemo_retriever.operators.graph_ops.subquery_operator.invoke_chat_completions")
     def test_generate_one_malformed_json_falls_back(self, mock_invoke):
         mock_invoke.return_value = ["not valid json"]
         op = self._op()
         assert op._generate_one("original query", "sys") == ["original query"]
 
-    @patch("nemo_retriever.graph.subquery_operator.invoke_chat_completions")
+    @patch("nemo_retriever.operators.graph_ops.subquery_operator.invoke_chat_completions")
     def test_generate_one_llm_error_falls_back(self, mock_invoke):
         mock_invoke.side_effect = RuntimeError("connection timeout")
         op = self._op()
@@ -534,7 +534,7 @@ class TestSubQueryGeneratorOperator:
 
 class TestSelectionAgentPreprocess:
     def _op(self):
-        from nemo_retriever.graph.selection_agent_operator import SelectionAgentOperator
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
         return SelectionAgentOperator(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
 
@@ -568,9 +568,9 @@ class TestSelectionAgentPreprocess:
 
 
 class TestSelectionAgentMaxSteps:
-    @patch("nemo_retriever.graph.selection_agent_operator.invoke_chat_completion_step")
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
     def test_max_steps_exhausted_returns_empty(self, mock_step):
-        from nemo_retriever.graph.selection_agent_operator import SelectionAgentOperator
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
         # LLM only ever calls think — never log_selected_documents
         mock_step.return_value = _make_tool_call_response("think", {"thought": "still thinking..."})

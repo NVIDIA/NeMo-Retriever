@@ -80,12 +80,12 @@ Root ingest CLI files:
 
 | File | Responsibility |
 |---|---|
-| `adapters/cli/main.py` | Registers top-level Typer apps. It does not own ingest option construction. |
-| `adapters/cli/ingest/app.py` | Creates the `retriever ingest` sub-app and default-local router. |
-| `adapters/cli/ingest/graph.py` | Owns local and batch CLI callbacks and builds graph `IngestPlanRequest`. |
-| `adapters/cli/ingest/service.py` | Owns service CLI callback and builds `ServiceIngestPlanRequest`. |
-| `adapters/cli/ingest/options.py` | Typer option metadata only. No request construction or policy. |
-| `adapters/cli/ingest/shared.py` | Quiet output capture, CLI error handling, and success-summary helpers. |
+| `cli/main.py` | Registers top-level Typer apps. It does not own ingest option construction. |
+| `cli/ingest/app.py` | Creates the `retriever ingest` sub-app and default-local router. |
+| `cli/ingest/graph.py` | Owns local and batch CLI callbacks and builds graph `IngestPlanRequest`. |
+| `cli/ingest/service.py` | Owns service CLI callback and builds `ServiceIngestPlanRequest`. |
+| `cli/ingest/options.py` | Typer option metadata only. No request construction or policy. |
+| `cli/ingest/shared.py` | Quiet output capture, CLI error handling, and success-summary helpers. |
 
 Canonical ingest files:
 
@@ -106,10 +106,10 @@ Local/default flow:
 
 ```text
 retriever ingest docs/
-  -> adapters.cli.ingest.app routes to local
-  -> adapters.cli.ingest.graph builds IngestPlanRequest
+  -> nemo_retriever.cli.ingest.app routes to local
+  -> nemo_retriever.cli.ingest.graph builds IngestPlanRequest
   -> ingest.plan.resolve_ingest_plan(...)
-  -> adapters.cli.ingest_workflow.run_ingest_workflow(...)
+  -> nemo_retriever.cli.ingest_workflow.run_ingest_workflow(...)
   -> ingest.execution.execute_ingest_plan(...)
   -> GraphIngestor
   -> local LanceDB
@@ -119,9 +119,9 @@ Batch flow:
 
 ```text
 retriever ingest batch docs/
-  -> adapters.cli.ingest.graph builds IngestPlanRequest(run_mode="batch")
+  -> nemo_retriever.cli.ingest.graph builds IngestPlanRequest(run_mode="batch")
   -> ingest.plan.resolve_ingest_plan(...)
-  -> adapters.cli.ingest_workflow.run_ingest_workflow(...)
+  -> nemo_retriever.cli.ingest_workflow.run_ingest_workflow(...)
   -> ingest.execution.execute_ingest_plan(...)
   -> GraphIngestor
   -> local LanceDB
@@ -131,9 +131,9 @@ Service flow:
 
 ```text
 retriever ingest service docs/
-  -> adapters.cli.ingest.service builds ServiceIngestPlanRequest
+  -> nemo_retriever.cli.ingest.service builds ServiceIngestPlanRequest
   -> ingest.service.resolve_service_ingest_request(...)
-  -> adapters.cli.ingest_workflow.run_service_ingest_workflow(...)
+  -> nemo_retriever.cli.ingest_workflow.run_service_ingest_workflow(...)
   -> ServiceIngestor client
   -> remote retriever service
 ```
@@ -220,7 +220,7 @@ commands.
 
 For an option that already exists in the graph ingest plan:
 
-1. Add or reuse a Typer alias in `adapters/cli/ingest/options.py`.
+1. Add or reuse a Typer alias in `cli/ingest/options.py`.
 2. Add the parameter to `_local_command`, `_batch_command`, or both.
 3. Add the explicit assignment to the narrow group builder in `graph.py`.
 4. Add or update a focused root CLI test that asserts the typed request field.
@@ -248,8 +248,8 @@ core ingest behavior reviewable.
 
 When reviewing root ingest changes, check:
 
-- `adapters/cli/main.py` only registers top-level apps.
-- Typer-specific code stays under `adapters/cli/ingest/`.
+- `cli/main.py` only registers top-level apps.
+- Typer-specific code stays under `cli/ingest/`.
 - Graph options build `IngestPlanRequest`; service options build
   `ServiceIngestPlanRequest`.
 - Service mode does not regain local-only or batch-only flags.

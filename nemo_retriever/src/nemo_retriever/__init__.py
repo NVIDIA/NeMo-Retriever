@@ -19,7 +19,7 @@ for _finder in sys.meta_path:
         _finder.has_warned_pynvml = True
         break
 
-from .retriever import retriever as _retriever_cls
+from nemo_retriever.graph.retriever import retriever as _retriever_cls
 
 __all__ = [
     "__version__",
@@ -37,11 +37,11 @@ retriever = _retriever_cls()
 
 def __getattr__(name: str):
     if name == "create_ingestor":
-        from .ingestor import create_ingestor
+        from nemo_retriever.ingestor import create_ingestor
 
         return create_ingestor
     if name in {"__version__", "get_version", "get_version_info"}:
-        from .version import __version__, get_version, get_version_info
+        from nemo_retriever.version import __version__, get_version, get_version_info
 
         return {
             "__version__": __version__,
@@ -49,15 +49,15 @@ def __getattr__(name: str):
             "get_version_info": get_version_info,
         }[name]
     if name == "ingestor":
-        from .ingestor import ingestor
+        from nemo_retriever.ingestor import ingestor
 
         return ingestor
     if name == "GraphIngestionError":
-        from .graph_ingestor import GraphIngestionError
+        from nemo_retriever.ingestor.graph_ingestor import GraphIngestionError
 
         return GraphIngestionError
     if name == "RetrieverServiceCompatibilityError":
-        from .service.client import RetrieverServiceCompatibilityError
+        from nemo_retriever.service.client import RetrieverServiceCompatibilityError
 
         return RetrieverServiceCompatibilityError
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

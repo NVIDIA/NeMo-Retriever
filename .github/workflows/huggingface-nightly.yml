@@ -7,13 +7,12 @@ on:
   workflow_dispatch:
     inputs:
       upload_to:
-        description: "Where to upload (none/testpypi/pypi)"
+        description: "Where to upload (none/pypi)"
         required: true
-        default: "testpypi"
+        default: "pypi"
         type: choice
         options:
           - none
-          - testpypi
           - pypi
       skip_existing:
         description: "Skip already-uploaded versions"
@@ -90,12 +89,15 @@ jobs:
           - id: nemotron-page-elements-v3
             url: https://huggingface.co/nvidia/nemotron-page-elements-v3
             project_subdir: ""
+            nightly_base_version: "3.0.2"
           - id: nemotron-table-structure-v1
             url: https://huggingface.co/nvidia/nemotron-table-structure-v1
             project_subdir: ""
+            nightly_base_version: "1.0.1"
           - id: nemotron-graphic-elements-v1
             url: https://huggingface.co/nvidia/nemotron-graphic-elements-v1
             project_subdir: ""
+            nightly_base_version: "1.0.1"
 
     steps:
       - name: Checkout orchestrator repo
@@ -117,8 +119,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Default for scheduled runs: testpypi
-          upload_to="testpypi"
+          # Default for scheduled runs: pypi
+          upload_to="pypi"
           skip_existing="true"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             upload_to="${{ inputs.upload_to }}"
@@ -130,25 +132,19 @@ jobs:
       - name: Build (and maybe upload)
         env:
           NIGHTLY_DATE_SUFFIX: ${{ needs.nightly_coordinate.outputs.nightly_date_suffix }}
-          TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
 
           upload_flag=""
-          repo_url="https://test.pypi.org/legacy/"
-          token_env="TEST_PYPI_API_TOKEN"
+          repo_url="https://upload.pypi.org/legacy/"
+          token_env="PYPI_API_TOKEN"
           if [[ "${{ steps.target.outputs.upload_to }}" == "none" ]]; then
             upload_flag=""
           else
             upload_flag="--upload"
           fi
-          if [[ "${{ steps.target.outputs.upload_to }}" == "pypi" ]]; then
-            repo_url="https://upload.pypi.org/legacy/"
-            token_env="PYPI_API_TOKEN"
-          fi
-
           skip_existing_flag=""
           if [[ "${{ steps.target.outputs.skip_existing }}" == "true" ]]; then
             skip_existing_flag="--skip-existing"
@@ -160,6 +156,7 @@ jobs:
             --work-dir ".work" \
             --dist-dir "dist-out" \
             --project-subdir "${{ matrix.repo.project_subdir }}" \
+            --nightly-base-version "${{ matrix.repo.nightly_base_version }}" \
             ${upload_flag} \
             --repository-url "${repo_url}" \
             --token-env "${token_env}" \
@@ -228,8 +225,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Default for scheduled runs: testpypi
-          upload_to="testpypi"
+          # Default for scheduled runs: pypi
+          upload_to="pypi"
           skip_existing="true"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             upload_to="${{ inputs.upload_to }}"
@@ -241,7 +238,6 @@ jobs:
       - name: Build ${{ matrix.ocr.id }} (and maybe upload)
         env:
           NIGHTLY_DATE_SUFFIX: ${{ needs.nightly_coordinate.outputs.nightly_date_suffix }}
-          TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
           CUDA_HOME: /usr/local/cuda
           BUILD_CPP_EXTENSION: "1"
@@ -257,18 +253,13 @@ jobs:
           set -euo pipefail
 
           upload_flag=""
-          repo_url="https://test.pypi.org/legacy/"
-          token_env="TEST_PYPI_API_TOKEN"
+          repo_url="https://upload.pypi.org/legacy/"
+          token_env="PYPI_API_TOKEN"
           if [[ "${{ steps.target.outputs.upload_to }}" == "none" ]]; then
             upload_flag=""
           else
             upload_flag="--upload"
           fi
-          if [[ "${{ steps.target.outputs.upload_to }}" == "pypi" ]]; then
-            repo_url="https://upload.pypi.org/legacy/"
-            token_env="PYPI_API_TOKEN"
-          fi
-
           skip_existing_flag=""
           if [[ "${{ steps.target.outputs.skip_existing }}" == "true" ]]; then
             skip_existing_flag="--skip-existing"
@@ -428,7 +419,7 @@ jobs:
                   "-linux_aarch64.whl"
               ):
                   raise SystemExit(
-                      "Wheel still has a bare linux_* tag; TestPyPI rejects these. "
+                      "Wheel still has a bare linux_* tag; PyPI rejects these. "
                       "auditwheel repair should emit manylinux_*. Got: "
                       f"{wheel.name}"
                   )

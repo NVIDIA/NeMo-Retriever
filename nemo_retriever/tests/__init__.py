@@ -11,8 +11,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from nemo_retriever.audio.media_interface import is_ffmpeg_available
-from nemo_retriever.audio.media_interface import is_media_available
+from nemo_retriever.common.modality.audio.media_interface import is_ffmpeg_available
+from nemo_retriever.common.modality.audio.media_interface import is_media_available
 
 __all__ = [
     "is_ffmpeg_cli_available",

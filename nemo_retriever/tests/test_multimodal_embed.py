@@ -17,7 +17,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Pure helpers from main_text_embed (no transitive-import issues)
 # ---------------------------------------------------------------------------
-from nemo_retriever.text_embed.main_text_embed import (
+from nemo_retriever.models.inference.main_text_embed import (
     _format_image_input_string,
     _format_text_image_pair_input_string,
     _image_from_row,
@@ -28,7 +28,7 @@ from nemo_retriever.text_embed.main_text_embed import (
 # Stub heavy internal modules so the content-transform helpers can be imported
 # in lightweight CI (only pytest, pandas, pydantic, pyyaml).
 #
-# Older ingest modules can pull in ray, torch, nemotron_*, nemo_retriever.api,
+# Older ingest modules can pull in ray, torch, nemotron_*, nemo_retriever.common.api,
 # etc. And inprocess.py itself imports model/local (torch, nemotron_*),
 # page_elements, ocr, and pdf.extract — each with their own heavy transitive
 # deps.
@@ -41,39 +41,39 @@ _HEAVY_INTERNAL = [
     # -- sibling ingest modes (prevents batch.py from loading) ------------------
     "nemo_retriever.ingest_modes.batch",
     # -- model / ML packages (torch, nemotron_*, transformers) ---------------
-    "nemo_retriever.model.local",
-    "nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder",
-    "nemo_retriever.model.local.nemotron_page_elements_v3",
-    "nemo_retriever.model.local.nemotron_ocr_v1",
-    "nemo_retriever.model.local.nemotron_table_structure_v1",
-    "nemo_retriever.model.local.nemotron_graphic_elements_v1",
+    "nemo_retriever.models.local",
+    "nemo_retriever.models.local.llama_nemotron_embed_1b_v2_embedder",
+    "nemo_retriever.models.local.nemotron_page_elements_v3",
+    "nemo_retriever.models.local.nemotron_ocr_v1",
+    "nemo_retriever.models.local.nemotron_table_structure_v1",
+    "nemo_retriever.models.local.nemotron_graphic_elements_v1",
     # -- detection / OCR (nemotron_page_elements_v3, PIL, requests) ----------
     "nemo_retriever.page_elements",
-    "nemo_retriever.page_elements.page_elements",
+    "nemo_retriever.operators.extract.page_elements.page_elements",
     "nemo_retriever.ocr",
-    "nemo_retriever.ocr.ocr",
-    # -- chart (nemo_retriever.api → cv2) ----------------------------------------
+    "nemo_retriever.operators.extract.ocr.ocr",
+    # -- chart (nemo_retriever.common.api → cv2) ----------------------------------------
     "nemo_retriever.chart",
-    "nemo_retriever.chart.chart_detection",
-    "nemo_retriever.chart.commands",
-    "nemo_retriever.chart.processor",
-    "nemo_retriever.chart.config",
+    "nemo_retriever.operators.extract.chart.chart_detection",
+    "nemo_retriever.cli.chart.commands",
+    "nemo_retriever.common.modality.chart.processor",
+    "nemo_retriever.common.modality.chart.config",
     "nemo_retriever.chart.stage",
-    # -- table (nemo_retriever.api → cv2) ----------------------------------------
+    # -- table (nemo_retriever.common.api → cv2) ----------------------------------------
     "nemo_retriever.table",
-    "nemo_retriever.table.table_detection",
-    "nemo_retriever.table.config",
+    "nemo_retriever.operators.extract.table.table_detection",
+    "nemo_retriever.common.modality.table.config",
     "nemo_retriever.table.stage",
-    "nemo_retriever.table.commands",
-    "nemo_retriever.table.processor",
-    # -- PDF (pypdfium2, nemo_retriever.api via pdf/__init__ → __main__ → stage) --
+    "nemo_retriever.cli.table.commands",
+    "nemo_retriever.common.modality.table.processor",
+    # -- PDF (pypdfium2, nemo_retriever.common.api via pdf/__init__ → __main__ → stage) --
     "nemo_retriever.pdf",
-    "nemo_retriever.pdf.__main__",
-    "nemo_retriever.pdf.config",
-    "nemo_retriever.pdf.io",
-    "nemo_retriever.pdf.stage",
-    "nemo_retriever.pdf.extract",
-    "nemo_retriever.pdf.split",
+    "nemo_retriever.cli.pdf.__main__",
+    "nemo_retriever.common.modality.pdf.config",
+    "nemo_retriever.common.modality.pdf.io",
+    "nemo_retriever.cli.pdf.stage",
+    "nemo_retriever.operators.extract.pdf.extract",
+    "nemo_retriever.operators.extract.pdf.split",
 ]
 # Track which modules we injected (vs. ones already loaded) so we can
 # remove only our stubs after the import, preventing leaks into other
@@ -84,7 +84,10 @@ for _mod_name in _HEAVY_INTERNAL:
         sys.modules[_mod_name] = MagicMock()
         _injected.append(_mod_name)
 
-from nemo_retriever.graph.content_transforms import collapse_content_to_page_rows, explode_content_to_rows  # noqa: E402
+from nemo_retriever.common.modality.content_transforms import (
+    collapse_content_to_page_rows,
+    explode_content_to_rows,
+)  # noqa: E402
 
 # Clean up injected mocks so they don't poison imports in other test files.
 for _mod_name in _injected:
@@ -202,7 +205,7 @@ class TestExplodeContentToRows:
         assert list(result["_embed_modality"]) == ["text", "text"]
         assert "_image_b64" not in result.columns
 
-    @patch("nemo_retriever.graph.content_transforms._crop_b64_image_by_norm_bbox")
+    @patch("nemo_retriever.common.modality.content_transforms._crop_b64_image_by_norm_bbox")
     def test_text_image_carries_image(self, mock_crop):
         """text_image mode copies page image to _image_b64, crops for structured content."""
         mock_crop.return_value = ("cropped_b64", None)

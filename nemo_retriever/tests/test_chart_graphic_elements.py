@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from nemo_retriever.utils.table_and_chart import join_graphic_elements_and_ocr_output
+from nemo_retriever.common.modality.table_and_chart import join_graphic_elements_and_ocr_output
 
 
 def _can_import(mod: str) -> bool:
@@ -112,7 +112,7 @@ class TestGraphicElementsOCRPageElements:
     """Test the full graphic_elements_ocr_page_elements function with mocked models."""
 
     def test_no_charts_produces_empty_chart_column(self) -> None:
-        from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
+        from nemo_retriever.operators.extract.chart.chart_detection import graphic_elements_ocr_page_elements
 
         df = _make_chart_page_df(has_chart=False)
         mock_ge_model = MagicMock()
@@ -130,7 +130,7 @@ class TestGraphicElementsOCRPageElements:
         mock_ocr_model.invoke.assert_not_called()
 
     def test_no_page_image_produces_empty_chart_column(self) -> None:
-        from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
+        from nemo_retriever.operators.extract.chart.chart_detection import graphic_elements_ocr_page_elements
 
         df = pd.DataFrame(
             [
@@ -155,7 +155,7 @@ class TestGraphicElementsOCRPageElements:
         assert result.iloc[0]["chart"] == []
 
     def test_with_mocked_models_produces_text(self) -> None:
-        from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
+        from nemo_retriever.operators.extract.chart.chart_detection import graphic_elements_ocr_page_elements
 
         import torch
 
@@ -194,7 +194,7 @@ class TestGraphicElementsOCRPageElements:
 
     def test_fallback_when_no_ge_detections(self) -> None:
         """When GE model returns no detections, should fall back to OCR-only text."""
-        from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
+        from nemo_retriever.operators.extract.chart.chart_detection import graphic_elements_ocr_page_elements
 
         import torch
 
@@ -231,7 +231,7 @@ class TestGraphicElementsOCRPageElements:
 
     def test_model_error_recorded_in_metadata(self) -> None:
         """When model raises an exception, it should be recorded in metadata, not crash."""
-        from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
+        from nemo_retriever.operators.extract.chart.chart_detection import graphic_elements_ocr_page_elements
 
         import torch
 
@@ -257,7 +257,7 @@ class TestGraphicElementsOCRPageElements:
         assert "model exploded" in meta["error"]["message"]
 
     def test_requires_model_when_no_url(self) -> None:
-        from nemo_retriever.chart.chart_detection import graphic_elements_ocr_page_elements
+        from nemo_retriever.operators.extract.chart.chart_detection import graphic_elements_ocr_page_elements
 
         df = _make_chart_page_df()
         with pytest.raises(ValueError, match="graphic_elements_model"):
@@ -278,7 +278,7 @@ class TestGraphicElementsActor:
 
     def test_actor_error_returns_dataframe_with_error(self) -> None:
         """Actor should never raise; errors go into metadata columns."""
-        from nemo_retriever.chart.chart_detection import GraphicElementsGPUActor
+        from nemo_retriever.operators.extract.chart.chart_detection import GraphicElementsGPUActor
 
         actor = GraphicElementsGPUActor.__new__(GraphicElementsGPUActor)
         actor._graphic_elements_model = None
@@ -306,7 +306,7 @@ class TestGraphicElementsActor:
 @_needs_cv2
 class TestGraphicElementsOCRConfig:
     def test_load_config_defaults(self) -> None:
-        from nemo_retriever.chart.config import load_graphic_elements_ocr_config_from_dict
+        from nemo_retriever.common.modality.chart.config import load_graphic_elements_ocr_config_from_dict
 
         cfg = load_graphic_elements_ocr_config_from_dict({})
         assert cfg.graphic_elements_invoke_url == ""
@@ -315,7 +315,7 @@ class TestGraphicElementsOCRConfig:
         assert cfg.request_timeout_s == 60.0
 
     def test_load_config_with_values(self) -> None:
-        from nemo_retriever.chart.config import load_graphic_elements_ocr_config_from_dict
+        from nemo_retriever.common.modality.chart.config import load_graphic_elements_ocr_config_from_dict
 
         cfg = load_graphic_elements_ocr_config_from_dict(
             {
@@ -339,7 +339,7 @@ class TestGraphicElementsOCRConfig:
 @_needs_cv2
 class TestBuildPlanChartStructure:
     def test_use_graphic_elements_selects_chart_structure_stage(self) -> None:
-        from nemo_retriever.application.pipeline.build_plan import stage_names_from_flags
+        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
 
         names = list(
             stage_names_from_flags(
@@ -351,21 +351,21 @@ class TestBuildPlanChartStructure:
         assert "enrich_chart" not in names
 
     def test_no_graphic_elements_selects_default_chart_stage(self) -> None:
-        from nemo_retriever.application.pipeline.build_plan import stage_names_from_flags
+        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
 
         names = list(stage_names_from_flags(extract_charts=True))
         assert "enrich_chart" in names
         assert "enrich_graphic_elements" not in names
 
     def test_no_extract_charts_yields_no_chart_stage(self) -> None:
-        from nemo_retriever.application.pipeline.build_plan import stage_names_from_flags
+        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
 
         names = list(stage_names_from_flags(extract_charts=False, use_graphic_elements=True))
         assert "enrich_graphic_elements" not in names
         assert "enrich_chart" not in names
 
     def test_graphic_elements_flag_does_not_affect_table_stages(self) -> None:
-        from nemo_retriever.application.pipeline.build_plan import stage_names_from_flags
+        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
 
         names = list(
             stage_names_from_flags(
@@ -389,7 +389,7 @@ class TestBuildPlanChartStructure:
 class TestPredictionToDetectionsStringLabels:
     def test_string_labels_handled(self) -> None:
         import torch
-        from nemo_retriever.chart.chart_detection import _prediction_to_detections
+        from nemo_retriever.operators.extract.chart.chart_detection import _prediction_to_detections
 
         pred = {
             "boxes": torch.tensor([[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8]]),
@@ -403,7 +403,7 @@ class TestPredictionToDetectionsStringLabels:
 
     def test_integer_labels_still_work(self) -> None:
         import torch
-        from nemo_retriever.chart.chart_detection import _prediction_to_detections
+        from nemo_retriever.operators.extract.chart.chart_detection import _prediction_to_detections
 
         pred = {
             "boxes": torch.tensor([[0.1, 0.2, 0.3, 0.4]]),

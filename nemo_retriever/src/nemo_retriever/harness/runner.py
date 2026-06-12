@@ -450,8 +450,8 @@ try:
             return 0
 
     import ray
-    from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
-    from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
+    from nemo_retriever.models.hf_cache import collect_hf_runtime_env
+    from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env
 
     effective_ray = ray_address or os.environ.get("RAY_ADDRESS")
     is_local = effective_ray in ("auto", "local", None, "")

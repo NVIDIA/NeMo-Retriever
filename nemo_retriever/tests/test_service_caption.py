@@ -25,7 +25,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from nemo_retriever.params import CaptionParams
+from nemo_retriever.common.params import CaptionParams
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
     NimEndpointsConfig,
@@ -33,8 +33,8 @@ from nemo_retriever.service.config import (
     PipelinePoolConfig,
     ServiceConfig,
 )
-from nemo_retriever.service.models.pipeline_spec import PipelineSpec
-from nemo_retriever.service.policy import (
+from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
+from nemo_retriever.common.policy import (
     PolicyError,
     PipelineOverridesPolicy,
     validate_pipeline_spec,
@@ -46,7 +46,7 @@ from nemo_retriever.service.services.pipeline_executor import (
     build_caption_params,
 )
 from nemo_retriever.service.services.pipeline_pool import WorkItem
-from nemo_retriever.service_ingestor import ServiceIngestor
+from nemo_retriever.service.service_ingestor import ServiceIngestor
 
 
 # ----------------------------------------------------------------------

@@ -40,8 +40,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nemo_retriever.evaluation.orchestrator import QAEvalPipeline
-from nemo_retriever.llm.types import RetrievalResult
+from nemo_retriever.tools.evaluation.orchestrator import QAEvalPipeline
+from nemo_retriever.models.llm.types import RetrievalResult
 
 
 def _make_pipeline(*, retrieve_side_effect: Any = None) -> QAEvalPipeline:
