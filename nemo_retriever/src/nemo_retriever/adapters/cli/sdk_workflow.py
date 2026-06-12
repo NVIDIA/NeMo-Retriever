@@ -1400,50 +1400,14 @@ def _evidence_item(hit: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def retrieve(
-    question: str,
-    *,
-    top_k: int = 10,
-    hybrid: bool = True,
-    lancedb_uri: str = DEFAULT_LANCEDB_URI,
-    table_name: str = DEFAULT_TABLE_NAME,
-    embed_model_name: str | None = None,
-    embed_invoke_url: str | None = None,
-) -> dict[str, Any]:
-    """Skill-first retrieve: one fused query -> answer-ready, fidelity-tagged, cited evidence + coverage.
+def build_evidence_result(hits: list, strategies_used: list[str]) -> dict[str, Any]:
+    """Assemble the answer-ready ``{evidence, coverage}`` contract shape from raw hits.
 
-    Single hybrid (vector+BM25) query; if the index has no FTS index, gracefully
-    falls back to vector-only. Returns the ``retrieve_result`` contract shape.
-
-    ``embed_invoke_url`` defaults from ``EMBED_INVOKE_URL`` (set by ``retriever
-    serve-models``) so retrieval is warm when a model server is running.
+    ``evidence`` items are fidelity-tagged and citation-ready; ``coverage`` summarizes
+    what was searched (``strategies_used``, ``n_docs_seen``) and flags thin spots
+    (single source, low-fidelity-only, out-of-corpus). This is the shape the skill
+    reasons over — emitted by ``retriever query --format evidence`` (the default).
     """
-    import os as _os
-
-    endpoint = embed_invoke_url if embed_invoke_url is not None else (_os.environ.get("EMBED_INVOKE_URL") or None)
-
-    def _run(use_hybrid: bool) -> list:
-        return query_documents(
-            question,
-            top_k=top_k,
-            hybrid=use_hybrid,
-            lancedb_uri=lancedb_uri,
-            table_name=table_name,
-            embed_model_name=embed_model_name,
-            embed_invoke_url=endpoint,
-        )
-
-    if hybrid:
-        try:
-            hits = _run(True)
-            strategies = ["semantic", "lexical"]
-        except Exception:  # noqa: BLE001 — e.g. table has no FTS index; degrade to vector
-            hits = _run(False)
-            strategies = ["semantic"]
-    else:
-        hits = _run(False)
-        strategies = ["semantic"]
-
     evidence = [_evidence_item(h) for h in (hits or [])]
     sources = {e["source"] for e in evidence if e.get("source")}
     thin: list[str] = []
@@ -1456,7 +1420,7 @@ def retrieve(
             thin.append("only low-fidelity (chart/image) evidence")
     return {
         "evidence": evidence,
-        "coverage": {"strategies_used": strategies, "n_docs_seen": len(sources), "thin_spots": thin},
+        "coverage": {"strategies_used": strategies_used, "n_docs_seen": len(sources), "thin_spots": thin},
     }
 
 

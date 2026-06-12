@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "retriever/retrieve-result",
-  "title": "retriever retrieve result (engine, contract 0.1.0)",
-  "description": "What `retriever retrieve <question>` emits and the skill reasons over.",
+  "$id": "retriever/query-result",
+  "title": "retriever query --format evidence result (engine, contract 0.2.0)",
+  "description": "What `retriever query <question>` emits by default (--format evidence) and the skill reasons over.",
   "type": "object",
   "required": ["evidence", "coverage"],
   "properties": {

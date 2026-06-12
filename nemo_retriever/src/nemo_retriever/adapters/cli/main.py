@@ -26,6 +26,7 @@ from nemo_retriever.adapters.cli.sdk_workflow import (
     OcrLangValue,
     OcrVersionValue,
     TableOutputFormatValue,
+    build_evidence_result,
     ingest_documents,
     query_documents,
     verify_claim,
@@ -744,46 +745,73 @@ def query_command(
         ),
     ),
     hybrid: bool = typer.Option(
-        False,
-        "--hybrid",
-        help="Combine vector + full-text (BM25) retrieval. Requires an index built with `ingest --hybrid`.",
+        True,
+        "--hybrid/--no-hybrid",
+        help="Fused vector + full-text (BM25) retrieval; falls back to vector-only if the index has "
+        "no FTS index. Default on.",
+    ),
+    output_format: str = typer.Option(
+        "evidence",
+        "--format",
+        help="'evidence' (default): answer-ready, fidelity-tagged, cited evidence + coverage — the "
+        "shape the skill reasons over. 'hits': raw ranked hit list (source/page/text/modality/score).",
     ),
     max_text_chars: int | None = typer.Option(
         None,
         "--max-text-chars",
-        help="Truncate each hit's text to N chars (0 = omit text, metadata-only summary). Default: full text.",
+        help="('hits' format only) Truncate each hit's text to N chars (0 = metadata-only). Default: full text.",
     ),
 ) -> None:
+    if output_format not in ("evidence", "hits"):
+        typer.echo(f"Error: unknown --format {output_format!r} (use 'evidence' or 'hits').", err=True)
+        raise typer.Exit(1)
     if reranker_invoke_url is None:
         reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
     if embed_invoke_url is None:
         embed_invoke_url = os.environ.get("EMBED_INVOKE_URL") or None
     rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     _silence_noisy_libraries()
+
+    def _run(use_hybrid: bool) -> list:
+        return query_documents(
+            query,
+            top_k=top_k,
+            candidate_k=candidate_k,
+            page_dedup=page_dedup,
+            content_types=content_types,
+            lancedb_uri=lancedb_uri,
+            table_name=table_name,
+            embed_invoke_url=embed_invoke_url,
+            embed_model_name=embed_model_name,
+            query_embed_backend=query_embed_backend,
+            reranker_invoke_url=reranker_invoke_url,
+            reranker_model_name=reranker_model_name,
+            reranker_backend=reranker_backend,
+            rerank=rerank,
+            hybrid=use_hybrid,
+        )
+
     try:
         with _quiet_capture():
-            hits = query_documents(
-                query,
-                top_k=top_k,
-                candidate_k=candidate_k,
-                page_dedup=page_dedup,
-                content_types=content_types,
-                lancedb_uri=lancedb_uri,
-                table_name=table_name,
-                embed_invoke_url=embed_invoke_url,
-                embed_model_name=embed_model_name,
-                query_embed_backend=query_embed_backend,
-                reranker_invoke_url=reranker_invoke_url,
-                reranker_model_name=reranker_model_name,
-                reranker_backend=reranker_backend,
-                rerank=rerank,
-                hybrid=hybrid,
-            )
+            if hybrid:
+                try:
+                    hits = _run(True)
+                    strategies = ["semantic", "lexical"]
+                except Exception:  # noqa: BLE001 — e.g. table has no FTS index; degrade to vector-only
+                    hits = _run(False)
+                    strategies = ["semantic"]
+            else:
+                hits = _run(False)
+                strategies = ["semantic"]
     except _ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
-    typer.echo(json.dumps([_query_cli_hit(hit, max_text_chars) for hit in hits], indent=2, sort_keys=True, default=str))
+    if output_format == "evidence":
+        result = build_evidence_result(hits, strategies)
+        typer.echo(json.dumps(result, indent=2, sort_keys=True, default=str))
+    else:
+        typer.echo(json.dumps([_query_cli_hit(hit, max_text_chars) for hit in hits], indent=2, sort_keys=True, default=str))
 
 
 @app.command("verify")
@@ -809,36 +837,6 @@ def verify_command(
             table_name=table_name,
             against=against,
         )
-    except _ROOT_CLI_ERRORS as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(1) from exc
-    typer.echo(json.dumps(result, indent=2, sort_keys=True, default=str))
-
-
-@app.command("retrieve")
-def retrieve_command(
-    question: str = typer.Argument(..., help="The question to retrieve evidence for."),
-    top_k: int = typer.Option(10, "--top-k", min=1, help="Max evidence items."),
-    hybrid: bool = typer.Option(
-        True, "--hybrid/--no-hybrid", help="Fused vector+BM25 (falls back to vector if no FTS index)."
-    ),
-    lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
-    table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),
-    embed_model_name: str | None = typer.Option(None, "--embed-model-name", help="Embedding model name."),
-) -> None:
-    """Retrieve answer-ready, fidelity-tagged, cited evidence + coverage for a question."""
-    from nemo_retriever.adapters.cli.sdk_workflow import retrieve
-
-    try:
-        with _quiet_capture():
-            result = retrieve(
-                question,
-                top_k=top_k,
-                hybrid=hybrid,
-                lancedb_uri=lancedb_uri,
-                table_name=table_name,
-                embed_model_name=embed_model_name,
-            )
     except _ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc

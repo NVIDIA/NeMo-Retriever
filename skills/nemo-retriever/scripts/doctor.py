@@ -2,12 +2,12 @@
 """Verify the installed `retriever` engine satisfies the skill's contract.
 
 Usage: <RETRIEVER_VENV>/bin/python skills/retriever/scripts/doctor.py
-Exits 0 if all checks pass, 1 otherwise. Always runs a LIVE ingest+retrieve probe.
+Exits 0 if all checks pass, 1 otherwise. Always runs a LIVE ingest+query probe.
 
-The skill's one primitive is `retriever retrieve` -> {evidence, coverage}; this
-doctor gates on THAT command and result shape. `query`/`verify`/`mcp` still ship
-but the skill does not depend on them, so they live in CONTRACT.md's legacy block
-rather than being gated here.
+The skill's one primitive is `retriever query` (default `--format evidence`) ->
+{evidence, coverage}; this doctor gates on THAT command and result shape. `query`
+also exposes power-user knobs the skill doesn't use, and `verify`/`mcp` still ship
+but the skill does not depend on them (CONTRACT.md legacy block), so neither is gated here.
 """
 import json
 import os
@@ -45,7 +45,7 @@ def help_text(bin_path, subcmd):
 
 def main():
     contract = json.load(open(os.path.join(CONTRACT_DIR, "cli-contract.json")))
-    rr_schema = json.load(open(os.path.join(CONTRACT_DIR, "retrieve-result.schema.json")))
+    rr_schema = json.load(open(os.path.join(CONTRACT_DIR, "query-result.schema.json")))
     item_schema = rr_schema["$defs"]["evidence_item"]
     cov_schema = rr_schema["$defs"]["coverage"]
 
@@ -64,16 +64,11 @@ def main():
             rc = 1
         check(rc == 0, f"subcommand `{sub}` exists")
 
-    # --- retrieve flag surface: required present, strategy knobs hidden (static) ---
-    rhelp = help_text(bin_path, "retrieve")
-    for flag in contract["retrieve"]["required_flags"]:
-        check(flag in rhelp, f"retrieve has {flag}")
-    for flag in contract["retrieve"]["forbidden_flags"]:
-        check(
-            flag not in rhelp,
-            f"retrieve does NOT expose {flag}",
-            "skill-first regression: retrieve must hide strategy knobs",
-        )
+    # --- query flag surface: required flags present (static). `query` is now both the
+    # skill primitive and the power-user tool, so strategy knobs are allowed. ---
+    rhelp = help_text(bin_path, "query")
+    for flag in contract["query"]["required_flags"]:
+        check(flag in rhelp, f"query has {flag}")
 
     # --- ingest flag surface (static, no GPU) ---
     ihelp = help_text(bin_path, "ingest")
@@ -114,7 +109,7 @@ def main():
         r = subprocess.run(
             [
                 bin_path,
-                "retrieve",
+                "query",
                 "What is the capital of the test corpus?",
                 "--top-k",
                 "3",
@@ -130,28 +125,28 @@ def main():
             text=True,
             timeout=600,
         )
-        check(r.returncode == 0, "live retrieve", r.stderr.strip()[-300:])
+        check(r.returncode == 0, "live query (--format evidence default)", r.stderr.strip()[-300:])
         result = None
         if r.returncode == 0:
             try:
                 result = json.loads(r.stdout)
                 check(
                     isinstance(result, dict) and "evidence" in result and "coverage" in result,
-                    "retrieve emits {evidence, coverage}",
+                    "query emits {evidence, coverage}",
                 )
             except Exception as e:  # noqa: BLE001
-                check(False, "retrieve stdout is JSON", str(e))
+                check(False, "query stdout is JSON", str(e))
         if isinstance(result, dict):
             ev = result.get("evidence")
-            check(isinstance(ev, list) and len(ev) > 0, "retrieve returned evidence")
+            check(isinstance(ev, list) and len(ev) > 0, "query returned evidence")
             if isinstance(ev, list) and ev:
                 ok, why = validate(ev[0], item_schema)
-                check(ok, "evidence item matches retrieve-result schema", why)
+                check(ok, "evidence item matches query-result schema", why)
             cov = result.get("coverage")
             check(isinstance(cov, dict), "coverage is an object")
             if isinstance(cov, dict):
                 ok, why = validate(cov, cov_schema)
-                check(ok, "coverage matches retrieve-result schema", why)
+                check(ok, "coverage matches query-result schema", why)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

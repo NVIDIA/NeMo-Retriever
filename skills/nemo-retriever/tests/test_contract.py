@@ -1,6 +1,6 @@
 """Contract test: the installed retriever engine must satisfy the skill contract.
 
-Runs the live doctor probe (ingest + retrieve + schema check). Requires the retriever
+Runs the live doctor probe (ingest + query + schema check). Requires the retriever
 venv with GPU access; skips cleanly if the CLI is absent.
 """
 

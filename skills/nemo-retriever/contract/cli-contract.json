@@ -1,12 +1,14 @@
 {
-  "contract_version": "0.1.0",
-  "primitive": "retrieve",
-  "subcommands_required": ["ingest", "retrieve", "serve-models"],
-  "retrieve": {
-    "required_flags": ["--top-k", "--hybrid"],
+  "contract_version": "0.2.0",
+  "primitive": "query",
+  "subcommands_required": ["ingest", "query", "serve-models"],
+  "query": {
+    "required_flags": ["--top-k", "--hybrid", "--format"],
     "operator_flags": ["--lancedb-uri", "--table-name", "--embed-model-name"],
-    "forbidden_flags": ["--content-types", "--rerank", "--candidate-k", "--max-text-chars", "--page-dedup"],
-    "result_schema": "retrieve-result.schema.json"
+    "default_format": "evidence",
+    "default_hybrid": true,
+    "result_schema": "query-result.schema.json",
+    "_note": "The skill calls bare `retriever query \"<question>\"`; --format defaults to 'evidence' (fidelity-tagged {evidence, coverage}) and --hybrid defaults on. `query` also exposes power-user knobs (--rerank, --candidate-k, --content-types, --page-dedup, --format hits) that are available but NOT used by the skill's default invocation."
   },
   "ingest": {
     "required_flags": ["--append", "--overwrite", "--hybrid", "--ocr-version", "--ocr-lang", "--table-name", "--lancedb-uri", "--embed-model-name"],
@@ -16,7 +18,7 @@
   "default_table_name": "nemo-retriever",
   "_default_table_name_note": "engine DEFAULT_TABLE_NAME constant; NOT the skill name. Operator-config only.",
   "legacy": {
-    "note": "query/verify still ship but the retriever skill does not depend on them; not gated by doctor.py.",
-    "subcommands": ["query", "verify"]
+    "note": "verify still ships but the retriever skill does not depend on it; not gated by doctor.py.",
+    "subcommands": ["verify"]
   }
 }
