@@ -12,7 +12,6 @@ from typer.testing import CliRunner
 
 import nemo_retriever.query.workflow as query_core
 
-
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.cli.main")
 
@@ -277,3 +276,73 @@ def test_root_query_reports_os_errors(monkeypatch) -> None:
 
     assert result.exit_code == 1
     assert "Error: database unavailable" in result.output
+
+
+def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None:
+    """`--agentic` wires the LanceDB/embed/LLM options into AgenticRetrievalConfig
+    and prints the agent's ranked doc_ids (sorted by rank, truncated to --top-k)."""
+    import pandas as pd
+
+    import nemo_retriever.query.agentic as agentic_retrieval
+
+    config_calls: list[dict[str, Any]] = []
+    retrieve_calls: list[tuple[Any, Any]] = []
+
+    class FakeConfig:
+        def __init__(self, **kwargs: Any) -> None:
+            config_calls.append(kwargs)
+
+    class FakeAgenticRetriever:
+        def __init__(self, cfg: Any) -> None:
+            self.cfg = cfg
+
+        def retrieve(self, query_ids: Any, query_texts: Any) -> Any:
+            retrieve_calls.append((query_ids, query_texts))
+            # Deliberately out of rank order to exercise the sort.
+            return pd.DataFrame(
+                [
+                    {"query_id": "0", "doc_id": "b.pdf", "rank": 2, "result_source": "rrf"},
+                    {"query_id": "0", "doc_id": "a.pdf", "rank": 1, "result_source": "final_results"},
+                    {"query_id": "0", "doc_id": "c.pdf", "rank": 3, "result_source": "rrf"},
+                ]
+            )
+
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetrievalConfig", FakeConfig)
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetriever", FakeAgenticRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "how does ingest work?",
+            "--agentic",
+            "--agentic-llm-model",
+            "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+            "--top-k",
+            "2",
+            "--lancedb-uri",
+            "/tmp/lancedb",
+            "--table-name",
+            "docs",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert retrieve_calls == [(["0"], ["how does ingest work?"])]
+    cfg = config_calls[0]
+    assert cfg["vdb_op"] == "lancedb"
+    assert cfg["vdb_kwargs"] == {"uri": "/tmp/lancedb", "table_name": "docs"}
+    assert cfg["llm_model"] == "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    # Sorted by rank and truncated to --top-k=2.
+    assert json.loads(result.output) == [
+        {"rank": 1, "doc_id": "a.pdf", "result_source": "final_results"},
+        {"rank": 2, "doc_id": "b.pdf", "result_source": "rrf"},
+    ]
+
+
+def test_root_query_agentic_requires_llm_model() -> None:
+    """Agentic mode is inert without a chat model to drive the loop."""
+    result = RUNNER.invoke(cli_main.app, ["query", "hello", "--agentic"])
+
+    assert result.exit_code == 1
+    assert "requires --agentic-llm-model" in result.output

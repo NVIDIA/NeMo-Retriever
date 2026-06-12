@@ -61,3 +61,52 @@ def query_documents(request: QueryRequest) -> list[RetrievalHit]:
         page_dedup=request.retrieval.page_dedup,
         content_types=request.retrieval.content_types,
     )
+
+
+def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
+    """Run agentic (ReAct) retrieval for a single query and return the agent's
+    ranked document IDs.
+
+    Unlike the dense ``query_documents`` path (which returns enriched hits with
+    text), the agent operates at the document-ID granularity of the configured
+    index, so the result is the ranked ``doc_id`` list the agent selected,
+    annotated with the source that produced it (``final_results`` / ``rrf`` /
+    ``selection_agent``). The LanceDB ``uri``/``table_name`` and embedding config
+    are passed straight through to the wrapped ``Retriever`` that backs the
+    agent's ``retrieve`` tool.
+    """
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    api_key = resolve_remote_api_key()
+    cfg_kwargs: dict[str, Any] = {
+        "vdb_op": "lancedb",
+        "vdb_kwargs": {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name},
+        "embedding_endpoint": request.embed.embed_invoke_url,
+        "embedding_api_key": api_key or "",
+        "llm_model": request.agentic.llm_model,
+        "invoke_url": request.agentic.invoke_url,
+        "api_key": api_key,
+        "reasoning_effort": request.agentic.reasoning_effort,
+        "backend_top_k": int(request.agentic.backend_top_k),
+        "react_max_steps": int(request.agentic.react_max_steps),
+        "text_truncation": int(request.agentic.text_truncation),
+        "temperature": float(request.agentic.temperature),
+    }
+    if request.embed.embed_model_name:
+        cfg_kwargs["query_embedder"] = request.embed.embed_model_name
+
+    result = AgenticRetriever(AgenticRetrievalConfig(**cfg_kwargs)).retrieve(["0"], [str(request.query)])
+    if "rank" in result.columns:
+        result = result.sort_values("rank")
+    ranked: list[dict[str, Any]] = []
+    for _, row in result.iterrows():
+        ranked.append(
+            {
+                "rank": int(row.get("rank", len(ranked) + 1)),
+                "doc_id": str(row.get("doc_id", "")),
+                "result_source": str(row.get("result_source", "")),
+            }
+        )
+        if len(ranked) >= request.retrieval.top_k:
+            break
+    return ranked

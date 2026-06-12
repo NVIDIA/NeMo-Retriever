@@ -22,6 +22,20 @@ from nemo_retriever.models.nim.chat_completions import invoke_chat_completion_st
 
 logger = logging.getLogger(__name__)
 
+_LOG_PREVIEW_CHARS = 300
+_LOG_DOC_ID_LIMIT = 20
+
+
+def _preview_text(value: Any, *, limit: int = _LOG_PREVIEW_CHARS) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
+
+def _preview_doc_ids(docs: List[Dict[str, Any]], *, limit: int = _LOG_DOC_ID_LIMIT) -> List[str]:
+    return [str(doc.get("doc_id", "")) for doc in docs[:limit]]
+
 
 # ---------------------------------------------------------------------------
 # Prompt rendering  (verbatim content of 02_v1.j2, rendered via Python)
@@ -245,6 +259,7 @@ def _make_final_results_tool_spec(top_k: Optional[int]) -> Dict[str, Any]:
                     "doc_ids": {
                         "type": "array",
                         "items": {"type": "string"},
+                        "minItems": 1,
                         "description": (
                             "List of document IDs that are relevant to the user's query sorted descending "
                             "by their level of relevance to the user's query. I.e., the first document is "
@@ -396,6 +411,9 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         api_key: Optional[str] = None,
         max_tokens: Optional[int] = None,
         parallel_tool_calls: bool = True,
+        reasoning_effort: Optional[str] = None,
+        backend_top_k: Optional[int] = None,
+        temperature: float = 0.0,
     ) -> None:
         super().__init__()
         self._invoke_url = invoke_url or self._NVIDIA_BUILD_ENDPOINT
@@ -411,6 +429,18 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         self._api_key = api_key
         self._max_tokens = max_tokens
         self._parallel_tool_calls = parallel_tool_calls
+        self._reasoning_effort = reasoning_effort
+        self._backend_top_k = backend_top_k
+        self._temperature = temperature
+
+    def _build_extra_body(self) -> Optional[Dict[str, Any]]:
+        """Assemble per-call extra payload fields (parallel_tool_calls, reasoning_effort)."""
+        extra: Dict[str, Any] = {}
+        if not self._parallel_tool_calls:
+            extra["parallel_tool_calls"] = False
+        if self._reasoning_effort:
+            extra["reasoning_effort"] = self._reasoning_effort
+        return extra or None
 
     # ------------------------------------------------------------------
     # AbstractOperator interface
@@ -439,28 +469,32 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             qid, qtxt = query_rows[0]
             rows.extend(self._run_single_query(qid, qtxt, api_key))
         else:
+            # Collect per-query results keyed by query_id, then re-emit in the ORIGINAL
+            # input order. as_completed() yields futures in nondeterministic completion
+            # order; emitting in that order would make downstream groupby(sort=False)
+            # output order depend on which query finished first. Re-ordering here keeps
+            # the operator output deterministic regardless of concurrency.
+            results_by_qid: Dict[str, List[Dict[str, Any]]] = {}
             with ThreadPoolExecutor(max_workers=min(self._num_concurrent, len(query_rows))) as executor:
                 futures = {
                     executor.submit(self._run_single_query, qid, qtxt, api_key): (qid, qtxt) for qid, qtxt in query_rows
                 }
                 for future in as_completed(futures):
+                    qid, qtxt = futures[future]
                     try:
-                        rows.extend(future.result())
+                        results_by_qid[qid] = future.result()
                     except TimeoutError as exc:
-                        qid, qtxt = futures[future]
                         logger.warning("ReActAgentOperator: query %r timed out: %s", qid, exc, exc_info=True)
                     except RuntimeError as exc:
-                        qid, qtxt = futures[future]
                         logger.warning("ReActAgentOperator: query %r retries exhausted: %s", qid, exc, exc_info=True)
                     except requests.RequestException as exc:
-                        qid, qtxt = futures[future]
                         logger.warning("ReActAgentOperator: query %r HTTP error: %s", qid, exc, exc_info=True)
                     except (json.JSONDecodeError, ValueError) as exc:
-                        qid, qtxt = futures[future]
                         logger.warning("ReActAgentOperator: query %r data error: %s", qid, exc, exc_info=True)
                     except Exception as exc:  # catches unexpected worker errors not covered above
-                        qid, qtxt = futures[future]
                         logger.warning("ReActAgentOperator: query %r failed: %s", qid, exc, exc_info=True)
+            for qid, _qtxt in query_rows:
+                rows.extend(results_by_qid.get(qid, []))
 
         if not rows:
             return pd.DataFrame(columns=["query_id", "query_text", "step_idx", "doc_id", "text", "rank"])
@@ -502,6 +536,15 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         seen_doc_ids: set[str] = set()
         step_counter = 0
 
+        logger.info(
+            "ReActAgentOperator: query=%s start max_steps=%d retriever_top_k=%d target_top_k=%d query=%r",
+            query_id,
+            self._max_steps,
+            self._retriever_top_k,
+            self._target_top_k,
+            _preview_text(query_text),
+        )
+
         # ------ optional initial retrieval (with_results mode) ------
         if with_init_docs:
             init_docs = self._call_retriever(query_text, seen_doc_ids, api_key)
@@ -509,6 +552,13 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             step_counter += 1
             for d in init_docs:
                 seen_doc_ids.add(d["doc_id"])
+            logger.info(
+                "ReActAgentOperator: query=%s initial_retrieve docs=%d seen=%d doc_ids=%s",
+                query_id,
+                len(init_docs),
+                len(seen_doc_ids),
+                _preview_doc_ids(init_docs),
+            )
 
             doc_content = _docs_to_message_content(init_docs)
             user_msg_content: List[Dict[str, Any]] = [
@@ -522,7 +572,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
 
         # ------ main ReAct loop ------
         for _step in range(self._max_steps):
-            logger.debug("query=%r loop_step=%d seen_docs=%d", query_id, _step, len(seen_doc_ids))
+            logger.info("ReActAgentOperator: query=%s step=%d begin seen_docs=%d", query_id, _step, len(seen_doc_ids))
             try:
                 response = invoke_chat_completion_step(
                     invoke_url=self._invoke_url,
@@ -531,8 +581,9 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     api_key=api_key,
                     tools=tools,
                     tool_choice="auto",
+                    temperature=self._temperature,
                     max_tokens=self._max_tokens,
-                    extra_body={"parallel_tool_calls": False} if not self._parallel_tool_calls else None,
+                    extra_body=self._build_extra_body(),
                 )
             except TimeoutError as exc:
                 logger.warning(
@@ -580,6 +631,26 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             msg = choice["message"]
             finish_reason = choice.get("finish_reason")
             tool_calls = msg.get("tool_calls") or []
+            if msg.get("content"):
+                # Agent reasoning can quote document text/PII; keep content at DEBUG.
+                logger.debug(
+                    "ReActAgentOperator: query=%s step=%d assistant content=%r",
+                    query_id,
+                    _step,
+                    _preview_text(msg.get("content")),
+                )
+            usage = response.get("usage") or {}
+            logger.info(
+                "ReActAgentOperator: query=%s step=%d finish_reason=%s tool_calls=%s "
+                "prompt_tokens=%s completion_tokens=%s total_tokens=%s",
+                query_id,
+                _step,
+                finish_reason,
+                [((tc.get("function") or {}).get("name") or "") for tc in tool_calls],
+                usage.get("prompt_tokens"),
+                usage.get("completion_tokens"),
+                usage.get("total_tokens"),
+            )
 
             # Append assistant turn
             assistant_turn: Dict[str, Any] = {"role": "assistant"}
@@ -590,6 +661,11 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             messages.append(assistant_turn)
 
             if finish_reason == "stop" or not tool_calls:
+                logger.info(
+                    "ReActAgentOperator: query=%s step=%d no tool call; requesting continuation",
+                    query_id,
+                    _step,
+                )
                 messages.append({"role": "user", "content": _AUTO_USER_MSG})
                 continue
 
@@ -609,20 +685,39 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                     continue
 
                 if fn_name == "think":
-                    logger.debug("query=%r step=%d [think] %s", query_id, _step, str(fn_args.get("thought", ""))[:120])
+                    # Agent thoughts can quote document text/PII; keep content at DEBUG.
+                    logger.debug(
+                        "ReActAgentOperator: query=%s step=%d think=%r",
+                        query_id,
+                        _step,
+                        _preview_text(fn_args.get("thought")),
+                    )
                     tool_messages.append(
                         {"role": "tool", "tool_call_id": tc_id, "content": "Your thought has been logged."}
                     )
 
                 elif fn_name == "retrieve":
                     subquery = str(fn_args.get("query", query_text))
-                    logger.debug("query=%r step=%d [retrieve] subquery=%r", query_id, _step, subquery)
+                    logger.info(
+                        "ReActAgentOperator: query=%s step=%d retrieve subquery=%r seen_before=%d",
+                        query_id,
+                        _step,
+                        _preview_text(subquery),
+                        len(seen_doc_ids),
+                    )
                     retrieved = self._call_retriever(subquery, seen_doc_ids, api_key)
-                    logger.debug("query=%r step=%d [retrieve] got %d new docs", query_id, _step, len(retrieved))
                     retrieval_log.append(retrieved)
                     step_counter += 1
                     for d in retrieved:
                         seen_doc_ids.add(d["doc_id"])
+                    logger.info(
+                        "ReActAgentOperator: query=%s step=%d retrieve docs=%d seen_after=%d doc_ids=%s",
+                        query_id,
+                        _step,
+                        len(retrieved),
+                        len(seen_doc_ids),
+                        _preview_doc_ids(retrieved),
+                    )
                     doc_content = _docs_to_message_content(retrieved)
                     tool_content: List[Dict[str, Any]] = [
                         {"type": "text", "text": f"Retrieved {len(retrieved)} documents:"}
@@ -631,17 +726,34 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
 
                 elif fn_name == "final_results":
                     raw_ids: List[str] = fn_args.get("doc_ids", [])
-                    logger.debug("query=%r step=%d [final_results] doc_ids=%s", query_id, _step, raw_ids)
-                    if isinstance(raw_ids, list) and raw_ids:
-                        final_doc_ids = [str(d) for d in raw_ids]
-                    tool_messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tc_id,
-                            "content": "The results have been successfully logged and the interaction ended.",
-                        }
+                    logger.info(
+                        "ReActAgentOperator: query=%s step=%d final_results "
+                        "search_successful=%s doc_ids=%s message=%r",
+                        query_id,
+                        _step,
+                        fn_args.get("search_successful"),
+                        raw_ids[:_LOG_DOC_ID_LIMIT] if isinstance(raw_ids, list) else raw_ids,
+                        _preview_text(fn_args.get("message")),
                     )
-                    loop_done = True
+                    validation_error = self._validate_final_results_args(fn_args)
+                    if validation_error is None:
+                        final_doc_ids = list(raw_ids)
+                        tool_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc_id,
+                                "content": "The results have been successfully logged and the interaction ended.",
+                            }
+                        )
+                        loop_done = True
+                    else:
+                        tool_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc_id,
+                                "content": f"Error: {validation_error}",
+                            }
+                        )
 
                 else:
                     tool_messages.append(
@@ -652,6 +764,13 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             if loop_done:
                 break
 
+        logger.info(
+            "ReActAgentOperator: query=%s done retrieval_steps=%d seen_docs=%d final_doc_ids=%s",
+            query_id,
+            len(retrieval_log),
+            len(seen_doc_ids),
+            final_doc_ids[:_LOG_DOC_ID_LIMIT] if final_doc_ids else [],
+        )
         return _build_output_rows(query_id, query_text, retrieval_log, final_doc_ids)
 
     def _call_retriever(
@@ -662,6 +781,11 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
     ) -> List[Dict[str, Any]]:
         """Call retriever_fn, over-fetching to ensure new results after dedup."""
         fetch_k = self._retriever_top_k + len(seen_doc_ids)
+        # Optional fixed ceiling on backend depth, matching Path A's --retriever-top-k
+        # cap. Once the agent has seen the whole capped pool, retrieves return no new
+        # docs, so the prompt stops growing (prevents context-window overflow).
+        if self._backend_top_k:
+            fetch_k = min(fetch_k, int(self._backend_top_k))
         try:
             raw = self._retriever_fn(query_text, fetch_k)
         except TimeoutError as exc:
@@ -678,18 +802,73 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             logger.warning("ReActAgentOperator: retriever_fn failed for query %r: %s", query_text, exc, exc_info=True)
             return []
 
-        # Filter already-seen and normalise keys
+        # Walk the ranked results, normalising keys and de-duplicating within the
+        # batch. Already-seen docs are always re-presented as short stubs, matching
+        # Path A's retrieve_with_guarantees, and do not count toward top_k.
         results: List[Dict[str, Any]] = []
+        batch_doc_ids: set[str] = set()
+        new_count = 0
         for item in raw:
             doc_id = str(item.get("doc_id", item.get("id", "")))
-            text = str(item.get("text", ""))
+            if not doc_id or doc_id in batch_doc_ids:
+                continue
             score = float(item.get("score", 0.0))
-            if doc_id and doc_id not in seen_doc_ids:
-                results.append({"doc_id": doc_id, "text": text, "score": score})
-            if len(results) >= self._retriever_top_k:
+            if doc_id in seen_doc_ids:
+                batch_doc_ids.add(doc_id)
+                results.append(
+                    {
+                        "doc_id": doc_id,
+                        "text": (
+                            "This document was retrieved before. See the earlier retrieval "
+                            f"results for its content (id: {doc_id})."
+                        ),
+                        "score": score,
+                    }
+                )
+                continue
+            batch_doc_ids.add(doc_id)
+            results.append(
+                {
+                    "doc_id": doc_id,
+                    "text": str(item.get("text", "")),
+                    "score": score,
+                }
+            )
+            new_count += 1
+            if new_count >= self._retriever_top_k:
                 break
 
         return results
+
+    def _validate_final_results_args(self, fn_args: Dict[str, Any]) -> Optional[str]:
+        """Validate final_results tool args outside the prompt/schema."""
+        message = fn_args.get("message")
+        if not isinstance(message, str):
+            return f"`message` must be a string. Got `{type(message)}` type."
+
+        doc_ids = fn_args.get("doc_ids")
+        if not isinstance(doc_ids, list):
+            return f"`doc_ids` must be a list. Got `{type(doc_ids)}` type."
+        if len(doc_ids) == 0:
+            return "`doc_ids` cannot be empty. You must choose at least one relevant document."
+        if not all(isinstance(doc_id, str) for doc_id in doc_ids):
+            return "Items in `doc_ids` must be of type string (i.e., python's `str` type)."
+
+        search_successful = fn_args.get("search_successful")
+        if not isinstance(search_successful, str):
+            return f"`search_successful` must be a string. Got `{type(search_successful)}` type."
+        if search_successful not in {"true", "false", "partial"}:
+            return (
+                f"`search_successful` must be one of `true`, `false`, or `partial`. Got `{search_successful}` instead."
+            )
+
+        if self._enforce_top_k and len(doc_ids) != self._target_top_k:
+            return (
+                f"`doc_ids` must contain exactly {self._target_top_k} documents. "
+                f"But got {len(doc_ids)} document IDs instead."
+            )
+
+        return None
 
     def _resolve_api_key(self) -> Optional[str]:
         api_key = self._api_key
@@ -742,13 +921,41 @@ def _build_output_rows(
                     "step_idx": step_idx,
                     "doc_id": doc.get("doc_id", ""),
                     "text": doc.get("text", ""),
+                    "has_valid_final_results": final_doc_ids is not None,
+                    "is_final_result": False,
                     "rank": rank,
                 }
             )
 
     # If final_results was called, also emit those as a synthetic final step
-    # (step_idx = len(retrieval_log)) so RRF can optionally weight it.
-    # These are already covered by the existing steps, so we skip deduplication
-    # here — RRF will naturally up-weight docs that appeared in final_results
-    # because they were retrieved in earlier steps.
+    # (step_idx = len(retrieval_log)) so RRF can weight the agent's final
+    # judgment in addition to the raw retrieval history.
+    if final_doc_ids:
+        first_doc_by_id: Dict[str, Dict[str, Any]] = {}
+        for step_docs in retrieval_log:
+            for doc in step_docs:
+                doc_id = str(doc.get("doc_id", ""))
+                if doc_id and doc_id not in first_doc_by_id:
+                    first_doc_by_id[doc_id] = doc
+
+        emitted: set[str] = set()
+        final_step_idx = len(retrieval_log)
+        for rank, doc_id in enumerate(final_doc_ids, 1):
+            doc_id = str(doc_id)
+            if not doc_id or doc_id in emitted:
+                continue
+            emitted.add(doc_id)
+            doc = first_doc_by_id.get(doc_id, {})
+            rows.append(
+                {
+                    "query_id": query_id,
+                    "query_text": query_text,
+                    "step_idx": final_step_idx,
+                    "doc_id": doc_id,
+                    "text": doc.get("text", ""),
+                    "has_valid_final_results": True,
+                    "is_final_result": True,
+                    "rank": rank,
+                }
+            )
     return rows
