@@ -95,7 +95,7 @@ Canonical ingest files:
 | `ingest/execution.py` | Executes resolved graph ingest plans through `GraphIngestor`. |
 | `ingest/service.py` | Service ingest request dataclasses, service request resolution, service execution. |
 
-The Typer layer is deliberately second class. Typer callbacks are private Python
+The Typer layer is adapter-only. Typer callbacks are private Python
 functions (`_local_command`, `_batch_command`, `_service_command`) because the
 public surface is the shell command, not the callback symbol. Programmatic use
 should go through the ingest plan/service APIs or `create_ingestor(...)`.

@@ -12,9 +12,9 @@ For product-facing examples, prefer these commands:
 command for legacy pipeline workflows, evaluation, intermediate artifacts, and
 pipeline-specific debugging. It is not the preferred public ingest interface.
 
-## Public Ingest Shape
+## Public ingest shape
 
-`retriever ingest` defaults to local, in-process graph ingest:
+`retriever ingest` defaults to local, in-process ingest:
 
 ```bash
 retriever ingest DOCUMENTS...
@@ -28,16 +28,15 @@ retriever ingest batch DOCUMENTS...
 retriever ingest service DOCUMENTS...
 ```
 
-The root ingest CLI does not expose `--run-mode`. The underlying graph ingestor
-still uses `run_mode` internally, but the CLI represents execution mode as
-command structure so each mode exposes only the flags it can honor.
+The root ingest CLI uses subcommands instead of a `--run-mode` flag. Choose
+the command that matches where ingest runs and where results are stored.
 
-| Command | Execution Path | Storage Owner | Use When |
+| Command | What It Does | Writes To | Use When |
 |---|---|---|---|
-| `retriever ingest ...` | `GraphIngestor` with `run_mode="inprocess"` | local LanceDB | Default local ingest and CI/small corpus runs. |
-| `retriever ingest local ...` | `GraphIngestor` with `run_mode="inprocess"` | local LanceDB | Same as the default, but explicit. |
-| `retriever ingest batch ...` | `GraphIngestor` with `run_mode="batch"` | local LanceDB | Ray/batch ingest and batch tuning. |
-| `retriever ingest service ...` | `ServiceIngestor` client | retriever service | Remote service ingest. Persistence is configured by the service. |
+| `retriever ingest ...` | Local in-process ingest | local LanceDB | Default local ingest and CI/small corpus runs. |
+| `retriever ingest local ...` | Local in-process ingest | local LanceDB | Same as the default, but explicit. |
+| `retriever ingest batch ...` | Ray-backed batch ingest | local LanceDB | Larger or batch-tuned runs. |
+| `retriever ingest service ...` | Sends documents to a Retriever service | service-configured storage | Remote service ingest. |
 
 This separation keeps invalid flag combinations out of the parser. For example,
 service ingest does not expose LanceDB target flags, Ray tuning, local endpoint
@@ -48,9 +47,9 @@ configuration, local embed backend selection, or local media controls.
 > Use `retriever ingest` and `retriever query` for product-facing workflows.
 > `retriever pipeline run` is development / compatibility only.
 
-## Quick Start
+## Quick start
 
-### Ingest A PDF Locally
+### Ingest a PDF locally
 
 ```bash
 retriever ingest ./data/multimodal_test.pdf \
@@ -70,7 +69,11 @@ retriever query "What is in this document?" \
 By default, local ingest writes to `lancedb/nemo-retriever` and `retriever query`
 reads from the same table.
 
-### Ingest A Larger Corpus With Batch Mode
+The `retriever query` examples below apply to local and batch ingest output
+written to LanceDB. Service ingest sends documents to a remote service; querying
+service-owned storage is handled by that service deployment.
+
+### Ingest a larger corpus with batch mode
 
 ```bash
 retriever ingest batch ./data/pdf_corpus \
@@ -82,7 +85,7 @@ retriever ingest batch ./data/pdf_corpus \
 Batch mode exposes Ray runtime and batch tuning flags such as `--ray-address`,
 `--pdf-extract-workers`, `--ocr-workers`, and `--embed-workers`.
 
-### Ingest Through A Retriever Service
+### Ingest through a Retriever service
 
 ```bash
 retriever ingest service ./data/pdf_corpus \
@@ -94,7 +97,7 @@ Use `--service-api-token` or `NEMO_RETRIEVER_API_TOKEN` when the service require
 a bearer token. Service ingest does not expose `--lancedb-uri`; the service owns
 its vector database configuration.
 
-### Route Graph Ingest To Hosted Or Self-Hosted NIM Endpoints
+### Route ingest to hosted or self-hosted NIM endpoints
 
 ```bash
 export NVIDIA_API_KEY=nvapi-...
@@ -111,7 +114,7 @@ retriever ingest ./data/multimodal_test.pdf \
 build.nvidia.com endpoints. `NGC_API_KEY` is used separately when pulling or
 running self-hosted NIM containers.
 
-### Query Result Controls
+### Query result controls
 
 `retriever query` returns compact JSON hits with `source`, `page_number`, and
 `text`. Use `--candidate-k`, `--page-dedup`, and `--content-types` to shape the
@@ -130,9 +133,9 @@ final truncation. It must be greater than or equal to `--top-k`.
 
 <!-- --8<-- [end:quickstart] -->
 
-## Common Ingest Options
+## Common ingest options
 
-### Local And Batch Graph Ingest
+### Local and batch ingest
 
 These options apply to `retriever ingest`, `retriever ingest local`, and
 `retriever ingest batch` unless otherwise noted.
@@ -160,9 +163,9 @@ Batch-only options include `--ray-address`, `--ray-log-to-driver`,
 `--table-structure-workers`, `--nemotron-parse-workers`, `--embed-workers`, and
 related batch-size / CPU / GPU tuning flags.
 
-### Service Ingest
+### Service ingest
 
-`retriever ingest service` exposes only service-supported client-side controls.
+`retriever ingest service` exposes only service-supported request controls.
 It does not expose LanceDB target flags, Ray tuning, local endpoint URLs/API
 keys, local embed backend selection, `--ocr-lang`, or local audio/video media
 controls.
@@ -173,14 +176,14 @@ controls.
 | `--service-url` | `http://localhost:7670` | Retriever service base URL. |
 | `--service-concurrency` | `8` | Maximum concurrent document uploads. |
 | `--service-api-token` | env fallback | Bearer token; also reads `NEMO_RETRIEVER_API_TOKEN`. |
-| `--profile` | `auto` | Same profile names as graph ingest where supported. |
-| `--caption`, `--dedup`, `--text-chunk` | off | Service-supported client-side stage controls. |
+| `--profile` | `auto` | Same profile names as local and batch ingest where supported. |
+| `--caption`, `--dedup`, `--text-chunk` | off | Service-supported ingest controls. |
 | `--store-images-uri` | unset | Service-accessible image storage URI. |
 | `--dry-run` | off | Print the resolved service ingest request. Tokens are redacted. |
 
 ## Examples
 
-### Custom LanceDB Location
+### Custom LanceDB location
 
 ```bash
 retriever ingest ./data/multimodal_test.pdf \
@@ -194,7 +197,7 @@ retriever query "What is in this document?" \
   --table-name my-corpus
 ```
 
-### Fast Text-Only PDF Fallback
+### Fast text-only PDF fallback
 
 ```bash
 retriever ingest ./data/pdf_corpus \
@@ -202,7 +205,7 @@ retriever ingest ./data/pdf_corpus \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-### OCR Language Mode
+### OCR language mode
 
 ```bash
 retriever ingest ./data/scanned.pdf \
@@ -222,7 +225,7 @@ retriever ingest ./data/test.pdf \
   --text-chunk-overlap-tokens 64
 ```
 
-### Captioning And Image Storage
+### Captioning and image storage
 
 ```bash
 retriever ingest ./data/test.pdf \
@@ -232,7 +235,7 @@ retriever ingest ./data/test.pdf \
   --store-images-uri ./processed_docs/images
 ```
 
-## Results And Diagnostics
+## Results and diagnostics
 
 Local and batch ingest report the number of input files and LanceDB rows written:
 
@@ -250,7 +253,7 @@ Ingested 20 file(s) -> 1940 row(s) through retriever service http://localhost:76
 Use `--dry-run` on any ingest mode to inspect the resolved request without
 creating an ingestor or contacting the service.
 
-## Development / Compatibility Command
+## Development / compatibility command
 
 Use `retriever pipeline run` only when you need pipeline-specific behavior that
 is intentionally not part of the first-class ingest/query workflow, such as:
