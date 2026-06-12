@@ -90,6 +90,8 @@ dependencies = [
 service = [
   # HTTP retry decorator used by NIM model interfaces
   "backoff",
+  # Remote answer generation client used by serviceConfig.llm and /v1/answer
+  "litellm>=1.86.0,<2",
   # Lightweight utilities used by pipeline operators
   "glom",
   "easydict",

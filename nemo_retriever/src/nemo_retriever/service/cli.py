@@ -30,6 +30,12 @@ def start(
     nim_api_key: Optional[str] = typer.Option(
         None, "--nim-api-key", help="API key for NIM endpoints (overrides YAML / $NVIDIA_API_KEY)."
     ),
+    llm_api_key: Optional[str] = typer.Option(
+        None,
+        "--llm-api-key",
+        help="API key for LLM answer generation endpoints (overrides YAML / $NEMO_RETRIEVER_LLM_API_KEY).",
+        envvar="NEMO_RETRIEVER_LLM_API_KEY",
+    ),
     gpu_devices: Optional[str] = typer.Option(
         None, "--gpu-devices", help="Comma-separated GPU device IDs (overrides YAML)."
     ),
@@ -59,6 +65,8 @@ def start(
         overrides["logging.file"] = log_file
     if nim_api_key is not None:
         overrides["nim_endpoints.api_key"] = nim_api_key
+    if llm_api_key is not None:
+        overrides["llm.api_key"] = llm_api_key
     if gpu_devices is not None:
         overrides["resources.gpu_devices"] = [d.strip() for d in gpu_devices.split(",") if d.strip()]
     if api_token is not None:

@@ -49,6 +49,23 @@ nim_endpoints:
   caption_model_name: null
   api_key: null
 
+# Remote LLM endpoint used by POST /v1/answer. Helm auto-wires these
+# fields when the Super-49B NIM is enabled.
+llm:
+  enabled: false
+  model: "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+  api_base: null
+  api_key: null
+  temperature: 0.0
+  top_p: null
+  max_tokens: 512
+  extra_params: {}
+  num_retries: 3
+  timeout: 180.0
+  rag_system_prompt: null
+  rag_system_prompt_prefix: null
+  reasoning_enabled: true
+
 # Pipeline worker pools.  Workers are abstract dispatchers — sizing
 # depends on whether they do local GPU work or fan out to remote NIMs.
 # For CPU-only NIM-forwarding nodes, higher worker counts are fine.
