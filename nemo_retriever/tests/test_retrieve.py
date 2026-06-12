@@ -1,11 +1,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+"""Evidence-output path for the skill: `build_evidence_result` shaping +
+`retriever query --format evidence [--hybrid]`. (The standalone `retrieve`
+subcommand was folded into `query`; `--format evidence`/`--hybrid` are opt-in
+flags — `query`'s defaults stay legacy `hits`/vector-only.)"""
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
+
+from typer.testing import CliRunner
 
 import nemo_retriever.adapters.cli.sdk_workflow as sw
 
@@ -45,13 +52,13 @@ def _assert_conforms(result):
     assert {"strategies_used", "n_docs_seen", "thin_spots"} <= set(result["coverage"])
 
 
-def test_retrieve_shapes_evidence_and_coverage(monkeypatch):
+# --- build_evidence_result: hits -> {evidence, coverage} shaping ------------- #
+def test_build_evidence_result_shapes_evidence_and_coverage():
     hits = [
         _hit("prose", source="a.pdf", page=3, content_type="text", fidelity="verbatim"),
         _hit("chart cap", source="a.pdf", page=3, content_type="chart", fidelity="vlm_caption"),
     ]
-    monkeypatch.setattr(sw, "query_documents", lambda *a, **k: hits)
-    r = sw.retrieve("q", lancedb_uri="x", table_name="t")
+    r = sw.build_evidence_result(hits, ["semantic", "lexical"])
     _assert_conforms(r)
     assert r["evidence"][0]["citation"] == "a p.3"
     assert r["evidence"][0]["locator"] == {"kind": "page", "value": 3}
@@ -60,25 +67,26 @@ def test_retrieve_shapes_evidence_and_coverage(monkeypatch):
     assert "single source" in r["coverage"]["thin_spots"]
 
 
-def test_retrieve_fidelity_fallback_when_absent(monkeypatch):
+def test_build_evidence_result_fidelity_fallback_when_absent():
     # no metadata.fidelity -> derived from modality. standalone image -> vlm_caption;
     # chart is region-OCR'd per SP-A -> ocr.
     img = _hit("i", content_type="image", fidelity=None)
     chart = _hit("c", content_type="chart", fidelity=None)
-    monkeypatch.setattr(sw, "query_documents", lambda *a, **k: [img, chart])
-    r = sw.retrieve("q", lancedb_uri="x", table_name="t")
+    r = sw.build_evidence_result([img, chart], ["semantic"])
     assert r["evidence"][0]["fidelity"] == "vlm_caption"
     assert r["evidence"][1]["fidelity"] == "ocr"
 
 
-def test_retrieve_empty_thin_spot(monkeypatch):
-    monkeypatch.setattr(sw, "query_documents", lambda *a, **k: [])
-    r = sw.retrieve("q", lancedb_uri="x", table_name="t")
+def test_build_evidence_result_empty_thin_spot():
+    r = sw.build_evidence_result([], ["semantic"])
     assert r["evidence"] == []
     assert "no matches — likely out of corpus" in r["coverage"]["thin_spots"]
 
 
-def test_retrieve_graceful_vector_fallback(monkeypatch):
+# --- `query --format evidence`: CLI integration ----------------------------- #
+def test_query_evidence_graceful_vector_fallback(monkeypatch):
+    """--hybrid tries hybrid, falls back to vector-only when the table has no FTS index."""
+    cli_main = importlib.import_module("nemo_retriever.adapters.cli.main")
     calls = []
 
     def fake_qd(question, **k):
@@ -87,34 +95,24 @@ def test_retrieve_graceful_vector_fallback(monkeypatch):
             raise RuntimeError("no FTS index")
         return [_hit("p")]
 
-    monkeypatch.setattr(sw, "query_documents", fake_qd)
-    r = sw.retrieve("q", lancedb_uri="x", table_name="t")
-    assert calls == [True, False]  # tried hybrid, fell back to vector
-    assert r["coverage"]["strategies_used"] == ["semantic"]
-    assert len(r["evidence"]) == 1
-
-
-def test_retrieve_cli_prints_json(monkeypatch) -> None:
-    import importlib
-
-    from typer.testing import CliRunner
-
-    cli_main = importlib.import_module("nemo_retriever.adapters.cli.main")
-
-    monkeypatch.setattr(
-        sw,
-        "retrieve",
-        lambda question, **k: {
-            "evidence": [],
-            "coverage": {
-                "strategies_used": ["semantic"],
-                "n_docs_seen": 0,
-                "thin_spots": ["no matches — likely out of corpus"],
-            },
-        },
+    monkeypatch.setattr(cli_main, "query_documents", fake_qd)
+    result = CliRunner().invoke(
+        cli_main.app, ["query", "q", "--format", "evidence", "--hybrid", "--table-name", "t"]
     )
-    result = CliRunner().invoke(cli_main.app, ["retrieve", "q", "--no-hybrid", "--table-name", "t"])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
+    assert calls == [True, False]  # tried hybrid, fell back to vector
+    out = json.loads(result.output)
+    assert out["coverage"]["strategies_used"] == ["semantic"]
+    assert len(out["evidence"]) == 1
+
+
+def test_query_evidence_cli_prints_json(monkeypatch) -> None:
+    cli_main = importlib.import_module("nemo_retriever.adapters.cli.main")
+    monkeypatch.setattr(cli_main, "query_documents", lambda question, **k: [])
+    result = CliRunner().invoke(
+        cli_main.app, ["query", "q", "--format", "evidence", "--no-hybrid", "--table-name", "t"]
+    )
+    assert result.exit_code == 0, result.output
     out = json.loads(result.output)
     assert out["coverage"]["strategies_used"] == ["semantic"]
     assert out["evidence"] == []

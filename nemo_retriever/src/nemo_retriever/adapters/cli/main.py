@@ -745,16 +745,17 @@ def query_command(
         ),
     ),
     hybrid: bool = typer.Option(
-        True,
+        False,
         "--hybrid/--no-hybrid",
         help="Fused vector + full-text (BM25) retrieval; falls back to vector-only if the index has "
-        "no FTS index. Default on.",
+        "no FTS index. Opt-in (default off) — preserves the legacy vector-only default.",
     ),
     output_format: str = typer.Option(
-        "evidence",
+        "hits",
         "--format",
-        help="'evidence' (default): answer-ready, fidelity-tagged, cited evidence + coverage — the "
-        "shape the skill reasons over. 'hits': raw ranked hit list (source/page/text/modality/score).",
+        help="'hits' (default): raw ranked hit list (source/page/text/modality/score) — the legacy "
+        "output. 'evidence': answer-ready, fidelity-tagged, cited evidence + coverage (opt-in; the "
+        "shape the skill reasons over).",
     ),
     max_text_chars: int | None = typer.Option(
         None,

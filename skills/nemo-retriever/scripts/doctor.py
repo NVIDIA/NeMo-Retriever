@@ -4,10 +4,11 @@
 Usage: <RETRIEVER_VENV>/bin/python skills/retriever/scripts/doctor.py
 Exits 0 if all checks pass, 1 otherwise. Always runs a LIVE ingest+query probe.
 
-The skill's one primitive is `retriever query` (default `--format evidence`) ->
-{evidence, coverage}; this doctor gates on THAT command and result shape. `query`
-also exposes power-user knobs the skill doesn't use, and `verify`/`mcp` still ship
-but the skill does not depend on them (CONTRACT.md legacy block), so neither is gated here.
+The skill's one primitive is `retriever query --format evidence --hybrid` ->
+{evidence, coverage}; this doctor gates on THAT invocation and result shape. `query`'s
+DEFAULTS are unchanged (legacy `hits` output, vector-only) — `evidence`/`hybrid` are
+opt-in flags the skill passes. `verify`/`mcp` still ship but the skill does not depend
+on them (CONTRACT.md legacy block), so neither is gated here.
 """
 import json
 import os
@@ -111,6 +112,8 @@ def main():
                 bin_path,
                 "query",
                 "What is the capital of the test corpus?",
+                "--format",
+                "evidence",
                 "--top-k",
                 "3",
                 "--no-hybrid",
@@ -125,7 +128,7 @@ def main():
             text=True,
             timeout=600,
         )
-        check(r.returncode == 0, "live query (--format evidence default)", r.stderr.strip()[-300:])
+        check(r.returncode == 0, "live query --format evidence", r.stderr.strip()[-300:])
         result = None
         if r.returncode == 0:
             try:

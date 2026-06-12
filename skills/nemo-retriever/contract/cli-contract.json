@@ -5,10 +5,11 @@
   "query": {
     "required_flags": ["--top-k", "--hybrid", "--format"],
     "operator_flags": ["--lancedb-uri", "--table-name", "--embed-model-name"],
-    "default_format": "evidence",
-    "default_hybrid": true,
+    "skill_invocation": "retriever query \"<question>\" --format evidence --hybrid",
+    "engine_default_format": "hits",
+    "engine_default_hybrid": false,
     "result_schema": "query-result.schema.json",
-    "_note": "The skill calls bare `retriever query \"<question>\"`; --format defaults to 'evidence' (fidelity-tagged {evidence, coverage}) and --hybrid defaults on. `query` also exposes power-user knobs (--rerank, --candidate-k, --content-types, --page-dedup, --format hits) that are available but NOT used by the skill's default invocation."
+    "_note": "`query`'s ENGINE DEFAULTS are unchanged from legacy (--format hits = flat ranked list, --hybrid off = vector-only). The skill opts into `--format evidence` (fidelity-tagged {evidence, coverage}) and `--hybrid` (vector+BM25) EXPLICITLY — it does not rely on defaults, so existing `query` callers are unaffected. `query` also exposes --rerank/--candidate-k/--content-types/--page-dedup, unused by the skill."
   },
   "ingest": {
     "required_flags": ["--append", "--overwrite", "--hybrid", "--ocr-version", "--ocr-lang", "--table-name", "--lancedb-uri", "--embed-model-name"],

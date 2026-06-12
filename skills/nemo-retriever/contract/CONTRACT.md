@@ -4,19 +4,21 @@
 about the installed **engine**. Run `scripts/doctor.py` to verify the installed
 `retriever` satisfies it.
 
-The skill's one primitive is **`retriever query <question>`** → `{ evidence, coverage }`
-(emitted by the default `--format evidence`, with `--hybrid` on by default). The skill
-calls it bare — no flags. `query` *also* exposes power-user knobs (`--rerank`,
-`--candidate-k`, `--content-types`, `--page-dedup`, `--format hits`) that the skill does
-not use; the contract gates the default invocation and result shape, not the full flag
-surface. `verify` still ships but the skill does not depend on it (Legacy, not gated).
+The skill's one primitive is **`retriever query <question> --format evidence --hybrid`** →
+`{ evidence, coverage }`. `query`'s **engine defaults are unchanged** from legacy
+(`--format hits` = flat ranked list, `--hybrid` off = vector-only); the skill opts into
+`--format evidence` (fidelity-tagged evidence + coverage) and `--hybrid` (vector+BM25)
+**explicitly**, so existing `query` callers are unaffected. `query` *also* exposes
+`--rerank`, `--candidate-k`, `--content-types`, `--page-dedup` (unused by the skill); the
+contract gates the skill's invocation + result shape, not the full flag surface. `verify`
+still ships but the skill does not depend on it (Legacy, not gated).
 
 ## Files
 - `cli-contract.json` — the gated surface: required subcommands, `query`'s required
   flags + default format/hybrid, `ingest`'s flags, and a `legacy` block for the
   ungated commands. `default_table_name` is the engine's table-name constant
   (operator config), not the skill name.
-- `query-result.schema.json` — the shape `retriever query` emits by default and the
+- `query-result.schema.json` — the shape `retriever query --format evidence` emits and the
   skill reasons over: `evidence[]` (each with `text, source, locator, modality,
   fidelity, score, citation`) + `coverage`. This is THE contract the skill relies on.
 
@@ -30,8 +32,8 @@ surface. `verify` still ships but the skill does not depend on it (Legacy, not g
 
 ## How drift gets caught
 `doctor.py` runs on the skill's setup turn and in CI (`tests/test_contract.py`). It
-performs a LIVE probe — ingest a tiny fixture, run `retriever query` (default
-`--format evidence`), validate `{evidence, coverage}` (including the `fidelity` enum)
+performs a LIVE probe — ingest a tiny fixture, run `retriever query --format evidence`,
+validate `{evidence, coverage}` (including the `fidelity` enum)
 against `query-result.schema.json` — plus static `--help` checks: the required
 subcommands (`ingest`, `query`, `serve-models`) exist and `query` exposes its required
 flags (`--top-k`, `--hybrid`, `--format`). Any divergence (a renamed evidence field, a
@@ -44,10 +46,12 @@ skill routes everything through `query`. If a future skill revision adopts `veri
 first-class move, promote it out of the `legacy` block and add a gated check + schema.
 
 ## Changelog
-- **0.2.0** — consolidated the skill primitive onto **`retriever query <question>`**.
-  Removed the separate `retrieve` subcommand; its answer-ready `{evidence, coverage}`
-  output is now `query`'s default (`--format evidence`, `--hybrid` on), with `--format
-  hits` for the raw ranked list. `doctor.py` now live-probes `query` and validates
+- **0.2.0** — consolidated the skill primitive onto **`retriever query --format evidence --hybrid`**.
+  Removed the separate `retrieve` subcommand; its answer-ready `{evidence, coverage}` output is
+  available via the **opt-in** `--format evidence` flag (with `--hybrid` for vector+BM25). `query`'s
+  engine defaults are **unchanged** (`--format hits` flat list, vector-only) so existing callers are
+  unaffected; the skill passes the flags explicitly. `doctor.py` now live-probes `query --format
+  evidence` and validates
   against `query-result.schema.json` (renamed from `retrieve-result.schema.json`). The
   forbidden-strategy-knob check is dropped — `query` is both the skill primitive and the
   power-user tool, so knobs like `--rerank`/`--candidate-k` are allowed (just unused by

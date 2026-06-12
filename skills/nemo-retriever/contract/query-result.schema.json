@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "retriever/query-result",
   "title": "retriever query --format evidence result (engine, contract 0.2.0)",
-  "description": "What `retriever query <question>` emits by default (--format evidence) and the skill reasons over.",
+  "description": "What `retriever query <question> --format evidence` emits and the skill reasons over (query's default output is the legacy `--format hits` flat list).",
   "type": "object",
   "required": ["evidence", "coverage"],
   "properties": {

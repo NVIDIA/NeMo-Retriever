@@ -136,6 +136,11 @@ def load_gold(manifest_path: Path) -> dict[str, Gold]:
 _PIPELINE_SEP = re.compile(r"(?:;|&&|\|\||\||\n|\$\(|`)")
 _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _WRAPPERS = {"sudo", "time", "nice", "nohup", "exec", "env", "command", "builtin"}
+# Leading shell keywords that precede a command inside control flow, e.g.
+# `if [ -n "$RETRIEVER_VENV" ]; then "$RETRIEVER_VENV/bin/retriever" query ...`.
+# After splitting on `;`, the retriever segment starts with `then` (or `do`/`else`),
+# which must be stripped or the head token reads as the keyword, not the command.
+_SHELL_KW = {"then", "do", "else", "elif", "{"}
 _TIMEOUT_VAL_FLAGS = {"-k", "--kill-after", "-s", "--signal"}
 _PARSE_ERR = re.compile(r"pdf_basename|JSONDecodeError|Extra data|_default_decoder|KeyError", re.I)
 # The baseline profile installs a PATH shim that prints this and exits 127. A
@@ -159,7 +164,7 @@ def _strip_wrappers(seg: str) -> list[str]:
             if i < len(toks):  # the DURATION token
                 i += 1
             continue
-        if t in _WRAPPERS:
+        if t in _WRAPPERS or t in _SHELL_KW:
             i += 1
             continue
         break
@@ -170,7 +175,10 @@ def _seg_is_retriever(seg: str) -> bool:
     toks = _strip_wrappers(seg.strip())
     if not toks:
         return False
-    h = toks[0]
+    # Strip surrounding quotes so a guarded/quoted binary path like
+    # `"$RETRIEVER_VENV/bin/retriever"` is recognized (the var stays unexpanded,
+    # but the literal still ends in `/retriever`).
+    h = toks[0].strip("'\"")
     if h == "retriever" or h.endswith("/retriever"):
         return True
     if len(toks) >= 3 and toks[0] == "uv" and toks[1] == "run" and toks[2] == "retriever":
