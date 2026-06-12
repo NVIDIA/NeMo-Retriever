@@ -90,6 +90,18 @@ def _resolve_local_embed_arch(model_arch: str | None) -> bool:
     return arch == "vl"
 
 
+def resolve_embed_model_use_vl(model_name: str | None, *, model_arch: str | None = None) -> bool:
+    """Return whether *model_name* should use the VL embedder path.
+
+    Registered Hub IDs use the existing VL model allow-list. Local checkpoint
+    directories do not have a stable Hub ID to match against, so they must
+    declare their architecture via *model_arch* or ``NRL_LOCAL_EMBED_ARCH``.
+    """
+    if _is_local_checkpoint_dir(model_name):
+        return _resolve_local_embed_arch(model_arch)
+    return is_vl_embed_model(model_name)
+
+
 def create_local_embedder(
     model_name: str | None = None,
     *,
@@ -135,13 +147,7 @@ def create_local_embedder(
         raise ValueError(f"backend must be 'vllm' or 'hf', got {backend!r}")
     model_id = resolve_embed_model(model_name)
 
-    # Registered Hub ids select VL vs text by the id allow-list (unchanged). A
-    # local checkpoint dir is not in the allow-list, so it must declare its
-    # architecture explicitly (fail-loud rather than guess).
-    if _is_local_checkpoint_dir(model_name):
-        use_vl = _resolve_local_embed_arch(model_arch)
-    else:
-        use_vl = is_vl_embed_model(model_name)
+    use_vl = resolve_embed_model_use_vl(model_name, model_arch=model_arch)
 
     if use_vl:
         if b == "hf":

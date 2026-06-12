@@ -70,7 +70,7 @@ class LlamaNemotronEmbedVL1BV2Embedder:
         # device_map when requesting it.  Fall back to sdpa/eager on CPU or
         # when flash-attn is not installed.
         use_gpu = dev.type == "cuda"
-        _revision = get_hf_revision(model_id)
+        _revision = get_hf_revision(model_id, allow_local_path=True)
         for attn_impl in ("flash_attention_2", "sdpa", "eager"):
             try:
                 kwargs: dict[str, Any] = {
@@ -234,7 +234,7 @@ class LlamaNemotronEmbedVL1BV2VLLMEmbedder:
         model_id = self.model_id or "nvidia/llama-nemotron-embed-vl-1b-v2"
         self._llm = create_vllm_llm(
             str(model_id),
-            revision=get_hf_revision(model_id),
+            revision=get_hf_revision(model_id, allow_local_path=True),
             gpu_memory_utilization=self.gpu_memory_utilization,
             enforce_eager=self.enforce_eager,
             limit_mm_per_prompt={"image": 1},

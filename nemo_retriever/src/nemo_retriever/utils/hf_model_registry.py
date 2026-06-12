@@ -47,7 +47,14 @@ HF_MODEL_REVISIONS: dict[str, str] = {
 }
 
 
-def get_hf_revision(model_id: str, *, strict: bool = True) -> str | None:
+def _is_local_model_dir(model_id: str) -> bool:
+    """Return whether *model_id* is a local HF model directory."""
+    return (
+        bool(model_id) and os.path.isdir(str(model_id)) and os.path.isfile(os.path.join(str(model_id), "config.json"))
+    )
+
+
+def get_hf_revision(model_id: str, *, strict: bool = True, allow_local_path: bool = False) -> str | None:
     """Return the pinned commit SHA for *model_id*.
 
     Parameters
@@ -59,16 +66,15 @@ def get_hf_revision(model_id: str, *, strict: bool = True) -> str | None:
         no pinned revision.  When ``False``, log a warning and return
         ``None`` so that ``from_pretrained`` falls back to the ``main``
         branch.
+    allow_local_path:
+        When ``True``, a local model directory containing ``config.json`` is
+        allowed to return ``None`` because it has no Hub commit SHA to pin.
     """
     revision = HF_MODEL_REVISIONS.get(model_id)
     if revision is not None:
         return revision
 
-    # A local filesystem checkpoint has no Hub commit to pin, so the revision
-    # gate does not apply: load the on-disk files as-is. This is scoped to
-    # directories only -- unregistered *Hub* ids still hit the strict gate
-    # below, preserving the supply-chain pin for remote models.
-    if model_id and os.path.isdir(str(model_id)):
+    if allow_local_path and _is_local_model_dir(model_id):
         return None
 
     msg = (
