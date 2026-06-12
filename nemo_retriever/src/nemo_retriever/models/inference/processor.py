@@ -91,11 +91,9 @@ def maybe_inject_local_hf_embedder(task_config: Dict[str, Any], transform_config
         return
 
     from nemo_retriever.model import (
-        _is_local_checkpoint_dir,
-        _resolve_local_embed_arch,
         create_local_embedder,
-        is_vl_embed_model,
         resolve_embed_model,
+        resolve_embed_model_use_vl,
     )
 
     embed_model = resolve_embed_model(
@@ -124,12 +122,7 @@ def maybe_inject_local_hf_embedder(task_config: Dict[str, Any], transform_config
 
     prefix = f"{transform_config.input_type}: " if getattr(transform_config, "input_type", None) else ""
 
-    # A local checkpoint dir declares vl/text explicitly (same resolver as the
-    # factory); registered ids fall back to the id allow-list.
-    if _is_local_checkpoint_dir(embed_model):
-        use_vl = _resolve_local_embed_arch(model_arch)
-    else:
-        use_vl = is_vl_embed_model(embed_model)
+    use_vl = resolve_embed_model_use_vl(embed_model, model_arch=model_arch)
 
     if use_vl:
 
