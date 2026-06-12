@@ -56,7 +56,7 @@ class LlamaNemotronEmbed1BV2HFEmbedder:
         model_id = self.model_id or _DEFAULT_EMBED_MODEL
         dev = torch.device(self.device or ("cuda" if torch.cuda.is_available() else "cpu"))
         hf_cache_dir = configure_global_hf_cache_base(self.hf_cache_dir)
-        _revision = get_hf_revision(model_id)
+        _revision = get_hf_revision(model_id, allow_local_path=True)
         self._tokenizer = AutoTokenizer.from_pretrained(
             model_id,
             revision=_revision,
