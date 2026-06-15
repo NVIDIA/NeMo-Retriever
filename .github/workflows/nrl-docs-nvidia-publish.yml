@@ -86,6 +86,8 @@ jobs:
           DISABLE_MKDOCS_2_WARNING: "true"
         run: mkdocs build -f mkdocs.yml --strict
 
+      # MkDocs does not emit versions.json. publish-docs uploads the artifact copy to S3
+      # (it does not merge with the live S3 file). docs/publish/versions.json is canonical.
       - name: Stage version picker metadata for publish-docs
         run: |
           cp docs/publish/versions.json docs/site/versions.json
@@ -111,6 +113,8 @@ jobs:
           VERSION_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.docs-version-override || '' }}
           PUBLISH_LATEST_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.publish-as-latest }}
           NOTIFY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.notify-emails || '' }}
+          NRL_DOCS_PUBLISH_VERSION_VAR: ${{ vars.NRL_DOCS_PUBLISH_VERSION }}
+          DOCS_RELEASE_EMAILS_VAR: ${{ vars.DOCS_RELEASE_EMAILS }}
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "dry_run=${DISPATCH_DRY_RUN}" >> "$GITHUB_OUTPUT"
@@ -122,14 +126,14 @@ jobs:
 
           VERSION="${VERSION_INPUT}"
           if [[ -z "${VERSION}" ]]; then
-            VERSION="${{ vars.NRL_DOCS_PUBLISH_VERSION }}"
+            VERSION="${NRL_DOCS_PUBLISH_VERSION_VAR}"
           fi
           if [[ -z "${VERSION}" ]]; then
             VERSION="26.5.0"
           fi
           echo "docs_version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-          EMAILS="${{ vars.DOCS_RELEASE_EMAILS }}"
+          EMAILS="${DOCS_RELEASE_EMAILS_VAR}"
           if [[ -n "${NOTIFY_INPUT}" ]]; then
             if [[ -n "${EMAILS}" ]]; then
               EMAILS="${EMAILS},${NOTIFY_INPUT}"
@@ -186,5 +190,4 @@ jobs:
         run: |
           S3_ROOT="${S3_TARGET_ROOT%/}"
           DEST="${S3_ROOT}/${{ env.S3_TARGET_PATH }}/index.html"
-          echo "Uploading root redirect to ${DEST}"
-          aws s3 cp nemo-retriever-src/docs/publish/index.html "${DEST}"
+          aws s3 cp --quiet nemo-retriever-src/docs/publish/index.html "${DEST}"
