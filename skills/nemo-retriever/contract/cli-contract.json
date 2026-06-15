@@ -1,15 +1,15 @@
 {
-  "contract_version": "0.2.0",
+  "contract_version": "0.1.0",
   "primitive": "query",
   "subcommands_required": ["ingest", "query", "serve-models"],
+  "requires_hybrid_index": true,
   "query": {
     "required_flags": ["--top-k", "--hybrid", "--format"],
     "operator_flags": ["--lancedb-uri", "--table-name", "--embed-model-name"],
     "skill_invocation": "retriever query \"<question>\" --format evidence --hybrid",
     "engine_default_format": "hits",
     "engine_default_hybrid": false,
-    "result_schema": "query-result.schema.json",
-    "_note": "`query`'s ENGINE DEFAULTS are unchanged from legacy (--format hits = flat ranked list, --hybrid off = vector-only). The skill opts into `--format evidence` (fidelity-tagged {evidence, coverage}) and `--hybrid` (vector+BM25) EXPLICITLY — it does not rely on defaults, so existing `query` callers are unaffected. `query` also exposes --rerank/--candidate-k/--content-types/--page-dedup, unused by the skill."
+    "result_schema": "query-result.schema.json"
   },
   "ingest": {
     "required_flags": ["--append", "--overwrite", "--hybrid", "--ocr-version", "--ocr-lang", "--table-name", "--lancedb-uri", "--embed-model-name"],
@@ -17,7 +17,6 @@
     "single_pass_multiformat": true
   },
   "default_table_name": "nemo-retriever",
-  "_default_table_name_note": "engine DEFAULT_TABLE_NAME constant; NOT the skill name. Operator-config only.",
   "legacy": {
     "note": "verify still ships but the retriever skill does not depend on it; not gated by doctor.py.",
     "subcommands": ["verify"]
