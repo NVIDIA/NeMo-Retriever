@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from dataclasses import fields
 from typing import Any, Mapping
 
 import typer
@@ -30,176 +31,109 @@ from nemo_retriever.ingest.plan import (
 )
 
 
-def _run_graph_ingest_request(request: IngestPlanRequest, *, dry_run: bool, quiet: bool) -> None:
+def _run_graph_ingest_workflow(request: IngestPlanRequest, *, dry_run: bool, quiet: bool) -> None:
     run_cli_workflow(
         lambda: run_ingest_workflow(resolve_ingest_plan(request), dry_run=dry_run),
         quiet=quiet,
     )
 
 
-def _source_options(values: Mapping[str, Any]) -> IngestSourceOptions:
-    return IngestSourceOptions(documents=values["documents"], profile=values["profile"])
+def _matching_option_values(values: Mapping[str, Any], options_type: type[Any]) -> dict[str, Any]:
+    return {field.name: values[field.name] for field in fields(options_type) if field.name in values}
 
 
-def _runtime_options(values: Mapping[str, Any], *, run_mode: IngestRunModeValue) -> IngestRuntimeOptions:
+def _build_source_options(values: Mapping[str, Any]) -> IngestSourceOptions:
+    return IngestSourceOptions(**_matching_option_values(values, IngestSourceOptions))
+
+
+def _build_runtime_options(values: Mapping[str, Any], *, run_mode: IngestRunModeValue) -> IngestRuntimeOptions:
+    option_values = _matching_option_values(values, IngestRuntimeOptions)
+    # The command name owns run_mode; ignore any parsed value if a future caller supplies one.
+    option_values.pop("run_mode", None)
     return IngestRuntimeOptions(
+        **option_values,
         run_mode=run_mode,
-        ray_address=values.get("ray_address"),
-        ray_log_to_driver=values.get("ray_log_to_driver"),
     )
 
 
-def _extract_batch_options(values: Mapping[str, Any], *, enabled: bool) -> IngestExtractBatchOptions:
+def _build_extract_batch_options(values: Mapping[str, Any], *, enabled: bool) -> IngestExtractBatchOptions:
     if not enabled:
         return IngestExtractBatchOptions()
-    return IngestExtractBatchOptions(
-        pdf_split_batch_size=values.get("pdf_split_batch_size"),
-        pdf_extract_workers=values.get("pdf_extract_workers"),
-        pdf_extract_batch_size=values.get("pdf_extract_batch_size"),
-        pdf_extract_cpus_per_task=values.get("pdf_extract_cpus_per_task"),
-        page_elements_workers=values.get("page_elements_workers"),
-        page_elements_batch_size=values.get("page_elements_batch_size"),
-        page_elements_cpus_per_actor=values.get("page_elements_cpus_per_actor"),
-        page_elements_gpus_per_actor=values.get("page_elements_gpus_per_actor"),
-        ocr_workers=values.get("ocr_workers"),
-        ocr_batch_size=values.get("ocr_batch_size"),
-        ocr_cpus_per_actor=values.get("ocr_cpus_per_actor"),
-        ocr_gpus_per_actor=values.get("ocr_gpus_per_actor"),
-        table_structure_workers=values.get("table_structure_workers"),
-        table_structure_batch_size=values.get("table_structure_batch_size"),
-        table_structure_cpus_per_actor=values.get("table_structure_cpus_per_actor"),
-        table_structure_gpus_per_actor=values.get("table_structure_gpus_per_actor"),
-        nemotron_parse_workers=values.get("nemotron_parse_workers"),
-        nemotron_parse_batch_size=values.get("nemotron_parse_batch_size"),
-        nemotron_parse_gpus_per_actor=values.get("nemotron_parse_gpus_per_actor"),
-    )
+    return IngestExtractBatchOptions(**_matching_option_values(values, IngestExtractBatchOptions))
 
 
-def _extract_options(values: Mapping[str, Any], *, batch: IngestExtractBatchOptions) -> IngestExtractOptions:
-    return IngestExtractOptions(
-        method=values.get("method"),
-        dpi=values.get("dpi"),
-        extract_text=values.get("extract_text"),
-        extract_images=values.get("extract_images"),
-        extract_tables=values.get("extract_tables"),
-        extract_charts=values.get("extract_charts"),
-        extract_infographics=values.get("extract_infographics"),
-        extract_page_as_image=values.get("extract_page_as_image"),
-        use_page_elements=values.get("use_page_elements"),
-        use_graphic_elements=values.get("use_graphic_elements"),
-        use_table_structure=values.get("use_table_structure"),
-        page_elements_invoke_url=values.get("page_elements_invoke_url"),
-        ocr_invoke_url=values.get("ocr_invoke_url"),
-        ocr_version=values.get("ocr_version"),
-        ocr_lang=values.get("ocr_lang"),
-        graphic_elements_invoke_url=values.get("graphic_elements_invoke_url"),
-        table_structure_invoke_url=values.get("table_structure_invoke_url"),
-        table_output_format=values.get("table_output_format"),
-        extract_api_key=values.get("api_key"),
-        batch=batch,
-    )
+def _build_extract_options(values: Mapping[str, Any], *, batch: IngestExtractBatchOptions) -> IngestExtractOptions:
+    option_values = _matching_option_values(values, IngestExtractOptions)
+    option_values["extract_api_key"] = values.get("api_key")
+    option_values["batch"] = batch
+    return IngestExtractOptions(**option_values)
 
 
-def _media_options(values: Mapping[str, Any]) -> IngestMediaOptions:
-    return IngestMediaOptions(
-        segment_audio=values.get("segment_audio"),
-        audio_split_type=values["audio_split_type"],
-        audio_split_interval=values.get("audio_split_interval"),
-        video_extract_audio=values.get("video_extract_audio"),
-        video_extract_frames=values.get("video_extract_frames"),
-        video_frame_fps=values.get("video_frame_fps"),
-        video_frame_dedup=values.get("video_frame_dedup"),
-        video_frame_text_dedup=values.get("video_frame_text_dedup"),
-        video_frame_text_dedup_max_dropped_frames=values.get("video_frame_text_dedup_max_dropped_frames"),
-        video_av_fuse=values.get("video_av_fuse"),
-    )
+def _build_media_options(values: Mapping[str, Any]) -> IngestMediaOptions:
+    return IngestMediaOptions(**_matching_option_values(values, IngestMediaOptions))
 
 
-def _caption_options(values: Mapping[str, Any]) -> IngestCaptionOptions:
-    return IngestCaptionOptions(
-        enabled=values["caption"],
-        caption_invoke_url=values.get("caption_invoke_url"),
-        caption_api_key=values.get("api_key"),
-        caption_model_name=values.get("caption_model_name"),
-        caption_context_text_max_chars=values.get("caption_context_text_max_chars"),
-        caption_infographics=values.get("caption_infographics"),
-    )
+def _build_caption_options(values: Mapping[str, Any]) -> IngestCaptionOptions:
+    option_values = _matching_option_values(values, IngestCaptionOptions)
+    option_values["enabled"] = values["caption"]
+    option_values["caption_api_key"] = values.get("api_key")
+    return IngestCaptionOptions(**option_values)
 
 
-def _dedup_options(values: Mapping[str, Any]) -> IngestDedupOptions:
+def _build_dedup_options(values: Mapping[str, Any]) -> IngestDedupOptions:
     return IngestDedupOptions(enabled=values["dedup"], iou_threshold=values.get("dedup_iou_threshold"))
 
 
-def _chunk_options(values: Mapping[str, Any]) -> IngestChunkOptions:
-    return IngestChunkOptions(
-        enabled=values["text_chunk"],
-        text_chunk_max_tokens=values.get("text_chunk_max_tokens"),
-        text_chunk_overlap_tokens=values.get("text_chunk_overlap_tokens"),
-    )
+def _build_chunk_options(values: Mapping[str, Any]) -> IngestChunkOptions:
+    option_values = _matching_option_values(values, IngestChunkOptions)
+    option_values["enabled"] = values["text_chunk"]
+    return IngestChunkOptions(**option_values)
 
 
-def _embed_batch_options(values: Mapping[str, Any], *, enabled: bool) -> IngestEmbedBatchOptions:
+def _build_embed_batch_options(values: Mapping[str, Any], *, enabled: bool) -> IngestEmbedBatchOptions:
     if not enabled:
         return IngestEmbedBatchOptions()
-    return IngestEmbedBatchOptions(
-        embed_workers=values.get("embed_workers"),
-        embed_batch_size=values.get("embed_batch_size"),
-        embed_cpus_per_actor=values.get("embed_cpus_per_actor"),
-        embed_gpus_per_actor=values.get("embed_gpus_per_actor"),
-    )
+    return IngestEmbedBatchOptions(**_matching_option_values(values, IngestEmbedBatchOptions))
 
 
-def _embed_options(values: Mapping[str, Any], *, batch: IngestEmbedBatchOptions) -> IngestEmbedOptions:
-    return IngestEmbedOptions(
-        embed_invoke_url=values.get("embed_invoke_url"),
-        embed_model_name=values.get("embed_model_name"),
-        local_ingest_embed_backend=values.get("local_ingest_embed_backend"),
-        embed_api_key=values.get("api_key"),
-        embed_modality=values.get("embed_modality"),
-        embed_granularity=values.get("embed_granularity"),
-        text_elements_modality=values.get("text_elements_modality"),
-        structured_elements_modality=values.get("structured_elements_modality"),
-        batch=batch,
-    )
+def _build_embed_options(values: Mapping[str, Any], *, batch: IngestEmbedBatchOptions) -> IngestEmbedOptions:
+    option_values = _matching_option_values(values, IngestEmbedOptions)
+    option_values["embed_api_key"] = values.get("api_key")
+    option_values["batch"] = batch
+    return IngestEmbedOptions(**option_values)
 
 
-def _image_store_options(values: Mapping[str, Any]) -> IngestImageStoreOptions:
+def _build_image_store_options(values: Mapping[str, Any]) -> IngestImageStoreOptions:
     return IngestImageStoreOptions(images_uri=values.get("store_images_uri"))
 
 
-def _storage_options(values: Mapping[str, Any]) -> IngestStorageOptions:
-    return IngestStorageOptions(
-        lancedb_uri=values["lancedb_uri"],
-        table_name=values["table_name"],
-        overwrite=values["overwrite"],
-    )
+def _build_storage_options(values: Mapping[str, Any]) -> IngestStorageOptions:
+    return IngestStorageOptions(**_matching_option_values(values, IngestStorageOptions))
 
 
-def _graph_ingest_request(values: Mapping[str, Any], *, run_mode: IngestRunModeValue) -> IngestPlanRequest:
+def _build_graph_ingest_request(values: Mapping[str, Any], *, run_mode: IngestRunModeValue) -> IngestPlanRequest:
     batch_enabled = run_mode == "batch"
-    extract_batch = _extract_batch_options(values, enabled=batch_enabled)
-    embed_batch = _embed_batch_options(values, enabled=batch_enabled)
-
-    return IngestPlanRequest(
-        source=_source_options(values),
-        runtime=_runtime_options(values, run_mode=run_mode),
-        extract=_extract_options(values, batch=extract_batch),
-        media=_media_options(values),
-        caption=_caption_options(values),
-        dedup=_dedup_options(values),
-        chunk=_chunk_options(values),
-        embed=_embed_options(values, batch=embed_batch),
-        image_store=_image_store_options(values),
-        storage=_storage_options(values),
-    )
+    request_values = {
+        "source": _build_source_options(values),
+        "runtime": _build_runtime_options(values, run_mode=run_mode),
+        "extract": _build_extract_options(values, batch=_build_extract_batch_options(values, enabled=batch_enabled)),
+        "media": _build_media_options(values),
+        "caption": _build_caption_options(values),
+        "dedup": _build_dedup_options(values),
+        "chunk": _build_chunk_options(values),
+        "embed": _build_embed_options(values, batch=_build_embed_batch_options(values, enabled=batch_enabled)),
+        "image_store": _build_image_store_options(values),
+        "storage": _build_storage_options(values),
+    }
+    return IngestPlanRequest(**request_values)
 
 
-def _run_graph_command(ctx: typer.Context, *, run_mode: IngestRunModeValue) -> None:
-    request = _graph_ingest_request(ctx.params, run_mode=run_mode)
-    _run_graph_ingest_request(request, dry_run=ctx.params["dry_run"], quiet=ctx.params["quiet"])
+def _run_graph_ingest_from_parsed_options(parsed_options: Mapping[str, Any], *, run_mode: IngestRunModeValue) -> None:
+    request = _build_graph_ingest_request(parsed_options, run_mode=run_mode)
+    _run_graph_ingest_workflow(request, dry_run=parsed_options["dry_run"], quiet=parsed_options["quiet"])
 
 
-def _local_command(
+def _local_graph_ingest_command(
     ctx: typer.Context,
     documents: opts.DocumentsArgument,
     profile: opts.ProfileOption = "auto",
@@ -256,10 +190,10 @@ def _local_command(
     text_chunk_overlap_tokens: opts.TextChunkOverlapTokensOption = None,
     quiet: opts.QuietOption = True,
 ) -> None:
-    _run_graph_command(ctx, run_mode="inprocess")
+    _run_graph_ingest_from_parsed_options(ctx.params, run_mode="inprocess")
 
 
-def _batch_command(
+def _batch_graph_ingest_command(
     ctx: typer.Context,
     documents: opts.DocumentsArgument,
     profile: opts.ProfileOption = "auto",
@@ -341,4 +275,4 @@ def _batch_command(
     embed_gpus_per_actor: opts.EmbedGpusPerActorOption = None,
     quiet: opts.QuietOption = True,
 ) -> None:
-    _run_graph_command(ctx, run_mode="batch")
+    _run_graph_ingest_from_parsed_options(ctx.params, run_mode="batch")

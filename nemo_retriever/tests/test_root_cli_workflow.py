@@ -23,7 +23,7 @@ import nemo_retriever.ingest.execution as ingest_execution
 import nemo_retriever.ingest.plan as ingest_plan
 import nemo_retriever.ingest.service as ingest_service
 import nemo_retriever.cli.ingest_workflow as ingest_workflow
-import nemo_retriever.cli.ingest.graph as ingest_cli_graph
+import nemo_retriever.cli.ingest.graph_commands as ingest_cli_graph
 import nemo_retriever.cli.ingest.shared as ingest_cli_shared
 from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
 from nemo_retriever.common.params import (

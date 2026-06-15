@@ -82,7 +82,7 @@ Root ingest CLI files:
 |---|---|
 | `cli/main.py` | Registers top-level Typer apps. It does not own ingest option construction. |
 | `cli/ingest/app.py` | Creates the `retriever ingest` sub-app and default-local router. |
-| `cli/ingest/graph.py` | Owns local and batch CLI callbacks and builds graph `IngestPlanRequest`. |
+| `cli/ingest/graph_commands.py` | Owns local and batch graph-ingest CLI callbacks and builds graph `IngestPlanRequest`. |
 | `cli/ingest/service.py` | Owns service CLI callback and builds `ServiceIngestPlanRequest`. |
 | `cli/ingest/options.py` | Typer option metadata only. No request construction or policy. |
 | `cli/ingest/shared.py` | Quiet output capture, CLI error handling, and success-summary helpers. |
@@ -96,8 +96,9 @@ Canonical ingest files:
 | `ingest/service.py` | Service ingest request dataclasses, service request resolution, service execution. |
 
 The Typer layer is adapter-only. Typer callbacks are private Python
-functions (`_local_command`, `_batch_command`, `_service_command`) because the
-public surface is the shell command, not the callback symbol. Programmatic use
+functions (`_local_graph_ingest_command`, `_batch_graph_ingest_command`,
+and `_service_command`) because the public surface is the shell command, not the
+callback symbol. Programmatic use
 should go through the ingest plan/service APIs or `create_ingestor(...)`.
 
 ## Request Flow
@@ -107,7 +108,7 @@ Local/default flow:
 ```text
 retriever ingest docs/
   -> nemo_retriever.cli.ingest.app routes to local
-  -> nemo_retriever.cli.ingest.graph builds IngestPlanRequest
+  -> nemo_retriever.cli.ingest.graph_commands builds IngestPlanRequest
   -> ingest.plan.resolve_ingest_plan(...)
   -> nemo_retriever.cli.ingest_workflow.run_ingest_workflow(...)
   -> ingest.execution.execute_ingest_plan(...)
@@ -119,7 +120,7 @@ Batch flow:
 
 ```text
 retriever ingest batch docs/
-  -> nemo_retriever.cli.ingest.graph builds IngestPlanRequest(run_mode="batch")
+  -> nemo_retriever.cli.ingest.graph_commands builds IngestPlanRequest(run_mode="batch")
   -> ingest.plan.resolve_ingest_plan(...)
   -> nemo_retriever.cli.ingest_workflow.run_ingest_workflow(...)
   -> ingest.execution.execute_ingest_plan(...)
@@ -146,8 +147,9 @@ visible. The cleanup is how those values move inward:
 - Typer command signatures declare the public knobs explicitly.
 - `options.py` centralizes repeated Typer metadata only when the flag spelling,
   default, validation, and help text are identical.
-- `graph.py` immediately groups parsed values into typed `Ingest*Options`
-  dataclasses.
+- `graph_commands.py` immediately groups parsed values into typed `Ingest*Options`
+  dataclasses. Exact-name fields are selected from the `ingest.plan` dataclass
+  fields; semantic CLI-to-request mappings stay explicit.
 - `service.py` immediately groups parsed values into typed
   `ServiceIngest*Options` dataclasses.
 - `resolve_ingest_plan(...)` remains the only graph-mode planner.
@@ -155,19 +157,22 @@ visible. The cleanup is how those values move inward:
   options.
 
 There is no `locals()` funnel, reflection, dynamic command generation, mode
-registry, or generic option framework. The graph builders are narrow and
+registry, or generic option framework. The graph builders use one narrow
+dataclass-field matcher for exact-name fields and keep semantic mappings
 explicit:
 
-- `_source_options`
-- `_runtime_options`
-- `_extract_options`
-- `_media_options`
-- `_caption_options`
-- `_dedup_options`
-- `_chunk_options`
-- `_embed_options`
-- `_image_store_options`
-- `_storage_options`
+- `_build_source_options`
+- `_build_runtime_options`
+- `_build_extract_batch_options`
+- `_build_extract_options`
+- `_build_media_options`
+- `_build_caption_options`
+- `_build_dedup_options`
+- `_build_chunk_options`
+- `_build_embed_batch_options`
+- `_build_embed_options`
+- `_build_image_store_options`
+- `_build_storage_options`
 
 The few name differences are semantic, not accidental. For example,
 `--api-key` fans out to extract, caption, and embed endpoint API keys, and
@@ -220,8 +225,11 @@ commands.
 For an option that already exists in the graph ingest plan:
 
 1. Add or reuse a Typer alias in `cli/ingest/options.py`.
-2. Add the parameter to `_local_command`, `_batch_command`, or both.
-3. Add the explicit assignment to the narrow group builder in `graph.py`.
+2. Add the parameter to `_local_graph_ingest_command`,
+   `_batch_graph_ingest_command`, or both.
+3. If the CLI parameter name matches the request field, no mapping list is
+   needed; the dataclass-field matcher picks it up from `ingest.plan`. If the
+   CLI name differs, keep the semantic mapping explicit in `graph_commands.py`.
 4. Add or update a focused root CLI test that asserts the typed request field.
 5. Update CLI docs if the option is user-facing.
 

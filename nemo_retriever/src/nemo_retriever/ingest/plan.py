@@ -2,6 +2,8 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+"""CLI-facing graph ingest planning built on top of the lower-level ingestor execution plan."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
