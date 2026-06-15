@@ -77,6 +77,8 @@ Image captioning generates natural-language descriptions for unstructured image 
 
 **Captioning is optional** — enable it in your ingest configuration (for example, the `caption` API or pipeline flag) when you need natural-language descriptions of image content. Reasoning traces are disabled by default for captioning.
 
+Chart-classified PDF regions stay on the layout/OCR path; only non-chart image regions and optional infographics (`caption_infographics=True`) receive Omni captions.
+
 **Related**
 
 - [Multimodal embeddings (VLM)](embedding.md)
