@@ -2,7 +2,7 @@ import types
 
 import pytest
 
-from nemo_retriever.utils import ray_resource_hueristics as rh
+from nemo_retriever.common import ray_resource_hueristics as rh
 
 
 # ---------------------------------------------------------------------------

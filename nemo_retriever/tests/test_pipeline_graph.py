@@ -10,17 +10,88 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
 from nemo_retriever.graph import FileListLoaderOperator, MultiTypeExtractOperator, UDFOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.executor import AbstractExecutor, InprocessExecutor, RayDataExecutor
-from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.graph.ingestor_runtime import build_graph, build_post_extract_graph
+from nemo_retriever.operators.graph_ops.multi_type_extract_operator import (
+    AUDIO_EXTENSIONS,
+    HTML_EXTENSIONS,
+    IMAGE_EXTENSIONS,
+    PDF_EXTENSIONS,
+    TEXT_EXTENSIONS,
+    VIDEO_EXTENSIONS,
+)
+from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
-from nemo_retriever.params import ASRParams
-from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import VideoFrameTextDedupParams
-from nemo_retriever.utils.ray_resource_hueristics import Resources
+from nemo_retriever.common.params import (
+    ASRParams,
+    EmbedParams,
+    ExtractParams,
+    TextChunkParams,
+    VideoFrameTextDedupParams,
+)
+from nemo_retriever.common.input_files import INPUT_TYPE_EXTENSIONS
+from nemo_retriever.common.ray_resource_hueristics import Resources
+
+
+def _graph_node_names(graph: Graph) -> list[str]:
+    names: list[str] = []
+
+    def visit(node: Node) -> None:
+        names.append(getattr(node.operator, "name", node.name))
+        for child in node.children:
+            visit(child)
+
+    for root in graph.roots:
+        visit(root)
+    return names
+
+
+def test_post_extract_graph_uses_explicit_content_reshape_flag() -> None:
+    graph = build_post_extract_graph(embed_params=EmbedParams(), reshape_content_before_embed=True)
+
+    assert "ExplodeContentToRows" in _graph_node_names(graph)
+
+
+def test_post_extract_graph_can_skip_content_reshape() -> None:
+    graph = build_post_extract_graph(embed_params=EmbedParams(), reshape_content_before_embed=False)
+
+    assert "ExplodeContentToRows" not in _graph_node_names(graph)
+
+
+def test_text_build_graph_does_not_use_modal_content_reshape() -> None:
+    graph = build_graph(
+        extraction_mode="text",
+        text_params=TextChunkParams(),
+        embed_params=EmbedParams(),
+    )
+
+    assert "ExplodeContentToRows" not in _graph_node_names(graph)
+
+
+def test_auto_extract_extension_sets_share_manifest_registry() -> None:
+    assert PDF_EXTENSIONS == INPUT_TYPE_EXTENSIONS["pdf"] | INPUT_TYPE_EXTENSIONS["doc"]
+    assert TEXT_EXTENSIONS == INPUT_TYPE_EXTENSIONS["txt"]
+    assert HTML_EXTENSIONS == INPUT_TYPE_EXTENSIONS["html"]
+    assert AUDIO_EXTENSIONS == INPUT_TYPE_EXTENSIONS["audio"]
+    assert IMAGE_EXTENSIONS == INPUT_TYPE_EXTENSIONS["image"]
+    assert VIDEO_EXTENSIONS == INPUT_TYPE_EXTENSIONS["video"]
+
+
+def test_auto_build_graph_forwards_video_text_dedup_params_to_multitype() -> None:
+    dedup_params = VideoFrameTextDedupParams(enabled=False)
+
+    graph = build_graph(
+        extraction_mode="auto",
+        extract_params=ExtractParams(),
+        video_text_dedup_params=dedup_params,
+    )
+
+    assert isinstance(graph.roots[0].operator, MultiTypeExtractOperator)
+    assert graph.roots[0].operator_kwargs["video_text_dedup_params"] is dedup_params
 
 
 # ---------------------------------------------------------------------------
@@ -467,7 +538,7 @@ class TestGraphExecute:
     def test_execute_resolves_archetypes_locally(self, monkeypatch):
         resources = Resources(cpu_count=8, gpu_count=0)
         monkeypatch.setattr(
-            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
             lambda: resources,
         )
 
@@ -601,6 +672,24 @@ class TestGraphExecute:
 # MultiTypeExtractOperator tests
 # =====================================================================
 class TestMultiTypeExtractOperator:
+    def test_auto_mode_preserves_audio_video_compat_defaults(self, monkeypatch):
+        from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
+
+        monkeypatch.setattr(
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.asr_params_from_env",
+            lambda: ASRParams(segment_audio=True),
+        )
+
+        op = MultiTypeExtractCPUActor(extraction_mode="auto")
+
+        assert op.audio_chunk_params.split_type == "size"
+        assert op.audio_chunk_params.split_interval == 500000
+        assert op.asr_params.segment_audio is False
+        assert op.video_frame_params.fps == 0.5
+        assert op.video_frame_params.dedup is True
+        assert op.video_text_dedup_params.enabled is True
+        assert op.video_text_dedup_params.max_dropped_frames == 2
+
     def test_group_files_by_type(self):
         """Test file grouping logic."""
 
@@ -627,7 +716,7 @@ class TestMultiTypeExtractOperator:
 
     def test_default_media_params_match_root_ingest_defaults(self, monkeypatch):
         """Mixed auto uses the same audio/video defaults as root CLI typed media ingest."""
-        import nemo_retriever.graph.multi_type_extract_operator as multitype
+        import nemo_retriever.operators.graph_ops.multi_type_extract_operator as multitype
 
         monkeypatch.setattr(
             multitype,
@@ -666,7 +755,7 @@ class TestMultiTypeExtractOperator:
     def test_auto_mode_logs_and_skips_unsupported_extension_in_file_list(self, caplog):
         op = MultiTypeExtractOperator(extraction_mode="auto")
 
-        with caplog.at_level(logging.WARNING, logger="nemo_retriever.graph.multi_type_extract_operator"):
+        with caplog.at_level(logging.WARNING, logger="nemo_retriever.operators.graph_ops.multi_type_extract_operator"):
             grouped = op.preprocess(["/folder/known.txt", "/folder/unknown.xyz"])
 
         assert grouped["text"] == ["/folder/known.txt"]
@@ -678,12 +767,12 @@ class TestMultiTypeExtractOperator:
         assert "Unsupported file extension '.xyz'" in caplog.text
 
     def test_auto_mode_logs_and_skips_unsupported_extension_in_dataframe_batch(self, caplog):
-        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
+        from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
 
         op = MultiTypeExtractCPUActor(extraction_mode="auto")
         batch = pd.DataFrame({"path": ["/folder/unknown.xyz"], "bytes": [b"unsupported"]})
 
-        with caplog.at_level(logging.WARNING, logger="nemo_retriever.graph.multi_type_extract_operator"):
+        with caplog.at_level(logging.WARNING, logger="nemo_retriever.operators.graph_ops.multi_type_extract_operator"):
             result = op.process(batch)
 
         assert isinstance(result, pd.DataFrame)
@@ -714,8 +803,8 @@ class TestMultiTypeExtractOperator:
         assert result == []
 
     def test_detection_pipeline_resolves_suboperators_through_archetype_resolution(self, monkeypatch):
-        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
-        from nemo_retriever.utils.ray_resource_hueristics import Resources
+        from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
+        from nemo_retriever.common.ray_resource_hueristics import Resources
 
         calls = []
 
@@ -730,9 +819,11 @@ class TestMultiTypeExtractOperator:
             calls.append((operator_class.__name__, resources))
             return _IdentityStage
 
-        monkeypatch.setattr("nemo_retriever.graph.multi_type_extract_operator.resolve_operator_class", _fake_resolve)
         monkeypatch.setattr(
-            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.resolve_operator_class", _fake_resolve
+        )
+        monkeypatch.setattr(
+            "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
             lambda: Resources(cpu_count=8, gpu_count=1),
         )
 
@@ -762,8 +853,8 @@ class TestMultiTypeExtractOperator:
         assert len({id(resources) for _name, resources in calls}) == 1
 
     def test_parse_pipeline_resolves_nemotron_parse_through_archetype_resolution(self, monkeypatch):
-        from nemo_retriever.graph.multi_type_extract_operator import MultiTypeExtractCPUActor
-        from nemo_retriever.utils.ray_resource_hueristics import Resources
+        from nemo_retriever.operators.graph_ops.multi_type_extract_operator import MultiTypeExtractCPUActor
+        from nemo_retriever.common.ray_resource_hueristics import Resources
 
         calls = []
 
@@ -775,11 +866,11 @@ class TestMultiTypeExtractOperator:
                 return data
 
         monkeypatch.setattr(
-            "nemo_retriever.graph.multi_type_extract_operator.DocToPdfConversionActor.run",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.DocToPdfConversionActor.run",
             lambda self, data: data,
         )
         monkeypatch.setattr(
-            "nemo_retriever.graph.multi_type_extract_operator.PDFSplitActor.run",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.PDFSplitActor.run",
             lambda self, data: data,
         )
 
@@ -787,9 +878,11 @@ class TestMultiTypeExtractOperator:
             calls.append((operator_class.__name__, resources))
             return _IdentityStage
 
-        monkeypatch.setattr("nemo_retriever.graph.multi_type_extract_operator.resolve_operator_class", _fake_resolve)
         monkeypatch.setattr(
-            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            "nemo_retriever.operators.graph_ops.multi_type_extract_operator.resolve_operator_class", _fake_resolve
+        )
+        monkeypatch.setattr(
+            "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
             lambda: Resources(cpu_count=8, gpu_count=1),
         )
 
@@ -971,6 +1064,46 @@ class TestRayDataExecutor:
         assert isinstance(result, pd.DataFrame)
         assert captured["paths"] == [str(pdf_path)]
         assert captured["include_paths"] is True
+
+    def test_build_dataset_returns_lazy_dataset_without_materializing(self, tmp_path, monkeypatch):
+        import sys
+        from types import SimpleNamespace
+
+        pdf_path = tmp_path / "sample.pdf"
+        pdf_path.write_bytes(b"pdf")
+
+        class _FakeDataset:
+            def to_pandas(self):
+                raise AssertionError("to_pandas should not be called by build_dataset")
+
+        class _FakeDataContext:
+            enable_rich_progress_bars = False
+            use_ray_tqdm = True
+
+            @classmethod
+            def get_current(cls):
+                return cls()
+
+        fake_dataset = _FakeDataset()
+        fake_ray_data = SimpleNamespace(
+            Dataset=_FakeDataset,
+            DataContext=_FakeDataContext,
+            read_binary_files=lambda paths, include_paths=True: fake_dataset,
+        )
+        fake_ray = SimpleNamespace(is_initialized=lambda: True, init=lambda **kwargs: None, data=fake_ray_data)
+
+        monkeypatch.setitem(sys.modules, "ray", fake_ray)
+        monkeypatch.setitem(sys.modules, "ray.data", fake_ray_data)
+        monkeypatch.setattr(
+            "nemo_retriever.graph.executor.gather_cluster_resources",
+            lambda ray: SimpleNamespace(available_gpu_count=lambda: 0),
+        )
+        monkeypatch.setattr("nemo_retriever.graph.executor.resolve_graph", lambda graph, cluster: graph)
+
+        executor = RayDataExecutor(Graph())
+        result = executor.build_dataset([str(pdf_path)])
+
+        assert result is fake_dataset
 
     def test_ingest_rejects_directory_paths_before_ray_read(self, tmp_path, monkeypatch):
         import sys

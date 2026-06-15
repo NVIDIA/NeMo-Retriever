@@ -16,6 +16,7 @@ import ast
 import base64
 import importlib.util
 import io
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,10 @@ def _package_dir() -> Path:
     return Path(nemo_retriever.__file__).resolve().parent
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
 def _iter_markdown_python_blocks() -> list[tuple[str, str]]:
     blocks: list[tuple[str, str]] = []
     root = _package_dir()
@@ -45,12 +50,147 @@ def _iter_markdown_python_blocks() -> list[tuple[str, str]]:
 
 
 _MD_BLOCKS = _iter_markdown_python_blocks()
+_PUBLIC_RETRIEVER_DOCS = (
+    "README.md",
+    "docs/docs/extraction/custom-metadata.md",
+    "examples/nemo_retriever_retriever_query_metadata_filter.ipynb",
+    "nemo_retriever/README.md",
+    "nemo_retriever/docs/cli/README.md",
+    "nemo_retriever/retriever.md",
+    "nemo_retriever/src/nemo_retriever/tools/evaluation/README.md",
+    "nemo_retriever/src/nemo_retriever/common/vdb/README.md",
+)
+_PUBLIC_GRAPH_PIPELINE_DOCS = (
+    "docs/docs/extraction/workflow-document-ingestion.md",
+    "nemo_retriever/README.md",
+    "nemo_retriever/src/nemo_retriever/tools/evaluation/README.md",
+)
+_UNSUPPORTED_DIRECT_RETRIEVER_KWARGS = frozenset(
+    {
+        "vdb",
+        "lancedb_uri",
+        "lancedb_table",
+        "embedder",
+        "embedding_endpoint",
+        "local_query_embed_backend",
+        "reranker",
+    }
+)
+_UNSUPPORTED_GRAPH_PIPELINE_OPTIONS = frozenset({"--lancedb-uri"})
+
+
+def _public_doc_path(root: Path, rel_path: str) -> Path | None:
+    path = root / rel_path
+    if path.exists():
+        return path
+    repo_only_doc = rel_path == "README.md" or rel_path.startswith(("docs/", "examples/"))
+    package_only_image = not (root / "README.md").exists() and not (root / "docs").exists()
+    if repo_only_doc and package_only_image:
+        return None
+    assert False, f"Expected public documentation file is missing: {rel_path}"
+    return path
 
 
 @pytest.mark.parametrize("block_id,code", _MD_BLOCKS, ids=[b[0] for b in _MD_BLOCKS])
 def test_markdown_python_snippet_is_valid_syntax(block_id: str, code: str) -> None:
     """All in-tree Markdown ``python`` fences parse as Python except documented pseudocode."""
     ast.parse(code)
+
+
+def _iter_public_retriever_doc_code() -> list[tuple[str, str]]:
+    root = _repo_root()
+    blocks: list[tuple[str, str]] = []
+    for rel_path in _PUBLIC_RETRIEVER_DOCS:
+        path = _public_doc_path(root, rel_path)
+        if path is None:
+            continue
+        if path.suffix == ".ipynb":
+            nb = json.loads(path.read_text(encoding="utf-8"))
+            for i, cell in enumerate(nb.get("cells", [])):
+                if cell.get("cell_type") != "code":
+                    continue
+                source = cell.get("source") or []
+                code = source if isinstance(source, str) else "".join(source)
+                blocks.append((f"{rel_path}#cell-{i}", code))
+            continue
+
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for i, code in enumerate(re.findall(r"```python\n(.*?)```", text, re.DOTALL)):
+            blocks.append((f"{rel_path}#python-{i}", code))
+    return blocks
+
+
+def _iter_public_graph_pipeline_commands() -> list[tuple[str, str]]:
+    root = _repo_root()
+    commands: list[tuple[str, str]] = []
+    for rel_path in _PUBLIC_GRAPH_PIPELINE_DOCS:
+        path = _public_doc_path(root, rel_path)
+        if path is None:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for i, code in enumerate(re.findall(r"```bash\n(.*?)```", text, re.DOTALL)):
+            lines = code.splitlines()
+            command_idx = 0
+            for line_idx, line in enumerate(lines):
+                if "python -m nemo_retriever.examples.graph_pipeline" not in line:
+                    continue
+                command_lines = [line]
+                next_idx = line_idx + 1
+                while command_lines[-1].rstrip().endswith("\\") and next_idx < len(lines):
+                    command_lines.append(lines[next_idx])
+                    next_idx += 1
+                commands.append((f"{rel_path}#bash-{i}-cmd-{command_idx}", "\n".join(command_lines)))
+                command_idx += 1
+    return commands
+
+
+def _retriever_call_unsupported_kwargs(code: str) -> list[str]:
+    tree = ast.parse(code)
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        is_retriever = isinstance(func, ast.Name) and func.id == "Retriever"
+        is_retriever = is_retriever or isinstance(func, ast.Attribute) and func.attr == "Retriever"
+        if is_retriever:
+            for kw in node.keywords:
+                if kw.arg in _UNSUPPORTED_DIRECT_RETRIEVER_KWARGS:
+                    found.append(str(kw.arg))
+                if kw.arg is None and isinstance(kw.value, ast.Dict):
+                    found.extend(
+                        key.value
+                        for key in kw.value.keys
+                        if isinstance(key, ast.Constant)
+                        and isinstance(key.value, str)
+                        and key.value in _UNSUPPORTED_DIRECT_RETRIEVER_KWARGS
+                    )
+    return found
+
+
+def test_public_retriever_examples_do_not_use_unsupported_constructor_kwargs() -> None:
+    """Public direct ``Retriever(...)`` examples should not use kwargs that the constructor rejects."""
+    violations = []
+    for block_id, code in _iter_public_retriever_doc_code():
+        try:
+            unsupported_kwargs = _retriever_call_unsupported_kwargs(code)
+        except SyntaxError:
+            continue
+        if unsupported_kwargs:
+            violations.append(f"{block_id}: {', '.join(sorted(set(unsupported_kwargs)))}")
+
+    assert not violations, "Unsupported kwargs in public direct Retriever(...) examples:\n" + "\n".join(violations)
+
+
+def test_public_graph_pipeline_examples_do_not_use_unsupported_options() -> None:
+    """Public ``graph_pipeline`` examples should not use options that command rejects."""
+    violations = []
+    for block_id, command in _iter_public_graph_pipeline_commands():
+        unsupported_options = [option for option in _UNSUPPORTED_GRAPH_PIPELINE_OPTIONS if option in command]
+        if unsupported_options:
+            violations.append(f"{block_id}: {', '.join(sorted(unsupported_options))}")
+
+    assert not violations, "Unsupported options in public graph_pipeline examples:\n" + "\n".join(violations)
 
 
 def test_graph_readme_smallest_example() -> None:
@@ -154,7 +294,7 @@ def test_graph_readme_recommended_imports() -> None:
 
 def test_main_text_embed_module_doc_example() -> None:
     """``text_embed/main_text_embed.py`` module docstring — local embedder path."""
-    from nemo_retriever.text_embed.main_text_embed import create_text_embeddings_for_df
+    from nemo_retriever.models.inference.main_text_embed import create_text_embeddings_for_df
 
     df = pd.DataFrame([{"text": "hello", "metadata": {"source_path": "/tmp/a.pdf"}}])
 
@@ -170,7 +310,7 @@ def test_main_text_embed_module_doc_example() -> None:
 
 def test_clustering_doc_boxes_overlap_example() -> None:
     """``clustering.py`` docstring — close boxes overlap with threshold."""
-    from nemo_retriever.api.util.image_processing.clustering import boxes_are_close_or_overlap
+    from nemo_retriever.common.api.util.image_processing.clustering import boxes_are_close_or_overlap
 
     box1 = (100, 100, 150, 150)
     box2 = (160, 110, 200, 140)
@@ -179,7 +319,7 @@ def test_clustering_doc_boxes_overlap_example() -> None:
 
 def test_clustering_doc_remove_superset_bboxes() -> None:
     """``clustering.py`` docstring — strict superset removed."""
-    from nemo_retriever.api.util.image_processing.clustering import remove_superset_bboxes
+    from nemo_retriever.common.api.util.image_processing.clustering import remove_superset_bboxes
 
     bboxes = [
         [0, 0, 5, 5],
@@ -191,7 +331,7 @@ def test_clustering_doc_remove_superset_bboxes() -> None:
 
 def test_transforms_rgba_to_rgb_and_pad_image_doc() -> None:
     """``transforms.py`` docstring examples for RGBA conversion and padding."""
-    from nemo_retriever.api.util.image_processing.transforms import pad_image, rgba_to_rgb_white_bg
+    from nemo_retriever.common.api.util.image_processing.transforms import pad_image, rgba_to_rgb_white_bg
 
     rng = np.random.default_rng(0)
     rgba = rng.integers(0, 256, (100, 100, 4), dtype=np.uint8)
@@ -211,7 +351,7 @@ def test_transforms_rgba_to_rgb_and_pad_image_doc() -> None:
 
 def test_transforms_numpy_base64_roundtrip_doc() -> None:
     """``transforms.py`` — ``numpy_to_base64`` / ``base64_to_numpy`` as in docstrings."""
-    from nemo_retriever.api.util.image_processing.transforms import base64_to_numpy, numpy_to_base64
+    from nemo_retriever.common.api.util.image_processing.transforms import base64_to_numpy, numpy_to_base64
 
     rng = np.random.default_rng(1)
     array = rng.integers(0, 255, (100, 100, 3), dtype=np.uint8)
@@ -226,7 +366,7 @@ def test_transforms_numpy_base64_roundtrip_doc() -> None:
 
 def test_transforms_base64_to_disk_and_save_image_doc(tmp_path: Path) -> None:
     """``transforms.py`` — write base64 bytes and optional format conversion."""
-    from nemo_retriever.api.util.image_processing.transforms import base64_to_disk, save_image_to_disk
+    from nemo_retriever.common.api.util.image_processing.transforms import base64_to_disk, save_image_to_disk
 
     rng = np.random.default_rng(2)
     arr = rng.integers(0, 255, (32, 32, 3), dtype=np.uint8)
@@ -247,7 +387,7 @@ def test_transforms_base64_to_disk_and_save_image_doc(tmp_path: Path) -> None:
 
 def test_schemas_mixins_lowercase_protocol_doc() -> None:
     """``mixins.py`` docstring — protocol fields lowercased."""
-    from nemo_retriever.api.internal.schemas.mixins import LowercaseProtocolMixin
+    from nemo_retriever.common.api.internal.schemas.mixins import LowercaseProtocolMixin
 
     class MyConfigSchema(LowercaseProtocolMixin):
         yolox_infer_protocol: str = ""
@@ -260,7 +400,7 @@ def test_schemas_mixins_lowercase_protocol_doc() -> None:
 
 def test_pdf_exception_handler_doc_behaviour() -> None:
     """``pdf.py`` — decorator swallows errors; ``create_exception_tag`` returns validated metadata."""
-    from nemo_retriever.api.util.exception_handlers.pdf import create_exception_tag, pdfium_exception_handler
+    from nemo_retriever.common.api.util.exception_handlers.pdf import create_exception_tag, pdfium_exception_handler
 
     @pdfium_exception_handler("PDF Processing")
     def boom(path: str) -> list:
@@ -281,7 +421,7 @@ def test_datetools_exception_handler_doc_behaviour() -> None:
     """``converters.py`` (exception_handlers) — invalid dates yield ISO fallback."""
     from datetime import datetime
 
-    from nemo_retriever.api.util.exception_handlers.converters import datetools_exception_handler
+    from nemo_retriever.common.api.util.exception_handlers.converters import datetools_exception_handler
 
     @datetools_exception_handler
     def parse_date(date_str: str) -> datetime:
@@ -301,8 +441,8 @@ def test_langdetect_exception_handler_with_real_detect() -> None:
     """``detectors.py`` — when langdetect works, non-empty text returns a language enum."""
     import langdetect
 
-    from nemo_retriever.api.internal.enums.common import LanguageEnum
-    from nemo_retriever.api.util.exception_handlers.detectors import langdetect_exception_handler
+    from nemo_retriever.common.api.internal.enums.common import LanguageEnum
+    from nemo_retriever.common.api.util.exception_handlers.detectors import langdetect_exception_handler
 
     @langdetect_exception_handler
     def detect_language(text: str):
@@ -314,7 +454,7 @@ def test_langdetect_exception_handler_with_real_detect() -> None:
 
 def test_traceable_func_doc_example() -> None:
     """``tagging.py`` — ``traceable_func`` fills ``trace_info`` entry/exit keys."""
-    from nemo_retriever.api.internal.primitives.tracing.tagging import traceable_func
+    from nemo_retriever.common.api.internal.primitives.tracing.tagging import traceable_func
 
     @traceable_func(trace_name="pdf_extractor::{model_name}")
     def extract_pdf(model_name: str) -> None:
@@ -330,7 +470,7 @@ def test_set_trace_timestamps_with_parent_context_doc() -> None:
     """``tagging.py`` docstring — keys gain parent namespace."""
     from datetime import datetime
 
-    from nemo_retriever.api.internal.primitives.tracing.tagging import set_trace_timestamps_with_parent_context
+    from nemo_retriever.common.api.internal.primitives.tracing.tagging import set_trace_timestamps_with_parent_context
 
     ts1 = datetime(2024, 1, 1, 12, 0, 0)
     ts2 = datetime(2024, 1, 1, 12, 0, 1)
@@ -376,8 +516,8 @@ def test_graph_pipeline_registry_register_docstring_pattern() -> None:
 
 def test_evaluation_readme_protocol_stubs_parse() -> None:
     """``evaluation/README.md`` — Protocol example bodies are syntactically valid."""
-    from nemo_retriever.llm.types import AnswerJudge, GenerationResult, JudgeResult, LLMClient, RetrievalResult
-    from nemo_retriever.llm.types import RetrieverStrategy
+    from nemo_retriever.models.llm.types import AnswerJudge, GenerationResult, JudgeResult, LLMClient, RetrievalResult
+    from nemo_retriever.models.llm.types import RetrieverStrategy
 
     class MyRetriever:
         def retrieve(self, query: str, top_k: int) -> RetrievalResult:

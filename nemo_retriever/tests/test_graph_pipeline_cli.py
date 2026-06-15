@@ -5,16 +5,19 @@
 import sys
 import json
 from types import SimpleNamespace
+from typing import Any
 
 import pandas as pd
+import pytest
 from typer.testing import CliRunner
 
+import nemo_retriever.ingest.execution as ingest_execution
 import nemo_retriever.examples.graph_pipeline as batch_pipeline
-import nemo_retriever.model as model_module
-import nemo_retriever.pipeline.__main__ as pipeline_main
-import nemo_retriever.recall.beir as beir_module
-import nemo_retriever.utils.detection_summary as detection_summary_module
-from nemo_retriever.utils.input_files import resolve_input_patterns
+import nemo_retriever.models as model_module
+import nemo_retriever.cli.pipeline.__main__ as pipeline_main
+import nemo_retriever.tools.recall.beir as beir_module
+import nemo_retriever.common.detection_summary as detection_summary_module
+from nemo_retriever.common.input_files import resolve_input_patterns
 
 RUNNER = CliRunner()
 
@@ -54,6 +57,7 @@ class _FakeErrorRows:
 class _FakeIngestor:
     def __init__(self) -> None:
         self.extract_params = None
+        self.extract_kwargs = {}
         self.audio_extract_params = None
         self.audio_asr_params = None
         self.embed_params = None
@@ -63,8 +67,11 @@ class _FakeIngestor:
         self.file_patterns = file_patterns
         return self
 
-    def extract(self, params):
+    def extract(self, params=None, **kwargs):
         self.extract_params = params
+        self.extract_kwargs = kwargs
+        self.audio_extract_params = kwargs.get("audio_chunk_params")
+        self.audio_asr_params = kwargs.get("asr_params")
         return self
 
     def extract_image_files(self, params):
@@ -101,6 +108,18 @@ class _FakeIngestor:
         return _FakeErrorRows()
 
 
+def _install_fake_lancedb(monkeypatch, *, row_count: int = 0) -> None:
+    class _FakeTable:
+        def count_rows(self) -> int:
+            return row_count
+
+    class _FakeDb:
+        def open_table(self, _name):
+            return _FakeTable()
+
+    monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
+
+
 def test_resolve_input_file_patterns_recurses_for_directory_inputs(tmp_path) -> None:
     dataset_dir = tmp_path / "earnings_consulting"
     dataset_dir.mkdir()
@@ -132,22 +151,14 @@ def test_graph_pipeline_cli_accepts_multimodal_embed_and_page_image_flags(tmp_pa
     missing_query_csv = tmp_path / "missing.csv"
 
     fake_ingestor = _FakeIngestor()
-    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
     monkeypatch.setitem(
         sys.modules,
         "ray",
         SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
     )
 
-    class _FakeTable:
-        def count_rows(self) -> int:
-            return 0
-
-    class _FakeDb:
-        def open_table(self, _name):
-            return _FakeTable()
-
-    monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
+    _install_fake_lancedb(monkeypatch)
     monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
     result = RUNNER.invoke(
         batch_pipeline.app,
@@ -184,7 +195,13 @@ def test_graph_pipeline_cli_defaults_vdb_overwrite(tmp_path, monkeypatch) -> Non
     (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
 
     fake_ingestor = _FakeIngestor()
-    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    create_calls: list[dict[str, Any]] = []
+
+    def fake_create_ingestor(**kwargs: Any) -> _FakeIngestor:
+        create_calls.append(kwargs)
+        return fake_ingestor
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", fake_create_ingestor)
     monkeypatch.setitem(
         sys.modules,
         "ray",
@@ -195,6 +212,10 @@ def test_graph_pipeline_cli_defaults_vdb_overwrite(tmp_path, monkeypatch) -> Non
     result = RUNNER.invoke(batch_pipeline.app, [str(dataset_dir), "--evaluation-mode", "none"])
 
     assert result.exit_code == 0
+    assert create_calls == [{"run_mode": "inprocess", "ray_log_to_driver": True}]
+    assert fake_ingestor.extract_params.dpi == 200
+    assert fake_ingestor.extract_params.extract_infographics is False
+    assert fake_ingestor.extract_params.extract_page_as_image is True
     assert fake_ingestor.vdb_upload_params.vdb_kwargs["overwrite"] is True
 
 
@@ -204,7 +225,7 @@ def test_graph_pipeline_cli_vdb_append_forwards_overwrite_false(tmp_path, monkey
     (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
 
     fake_ingestor = _FakeIngestor()
-    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
     monkeypatch.setitem(
         sys.modules,
         "ray",
@@ -224,7 +245,7 @@ def test_graph_pipeline_cli_vdb_flag_overrides_json(tmp_path, monkeypatch) -> No
     (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
 
     fake_ingestor = _FakeIngestor()
-    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
     monkeypatch.setitem(
         sys.modules,
         "ray",
@@ -258,23 +279,14 @@ def test_graph_pipeline_cli_routes_audio_input_to_audio_ingestor(tmp_path, monke
     missing_query_csv = tmp_path / "missing.csv"
 
     fake_ingestor = _FakeIngestor()
-    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
     monkeypatch.setitem(
         sys.modules,
         "ray",
         SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
     )
-    monkeypatch.setattr(pipeline_main, "asr_params_from_env", lambda: SimpleNamespace(model_copy=lambda update: update))
 
-    class _FakeTable:
-        def count_rows(self) -> int:
-            return 0
-
-    class _FakeDb:
-        def open_table(self, _name):
-            return _FakeTable()
-
-    monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
+    _install_fake_lancedb(monkeypatch)
     monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
 
     result = RUNNER.invoke(
@@ -303,7 +315,94 @@ def test_graph_pipeline_cli_routes_audio_input_to_audio_ingestor(tmp_path, monke
     assert isinstance(fake_ingestor.file_patterns, list)
     assert fake_ingestor.audio_extract_params.split_type == "time"
     assert fake_ingestor.audio_extract_params.split_interval == 45
-    assert fake_ingestor.audio_asr_params["segment_audio"] is True
+    assert fake_ingestor.audio_asr_params.segment_audio is True
+
+
+@pytest.mark.parametrize(
+    ("input_type", "filename", "param_key"),
+    [
+        ("txt", "sample.txt", "text_params"),
+        ("html", "sample.html", "html_params"),
+    ],
+)
+def test_graph_pipeline_cli_text_chunk_for_text_inputs_uses_dedicated_params_only(
+    tmp_path,
+    monkeypatch,
+    input_type: str,
+    filename: str,
+    param_key: str,
+) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / filename).write_text("placeholder", encoding="utf-8")
+
+    fake_ingestor = _FakeIngestor()
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setitem(
+        sys.modules,
+        "ray",
+        SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
+    )
+
+    _install_fake_lancedb(monkeypatch, row_count=1)
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--input-type",
+            input_type,
+            "--run-mode",
+            "batch",
+            "--text-chunk",
+            "--text-chunk-max-tokens",
+            "64",
+            "--text-chunk-overlap-tokens",
+            "8",
+            "--evaluation-mode",
+            "none",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert fake_ingestor.extract_kwargs[param_key].max_tokens == 64
+    assert fake_ingestor.extract_kwargs[param_key].overlap_tokens == 8
+    assert "split_config" not in fake_ingestor.extract_kwargs
+
+
+def test_graph_pipeline_cli_text_chunk_auto_pdf_uses_plan_split_config(tmp_path, monkeypatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    fake_ingestor = _FakeIngestor()
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setitem(
+        sys.modules,
+        "ray",
+        SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
+    )
+    _install_fake_lancedb(monkeypatch, row_count=1)
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--run-mode",
+            "batch",
+            "--text-chunk",
+            "--text-chunk-max-tokens",
+            "64",
+            "--text-chunk-overlap-tokens",
+            "8",
+            "--evaluation-mode",
+            "none",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert fake_ingestor.extract_kwargs["split_config"]["pdf"]["max_tokens"] == 64
+    assert fake_ingestor.extract_kwargs["split_config"]["pdf"]["overlap_tokens"] == 8
 
 
 def test_graph_pipeline_cli_allows_default_evaluation_for_pdf_inputs(tmp_path, monkeypatch) -> None:
@@ -312,7 +411,7 @@ def test_graph_pipeline_cli_allows_default_evaluation_for_pdf_inputs(tmp_path, m
     (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
 
     fake_ingestor = _FakeIngestor()
-    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
     monkeypatch.setitem(
         sys.modules,
         "ray",
@@ -359,24 +458,11 @@ def test_graph_pipeline_cli_routes_beir_mode_to_evaluator(tmp_path, monkeypatch)
     (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
 
     fake_ingestor = _FakeIngestor()
-    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
     monkeypatch.setattr(pipeline_main, "_count_uploadable_vdb_records", lambda _records: 1)
     monkeypatch.setattr(detection_summary_module, "print_run_summary", lambda *args, **kwargs: None)
 
-    class _FakeTable:
-        def count_rows(self) -> int:
-            return 1
-
-    class _FakeDb:
-        def open_table(self, _name):
-            return _FakeTable()
-
-    class _FakeLanceModule:
-        @staticmethod
-        def connect(_uri):
-            return _FakeDb()
-
-    monkeypatch.setitem(sys.modules, "lancedb", _FakeLanceModule())
+    _install_fake_lancedb(monkeypatch, row_count=1)
     monkeypatch.setitem(
         sys.modules,
         "ray",
@@ -423,22 +509,14 @@ def test_graph_pipeline_cli_accepts_harness_runtime_metric_flags(tmp_path, monke
     runtime_dir = tmp_path / "runtime_metrics"
 
     fake_ingestor = _FakeIngestor()
-    monkeypatch.setattr(pipeline_main, "GraphIngestor", lambda *args, **kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
     monkeypatch.setitem(
         sys.modules,
         "ray",
         SimpleNamespace(shutdown=lambda: None, is_initialized=lambda: True),
     )
 
-    class _FakeTable:
-        def count_rows(self) -> int:
-            return 0
-
-    class _FakeDb:
-        def open_table(self, _name):
-            return _FakeTable()
-
-    monkeypatch.setitem(sys.modules, "lancedb", SimpleNamespace(connect=lambda _uri: _FakeDb()))
+    _install_fake_lancedb(monkeypatch)
     monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
     monkeypatch.setattr(pipeline_main, "_count_uploadable_vdb_records", lambda _records: 1)
     monkeypatch.setattr(
@@ -473,3 +551,203 @@ def test_graph_pipeline_cli_accepts_harness_runtime_metric_flags(tmp_path, monke
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["recall_details"] is False
     assert payload["evaluation_mode"] == "beir"
+
+
+def test_graph_pipeline_cli_service_mode_rejects_ingest_flag(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--run-mode",
+            "service",
+            "--ocr-invoke-url",
+            "http://localhost:9000/v1/infer",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--run-mode=service" in result.output
+    assert "--ocr-invoke-url" in result.output
+
+
+def test_graph_pipeline_cli_service_mode_lists_all_incompatible_flags(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--run-mode",
+            "service",
+            "--ocr-invoke-url",
+            "http://localhost:9000/v1/infer",
+            "--ray-address",
+            "ray://localhost:10001",
+            "--caption-device",
+            "cuda:0",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--ocr-invoke-url" in result.output
+    assert "--ray-address" in result.output
+    assert "--caption-device" in result.output
+
+
+def test_graph_pipeline_cli_service_mode_allows_extract_and_embed_flags(tmp_path, monkeypatch) -> None:
+    """Flags whose values flow through to ``ServiceIngestor`` must not be rejected."""
+    import nemo_retriever.service.service_ingestor as service_ingestor_module
+
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+    save_dir = tmp_path / "save"
+
+    captured: dict[str, Any] = {}
+
+    class _FakeServiceIngestor(list):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__()
+
+        def files(self, _files):
+            return self
+
+        def extract(self, params=None, *, split_config=None, extraction_mode="auto", **_kwargs):
+            captured["extract_params"] = params
+            captured["split_config"] = split_config
+            captured["extraction_mode"] = extraction_mode
+            return self
+
+        def dedup(self, params=None, **_kwargs):
+            captured["dedup_params"] = params
+            return self
+
+        def embed(self, params=None, **_kwargs):
+            captured["embed_params"] = params
+            return self
+
+        def ingest(self, *args, **kwargs):
+            return self
+
+    monkeypatch.setattr(service_ingestor_module, "ServiceIngestor", _FakeServiceIngestor)
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--run-mode",
+            "service",
+            "--service-url",
+            "http://localhost:7670",
+            "--embed-model-name",
+            "nvidia/llama-3.2-nv-embedqa-1b-v2",
+            "--method",
+            "ocr",
+            "--dpi",
+            "300",
+            "--no-extract-text",
+            "--embed-granularity",
+            "page",
+            "--dedup",
+            "--dedup-iou-threshold",
+            "0.6",
+            "--text-chunk",
+            "--text-chunk-max-tokens",
+            "64",
+            "--evaluation-mode",
+            "none",
+            "--save-intermediate",
+            str(save_dir),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["extract_params"].method == "ocr"
+    assert captured["extract_params"].dpi == 300
+    assert captured["extract_params"].extract_text is False
+    assert captured["embed_params"].embed_granularity == "page"
+    assert captured["dedup_params"].iou_threshold == 0.6
+    assert captured["split_config"]["pdf"]["max_tokens"] == 64
+
+
+def test_graph_pipeline_cli_service_mode_rejects_vdb_flags(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    result_no_vdb = RUNNER.invoke(
+        batch_pipeline.app,
+        [str(dataset_dir), "--run-mode", "service", "--no-vdb"],
+    )
+    assert result_no_vdb.exit_code != 0
+    assert "--no-vdb" in result_no_vdb.output
+
+    result_overwrite = RUNNER.invoke(
+        batch_pipeline.app,
+        [str(dataset_dir), "--run-mode", "service", "--vdb-overwrite"],
+    )
+    assert result_overwrite.exit_code != 0
+    assert "--vdb-overwrite" in result_overwrite.output
+
+    result_append = RUNNER.invoke(
+        batch_pipeline.app,
+        [str(dataset_dir), "--run-mode", "service", "--vdb-append"],
+    )
+    assert result_append.exit_code != 0
+    assert "--vdb-overwrite" in result_append.output
+
+
+def test_graph_pipeline_cli_service_mode_accepts_allowlisted_flags(tmp_path, monkeypatch) -> None:
+    import nemo_retriever.service.service_ingestor as service_ingestor_module
+
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+    save_dir = tmp_path / "save"
+
+    class _FakeServiceIngestor(list):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__()
+
+        def files(self, _files):
+            return self
+
+        def extract(self, *args, **kwargs):
+            return self
+
+        def embed(self, *args, **kwargs):
+            return self
+
+        def ingest(self, *args, **kwargs):
+            return self
+
+    monkeypatch.setattr(service_ingestor_module, "ServiceIngestor", _FakeServiceIngestor)
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "fake-embed-model")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--run-mode",
+            "service",
+            "--service-url",
+            "http://localhost:7670",
+            "--service-concurrency",
+            "2",
+            "--embed-model-name",
+            "nvidia/llama-3.2-nv-embedqa-1b-v2",
+            "--evaluation-mode",
+            "none",
+            "--save-intermediate",
+            str(save_dir),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output

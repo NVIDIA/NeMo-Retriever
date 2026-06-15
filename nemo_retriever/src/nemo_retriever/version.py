@@ -14,8 +14,8 @@ import os
 import subprocess
 
 try:
-    from ._build_info import BUILD_DATE as _PACKAGE_BUILD_DATE
-    from ._build_info import BUILD_GIT_SHA as _PACKAGE_BUILD_GIT_SHA
+    from nemo_retriever._build_info import BUILD_DATE as _PACKAGE_BUILD_DATE
+    from nemo_retriever._build_info import BUILD_GIT_SHA as _PACKAGE_BUILD_GIT_SHA
 except ImportError:
     # During setuptools build isolation the package may not be importable
     _PACKAGE_BUILD_DATE = "unknown"

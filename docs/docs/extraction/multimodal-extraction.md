@@ -49,8 +49,9 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
 
+Chart-labeled PDF regions are **not** routed through the Omni caption stage; they remain on the layout-and-OCR path. For scope and validation guidance, see [Image captioning](prerequisites-support-matrix.md#image-captioning-2605).
 
-For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning).
+For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning) and set `caption_infographics=True` when you need VLM captions on infographic regions.
 
 **Related**
 
@@ -62,7 +63,7 @@ For natural-language infographic descriptions, optionally enable [image captioni
 
 Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
-The default OCR engine is **Nemotron OCR v2**. When you run extraction **locally with HuggingFace models**, v2 operates in **multilingual** mode by default (`multi`). Pass `--ocr-lang english` on the CLI (or the equivalent API parameter) for English-only v2, or `--ocr-version v1` for the legacy engine. For Kubernetes installs, the chart's OCR NIM defaults and image are documented under [Nemotron OCR v2 — language mode](prerequisites-support-matrix.md#nemotron-ocr-v2-language-mode) in the support matrix.
+OCR artifacts depend on how you deploy. **Helm / NIM:** the production chart uses **Nemotron OCR v1** (`nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0`). **Local Hugging Face inference:** the default engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). For Kubernetes defaults and the Helm-vs-local split, see [OCR artifacts (Helm vs local Hugging Face)](prerequisites-support-matrix.md#nemotron-ocr-v2-language-mode) in the support matrix.
 
 **Related**
 
@@ -80,7 +81,7 @@ Image captioning generates natural-language descriptions for unstructured image 
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
-- [Image captioning](prerequisites-support-matrix.md#image-captioning)
+- [Image captioning](prerequisites-support-matrix.md#image-captioning-2605)
 
 ## Metadata and content schema { #metadata-and-content-schema }
 

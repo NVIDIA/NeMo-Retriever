@@ -10,9 +10,9 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from nemo_retriever.params import VdbUploadParams
-from nemo_retriever.vdb import IngestVdbOperator
-from nemo_retriever.vdb.sidecar_metadata import (
+from nemo_retriever.common.params import VdbUploadParams
+from nemo_retriever.operators.vdb import IngestVdbOperator
+from nemo_retriever.common.vdb.sidecar_metadata import (
     apply_sidecar_metadata_to_client_batches,
     filter_hits_by_content_metadata,
     normalize_sidecar_cell_value,
@@ -124,7 +124,7 @@ def test_vdb_upload_params_triplet_validation() -> None:
 
 
 def test_ingest_operator_passes_merged_records_to_vdb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from nemo_retriever.vdb import operators as vdb_operator_module
+    from nemo_retriever.operators import vdb as vdb_operator_module
 
     csv_path = tmp_path / "meta.csv"
     pd.DataFrame({"source": ["/tmp/doc-a.pdf"], "meta_a": ["zeta"]}).to_csv(csv_path, index=False)

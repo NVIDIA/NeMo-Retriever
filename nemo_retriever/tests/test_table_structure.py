@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.utils.table_and_chart import join_table_structure_and_ocr_output
+from nemo_retriever.common.modality.table_and_chart import join_table_structure_and_ocr_output
 
 
 def _can_import(mod: str) -> bool:
@@ -158,7 +158,7 @@ class TestTableStructureOCRPageElements:
     """Test the table-structure stage with mocked models."""
 
     def test_no_tables_produces_empty_table_column(self) -> None:
-        from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
+        from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
         df = _make_page_df(has_table=False)
         mock_ts_model = MagicMock()
@@ -176,7 +176,7 @@ class TestTableStructureOCRPageElements:
         mock_ts_model.invoke.assert_not_called()
 
     def test_no_page_image_produces_empty_table_column(self) -> None:
-        from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
+        from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
         df = pd.DataFrame(
             [
@@ -199,7 +199,7 @@ class TestTableStructureOCRPageElements:
         assert result.iloc[0]["table"] == []
 
     def test_with_mocked_models_produces_markdown(self) -> None:
-        from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
+        from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
         import torch
 
@@ -246,7 +246,7 @@ class TestTableStructureOCRPageElements:
 
     def test_with_no_cells_produces_structure_summary(self) -> None:
         """When table-structure returns no cells, it should still produce structure-only output."""
-        from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
+        from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
         import torch
 
@@ -277,7 +277,7 @@ class TestTableStructureOCRPageElements:
 
     def test_model_error_recorded_in_metadata(self) -> None:
         """When model raises an exception, it should be recorded in metadata, not crash."""
-        from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
+        from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
         df = _make_page_df(width=200, height=100)
 
@@ -297,7 +297,7 @@ class TestTableStructureOCRPageElements:
         assert "model exploded" in meta["error"]["message"]
 
     def test_requires_table_structure_model_when_no_url(self) -> None:
-        from nemo_retriever.table.table_detection import table_structure_ocr_page_elements
+        from nemo_retriever.operators.extract.table.table_detection import table_structure_ocr_page_elements
 
         df = _make_page_df()
         with pytest.raises(ValueError, match="table_structure_model"):
@@ -315,10 +315,15 @@ class TestTableStructureActor:
 
     def test_actor_error_returns_dataframe_with_error(self) -> None:
         """Actor should never raise; errors go into metadata columns."""
-        from nemo_retriever.table.table_detection import TableStructureGPUActor
+        from nemo_retriever.operators.extract.table.table_detection import TableStructureGPUActor
 
         # Patch model constructors to avoid loading real models.
-        with (patch("nemo_retriever.table.table_detection.TableStructureGPUActor.__init__", return_value=None),):
+        with (
+            patch(
+                "nemo_retriever.operators.extract.table.table_detection.TableStructureGPUActor.__init__",
+                return_value=None,
+            ),
+        ):
             actor = TableStructureGPUActor.__new__(TableStructureGPUActor)
             actor._table_structure_model = None
             actor._table_structure_invoke_url = ""
@@ -400,7 +405,7 @@ class TestOCRJoinsTableStructure:
 
     def test_local_path_joins_structure_and_ocr(self) -> None:
         """Local OCR path should join structure + OCR into markdown when use_table_structure=True."""
-        from nemo_retriever.ocr.shared import ocr_page_elements
+        from nemo_retriever.common.modality.ocr.shared import ocr_page_elements
 
         bbox = [0.0, 0.0, 1.0, 1.0]
         ts_regions = [
@@ -434,7 +439,7 @@ class TestOCRJoinsTableStructure:
 
     def test_local_path_falls_back_when_no_structure_match(self) -> None:
         """No matching structure region -> OCR pseudo-markdown fallback; no raise."""
-        from nemo_retriever.ocr.shared import ocr_page_elements
+        from nemo_retriever.common.modality.ocr.shared import ocr_page_elements
 
         # TS regions is empty so there's no match for the table crop bbox.
         df = _make_page_df_with_ts_regions(ocr_bbox=[0.0, 0.0, 1.0, 1.0], ts_regions=[])
@@ -461,7 +466,7 @@ class TestOCRJoinsTableStructure:
 
     def test_remote_path_joins_structure_and_ocr(self) -> None:
         """Remote OCR path should join structure + OCR the same way as the local path."""
-        from nemo_retriever.ocr.shared import ocr_page_elements
+        from nemo_retriever.common.modality.ocr.shared import ocr_page_elements
 
         bbox = [0.0, 0.0, 1.0, 1.0]
         ts_regions = [
@@ -480,7 +485,7 @@ class TestOCRJoinsTableStructure:
         # which returns it as-is when it isn't a dict. So a length-1 list whose
         # sole element is the list of OCR predictions simulates one table crop.
         with patch(
-            "nemo_retriever.ocr.shared.invoke_image_inference_batches",
+            "nemo_retriever.common.modality.ocr.shared.invoke_image_inference_batches",
             return_value=[self._ocr_preds_abcd()],
         ):
             result = ocr_page_elements(
@@ -506,7 +511,7 @@ class TestOCRJoinsTableStructure:
 
 class TestTableStructureOCRConfig:
     def test_load_config_defaults(self) -> None:
-        from nemo_retriever.table.config import load_table_structure_ocr_config_from_dict
+        from nemo_retriever.common.modality.table.config import load_table_structure_ocr_config_from_dict
 
         cfg = load_table_structure_ocr_config_from_dict({})
         assert cfg.table_structure_invoke_url == ""
@@ -514,7 +519,7 @@ class TestTableStructureOCRConfig:
         assert cfg.request_timeout_s == 60.0
 
     def test_load_config_with_values(self) -> None:
-        from nemo_retriever.table.config import load_table_structure_ocr_config_from_dict
+        from nemo_retriever.common.modality.table.config import load_table_structure_ocr_config_from_dict
 
         cfg = load_table_structure_ocr_config_from_dict(
             {
@@ -536,7 +541,7 @@ class TestTableStructureOCRConfig:
 @_needs_cv2
 class TestBuildPlan:
     def test_use_table_structure_selects_structure_stage(self) -> None:
-        from nemo_retriever.application.pipeline.build_plan import stage_names_from_flags
+        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
 
         names = list(
             stage_names_from_flags(
@@ -549,21 +554,21 @@ class TestBuildPlan:
         assert "enrich_table" not in names
 
     def test_pseudo_markdown_selects_ocr_stage(self) -> None:
-        from nemo_retriever.application.pipeline.build_plan import stage_names_from_flags
+        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
 
         names = list(stage_names_from_flags(extract_tables=True, table_output_format="pseudo_markdown"))
         assert "enrich_table" in names
         assert "enrich_table_structure" not in names
 
     def test_default_format_selects_ocr_stage(self) -> None:
-        from nemo_retriever.application.pipeline.build_plan import stage_names_from_flags
+        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
 
         names = list(stage_names_from_flags(extract_tables=True))
         assert "enrich_table" in names
         assert "enrich_table_structure" not in names
 
     def test_no_extract_tables_yields_nothing(self) -> None:
-        from nemo_retriever.application.pipeline.build_plan import stage_names_from_flags
+        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
 
         names = list(
             stage_names_from_flags(extract_tables=False, use_table_structure=True, table_output_format="markdown")
@@ -572,7 +577,7 @@ class TestBuildPlan:
         assert "enrich_table" not in names
 
     def test_markdown_without_use_table_structure_raises(self) -> None:
-        from nemo_retriever.application.pipeline.build_plan import stage_names_from_flags
+        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
 
         with pytest.raises(ValueError, match="use_table_structure=True"):
             list(
@@ -585,7 +590,7 @@ class TestBuildPlan:
 
     def test_use_table_structure_with_pseudo_markdown_warns(self) -> None:
         import warnings
-        from nemo_retriever.application.pipeline.build_plan import stage_names_from_flags
+        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
@@ -608,7 +613,7 @@ class TestBuildPlan:
 
 class TestExtractParams:
     def test_new_fields_exist(self) -> None:
-        from nemo_retriever.params.models import ExtractParams
+        from nemo_retriever.common.params.models import ExtractParams
 
         params = ExtractParams(
             use_table_structure=True,
@@ -620,7 +625,7 @@ class TestExtractParams:
         assert params.table_structure_invoke_url == "http://ts:8000"
 
     def test_defaults(self) -> None:
-        from nemo_retriever.params.models import ExtractParams
+        from nemo_retriever.common.params.models import ExtractParams
 
         params = ExtractParams()
         assert params.use_table_structure is False
@@ -628,26 +633,26 @@ class TestExtractParams:
         assert params.table_structure_invoke_url is None
 
     def test_auto_enable_when_invoke_url_provided(self) -> None:
-        from nemo_retriever.params.models import ExtractParams
+        from nemo_retriever.common.params.models import ExtractParams
 
         params = ExtractParams(table_structure_invoke_url="http://ts:8000")
         assert params.use_table_structure is True
         assert params.table_output_format == "markdown"
 
     def test_no_auto_enable_when_invoke_url_absent(self) -> None:
-        from nemo_retriever.params.models import ExtractParams
+        from nemo_retriever.common.params.models import ExtractParams
 
         params = ExtractParams(table_structure_invoke_url=None)
         assert params.use_table_structure is False
 
     def test_auto_markdown_when_use_table_structure(self) -> None:
-        from nemo_retriever.params.models import ExtractParams
+        from nemo_retriever.common.params.models import ExtractParams
 
         params = ExtractParams(use_table_structure=True)
         assert params.table_output_format == "markdown"
 
     def test_explicit_pseudo_markdown_preserved(self) -> None:
-        from nemo_retriever.params.models import ExtractParams
+        from nemo_retriever.common.params.models import ExtractParams
 
         params = ExtractParams(use_table_structure=True, table_output_format="pseudo_markdown")
         assert params.table_output_format == "pseudo_markdown"

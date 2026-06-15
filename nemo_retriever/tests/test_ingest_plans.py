@@ -7,26 +7,26 @@ from nemo_retriever.graph.ingestor_runtime import batch_tuning_to_node_overrides
 from nemo_retriever.graph.ingestor_runtime import build_graph
 from nemo_retriever.graph.ingestor_runtime import build_inprocess_graph
 from nemo_retriever.graph.pipeline_graph import Graph
-from nemo_retriever.ocr.ocr import OCRActor
-from nemo_retriever.page_elements.page_elements import PageElementDetectionActor
-from nemo_retriever.text_embed.operators import _BatchEmbedActor
-from nemo_retriever.graph.operator_archetype import ArchetypeOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.graph.gpu_operator import GPUOperator
-from nemo_retriever.graph_ingestor import GraphIngestor
-from nemo_retriever.ingest_plans import BaseIngestPlan
-from nemo_retriever.params import ASRParams
-from nemo_retriever.params import AudioChunkParams
-from nemo_retriever.params import BatchTuningParams
-from nemo_retriever.params import CaptionParams
-from nemo_retriever.params import EmbedParams
-from nemo_retriever.params import ExtractParams
-from nemo_retriever.params import StoreParams
-from nemo_retriever.params import TextChunkParams
-from nemo_retriever.params import VdbUploadParams
-from nemo_retriever.params import WebhookParams
-from nemo_retriever.utils.ray_resource_hueristics import ClusterResources
-from nemo_retriever.utils.ray_resource_hueristics import Resources
+from nemo_retriever.operators.extract.ocr.ocr import OCRActor
+from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionActor
+from nemo_retriever.operators.embed.operators import _BatchEmbedActor
+from nemo_retriever.operators.operator_archetype import ArchetypeOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
+from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+from nemo_retriever.ingestor.plans import BaseIngestPlan
+from nemo_retriever.common.params import ASRParams
+from nemo_retriever.common.params import AudioChunkParams
+from nemo_retriever.common.params import BatchTuningParams
+from nemo_retriever.common.params import CaptionParams
+from nemo_retriever.common.params import EmbedParams
+from nemo_retriever.common.params import ExtractParams
+from nemo_retriever.common.params import StoreParams
+from nemo_retriever.common.params import TextChunkParams
+from nemo_retriever.common.params import VdbUploadParams
+from nemo_retriever.common.params import WebhookParams
+from nemo_retriever.common.ray_resource_hueristics import ClusterResources
+from nemo_retriever.common.ray_resource_hueristics import Resources
 
 
 def _linear_nodes(graph):
@@ -237,7 +237,7 @@ def test_build_graph_resolves_endpoint_configured_nodes_to_cpu_variants(
 
 
 def test_build_graph_keeps_partial_graphic_endpoint_on_gpu_for_local_ocr(caplog) -> None:
-    caplog.set_level(logging.WARNING, logger="nemo_retriever.chart.chart_detection")
+    caplog.set_level(logging.WARNING, logger="nemo_retriever.operators.extract.chart.chart_detection")
     graph = build_graph(
         extract_params=ExtractParams(
             method="ocr",
@@ -347,11 +347,26 @@ def test_batch_tuning_to_node_overrides_auto_cpu_only_when_no_gpus(ocr_version: 
     assert overrides["NemotronParseActor"]["concurrency"] == 2
 
 
-def test_batch_tuning_to_node_overrides_honors_table_structure_tuning() -> None:
+def test_batch_tuning_to_node_overrides_scales_local_caption_on_multi_gpu() -> None:
     cluster = ClusterResources(
-        total_resources=Resources(cpu_count=64, gpu_count=8),
-        available_resources=Resources(cpu_count=64, gpu_count=8),
+        total_resources=Resources(cpu_count=224, gpu_count=8),
+        available_resources=Resources(cpu_count=224, gpu_count=8),
     )
+
+    overrides = batch_tuning_to_node_overrides(
+        extract_params=ExtractParams(),
+        embed_params=EmbedParams(model_name="nvidia/llama-nemotron-embed-1b-v2"),
+        caption_params=CaptionParams(),
+        cluster_resources=cluster,
+    )
+
+    assert overrides["CaptionActor"]["concurrency"] == 7
+    assert overrides["CaptionActor"]["num_gpus"] == 1.0
+    assert overrides["_BatchEmbedActor"]["concurrency"] == 2
+    assert overrides["_BatchEmbedActor"]["num_gpus"] == 0.5
+
+
+def test_batch_tuning_to_node_overrides_honors_table_structure_tuning() -> None:
     extract_params = ExtractParams(
         use_table_structure=True,
         batch_tuning=BatchTuningParams(
@@ -362,15 +377,11 @@ def test_batch_tuning_to_node_overrides_honors_table_structure_tuning() -> None:
         ),
     )
 
-    overrides = batch_tuning_to_node_overrides(
-        extract_params=extract_params,
-        embed_params=None,
-        cluster_resources=cluster,
-    )
+    overrides = batch_tuning_to_node_overrides(extract_params=extract_params, embed_params=None)
 
+    assert overrides["TableStructureActor"]["concurrency"] == 6
     assert overrides["TableStructureActor"]["batch_size"] == 12
     assert overrides["TableStructureActor"]["target_num_rows_per_block"] == 12
-    assert overrides["TableStructureActor"]["concurrency"] == 6
     assert overrides["TableStructureActor"]["num_cpus"] == 0.4
     assert overrides["TableStructureActor"]["num_gpus"] == 0.25
 
@@ -427,12 +438,12 @@ def test_graph_ingestor_autodetects_no_gpu_for_batch_overrides(monkeypatch) -> N
         available_resources=Resources(cpu_count=16, gpu_count=0),
     )
 
-    monkeypatch.setattr("nemo_retriever.graph_ingestor.build_graph", lambda **kwargs: Graph())
+    monkeypatch.setattr("nemo_retriever.ingestor.graph_ingestor.build_graph", lambda **kwargs: Graph())
     monkeypatch.setattr(
-        "nemo_retriever.graph_ingestor.batch_tuning_to_node_overrides", _fake_batch_tuning_to_node_overrides
+        "nemo_retriever.ingestor.graph_ingestor.batch_tuning_to_node_overrides", _fake_batch_tuning_to_node_overrides
     )
-    monkeypatch.setattr("nemo_retriever.graph_ingestor.gather_cluster_resources", lambda ray: cluster)
-    monkeypatch.setattr("nemo_retriever.graph_ingestor.RayDataExecutor", _FakeExecutor)
+    monkeypatch.setattr("nemo_retriever.ingestor.graph_ingestor.gather_cluster_resources", lambda ray: cluster)
+    monkeypatch.setattr("nemo_retriever.ingestor.graph_ingestor.RayDataExecutor", _FakeExecutor)
     monkeypatch.setattr("ray.is_initialized", _FakeRay.is_initialized)
 
     ingestor = GraphIngestor(run_mode="batch", documents=["/tmp/input.pdf"])
@@ -507,3 +518,74 @@ def test_build_graph_uses_explicit_audio_graph_for_audio_extract_method() -> Non
         node = node.children[0]
 
     assert names == ["MediaChunkActor", "ASRActor"]
+
+
+def _root_names(graph: Graph) -> list[str]:
+    node = graph.roots[0]
+    names: list[str] = []
+    while True:
+        names.append(node.name)
+        if not node.children:
+            return names
+        node = node.children[0]
+
+
+def test_build_graph_pdf_does_not_route_through_audio_when_asr_params_set() -> None:
+    """Regression: a configured ``asr_params`` must not force PDF ingestion
+    through the audio-only ``MediaChunkActor → ASRActor`` graph.
+
+    When the retriever-service's ``serviceConfig.nimEndpoints.audioGrpcEndpoint``
+    is configured, the worker builds an ``ASRParams`` even for PDF uploads
+    (the value is auto-derived from cluster config, not user intent).
+    Previously this short-circuited :func:`build_graph` into the audio-only
+    branch and crashed inside ``MediaChunkActor.__init__`` with
+    ``RuntimeError: MediaChunkActor requires media dependencies; missing:
+    ffmpeg, ffprobe`` — even though the user only uploaded PDFs.
+    """
+    graph = build_graph(
+        extraction_mode="pdf",
+        extract_params=ExtractParams(method="pdfium"),
+        asr_params=ASRParams(audio_endpoints=("audio:50051", None)),
+    )
+
+    names = _root_names(graph)
+    assert "MediaChunkActor" not in names, (
+        f"PDF ingestion must not construct MediaChunkActor when asr_params is "
+        f"only present because the cluster has Parakeet configured. Got: {names}"
+    )
+    assert "ASRActor" not in names
+    assert names[0] == "DocToPdfConversionActor"
+
+
+def test_build_graph_auto_does_not_route_through_audio_when_asr_params_set() -> None:
+    """Same regression for ``extraction_mode='auto'`` (the service default).
+
+    ``MultiTypeExtractOperator`` is responsible for dispatching audio inputs
+    at row level. Forcing the audio-only graph at build time discards every
+    non-audio file in the batch.
+    """
+    graph = build_graph(
+        extraction_mode="auto",
+        extract_params=ExtractParams(method="pdfium"),
+        asr_params=ASRParams(audio_endpoints=("audio:50051", None)),
+    )
+
+    names = _root_names(graph)
+    assert "MediaChunkActor" not in names, (
+        f"extraction_mode='auto' must dispatch through MultiTypeExtractOperator, "
+        f"not the audio-only graph. Got: {names}"
+    )
+    assert names[0] == "MultiTypeExtractOperator"
+
+
+@pytest.mark.skipif(not _have_ffmpeg_binary(), reason="ffmpeg not available")
+def test_build_graph_audio_mode_still_uses_audio_only_graph() -> None:
+    """``extraction_mode='audio'`` must continue to use the audio-only graph."""
+    graph = build_graph(
+        extraction_mode="audio",
+        extract_params=ExtractParams(),
+        audio_chunk_params=AudioChunkParams(),
+        asr_params=ASRParams(audio_endpoints=("audio:50051", None)),
+    )
+
+    assert _root_names(graph)[:2] == ["MediaChunkActor", "ASRActor"]

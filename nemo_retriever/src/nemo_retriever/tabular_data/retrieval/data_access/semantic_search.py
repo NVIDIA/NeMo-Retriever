@@ -30,7 +30,7 @@ import logging
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from nemo_retriever.retriever import Retriever
+    from nemo_retriever.graph.retriever import Retriever
 
 MetadataFilterFormat = Literal["sql", "dict"]
 

@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nemo_retriever.io import build_page_index, to_markdown, to_markdown_by_page
+from nemo_retriever.common.io import build_page_index, to_markdown, to_markdown_by_page
 
 
 class _LazyRows:

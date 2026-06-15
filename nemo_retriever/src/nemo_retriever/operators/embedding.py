@@ -6,6 +6,6 @@
 
 from __future__ import annotations
 
-from nemo_retriever.text_embed.operators import _BatchEmbedActor, _BatchEmbedCPUActor, _BatchEmbedGPUActor
+from nemo_retriever.operators.embed.operators import _BatchEmbedActor, _BatchEmbedCPUActor, _BatchEmbedGPUActor
 
 __all__ = ["_BatchEmbedActor", "_BatchEmbedCPUActor", "_BatchEmbedGPUActor"]

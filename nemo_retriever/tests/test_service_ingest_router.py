@@ -12,7 +12,7 @@ This lets us assert:
 * policy denials produce HTTP 403 / 501 responses;
 * ``/v1/ingest/pipeline-config`` exposes the ``allowed_overrides`` block.
 
-The stub work-fn never imports ``nemo_retriever.graph_ingestor`` so the test
+The stub work-fn never imports ``nemo_retriever.ingestor.graph_ingestor`` so the test
 runs without any GPU / Ray dependencies.
 """
 
@@ -203,6 +203,22 @@ def test_create_job_returns_201_and_aggregate_fields(app_with_stub_pool: TestCli
     assert body["status"] == "pending"
     assert body["label"] == "smoke"
     assert body["job_id"]
+
+
+def test_create_job_retain_results_persisted_on_aggregate(app_with_stub_pool: TestClient) -> None:
+    from nemo_retriever.service.services.job_tracker import get_job_tracker
+
+    resp = app_with_stub_pool.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 1, "retain_results": True},
+    )
+    assert resp.status_code == 201, resp.text
+    job_id = resp.json()["job_id"]
+    tracker = get_job_tracker()
+    assert tracker is not None
+    agg = tracker.get_job(job_id)
+    assert agg is not None
+    assert agg.retain_results is True
 
 
 def test_get_job_returns_aggregate_snapshot(app_with_stub_pool: TestClient) -> None:

@@ -33,7 +33,7 @@ VideoFrameActor requires media dependencies; missing: ffprobe.
 The `ffmpeg-python` wrapper and `nemo-retriever[multimedia]` do not install the
 `ffmpeg` or `ffprobe` binaries the pipeline executes.
 
-For air-gapped or locked-down clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+For air-gapped or locked-down clusters, refer to [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
 
 **Connected environments:**
 
@@ -77,11 +77,15 @@ ulimit -u 10000
 ## Out-of-Memory (OOM) Error when Processing Large Datasets
 
 When you process a very large dataset with thousands of documents, you might encounter an Out-of-Memory (OOM) error. 
-This happens because, by default, NeMo Retriever Library stores the results from every document in system memory (RAM). 
+This happens because NeMo Retriever Library materializes extraction results in system memory (RAM) while the job runs. 
 If the total size of the results exceeds the available memory, the process fails.
 
-To resolve this issue, use the `save_to_disk` method. 
-For details, refer to [Working with Large Datasets: Saving to Disk](nemo-retriever-api-reference.md).
+To reduce memory pressure, try one or more of the following:
+
+- Process documents in smaller batches instead of submitting the entire corpus in one job.
+- Route outputs to a sink (for example, `.vdb_upload(...)`, `.webhook(...)`, or `.store(...)`) so results are written out instead of held in memory until the job finishes.
+- In `run_mode="service"`, pass `return_results=False` to `.ingest(...)` when you do not need the full result payload returned to the client. For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+- Increase available host or pod memory for the ingest workload.
 
 
 
@@ -99,6 +103,30 @@ you must set `EMBEDDER_BATCH_SIZE=3` in your environment.
 You can set the variable in your .env file or directly in your environment.
 
 
+
+## ModuleNotFoundError: No module named open_clip when using nemotron_parse { #modulenotfounderror-no-module-named-open-clip-when-using-nemotron-parse }
+
+When you run PDF extraction with `extract_method="nemotron_parse"`, you might see an error similar to the following:
+
+```text
+ModuleNotFoundError: No module named 'open_clip'
+```
+
+The Nemotron Parse NIM client requires the `open_clip` Python module, provided by `open-clip-torch`. That package is not part of the default `nemo-retriever` install or the `[local]` extra.
+
+Install the dedicated PyPI extra before running Nemotron Parse extraction:
+
+```bash
+pip install "nemo-retriever[nemotron-parse]"
+```
+
+For local GPU inference with Nemotron Parse, combine extras:
+
+```bash
+pip install "nemo-retriever[local,nemotron-parse]"
+```
+
+Also refer to [What is NeMo Retriever Library?](overview.md) and [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#software-requirements).
 
 ## Extract method nemotron-parse doesn't support image files
 
@@ -162,4 +190,3 @@ ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
 - [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
 - [NeMo Retriever Library — prerequisites / deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (supported **Helm** charts)
-- [Docker Compose (unsupported, developer)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md)

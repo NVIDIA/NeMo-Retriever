@@ -23,11 +23,12 @@ Design Decisions:
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 from langchain_core.messages import AIMessage, SystemMessage
 
 from nemo_retriever.tabular_data.retrieval.llm_invoke import safe_invoke_with_structured_output
 from nemo_retriever.tabular_data.retrieval.text_to_sql.base import BaseAgent
+from nemo_retriever.tabular_data.retrieval.text_to_sql.connector_routing import resolve_connector_from_tables
 from nemo_retriever.tabular_data.retrieval.data_access.custom_analyses import (
     build_custom_analyses_section,
     get_custom_analyses_ids,
@@ -69,12 +70,12 @@ def format_tables_for_prompt(tables: list[dict]) -> str:
         table_description = table.get("description", "")
 
         # Database and schema info
-        db_name = table.get("db_name", "")
+        database_name = table.get("database_name", "")
         schema_name = table.get("schema_name", "")
 
         # Build table header
-        if db_name and schema_name:
-            full_name = f"{db_name}.{schema_name}.{table_name}"
+        if database_name and schema_name:
+            full_name = f"{database_name}.{schema_name}.{table_name}"
         else:
             full_name = table_name
 
@@ -167,7 +168,7 @@ class SQLFromCandidatesAgent(BaseAgent):
         """
         path_state = state.get("path_state", {})
         llm = state["llm"]
-        connector = state["connector"]
+        connectors = state.get("connectors") or []
         question = get_question_for_processing(state)
 
         relevant_tables = path_state.get("relevant_tables", [])
@@ -175,6 +176,9 @@ class SQLFromCandidatesAgent(BaseAgent):
         similar_questions = path_state.get("similar_questions", [])
         custom_analyses = path_state.get("custom_analyses", [])
         custom_analyses_str = path_state.get("custom_analyses_str", [])
+
+        connector = resolve_connector_from_tables(relevant_tables, connectors)
+        dialect = getattr(connector, "dialect", None)
 
         # Format similar questions for prompt
         similar_questions_txt = "\n".join(f"question: {x[0]}\nanswer: {x[1]}" for x in similar_questions)
@@ -214,7 +218,7 @@ class SQLFromCandidatesAgent(BaseAgent):
 
             # Build user prompt with formatted tables
             user_prompt = create_sql_user_prompt.format(
-                dialect=connector.dialect,
+                dialect=dialect,
                 main_question=question,
                 observation_block=observation_block,
                 queries=relevant_queries,

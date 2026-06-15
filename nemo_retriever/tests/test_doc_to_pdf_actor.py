@@ -7,17 +7,21 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.utils.convert.to_pdf import DocToPdfConversionActor, convert_to_pdf_bytes, convert_batch_to_pdf
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.common.modality.convert.to_pdf import (
+    DocToPdfConversionActor,
+    convert_to_pdf_bytes,
+    convert_batch_to_pdf,
+)
 
 
 class TestConvertToPdfBytes:
-    @patch("nemo_retriever.utils.convert.to_pdf.shutil.which", return_value=None)
+    @patch("nemo_retriever.common.modality.convert.to_pdf.shutil.which", return_value=None)
     def test_raises_when_libreoffice_missing(self, _mock_which):
         with pytest.raises(FileNotFoundError, match="LibreOffice is required"):
             convert_to_pdf_bytes(b"fake docx content", ".docx")
 
-    @patch("nemo_retriever.utils.convert.to_pdf.shutil.which", return_value=None)
+    @patch("nemo_retriever.common.modality.convert.to_pdf.shutil.which", return_value=None)
     def test_skips_check_for_pdf(self, _mock_which):
         """PDF passthrough should not require LibreOffice."""
         result = convert_to_pdf_bytes(b"%PDF-1.4 content", ".pdf")
@@ -25,7 +29,7 @@ class TestConvertToPdfBytes:
 
 
 class TestConvertBatchToPdf:
-    @patch("nemo_retriever.utils.convert.to_pdf.shutil.which", return_value=None)
+    @patch("nemo_retriever.common.modality.convert.to_pdf.shutil.which", return_value=None)
     def test_libreoffice_missing_propagates_through_batch(self, _mock_which):
         """FileNotFoundError must not be swallowed by the batch error handler."""
         df = pd.DataFrame({"bytes": [b"fake"], "path": ["/tmp/test.docx"]})
@@ -53,7 +57,7 @@ class TestDocToPdfConversionActor:
         result = actor.postprocess(df)
         pd.testing.assert_frame_equal(result, df)
 
-    @patch("nemo_retriever.utils.convert.to_pdf.convert_batch_to_pdf")
+    @patch("nemo_retriever.common.modality.convert.to_pdf.convert_batch_to_pdf")
     def test_process_calls_convert(self, mock_convert):
         expected = pd.DataFrame({"bytes": [b"pdf"], "path": ["/tmp/test.pdf"]})
         mock_convert.return_value = expected
@@ -63,7 +67,7 @@ class TestDocToPdfConversionActor:
         mock_convert.assert_called_once_with(df)
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.utils.convert.to_pdf.convert_batch_to_pdf")
+    @patch("nemo_retriever.common.modality.convert.to_pdf.convert_batch_to_pdf")
     def test_run_chains_preprocess_process_postprocess(self, mock_convert):
         expected = pd.DataFrame({"bytes": [b"pdf"], "path": ["/tmp/out.pdf"]})
         mock_convert.return_value = expected
@@ -73,7 +77,7 @@ class TestDocToPdfConversionActor:
         mock_convert.assert_called_once_with(df)
         pd.testing.assert_frame_equal(result, expected)
 
-    @patch("nemo_retriever.utils.convert.to_pdf.convert_batch_to_pdf")
+    @patch("nemo_retriever.common.modality.convert.to_pdf.convert_batch_to_pdf")
     def test_call_delegates_to_run(self, mock_convert):
         expected = pd.DataFrame({"bytes": [b"pdf"], "path": ["/tmp/out.pdf"]})
         mock_convert.return_value = expected

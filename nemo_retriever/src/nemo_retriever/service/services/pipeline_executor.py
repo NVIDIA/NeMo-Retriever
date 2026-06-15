@@ -29,8 +29,6 @@ from concurrent.futures.process import BrokenProcessPool
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
-import numpy as np
-
 if TYPE_CHECKING:
     from nemo_retriever.service.config import NimEndpointsConfig, ServiceConfig
     from nemo_retriever.service.services.pipeline_pool import WorkItem
@@ -80,51 +78,16 @@ def get_pipeline_configs() -> dict[str, dict[str, Any]]:
     return _pipeline_configs
 
 
-_LARGE_COLUMNS = frozenset(
-    {
-        "bytes",
-        "page_image",
-        "image_b64",
-        "images",
-        "charts",
-        "infographics",
-        "tables",
-    }
-)
-
-_MAX_STR_LEN = 500
-
-
-def _sanitize_value(val: Any) -> Any:
-    """Convert a single cell value to a JSON-safe, memory-friendly form."""
-    if val is None:
-        return None
-    if isinstance(val, (np.integer,)):
-        return int(val)
-    if isinstance(val, (np.floating,)):
-        return float(val)
-    if isinstance(val, np.ndarray):
-        return f"<ndarray shape={val.shape} dtype={val.dtype}>"
-    if isinstance(val, (list, tuple)) and len(val) > 20:
-        return f"<{type(val).__name__} len={len(val)}>"
-    if isinstance(val, bytes):
-        return f"<bytes len={len(val)}>"
-    if isinstance(val, str) and len(val) > _MAX_STR_LEN:
-        return val[:_MAX_STR_LEN] + f"…[{len(val)} chars total]"
-    return val
-
-
 def _sanitize_result_data(df: Any) -> list[dict[str, Any]]:
-    """Convert a pipeline DataFrame to lightweight JSON-safe dicts.
+    """Convert a pipeline DataFrame to JSON-safe dicts for the status API.
 
-    Drops large binary/image columns entirely and truncates remaining
-    values so the result can be stored in memory and returned via the
-    status endpoint without risk of OOM.
+    Column layout matches the in-process ``GraphIngestor.ingest()``
+    frame; cell values are sanitized for transport (see
+    :mod:`nemo_retriever.ingest_results`).
     """
-    cols_to_keep = [c for c in df.columns if c not in _LARGE_COLUMNS]
-    light_df = df[cols_to_keep]
-    records = light_df.to_dict(orient="records")
-    return [{k: _sanitize_value(v) for k, v in row.items()} for row in records]
+    from nemo_retriever.ingestor.results import dataframe_to_transport_records
+
+    return dataframe_to_transport_records(df)
 
 
 # ── Process pool registry ────────────────────────────────────────────
@@ -284,6 +247,66 @@ def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | No
     return resolved
 
 
+def _resolve_service_extraction_mode(
+    extraction_mode: str,
+    filename: str,
+) -> str:
+    """Pick the worker extraction mode for a single uploaded file.
+
+    When the client leaves ``extraction_mode`` at ``"auto"`` (the service
+    default), infer ``"text"`` / ``"html"`` / … from the filename so HTML
+    and TXT uploads use the typed splitters instead of falling through a
+    mis-routed graph.
+    """
+    mode = (extraction_mode or "auto").strip().lower()
+    if mode != "auto":
+        return mode
+    from nemo_retriever.service.utils.file_type import infer_extraction_mode_from_filename
+
+    inferred = infer_extraction_mode_from_filename(filename)
+    return inferred or "auto"
+
+
+def _request_needs_asr_params(extraction_mode: str | None, filename: str) -> bool:
+    """True iff the request is audio/video and should carry ``_asr_params``.
+
+    The worker holds a single ``ASRParams`` derived from
+    ``serviceConfig.nimEndpoints.audioGrpcEndpoint``. Attaching that to
+    every per-request ingestor is what caused the
+    ``RuntimeError: MediaChunkActor requires media dependencies; missing:
+    ffmpeg, ffprobe`` for PDF uploads — the audio-only graph branch then
+    won the routing decision regardless of file type. We restrict the
+    attachment to:
+
+    * ``extraction_mode == "audio"`` or ``"video"`` — explicit caller
+      intent; the user already opted into media routing.
+    * ``extraction_mode == "auto"`` plus an audio/video file extension —
+      ``MultiTypeExtractOperator`` dispatches at row level and only
+      needs ASR when the row is actually media.
+
+    Anything else (``"pdf"``, ``"image"``, ``"text"``, ``"html"``, or a
+    non-media extension under ``"auto"``) must not pin ASR params.
+    """
+    mode = (extraction_mode or "").strip().lower()
+    if mode in {"audio", "video"}:
+        return True
+    if mode != "auto":
+        return False
+
+    from nemo_retriever.service.utils.file_type import (
+        FileClassifier,
+        category_requires_media_deps,
+    )
+
+    dot = filename.rfind(".")
+    suffix = filename[dot:].lower() if dot != -1 else ""
+    entry = FileClassifier.SUFFIX_MAP.get(suffix)
+    if entry is None:
+        return False
+    category, _ = entry
+    return category_requires_media_deps(category)
+
+
 def _materialize_sidecar_bytes(vdb_kwargs: dict[str, Any]) -> dict[str, Any]:
     """Convert resolved sidecar bytes into a pandas DataFrame in place.
 
@@ -329,8 +352,8 @@ def _build_graph_ingestor_from_spec(
     vectordb fan-out — the in-graph ``IngestVdbOperator`` already
     handles persistence when ``vdb_upload_params`` is present.
     """
-    from nemo_retriever.graph_ingestor import GraphIngestor
-    from nemo_retriever.params import (
+    from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+    from nemo_retriever.common.params import (
         ASRParams,
         CaptionParams,
         DedupParams,
@@ -342,7 +365,8 @@ def _build_graph_ingestor_from_spec(
     )
 
     spec = spec or {}
-    extraction_mode = spec.get("extraction_mode", "auto")
+    extraction_mode = _resolve_service_extraction_mode(spec.get("extraction_mode", "auto"), filename)
+    split_config = spec.get("split_config")
 
     extract_kwargs = _merge_server_owned(base_extract, spec.get("extract_params"), _TRUST_OWNED_EXTRACT_KEYS)
     extract_params = ExtractParams(**extract_kwargs)
@@ -376,14 +400,27 @@ def _build_graph_ingestor_from_spec(
     ingestor = ingestor.buffers([(filename, BytesIO(payload))])
 
     if extraction_mode == "image":
-        ingestor = ingestor.extract_image_files(extract_params, split_config=spec.get("split_config"))
+        ingestor = ingestor.extract_image_files(extract_params, split_config=split_config)
+    elif extraction_mode == "text" and split_config is None:
+        ingestor = ingestor.extract_txt()
+    elif extraction_mode == "html" and split_config is None:
+        ingestor = ingestor.extract_html()
     else:
         ingestor = ingestor.extract(
             extract_params,
-            split_config=spec.get("split_config"),
+            split_config=split_config,
             extraction_mode=extraction_mode,
         )
-        if asr_params is not None:
+        # Only attach the worker-wide ASR params to the per-request ingestor
+        # when the request is genuinely audio/video. ``asr_params`` is
+        # auto-derived from the cluster's ``audio_grpc_endpoint`` and would
+        # otherwise taint every PDF / image / text / HTML upload with audio
+        # state — which then mis-routes the request through the audio-only
+        # graph in :func:`nemo_retriever.graph.ingestor_runtime.build_graph`
+        # and crashes inside ``MediaChunkActor`` when ffmpeg/ffprobe are
+        # absent. The graph builder also gates on extraction_mode now, so
+        # this is defence in depth.
+        if asr_params is not None and _request_needs_asr_params(extraction_mode, filename):
             ingestor._asr_params = asr_params
 
     stage_order = spec.get("stage_order") or []
@@ -497,11 +534,21 @@ def _run_pipeline_in_process(
 
     row_count = len(result_df)
 
+    from nemo_retriever.service.utils.file_type import is_text_like_filename
+
+    if row_count == 0 and is_text_like_filename(filename):
+        raise ValueError(
+            f"Extraction produced no rows for {filename!r}. "
+            "Supported HTML and TXT inputs must yield at least one text chunk. "
+            "If you need custom chunking, pass split_config for the matching "
+            "source type (see README: split_config for text/html)."
+        )
+
     if vectordb_url and row_count > 0 and not has_per_request_vdb:
         # Skip the out-of-graph fan-out when the client already wired
         # IngestVdbOperator into the spec — that operator handles
         # persistence itself.
-        from nemo_retriever.vdb.lancedb_schema import build_lancedb_rows
+        from nemo_retriever.common.vdb.lancedb_schema import build_lancedb_rows
 
         lancedb_rows = build_lancedb_rows(result_df)
         _post_rows_to_vectordb(lancedb_rows, vectordb_url, filename)
@@ -517,7 +564,7 @@ def build_extract_params(nim: NimEndpointsConfig) -> Any:
     ``use_graphic_elements`` / ``use_table_structure`` when the
     corresponding invoke URLs are provided.
     """
-    from nemo_retriever.params import ExtractParams
+    from nemo_retriever.common.params import ExtractParams
 
     kwargs: dict[str, Any] = {}
     if nim.page_elements_invoke_url:
@@ -541,7 +588,7 @@ def build_caption_params(nim: NimEndpointsConfig) -> Any | None:
     that request the ``caption`` stage will hit the policy's
     ``caption_enabled`` guard before reaching this point.
     """
-    from nemo_retriever.params import CaptionParams
+    from nemo_retriever.common.params import CaptionParams
 
     if not nim.caption_invoke_url:
         return None
@@ -563,7 +610,7 @@ def build_asr_params(nim: NimEndpointsConfig) -> Any | None:
     if not nim.audio_grpc_endpoint:
         return None
 
-    from nemo_retriever.params import ASRParams
+    from nemo_retriever.common.params import ASRParams
 
     return ASRParams(
         audio_endpoints=(nim.audio_grpc_endpoint, None),
@@ -581,7 +628,7 @@ def build_embed_params(nim: NimEndpointsConfig) -> Any | None:
     if not nim.embed_invoke_url:
         return None
 
-    from nemo_retriever.params import EmbedParams
+    from nemo_retriever.common.params import EmbedParams
 
     kwargs: dict[str, Any] = {"embed_invoke_url": nim.embed_invoke_url}
     if nim.embed_model_name:

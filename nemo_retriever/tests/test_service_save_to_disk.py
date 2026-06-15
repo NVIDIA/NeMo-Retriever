@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_retriever.service_ingestor import ServiceIngestor
+from nemo_retriever.service.service_ingestor import ServiceIngestor
 
 
 def test_save_to_disk_requires_output_directory() -> None:
@@ -82,7 +82,7 @@ def _stub_status_response(body: dict[str, Any]):
         def get(self, url: str) -> _FakeResp:
             return _FakeResp()
 
-    with patch("nemo_retriever.service_ingestor.httpx.Client", _FakeClient):
+    with patch("nemo_retriever.service.service_ingestor.httpx.Client", _FakeClient):
         yield captured
 
 
@@ -137,6 +137,27 @@ def test_save_document_without_enabling_raises(tmp_path: Path) -> None:
     ing = ServiceIngestor(base_url="http://example:7670")
     with pytest.raises(RuntimeError, match="save_to_disk was never enabled"):
         ing._save_document_to_disk("x")
+
+
+def test_materialize_fetches_once_when_return_results_and_save_to_disk(tmp_path: Path) -> None:
+    """A single status GET must satisfy both return_results and save_to_disk."""
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing.save_to_disk(output_directory=str(tmp_path), compression=None)
+    rows = [{"page": 1, "text": "shared"}]
+    fetch_calls = 0
+
+    def _counting_fetch(self: ServiceIngestor, document_id: str) -> list[dict[str, Any]]:
+        nonlocal fetch_calls
+        fetch_calls += 1
+        assert document_id == "doc-1"
+        return rows
+
+    with patch.object(ServiceIngestor, "_fetch_document_result_data", _counting_fetch):
+        out_rows = ing._materialize_completed_document("doc-1", return_results=True)
+
+    assert fetch_calls == 1
+    assert out_rows == rows
+    assert (tmp_path / "doc-1.json").exists()
 
 
 def test_save_document_authorisation_header_sent_when_token_present(tmp_path: Path) -> None:

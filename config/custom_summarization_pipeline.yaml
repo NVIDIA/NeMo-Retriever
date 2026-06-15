@@ -4,16 +4,23 @@
 #
 # Usage:
 #   1. Copy this file and customize as needed
-#   2. Mount it into your Docker container
-#   3. Set INGEST_CONFIG_PATH environment variable in docker compose to point to this file
+#   2. Mount it into your retriever service container
+#   3. Set INGEST_CONFIG_PATH in the service environment to point to this file
 #
-# Example docker-compose.yaml:
-#   nv-ingest-ms-runtime:
-#     volumes:
-#       - ./config/custom_summarization_pipeline.yaml:/config/custom_pipeline.yaml:ro
-#     environment:
-#       - INGEST_CONFIG_PATH=/config/custom_pipeline.yaml
-#       - NGC_API_KEY=your-nvidia-api-key
+# Example Helm values fragment:
+#   service:
+#     extraVolumes:
+#       - name: custom-pipeline
+#         configMap:
+#           name: custom-pipeline
+#     extraVolumeMounts:
+#       - name: custom-pipeline
+#         mountPath: /config/custom_pipeline.yaml
+#         subPath: custom_pipeline.yaml
+#         readOnly: true
+#     env:
+#       - name: INGEST_CONFIG_PATH
+#         value: /config/custom_pipeline.yaml
 
 name: "Custom Summarization Pipeline"
 description: "Pipeline with dedicated udf_parallel_helper stage for LLM summarization"
@@ -311,6 +318,12 @@ stages:
         value: 1
 
   # Transforms and Synthesis
+  #
+  # Horizontal scale-out mirrors ``config/default_pipeline.yaml`` —
+  # see the comment block above ``image_caption`` there for the
+  # full rationale on why a single-replica caption stage HOL-blocks
+  # unrelated no-caption clients behind the busy client's queued
+  # images.
   - name: "image_caption"
     type: "stage"
     phase: 4  # TRANSFORM
@@ -323,10 +336,10 @@ stages:
       min_replicas: 0
       max_replicas:
         strategy: "static"
-        value: 1
+        value: 8
       static_replicas:
         strategy: "static"
-        value: 1
+        value: 4
 
   - name: "text_embedder"
     type: "stage"

@@ -16,12 +16,12 @@ import pytest
 PIL = pytest.importorskip("PIL", reason="Pillow is required for image tests")
 from PIL import Image  # noqa: E402
 
-from nemo_retriever.image.load import (  # noqa: E402
+from nemo_retriever.common.modality.image.load import (  # noqa: E402
     SUPPORTED_IMAGE_EXTENSIONS,
     image_bytes_to_pages_df,
     image_file_to_pages_df,
 )
-from nemo_retriever.image.ray_data import ImageLoadActor  # noqa: E402
+from nemo_retriever.operators.extract.image.ray_data import ImageLoadActor  # noqa: E402
 
 # -- Helpers ------------------------------------------------------------------
 

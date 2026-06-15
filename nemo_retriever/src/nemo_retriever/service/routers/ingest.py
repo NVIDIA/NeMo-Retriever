@@ -29,9 +29,9 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from starlette.responses import StreamingResponse
 
-from nemo_retriever.service.models.pipeline_spec import PipelineSpec
-from nemo_retriever.service.models.requests import IngestRequest, JobCreateRequest
-from nemo_retriever.service.models.responses import (
+from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
+from nemo_retriever.common.schemas.requests import IngestRequest, JobCreateRequest
+from nemo_retriever.common.schemas.responses import (
     DocumentIngestAccepted,
     DocumentStatusResponse,
     IngestAccepted,
@@ -42,9 +42,9 @@ from nemo_retriever.service.models.responses import (
     PageIngestAccepted,
     SidecarUploadResponse,
 )
-from nemo_retriever.service.policy import PolicyError, validate_pipeline_spec
+from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.service.services.event_bus import get_event_bus
-from nemo_retriever.service.services.job_tracker import get_job_tracker
+from nemo_retriever.service.services.job_tracker import MarkOutcome, get_job_tracker
 from nemo_retriever.service.services.metrics import get_metrics
 from nemo_retriever.service.services.pipeline_pool import (
     PoolType,
@@ -59,7 +59,11 @@ from nemo_retriever.service.services.prometheus import (
     INGEST_REQUESTS_TOTAL,
 )
 from nemo_retriever.service.services.proxy import get_proxy
-from nemo_retriever.service.utils.file_type import FileCategory, FileClassifier
+from nemo_retriever.service.utils.file_type import (
+    FileCategory,
+    FileClassifier,
+    enforce_media_dependencies,
+)
 
 _RETRY_AFTER_SECONDS = "5"
 _DRY_RUN_HEADER = "X-Nemo-Dry-Run"
@@ -67,6 +71,7 @@ _GATEWAY_DOC_ID_HEADER = "X-Gateway-Document-Id"
 _GATEWAY_CALLBACK_HEADER = "X-Gateway-Callback-Url"
 _GATEWAY_PIPELINE_SPEC_HEADER = "X-Gateway-Pipeline-Spec"
 _GATEWAY_JOB_ID_HEADER = "X-Gateway-Job-Id"
+_GATEWAY_RETAIN_RESULTS_HEADER = "X-Gateway-Retain-Results"
 _PAGE_THRESHOLD_FOR_BATCH = 5
 
 # SSE keepalive cadence; tests monkey-patch this to a short value so
@@ -116,6 +121,33 @@ def _is_worker(request: Request) -> bool:
     re-validate via ``_require_job``).
     """
     return _mode(request) in ("realtime", "batch")
+
+
+def _retain_results_from_request(request: Request) -> bool:
+    val = request.headers.get(_GATEWAY_RETAIN_RESULTS_HEADER, "").strip().lower()
+    return val in ("1", "true", "yes")
+
+
+def _job_retain_results(job_id: str | None) -> bool:
+    if not job_id:
+        return False
+    tracker = get_job_tracker()
+    if tracker is None:
+        return False
+    return tracker.should_retain_results(job_id)
+
+
+def _work_item_retain_results(request: Request, *, job_id: str | None) -> bool:
+    """Whether the worker pool should cache row payloads for this upload."""
+    if request.headers.get(_GATEWAY_DOC_ID_HEADER):
+        return _retain_results_from_request(request)
+    return _job_retain_results(job_id)
+
+
+def _gateway_retain_results_headers(job_id: str) -> dict[str, str]:
+    if _job_retain_results(job_id):
+        return {_GATEWAY_RETAIN_RESULTS_HEADER: "true"}
+    return {}
 
 
 def _record_prometheus(
@@ -192,6 +224,39 @@ async def _enqueue_or_reject(pool_type: PoolType, item: WorkItem) -> None:
             detail=f"{pool_type.value} pipeline is at capacity — try again shortly",
             headers={"Retry-After": _RETRY_AFTER_SECONDS},
         )
+
+
+async def _fetch_result_data_from_workers(document_id: str) -> list[dict[str, Any]] | None:
+    """Pull cached rows from the batch/realtime pod that processed *document_id*."""
+    proxy = get_proxy()
+    if proxy is None:
+        return None
+    for pool_type in (PoolType.BATCH, PoolType.REALTIME):
+        client = proxy._client_for(pool_type)
+        try:
+            resp = await client.get(f"/v1/internal/document-result/{document_id}")
+        except Exception as exc:
+            logger.debug(
+                "Worker result fetch from %s failed for %s: %s",
+                pool_type.value,
+                document_id,
+                exc,
+            )
+            continue
+        if resp.status_code == 404:
+            continue
+        if resp.status_code != 200:
+            logger.warning(
+                "Worker result fetch from %s returned HTTP %d for %s",
+                pool_type.value,
+                resp.status_code,
+                document_id,
+            )
+            continue
+        rows = resp.json().get("result_data")
+        if rows is not None:
+            return rows
+    return None
 
 
 def _build_callback_url(request: Request) -> str:
@@ -437,6 +502,7 @@ async def create_job(request: Request, body: JobCreateRequest) -> JobCreatedResp
             expected_documents=body.expected_documents,
             label=body.label,
             metadata=body.metadata,
+            retain_results=body.retain_results,
         )
     except JobTrackerError as exc:
         raise HTTPException(status_code=getattr(exc, "status_code", 500), detail=str(exc)) from exc
@@ -647,6 +713,7 @@ async def submit_document_to_job(
 
     if _is_gateway(request):
         classification = FileClassifier.classify(file, filename_override=meta.filename or "")
+        enforce_media_dependencies(classification)
         file_size = _file_size_from_upload(file, request)
 
         file_bytes = await file.read()
@@ -666,6 +733,7 @@ async def submit_document_to_job(
             _GATEWAY_DOC_ID_HEADER: document_id,
             _GATEWAY_JOB_ID_HEADER: job_id,
             _GATEWAY_CALLBACK_HEADER: callback_url,
+            **_gateway_retain_results_headers(job_id),
         }
         if validated_spec is not None:
             extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
@@ -699,6 +767,7 @@ async def submit_document_to_job(
 
     # ── worker / standalone ──────────────────────────────────────
     classification = FileClassifier.classify(file, filename_override=meta.filename or "")
+    enforce_media_dependencies(classification)
 
     file_bytes = await file.read()
     route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
@@ -724,6 +793,7 @@ async def submit_document_to_job(
             callback_url=gw_callback_url,
             job_id=gw_job_id,
             pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
+            retain_results=_work_item_retain_results(request, job_id=gw_job_id),
         ),
     )
 
@@ -772,6 +842,7 @@ async def submit_page_to_job(
 
     if _is_gateway(request):
         classification = FileClassifier.classify(file, filename_override=filename)
+        enforce_media_dependencies(classification)
         file_size = _file_size_from_upload(file, request)
 
         page_id = uuid.uuid4().hex
@@ -791,6 +862,7 @@ async def submit_page_to_job(
                 _GATEWAY_DOC_ID_HEADER: page_id,
                 _GATEWAY_JOB_ID_HEADER: job_id,
                 _GATEWAY_CALLBACK_HEADER: callback_url,
+                **_gateway_retain_results_headers(job_id),
             },
         )
 
@@ -830,6 +902,7 @@ async def submit_page_to_job(
     # ── worker / standalone ──────────────────────────────────────
     dry_run = _is_dry_run(request)
     classification = FileClassifier.classify(file, filename_override=filename)
+    enforce_media_dependencies(classification)
 
     file_bytes = await file.read()
     content_sha256 = hashlib.sha256(file_bytes).hexdigest()
@@ -851,6 +924,7 @@ async def submit_page_to_job(
                 filename=file.filename,
                 callback_url=gw_callback_url,
                 job_id=gw_job_id,
+                retain_results=_work_item_retain_results(request, job_id=gw_job_id),
             ),
         )
 
@@ -904,6 +978,7 @@ async def submit_whole_document_to_job(
 
     if _is_gateway(request):
         classification = FileClassifier.classify(file, filename_override=meta.filename or "")
+        enforce_media_dependencies(classification)
         file_size = _file_size_from_upload(file, request)
 
         document_id = uuid.uuid4().hex
@@ -921,6 +996,7 @@ async def submit_whole_document_to_job(
             _GATEWAY_DOC_ID_HEADER: document_id,
             _GATEWAY_JOB_ID_HEADER: job_id,
             _GATEWAY_CALLBACK_HEADER: callback_url,
+            **_gateway_retain_results_headers(job_id),
         }
         if validated_spec is not None:
             extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
@@ -956,6 +1032,7 @@ async def submit_whole_document_to_job(
     # ── worker / standalone ──────────────────────────────────────
     dry_run = _is_dry_run(request)
     classification = FileClassifier.classify(file, filename_override=meta.filename or "")
+    enforce_media_dependencies(classification)
 
     file_bytes = await file.read()
     content_sha256 = hashlib.sha256(file_bytes).hexdigest()
@@ -980,6 +1057,7 @@ async def submit_whole_document_to_job(
                 callback_url=gw_callback_url,
                 job_id=gw_job_id,
                 pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
+                retain_results=_work_item_retain_results(request, job_id=gw_job_id),
             ),
         )
 
@@ -1014,12 +1092,13 @@ async def submit_whole_document_to_job(
 # ------------------------------------------------------------------
 
 
-def _status_response(request: Request, item_id: str) -> JSONResponse:
+async def _status_response(request: Request, item_id: str) -> JSONResponse:
     """Look up document status and return the appropriate HTTP code.
 
     Returns 200 for completed/failed, 202 for pending/processing, 404 if unknown.
     When returning a terminal (200) response, result_data is consumed from the
-    tracker so memory is freed after the client has retrieved it.
+    tracker (or, in gateway mode, from the worker pod that ran the pipeline)
+    so memory is freed after the client has retrieved it.
     """
     from nemo_retriever.service.services.job_tracker import DocumentStatus
 
@@ -1035,6 +1114,8 @@ def _status_response(request: Request, item_id: str) -> JSONResponse:
 
     is_terminal = rec.status in (DocumentStatus.COMPLETED, DocumentStatus.FAILED)
     result_data = tracker.consume_result_data(item_id) if is_terminal else None
+    if is_terminal and result_data is None and rec.result_rows and _is_gateway(request):
+        result_data = await _fetch_result_data_from_workers(item_id)
 
     body = JobStatusResponse(
         id=rec.id,
@@ -1181,7 +1262,7 @@ async def delete_sidecar(request: Request, sidecar_id: str) -> Response:
     responses={200: {"model": JobStatusResponse}, 202: {"model": JobStatusResponse}},
 )
 async def ingest_status(request: Request, item_id: str) -> JSONResponse:
-    return _status_response(request, item_id)
+    return await _status_response(request, item_id)
 
 
 @router.get(
@@ -1190,7 +1271,7 @@ async def ingest_status(request: Request, item_id: str) -> JSONResponse:
     responses={200: {"model": JobStatusResponse}, 202: {"model": JobStatusResponse}},
 )
 async def ingest_page_status(request: Request, page_id: str) -> JSONResponse:
-    return _status_response(request, page_id)
+    return await _status_response(request, page_id)
 
 
 @router.get(
@@ -1199,7 +1280,7 @@ async def ingest_page_status(request: Request, page_id: str) -> JSONResponse:
     responses={200: {"model": JobStatusResponse}, 202: {"model": JobStatusResponse}},
 )
 async def ingest_document_status(request: Request, document_id: str) -> JSONResponse:
-    return _status_response(request, document_id)
+    return await _status_response(request, document_id)
 
 
 # ------------------------------------------------------------------
@@ -1318,8 +1399,27 @@ async def query(request: Request) -> Response:
 
 
 # ------------------------------------------------------------------
+# GET /v1/internal/document-result/{id}  — gateway ← worker row cache
 # POST /v1/internal/job-callback  — worker → gateway completion hook
 # ------------------------------------------------------------------
+
+
+@router.get(
+    "/internal/document-result/{document_id}",
+    summary="Fetch cached pipeline rows from a worker pod (split topology)",
+    include_in_schema=False,
+)
+async def worker_document_result(document_id: str) -> JSONResponse:
+    """Return rows stored by the worker pool after pipeline completion."""
+    from nemo_retriever.service.services.worker_result_store import consume_result_data
+
+    rows = consume_result_data(document_id)
+    if rows is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No cached result rows for document {document_id!r}",
+        )
+    return JSONResponse({"id": document_id, "result_data": rows})
 
 
 @router.post(
@@ -1332,41 +1432,144 @@ async def job_callback(request: Request) -> JSONResponse:
 
     The gateway's ``JobTracker`` is updated and an SSE event is published
     so connected clients are notified instantly.
+
+    The log line emitted here is the primary diagnostic signal for
+    "client hang" reports: it carries the ``job_id`` looked up from the
+    tracker, the actual transition outcome (``transitioned`` /
+    ``idempotent`` / ``unknown_document``), and the per-job subscriber
+    count so operators can correlate worker-pod completion with
+    client-side SSE delivery without grepping multiple files.
     """
     body = await request.json()
     item_id = body.get("id")
     if not item_id:
         raise HTTPException(status_code=400, detail="Missing 'id' field")
 
+    if body.get("result_data") is not None:
+        logger.warning(
+            "Ignoring inline result_data on internal callback for %s " "(%d row(s)); workers must store rows locally.",
+            item_id,
+            len(body.get("result_data") or []),
+        )
+
     tracker = get_job_tracker()
     if tracker is None:
         raise HTTPException(status_code=503, detail="Job tracker not available")
 
+    # Capture the doc's job_id BEFORE the state transition so we still
+    # log a useful job_id even if the transition turns out to be a
+    # no-op (idempotent or unknown_document).
+    pre_rec = tracker.get_document(item_id)
+    job_id_for_log = pre_rec.job_id if pre_rec is not None else None
+
     status = body.get("status", "completed")
     if status == "failed":
-        tracker.mark_failed(
+        outcome = tracker.mark_failed(
             item_id,
             body.get("error", "unknown error"),
             elapsed_s=body.get("elapsed_s"),
         )
     else:
-        tracker.mark_completed(
+        outcome = tracker.mark_completed(
             item_id,
             result_rows=body.get("result_rows", 0),
-            result_data=body.get("result_data"),
             elapsed_s=body.get("elapsed_s"),
         )
 
     bus = get_event_bus()
-    sub_count = bus.subscriber_count if bus else 0
-    logger.info(
-        "Gateway callback: id=%s status=%s rows=%s subscribers=%d",
+    if bus is not None and job_id_for_log is not None:
+        sub_count = bus.subscribers_for(job_id_for_log)
+    elif bus is not None:
+        sub_count = bus.subscriber_count
+    else:
+        sub_count = 0
+
+    log_fn = logger.warning if outcome == MarkOutcome.UNKNOWN_DOCUMENT else logger.info
+    log_fn(
+        "Gateway callback: id=%s job_id=%s status=%s outcome=%s rows=%s subscribers=%d",
         item_id,
+        job_id_for_log or "?",
         status,
+        outcome.value,
         body.get("result_rows", 0),
         sub_count,
     )
     return JSONResponse(content={"ok": True})
+
+
+# ------------------------------------------------------------------
+# Legacy / removed route stubs
+#
+# The Retriever Service v2 refactor (multi-pod architecture) removed
+# two legacy routes that older SDK builds may still call:
+#
+#   * ``POST /v1/ingest``        — the old "single-shot" upload route,
+#     replaced by the job-scoped pair
+#     ``POST /v1/ingest/job`` + ``POST /v1/ingest/job/{job_id}/document``.
+#   * ``GET  /v1/ingest/events`` — the old firehose SSE stream, replaced
+#     by per-job ``GET /v1/ingest/job/{job_id}/events``.
+#
+# When a customer ships a *new* service image with an *older* Retriever
+# SDK wheel, the SDK calls these legacy paths and the server otherwise
+# falls through to FastAPI's default 404 with an empty body. The client
+# sees an opaque "no documents completed" outcome.
+#
+# We register the legacy paths explicitly so the server can return an
+# actionable ``410 Gone`` body that names the replacement route and
+# tells the operator to align SDK and service versions. The stubs are
+# hidden from the OpenAPI schema (``include_in_schema=False``) so they
+# do not advertise themselves as supported endpoints.
+# ------------------------------------------------------------------
+
+
+_LEGACY_REMOVED_VERSION = "26.05"
+
+_LEGACY_INGEST_DETAIL = (
+    "POST /v1/ingest was removed in retriever-service "
+    f"{_LEGACY_REMOVED_VERSION} (multi-pod refactor). Open a job with "
+    "POST /v1/ingest/job and then upload each document via "
+    "POST /v1/ingest/job/{job_id}/document. This 410 typically means "
+    "the Python SDK is older than the deployed nrl-service image — "
+    "upgrade the SDK (or downgrade the chart/image) so the two match."
+)
+
+_LEGACY_FIREHOSE_DETAIL = (
+    "GET /v1/ingest/events (firehose SSE) was removed in "
+    f"retriever-service {_LEGACY_REMOVED_VERSION}. Subscribe to "
+    "GET /v1/ingest/job/{job_id}/events with the job_id returned by "
+    "POST /v1/ingest/job. This 410 typically means the Python SDK is "
+    "older than the deployed nrl-service image — upgrade the SDK (or "
+    "downgrade the chart/image) so the two match."
+)
+
+
+@router.post(
+    "/ingest",
+    include_in_schema=False,
+)
+async def _legacy_ingest_upload_removed() -> None:
+    """Return ``410 Gone`` with a migration hint for the removed route.
+
+    Older SDK builds (pre-v2 client) upload through ``POST /v1/ingest``.
+    Without this stub FastAPI returns a body-less 404 and the SDK
+    surfaces "no documents completed" with no indication of why — the
+    customer-visible regression captured in the 26.05-RC2 release notes.
+    """
+    raise HTTPException(status_code=410, detail=_LEGACY_INGEST_DETAIL)
+
+
+@router.get(
+    "/ingest/events",
+    include_in_schema=False,
+)
+async def _legacy_ingest_firehose_removed() -> None:
+    """Return ``410 Gone`` for the removed firehose SSE endpoint.
+
+    The per-job SSE route (``/v1/ingest/job/{job_id}/events``) replaced
+    this in J4. We surface the migration message instead of the default
+    404 so old clients fail with a clear, actionable error.
+    """
+    raise HTTPException(status_code=410, detail=_LEGACY_FIREHOSE_DETAIL)
 
 
 # ------------------------------------------------------------------
@@ -1378,7 +1581,9 @@ async def job_callback(request: Request) -> JSONResponse:
 # must declare which job it is observing. Dashboard internals (which
 # are served from a separate router) still use a firehose subscription
 # for the operator overview view, but that endpoint is privileged and
-# lives under ``/dashboard``.
+# lives under ``/dashboard``. See the legacy stub above for the 410
+# Gone behavior that surfaces a clear error to old SDK builds that
+# still call this firehose path.
 # ------------------------------------------------------------------
 
 

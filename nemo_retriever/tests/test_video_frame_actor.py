@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for nemo_retriever.video.frame_actor."""
+"""Unit tests for nemo_retriever.operators.extract.video.frame_actor."""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ import pytest
 
 from tests import _assert_jpeg_bytes
 from tests import _have_ffmpeg_binary_for_jpeg_frames
-from nemo_retriever.audio.media_interface import MediaInterface
-from nemo_retriever.params import VideoFrameParams
-from nemo_retriever.video.frame_actor import (
+from nemo_retriever.common.modality.audio.media_interface import MediaInterface
+from nemo_retriever.common.params import VideoFrameParams
+from nemo_retriever.operators.extract.video.frame_actor import (
     FRAME_COLUMNS,
     VideoFrameActor,
     dedup_video_frames,

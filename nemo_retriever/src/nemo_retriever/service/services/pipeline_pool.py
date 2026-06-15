@@ -32,7 +32,7 @@ from typing import Any, Callable
 from pydantic import ConfigDict
 
 from nemo_retriever.service.config import PipelinePoolConfig
-from nemo_retriever.service.models.base import RichModel
+from nemo_retriever.common.schemas.base import RichModel
 from nemo_retriever.service.services.prometheus import (
     POOL_MAX_QUEUE_SIZE,
     POOL_PROCESSED_TOTAL,
@@ -68,6 +68,7 @@ class WorkItem(RichModel):
     # Owning job aggregate (J1+). Always set today since the only
     # admission path is /v1/ingest/job/{job_id}/document.
     job_id: str | None = None
+    retain_results: bool = False
     # Validated per-request pipeline overrides (PipelineSpec serialised
     # to a dict). ``None`` means: run the legacy startup-baked pipeline.
     pipeline_spec: dict[str, Any] | None = None
@@ -79,10 +80,14 @@ async def _fire_gateway_callback(
     status: str,
     *,
     result_rows: int = 0,
-    result_data: list[dict[str, Any]] | None = None,
     error: str | None = None,
 ) -> None:
-    """POST job completion data back to the originating gateway pod."""
+    """POST a lightweight completion notification to the gateway pod.
+
+    ``result_data`` is never included — large row payloads are stored on
+    the worker via :mod:`worker_result_store` and fetched later through
+    ``GET /v1/internal/document-result/{id}`` when a client polls status.
+    """
     import httpx
 
     payload: dict[str, Any] = {
@@ -90,8 +95,6 @@ async def _fire_gateway_callback(
         "status": status,
         "result_rows": result_rows,
     }
-    if result_data is not None:
-        payload["result_data"] = result_data
     if error:
         payload["error"] = error
 
@@ -265,19 +268,28 @@ class _Pool:
                     elif isinstance(result, int):
                         result_rows = result
 
+                retain_results = item.retain_results
+                if not retain_results and item.job_id:
+                    tracker_lookup = get_job_tracker()
+                    if tracker_lookup is not None:
+                        retain_results = tracker_lookup.should_retain_results(item.job_id)
+
                 if item.callback_url:
+                    if retain_results:
+                        from nemo_retriever.service.services.worker_result_store import store_result_data
+
+                        store_result_data(item.id, result_data)
                     await _fire_gateway_callback(
                         item.callback_url,
                         item.id,
                         "completed",
                         result_rows=result_rows,
-                        result_data=result_data,
                     )
                 elif tracker is not None:
                     tracker.mark_completed(
                         item.id,
                         result_rows=result_rows,
-                        result_data=result_data,
+                        result_data=result_data if retain_results else None,
                     )
                 self._processed += 1
             except Exception as exc:

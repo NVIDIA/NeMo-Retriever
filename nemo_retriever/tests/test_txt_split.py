@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Unit tests for nemo_retriever.txt.split: split_text_by_tokens and txt_file_to_chunks_df.
+Unit tests for nemo_retriever.common.modality.txt.split: split_text_by_tokens and txt_file_to_chunks_df.
 """
 
 import tempfile  # noqa: F401
@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from nemo_retriever.txt.split import split_text_by_tokens, txt_file_to_chunks_df, TextChunkParams
+from nemo_retriever.common.modality.txt.split import split_text_by_tokens, txt_file_to_chunks_df, TextChunkParams
 
 
 class _MockTokenizer:
@@ -59,7 +59,9 @@ def test_split_text_by_tokens_max_tokens_positive():
 
 def test_txt_file_to_chunks_df(tmp_path: Path, monkeypatch):
     pytest.importorskip("transformers")
-    monkeypatch.setattr("nemo_retriever.txt.split._get_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer())
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
+    )
     f = tmp_path / "doc.txt"
     f.write_text("First paragraph here. Second paragraph there.", encoding="utf-8")
     df = txt_file_to_chunks_df(

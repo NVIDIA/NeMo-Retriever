@@ -12,18 +12,18 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 import pandas as pd
 
-from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.operator_resolution import resolve_graph
-from nemo_retriever.utils.hf_cache import collect_hf_runtime_env
-from nemo_retriever.utils.input_files import (
+from nemo_retriever.models.hf_cache import collect_hf_runtime_env
+from nemo_retriever.common.input_files import (
     _is_explicit_glob_path,
     expand_input_file_patterns,
     raise_input_path_not_found,
 )
-from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
-from nemo_retriever.utils import ray_resource_hueristics as _rrh
-from nemo_retriever.utils.ray_resource_hueristics import (
+from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env
+from nemo_retriever.common import ray_resource_hueristics as _rrh
+from nemo_retriever.common.ray_resource_hueristics import (
     gather_cluster_resources,
     NEMOTRON_PARSE_BATCH_SIZE,
     VLLM_GPUS_PER_ACTOR,
@@ -213,7 +213,12 @@ class RayDataExecutor(AbstractExecutor):
         return ordered
 
     def ingest(self, data: Any, **kwargs: Any) -> Any:
-        """Build and execute a Ray Data pipeline from the graph.
+        """Build, execute, and materialize a Ray Data pipeline from the graph."""
+
+        return self.build_dataset(data, **kwargs).to_pandas()
+
+    def build_dataset(self, data: Any, **kwargs: Any) -> Any:
+        """Build a lazy Ray Data pipeline from the graph.
 
         Parameters
         ----------
@@ -224,7 +229,7 @@ class RayDataExecutor(AbstractExecutor):
         Returns
         -------
         ray.data.Dataset
-            The materialized result dataset.
+            The lazy Ray dataset with all graph stages appended.
         """
         import ray
         import ray.data as rd
@@ -286,8 +291,8 @@ class RayDataExecutor(AbstractExecutor):
 
             # vLLM-backed actors handle their own batching efficiently
             # (continuous batching), so feed them more rows per map_batches call.
-            from nemo_retriever.parse.nemotron_parse import NemotronParseActor, NemotronParseGPUActor
-            from nemo_retriever.caption.caption import CaptionGPUActor
+            from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseActor, NemotronParseGPUActor
+            from nemo_retriever.operators.extract.caption.caption import CaptionGPUActor
 
             if batch_size == self._default_batch_size and issubclass(
                 node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)
@@ -327,8 +332,11 @@ class RayDataExecutor(AbstractExecutor):
                     # Ray can co-schedule multiple actors per GPU.
                     # Exception: actors backed by vLLM (NemotronParse, Caption)
                     # manage their own KV-cache and require exclusive GPU access.
-                    from nemo_retriever.parse.nemotron_parse import NemotronParseActor, NemotronParseGPUActor
-                    from nemo_retriever.caption.caption import CaptionGPUActor
+                    from nemo_retriever.operators.extract.parse.nemotron_parse import (
+                        NemotronParseActor,
+                        NemotronParseGPUActor,
+                    )
+                    from nemo_retriever.operators.extract.caption.caption import CaptionGPUActor
 
                     if issubclass(node.operator_class, (NemotronParseActor, NemotronParseGPUActor, CaptionGPUActor)):
                         num_gpus = max(self._default_num_gpus, VLLM_GPUS_PER_ACTOR)
@@ -380,4 +388,4 @@ class RayDataExecutor(AbstractExecutor):
                 **overrides,
             )
 
-        return ds.to_pandas()
+        return ds

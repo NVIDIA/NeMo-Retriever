@@ -1,6 +1,6 @@
 # NeMo Retriever: `Retriever` class
 
-The high-level **`Retriever`** runs **query → embed → vector search → optional rerank** through a small **operator graph** (see `nemo_retriever.retriever`). Configuration is grouped into three dicts that map to Pydantic / operator constructors.
+The high-level **`Retriever`** runs **query → embed → vector search → optional rerank** through a small **operator graph** (see `nemo_retriever.graph.retriever`). Configuration is grouped into three dicts that map to Pydantic / operator constructors.
 
 ## Constructor surface
 
@@ -31,7 +31,7 @@ Set `PYTHONPATH` to the `nemo_retriever` source tree (or use an installed wheel)
 ### 1) Minimal local retrieval (default VL embed model, local backend)
 
 ```python
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.graph.retriever import Retriever
 
 r = Retriever(
     vdb_kwargs={"uri": "./kb", "table_name": "nemo-retriever"},
@@ -49,7 +49,7 @@ print(hits[0]["text"][:200])
 
 ```python
 import os
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.graph.retriever import Retriever
 
 r = Retriever(
     vdb_kwargs={"vdb_op": "lancedb", "vdb_kwargs": {"uri": "./kb", "table_name": "nemo-retriever"}},
@@ -67,7 +67,7 @@ print(r.query("hello")[0].keys())
 Same as (2) but **`run_mode="service"`** requires a non-empty HTTP embedding URL in **`embed_kwargs`**; local GPU embed is not used for queries.
 
 ```python
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.graph.retriever import Retriever
 
 r = Retriever(
     run_mode="service",
@@ -82,7 +82,7 @@ r = Retriever(
 ### 4) Reranking
 
 ```python
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.graph.retriever import Retriever
 
 r = Retriever(
     vdb_kwargs={"uri": "./kb", "table_name": "nemo-retriever"},
@@ -129,7 +129,7 @@ Build any linear `Graph` whose first operator accepts a `DataFrame` whose text c
 
 ```python
 from nemo_retriever.graph.pipeline_graph import Graph
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.graph.retriever import Retriever
 
 # my_graph: Graph = embed_op >> retrieve_op  # your operators
 r = Retriever(graph=my_graph, top_k=5)
@@ -145,6 +145,6 @@ The graph embed path targets **HTTP** (OpenAI-style) batch embedding. **`RecallC
 
 ## Related types
 
-- **`EmbedParams`**: `nemo_retriever.params.EmbedParams`
-- **`RetrieveVdbOperator`**: `nemo_retriever.vdb.operators.RetrieveVdbOperator`
-- **`NemotronRerankActor`**: `nemo_retriever.rerank.rerank.NemotronRerankActor`
+- **`EmbedParams`**: `nemo_retriever.common.params.EmbedParams`
+- **`RetrieveVdbOperator`**: `nemo_retriever.operators.vdb.RetrieveVdbOperator`
+- **`NemotronRerankActor`**: `nemo_retriever.operators.rerank.NemotronRerankActor`

@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -73,7 +73,7 @@ class HarnessConfig:
     dataset_dir: str
     dataset_label: str
     preset: str
-    run_mode: str = "batch"
+    run_mode: str = "inprocess"
 
     query_csv: str | None = None
     input_type: str = "pdf"
@@ -118,6 +118,22 @@ class HarnessConfig:
     service_url: str | None = None
     service_max_concurrency: int = 8
 
+    manage_service: bool = False
+    keep_up: bool = False
+    helm_chart: str | None = None
+    helm_chart_version: str | None = None
+    helm_release: str = "nemo-retriever-harness"
+    helm_namespace: str | None = None
+    helm_values_file: str | None = None
+    helm_set: dict[str, Any] = field(default_factory=dict)
+    helm_timeout: int = 600
+    readiness_timeout: int = 600
+    helm_service_local_port: int = 7670
+    helm_bin: str = "helm"
+    helm_sudo: bool = False
+    kubectl_bin: str = "kubectl"
+    kubectl_sudo: bool = False
+
     page_elements_invoke_url: str | None = None
     ocr_invoke_url: str | None = None
     graphic_elements_invoke_url: str | None = None
@@ -157,10 +173,21 @@ class HarnessConfig:
             errors.append(f"run_mode must be one of {sorted(VALID_RUN_MODES)}")
 
         if self.run_mode == "service":
-            if not self.service_url:
-                errors.append("service_url is required when run_mode='service'")
+            if not self.manage_service and not self.service_url:
+                errors.append("service_url is required when run_mode='service' and manage_service=false")
             if self.service_max_concurrency < 1:
                 errors.append("service_max_concurrency must be >= 1")
+            if self.manage_service:
+                if not str(self.helm_release).strip():
+                    errors.append("helm_release must be a non-empty string when manage_service=true")
+                if self.helm_timeout < 1:
+                    errors.append("helm_timeout must be >= 1")
+                if self.readiness_timeout < 1:
+                    errors.append("readiness_timeout must be >= 1")
+                if self.helm_service_local_port < 1:
+                    errors.append("helm_service_local_port must be >= 1")
+                if not isinstance(self.helm_set, dict):
+                    errors.append("helm_set must be a mapping/dict")
             return errors
 
         if self.evaluation_mode not in VALID_EVALUATION_MODES:
@@ -249,6 +276,40 @@ def _parse_number(value: str) -> int | float:
     if "." in value:
         return float(value)
     return int(value)
+
+
+def _parse_scalar(value: str) -> Any:
+    low = str(value).strip().lower()
+    if low in {"true", "false"}:
+        return _parse_bool(value)
+    if low in {"null", "none"}:
+        return None
+    return value
+
+
+def _parse_helm_set_items(items: list[str] | None) -> dict[str, Any]:
+    parsed: dict[str, Any] = {}
+    for item in items or []:
+        if "=" not in item:
+            raise ValueError(f"Helm override must be KEY=VALUE, got: {item}")
+        key, raw_val = item.split("=", 1)
+        key = key.strip()
+        if not key:
+            raise ValueError(f"Invalid Helm override key in: {item}")
+        parsed[key] = _parse_scalar(raw_val.strip())
+    return parsed
+
+
+def _parse_helm_set_env(value: str) -> dict[str, Any]:
+    stripped = str(value).strip()
+    if not stripped:
+        return {}
+    if stripped.startswith("{"):
+        parsed = yaml.safe_load(stripped)
+        if not isinstance(parsed, dict):
+            raise ValueError("HARNESS_HELM_SET must be a mapping when provided as YAML/JSON")
+        return parsed
+    return _parse_helm_set_items([part.strip() for part in stripped.split(",") if part.strip()])
 
 
 def _resolve_config_path(config_file: str | None, default_path: Path) -> Path:
@@ -374,6 +435,21 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         "HARNESS_USE_HEURISTICS": ("use_heuristics", _parse_bool),
         "HARNESS_SERVICE_URL": ("service_url", str),
         "HARNESS_SERVICE_MAX_CONCURRENCY": ("service_max_concurrency", _parse_number),
+        "HARNESS_MANAGE_SERVICE": ("manage_service", _parse_bool),
+        "HARNESS_KEEP_UP": ("keep_up", _parse_bool),
+        "HARNESS_HELM_CHART": ("helm_chart", str),
+        "HARNESS_HELM_CHART_VERSION": ("helm_chart_version", str),
+        "HARNESS_HELM_RELEASE": ("helm_release", str),
+        "HARNESS_HELM_NAMESPACE": ("helm_namespace", str),
+        "HARNESS_HELM_VALUES_FILE": ("helm_values_file", str),
+        "HARNESS_HELM_SET": ("helm_set", _parse_helm_set_env),
+        "HARNESS_HELM_TIMEOUT": ("helm_timeout", _parse_number),
+        "HARNESS_READINESS_TIMEOUT": ("readiness_timeout", _parse_number),
+        "HARNESS_HELM_SERVICE_LOCAL_PORT": ("helm_service_local_port", _parse_number),
+        "HARNESS_HELM_BIN": ("helm_bin", str),
+        "HARNESS_HELM_SUDO": ("helm_sudo", _parse_bool),
+        "HARNESS_KUBECTL_BIN": ("kubectl_bin", str),
+        "HARNESS_KUBECTL_SUDO": ("kubectl_sudo", _parse_bool),
         "HARNESS_API_KEY": ("api_key", str),
         "HARNESS_PAGE_ELEMENTS_INVOKE_URL": ("page_elements_invoke_url", str),
         "HARNESS_OCR_INVOKE_URL": ("ocr_invoke_url", str),
@@ -425,6 +501,7 @@ def load_harness_config(
     sweep_overrides: dict[str, Any] | None = None,
     cli_overrides: list[str] | None = None,
     cli_recall_required: bool | None = None,
+    cli_helm_set: list[str] | None = None,
 ) -> HarnessConfig:
     config_path = _resolve_config_path(config_file, DEFAULT_TEST_CONFIG_PATH)
     yaml_cfg = _read_yaml_mapping(config_path)
@@ -472,6 +549,10 @@ def load_harness_config(
     merged.update(preset_values)
     merged.update({k: v for k, v in sweep_data.items() if k not in {"dataset", "preset"}})
     merged.update(cli_override_map)
+    if cli_helm_set:
+        helm_set = dict(merged.get("helm_set") or {})
+        helm_set.update(_parse_helm_set_items(cli_helm_set))
+        merged["helm_set"] = helm_set
     if cli_recall_required is not None:
         merged["recall_required"] = cli_recall_required
     _apply_env_overrides(merged)
@@ -484,6 +565,9 @@ def load_harness_config(
 
     if merged.get("artifacts_dir") is not None:
         merged["artifacts_dir"] = _resolve_path_like(str(merged["artifacts_dir"]), REPO_ROOT)
+
+    if merged.get("helm_values_file") is not None:
+        merged["helm_values_file"] = _resolve_path_like(str(merged["helm_values_file"]), config_path.parent)
 
     if merged.get("lancedb_uri") is None:
         merged["lancedb_uri"] = "lancedb"

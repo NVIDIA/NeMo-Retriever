@@ -14,7 +14,15 @@ from unittest.mock import patch
 
 
 def _load_media_interface():
-    module_path = Path(__file__).resolve().parents[1] / "src" / "nemo_retriever" / "audio" / "media_interface.py"
+    module_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "nemo_retriever"
+        / "common"
+        / "modality"
+        / "audio"
+        / "media_interface.py"
+    )
     spec = importlib.util.spec_from_file_location("media_interface_under_test", module_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -175,9 +183,9 @@ class MediaDependencyAvailabilityTests(TestCase):
         run_ffmpeg.assert_called_once_with(stream, label="extract_frames", input_path="/tmp/input.mp4")
 
     def test_video_frame_loader_does_not_require_ffprobe(self) -> None:
-        from nemo_retriever.audio import media_interface
-        from nemo_retriever.params import VideoFrameParams
-        from nemo_retriever.video import frame_actor
+        from nemo_retriever.common.modality.audio import media_interface
+        from nemo_retriever.common.params import VideoFrameParams
+        from nemo_retriever.operators.extract.video import frame_actor
 
         def fake_which(name: str) -> str | None:
             return f"/usr/bin/{name}" if name == "ffmpeg" else None
@@ -205,9 +213,9 @@ class MediaDependencyAvailabilityTests(TestCase):
         extract_one.assert_called_once()
 
     def test_video_split_frame_only_does_not_require_ffprobe(self) -> None:
-        from nemo_retriever.audio import media_interface
-        from nemo_retriever.params import AudioChunkParams, VideoFrameParams
-        from nemo_retriever.video.split import VideoSplitActor
+        from nemo_retriever.common.modality.audio import media_interface
+        from nemo_retriever.common.params import AudioChunkParams, VideoFrameParams
+        from nemo_retriever.operators.extract.video.split import VideoSplitActor
 
         def fake_which(name: str) -> str | None:
             return f"/usr/bin/{name}" if name == "ffmpeg" else None

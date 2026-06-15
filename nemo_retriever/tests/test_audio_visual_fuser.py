@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for nemo_retriever.video.audio_visual_fuser.AudioVisualFuser.
+"""Unit tests for nemo_retriever.operators.extract.video.audio_visual_fuser.AudioVisualFuser.
 
 The fuser's behaviour is fixed (no per-call knobs beyond ``enabled``):
   * one fused row per audio utterance with at least one concurrent frame,
@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from nemo_retriever.params import AudioVisualFuseParams
-from nemo_retriever.video.audio_visual_fuser import AudioVisualFuser, FRAME_TEXT_MAX_CHARS
+from nemo_retriever.common.params import AudioVisualFuseParams
+from nemo_retriever.operators.extract.video.audio_visual_fuser import AudioVisualFuser, FRAME_TEXT_MAX_CHARS
 
 
 def _audio_row(source: str, text: str, start: float, end: float) -> dict:

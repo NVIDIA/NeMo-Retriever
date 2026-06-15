@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env
+from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env
 
 
 def test_collect_remote_auth_runtime_env_preserves_legacy_nvidia_api_key(monkeypatch):

@@ -46,7 +46,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from nemo_retriever.service.models.base import RichModel
+from nemo_retriever.common.schemas.base import RichModel
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +96,29 @@ _JOB_TERMINAL: frozenset[JobAggregateStatus] = frozenset(
         JobAggregateStatus.PARTIAL_SUCCESS,
     }
 )
+
+
+class MarkOutcome(str, Enum):
+    """Result of a :meth:`JobTracker.mark_completed` / :meth:`mark_failed` call.
+
+    Routers use this to log accurately when a worker-pod callback fires:
+
+    * ``transitioned`` — the document moved into the requested terminal
+      state and a per-document SSE event was published. This is the
+      common path.
+    * ``idempotent`` — the document was already in a terminal state, so
+      the call was a no-op. Surfaces duplicate callbacks (worker retry,
+      bulk poll racing SSE, …).
+    * ``unknown_document`` — the tracker has no record of the supplied
+      document id. The most common cause is a gateway-pod restart
+      between accepting an upload and the worker firing its callback,
+      which silently strands the doc on the client. Treated as a
+      warning so it stands out in gateway logs during hang triage.
+    """
+
+    TRANSITIONED = "transitioned"
+    IDEMPOTENT = "idempotent"
+    UNKNOWN_DOCUMENT = "unknown_document"
 
 
 # ── data models ───────────────────────────────────────────────────────
@@ -151,6 +174,8 @@ class JobAggregate(RichModel):
     label: str | None = None
     """Optional client-supplied tag, e.g. ``"Q4-2026-corpus"``."""
     metadata: dict[str, Any] = {}
+    retain_results: bool = False
+    """When false, :meth:`JobTracker.mark_completed` drops bulky ``result_data``."""
 
 
 # ── eviction tunables (apply to terminal aggregates) ──────────────────
@@ -250,6 +275,7 @@ class JobTracker:
         expected_documents: int,
         label: str | None = None,
         metadata: dict[str, Any] | None = None,
+        retain_results: bool = False,
     ) -> JobAggregate:
         """Create a new :class:`JobAggregate` in ``pending`` state."""
         if expected_documents <= 0:
@@ -272,6 +298,7 @@ class JobTracker:
                 created_at=_utcnow_iso(),
                 label=label,
                 metadata=dict(metadata or {}),
+                retain_results=retain_results,
             )
             agg.counts[DocumentStatus.PENDING.value] = 0
             self._jobs[job_id] = agg
@@ -293,6 +320,14 @@ class JobTracker:
         """Return a snapshot of every aggregate (defensive deep copies)."""
         with self._lock:
             return [a.model_copy(deep=True) for a in self._jobs.values()]
+
+    def should_retain_results(self, job_id: str | None) -> bool:
+        """Return whether completed row payloads should be kept for *job_id*."""
+        if not job_id:
+            return False
+        with self._lock:
+            agg = self._jobs.get(job_id)
+            return bool(agg.retain_results) if agg is not None else False
 
     def job_documents(self, job_id: str) -> list[DocumentRecord]:
         """Return every document record belonging to *job_id* in arrival order."""
@@ -399,9 +434,15 @@ class JobTracker:
         result_rows: int = 0,
         result_data: list[dict[str, Any]] | None = None,
         elapsed_s: float | None = None,
-    ) -> None:
-        """Transition a document to ``completed``; maybe finalize the job."""
-        self._mark_terminal(
+    ) -> MarkOutcome:
+        """Transition a document to ``completed``; maybe finalize the job.
+
+        Returns a :class:`MarkOutcome` so the gateway callback handler
+        can surface duplicate / orphaned callbacks in logs (the common
+        symptom of a hung client whose docs were stranded by a gateway
+        pod restart).
+        """
+        return self._mark_terminal(
             document_id,
             new_status=DocumentStatus.COMPLETED,
             result_rows=result_rows,
@@ -415,9 +456,12 @@ class JobTracker:
         error: str,
         *,
         elapsed_s: float | None = None,
-    ) -> None:
-        """Transition a document to ``failed``; maybe finalize the job."""
-        self._mark_terminal(
+    ) -> MarkOutcome:
+        """Transition a document to ``failed``; maybe finalize the job.
+
+        See :meth:`mark_completed` for the meaning of the return value.
+        """
+        return self._mark_terminal(
             document_id,
             new_status=DocumentStatus.FAILED,
             error=error,
@@ -433,19 +477,36 @@ class JobTracker:
         result_data: list[dict[str, Any]] | None = None,
         error: str | None = None,
         elapsed_s: float | None = None,
-    ) -> None:
+    ) -> MarkOutcome:
         # Phase 1: under lock, mutate state and gather snapshots.
         with self._lock:
             rec = self._documents.get(document_id)
             if rec is None:
-                return
+                # A worker callback for a doc the tracker has never seen
+                # is the classic symptom of a gateway-pod restart
+                # between upload acceptance and worker completion: the
+                # doc lives on the client (and on the worker that
+                # eventually finishes it) but no longer on this
+                # gateway, so no SSE event will be published. Surface
+                # this loudly so hung clients are diagnosable from
+                # gateway logs alone.
+                logger.warning(
+                    "JobTracker.%s: no record of document %r — callback dropped (likely "
+                    "gateway-pod restart between upload acceptance and worker callback); "
+                    "client may hang waiting for an SSE event that will never arrive",
+                    "mark_failed" if new_status == DocumentStatus.FAILED else "mark_completed",
+                    document_id,
+                )
+                return MarkOutcome.UNKNOWN_DOCUMENT
             if rec.status in _DOC_TERMINAL:
-                return  # idempotent
+                return MarkOutcome.IDEMPOTENT  # duplicate callback / poll race
             old_status = rec.status
             rec.status = new_status
             rec.completed_at = _utcnow_iso()
             rec.result_rows = result_rows
-            rec.result_data = result_data
+            agg_for_retain = self._jobs.get(rec.job_id)
+            retain_results = bool(agg_for_retain.retain_results) if agg_for_retain is not None else False
+            rec.result_data = result_data if retain_results else None
             rec.error = error
             if elapsed_s is not None:
                 rec.elapsed_s = elapsed_s
@@ -492,6 +553,8 @@ class JobTracker:
             else:
                 event_name = "job_finalized"
             self._publish_job_event(event_name, finalized_snapshot)
+
+        return MarkOutcome.TRANSITIONED
 
     # ── internal helpers ─────────────────────────────────────────────
 

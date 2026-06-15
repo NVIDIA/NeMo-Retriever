@@ -30,11 +30,11 @@ app = graph.compile()
 def _build_state(payload: AgentPayload) -> AgentState:
     custom_prompts = payload.get("custom_prompts", "")
     acronyms = payload.get("acronyms", [])
-    connector = payload.get("connector")
-    if connector is None:
+    connectors = payload.get("connectors", [])
+    if not connectors:
         raise ValueError(
-            "AgentPayload is missing required 'connector'. "
-            "Provide a database connector with a valid 'dialect' attribute."
+            "AgentPayload is missing required 'connectors'. "
+            "Provide a non-empty list of database connectors, each with a valid 'dialect' attribute."
         )
 
     retriever = payload.get("retriever")
@@ -52,7 +52,6 @@ def _build_state(payload: AgentPayload) -> AgentState:
     main_system_prompt = main_system_prompt_template.format(
         date=datetime.now(),
         custom_prompts=custom_prompts_text,
-        dialect=connector.dialect,
     )
     messages = [
         SystemMessage(content=main_system_prompt),
@@ -62,7 +61,7 @@ def _build_state(payload: AgentPayload) -> AgentState:
     return {
         "llm": llm_client,
         "initial_question": payload["question"],
-        "connector": connector,
+        "connectors": connectors,
         "messages": messages,
         "path_state": initial_path_state,
         "retriever": retriever,

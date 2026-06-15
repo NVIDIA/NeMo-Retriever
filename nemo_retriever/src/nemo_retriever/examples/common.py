@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from nemo_retriever.vdb.lancedb_read import estimate_processed_pages
+from nemo_retriever.common.vdb.lancedb_read import estimate_processed_pages
 
 __all__ = ["estimate_processed_pages", "print_pages_per_second"]
 

@@ -13,7 +13,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import ConfigDict, Field
 
-from nemo_retriever.service.models.base import RichModel
+from nemo_retriever.common.schemas.base import RichModel
 
 ServiceMode = Literal["standalone", "gateway", "realtime", "batch"]
 
@@ -222,7 +222,7 @@ class PipelineOverridesConfig(RichModel):
         by the caller — clients can only override caption settings when the
         operator has actually wired up a VLM endpoint.
         """
-        from nemo_retriever.service.policy import PipelineOverridesPolicy, SinkUrlAllowlist
+        from nemo_retriever.common.policy import PipelineOverridesPolicy, SinkUrlAllowlist
 
         return PipelineOverridesPolicy(
             mode=self.mode,

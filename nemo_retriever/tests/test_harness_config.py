@@ -1,11 +1,17 @@
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
 
 import nemo_retriever.harness.config as harness_config
-from nemo_retriever.harness.config import HarnessConfig, load_harness_config, load_nightly_config, load_runs_config
+from nemo_retriever.harness.config import (
+    HarnessConfig,
+    load_harness_config,
+    load_nightly_config,
+    load_runs_config,
+)
 from nemo_retriever.harness.portal.app import (
     DatasetUpdateRequest,
     _validate_dataset_evaluation_mode,
@@ -167,6 +173,192 @@ def test_load_harness_config_rejects_invalid_run_mode(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="run_mode must be one of"):
         load_harness_config(config_file=str(cfg_path))
+
+
+def test_service_mode_requires_service_url_when_unmanaged(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+
+    cfg = HarnessConfig(dataset_dir=str(dataset_dir), dataset_label="tiny", preset="base", run_mode="service")
+
+    errors = cfg.validate()
+
+    assert "service_url is required when run_mode='service' and manage_service=false" in errors
+
+
+def test_service_mode_allows_missing_service_url_when_managed(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        run_mode="service",
+        manage_service=True,
+    )
+
+    assert cfg.validate() == []
+
+
+def test_load_harness_config_supports_managed_helm_fields(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    values_file = tmp_path / "managed-values.yaml"
+    values_file.write_text("nims:\n  enabled: false\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "  run_mode: service",
+                "  manage_service: true",
+                "  keep_up: true",
+                "  helm_chart: nemo-microservices/nemo-retriever",
+                "  helm_chart_version: 26.5.0",
+                "  helm_release: nrl-smoke",
+                "  helm_namespace: nrl-smoke-ns",
+                "  helm_values_file: managed-values.yaml",
+                "  helm_set:",
+                "    service.image.repository: nvcr.io/nvidia/nemo-microservices/nrl-service",
+                "    service.image.tag: 26.5.0",
+                "  helm_timeout: 900",
+                "  readiness_timeout: 1200",
+                "  helm_service_local_port: 17670",
+                "  kubectl_bin: microk8s kubectl",
+                "  helm_bin: microk8s helm",
+                "  kubectl_sudo: true",
+                "  helm_sudo: true",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                "    recall_required: false",
+                "    evaluation_mode: none",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HARNESS_HELM_RELEASE", "env-release")
+
+    cfg = load_harness_config(config_file=str(cfg_path))
+
+    assert cfg.manage_service is True
+    assert cfg.keep_up is True
+    assert cfg.helm_chart == "nemo-microservices/nemo-retriever"
+    assert cfg.helm_chart_version == "26.5.0"
+    assert cfg.helm_release == "env-release"
+    assert cfg.helm_namespace == "nrl-smoke-ns"
+    assert cfg.helm_values_file == str(values_file.resolve())
+    assert cfg.helm_set["service.image.repository"] == "nvcr.io/nvidia/nemo-microservices/nrl-service"
+    assert cfg.helm_set["service.image.tag"] == "26.5.0"
+    assert cfg.helm_timeout == 900
+    assert cfg.readiness_timeout == 1200
+    assert cfg.helm_service_local_port == 17670
+    assert cfg.kubectl_bin == "microk8s kubectl"
+    assert cfg.helm_bin == "microk8s helm"
+    assert cfg.kubectl_sudo is True
+    assert cfg.helm_sudo is True
+
+
+def test_managed_helm_nrl_2605_example_config_is_parseable_and_secret_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for key in list(os.environ):
+        if key.startswith("HARNESS_"):
+            monkeypatch.delenv(key, raising=False)
+
+    example_path = harness_config.NEMO_RETRIEVER_ROOT / "harness" / "examples" / "managed-helm-nrl-26.05.yaml"
+    source = example_path.read_text(encoding="utf-8")
+
+    assert "password:" not in source
+    assert "ngcImagePullSecret.password" not in source
+    assert "ngcApiSecret.password" not in source
+    assert "26.05-RC" not in source
+    assert "nvstaging" not in source
+    assert "x-nrl-chart-version: &nrl_chart_version" in source
+    assert "helm_chart_version: *nrl_chart_version" in source
+    assert "service_max_concurrency:" not in source
+    assert "serviceConfig.pipeline." not in source
+    assert "nvidia.com/mig-" not in source
+    assert "nimOperator.page_elements.resources" not in source
+
+    original_exists = Path.exists
+
+    def _example_path_exists(path_self: Path) -> bool:
+        if path_self == Path("/datasets/nv-ingest/bo767"):
+            return True
+        return original_exists(path_self)
+
+    monkeypatch.setattr(Path, "exists", _example_path_exists)
+
+    cfg = load_harness_config(config_file=str(example_path))
+
+    assert cfg.dataset_label == "bo767"
+    assert Path(cfg.dataset_dir).name == "bo767"
+    assert cfg.run_mode == "service"
+    assert cfg.manage_service is True
+    assert cfg.keep_up is False
+    assert cfg.helm_bin == "microk8s helm"
+    assert cfg.kubectl_bin == "microk8s kubectl"
+    assert cfg.helm_sudo is True
+    assert cfg.kubectl_sudo is True
+    assert cfg.helm_chart == "nemo-microservices/nemo-retriever"
+    assert cfg.helm_chart_version == "26.5.0"
+    assert cfg.helm_values_file == str(
+        (harness_config.NEMO_RETRIEVER_ROOT / "harness" / "helm-profiles" / "core.yaml").resolve()
+    )
+    assert "service.image.repository" not in cfg.helm_set
+    assert "service.image.tag" not in cfg.helm_set
+    assert "service.image.pullPolicy" not in cfg.helm_set
+    assert cfg.helm_set["ngcImagePullSecret.create"] is False
+    assert cfg.helm_set["ngcImagePullSecret.name"] == "ngc-secret"
+    assert cfg.helm_set["ngcApiSecret.create"] is False
+    assert cfg.helm_set["ngcApiSecret.name"] == "ngc-api"
+    assert cfg.service_max_concurrency == 8
+    assert "serviceConfig.pipeline.realtimeWorkers" not in cfg.helm_set
+    assert "serviceConfig.pipeline.batchWorkers" not in cfg.helm_set
+    assert "nimOperator.page_elements.resources" not in cfg.helm_set
+    assert "nimOperator.table_structure.resources" not in cfg.helm_set
+    assert "nimOperator.ocr.resources" not in cfg.helm_set
+    assert "nimOperator.vlm_embed.resources" not in cfg.helm_set
+    assert "nimOperator.rerankqa.enabled" not in cfg.helm_set
+
+
+def test_cli_helm_set_preserves_decimal_like_version_strings(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "  run_mode: service",
+                "  manage_service: true",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                "    recall_required: false",
+                "    evaluation_mode: none",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_harness_config(
+        config_file=str(cfg_path),
+        cli_helm_set=["service.image.tag=26.10", "nims.enabled=false"],
+    )
+
+    assert cfg.helm_set["service.image.tag"] == "26.10"
+    assert cfg.helm_set["nims.enabled"] is False
 
 
 def test_load_harness_config_fails_when_recall_required_without_query(tmp_path: Path) -> None:

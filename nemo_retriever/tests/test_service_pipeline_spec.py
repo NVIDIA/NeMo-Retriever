@@ -18,17 +18,21 @@ from __future__ import annotations
 
 import pytest
 
-from nemo_retriever.params import DedupParams, EmbedParams, ExtractParams
+from nemo_retriever.common.params import DedupParams, EmbedParams, ExtractParams
 from nemo_retriever.service.config import PipelineOverridesConfig
-from nemo_retriever.service.models.pipeline_spec import PipelineSpec
-from nemo_retriever.service.policy import PolicyError, validate_pipeline_spec
+from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
+from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.service.services.pipeline_executor import (
     _build_graph_ingestor_from_spec,
     _merge_server_owned,
+    _request_needs_asr_params,
+    _resolve_service_extraction_mode,
+    _run_pipeline_in_process,
     _TRUST_OWNED_EMBED_KEYS,
     _TRUST_OWNED_EXTRACT_KEYS,
 )
-from nemo_retriever.service_ingestor import ServiceIngestor
+from nemo_retriever.service.utils.file_type import infer_extraction_mode_from_filename
+from nemo_retriever.service.service_ingestor import ServiceIngestor
 
 
 @pytest.fixture(autouse=True)
@@ -49,6 +53,17 @@ def test_serviceingestor_empty_spec_is_none() -> None:
     assert ing._pipeline_payload() is None
 
 
+def test_extract_mode_only_omits_extract_params() -> None:
+    """``.extract(extraction_mode='pdf')`` must not send client model defaults."""
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing.extract(extraction_mode="pdf").all_tasks()
+    payload = ing._pipeline_payload()
+    assert payload is not None
+    assert payload["extraction_mode"] == "pdf"
+    assert payload["stage_order"] == ["extract", "dedup", "embed"]
+    assert "extract_params" not in payload
+
+
 def test_extract_records_stage_and_params() -> None:
     ing = ServiceIngestor(base_url="http://example:7670")
     ing.extract(ExtractParams(extract_text=False, dpi=300))
@@ -60,6 +75,32 @@ def test_extract_records_stage_and_params() -> None:
     assert payload["extract_params"]["dpi"] == 300
     assert "page_elements_invoke_url" not in payload["extract_params"]
     assert "api_key" not in payload["extract_params"]
+    assert "use_page_elements" not in payload["extract_params"]
+    assert "batch_tuning" not in payload["extract_params"]
+
+
+def test_extract_params_passes_default_policy_allowlist() -> None:
+    """Regression: public ExtractParams must not send model defaults to nrl-service."""
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing.extract(
+        params=ExtractParams(
+            extract_text=True,
+            extract_images=False,
+            extract_tables=False,
+            extract_charts=False,
+            extract_infographics=False,
+        )
+    )
+    spec = PipelineSpec.model_validate(ing._pipeline_spec)
+    validate_pipeline_spec(spec, PipelineOverridesConfig().to_policy())
+    assert set(spec.extract_params) <= {
+        "extract_text",
+        "extract_images",
+        "extract_tables",
+        "extract_charts",
+        "extract_infographics",
+        "table_output_format",
+    }
 
 
 def test_extract_image_files_sets_image_mode() -> None:
@@ -253,3 +294,226 @@ def test_build_graph_ingestor_applies_spec_extraction_mode(monkeypatch: pytest.M
     assert ingestor._extract_params is not None
     assert ingestor._extract_params.dpi == 300
     assert ingestor._extract_params.page_elements_invoke_url == "http://server/page_elements"
+
+
+# ----------------------------------------------------------------------
+# ASR-params gating
+# ----------------------------------------------------------------------
+#
+# Regression coverage for the bug where the worker's ``ASRParams`` (built
+# from ``serviceConfig.nimEndpoints.audioGrpcEndpoint``) leaked into every
+# per-request ingestor and forced PDF uploads through the audio-only
+# graph, crashing inside ``MediaChunkActor`` with
+# ``RuntimeError: MediaChunkActor requires media dependencies; missing:
+# ffmpeg, ffprobe``.
+
+
+@pytest.mark.parametrize(
+    ("extraction_mode", "filename", "expected"),
+    [
+        # Explicit audio/video intent: always attach.
+        ("audio", "lecture.mp3", True),
+        ("audio", "recording.wav", True),
+        ("video", "talk.mp4", True),
+        ("AUDIO", "recording.WAV", True),
+        # auto + media extension: attach so MultiTypeExtractOperator can
+        # dispatch the audio rows.
+        ("auto", "lecture.mp3", True),
+        ("auto", "talk.mp4", True),
+        ("auto", "podcast.m4a", True),
+        ("auto", "clip.mov", True),
+        # auto + non-media extension: DO NOT attach. This is the PDF bug.
+        ("auto", "report.pdf", False),
+        ("auto", "scan.docx", False),
+        ("auto", "spec.pptx", False),
+        ("auto", "diagram.png", False),
+        ("auto", "page.html", False),
+        ("auto", "notes.txt", False),
+        # Explicit non-media modes: never attach regardless of filename.
+        ("pdf", "report.pdf", False),
+        ("pdf", "weird.mp3", False),
+        ("image", "diagram.png", False),
+        ("text", "notes.txt", False),
+        ("html", "page.html", False),
+        # Unknown extension under auto: be conservative, don't attach.
+        ("auto", "unknown.xyz", False),
+        ("auto", "no_extension", False),
+        # Missing/empty mode: same as unknown — don't attach.
+        ("", "report.pdf", False),
+        (None, "report.pdf", False),
+    ],
+)
+def test_request_needs_asr_params(extraction_mode: str | None, filename: str, expected: bool) -> None:
+    assert _request_needs_asr_params(extraction_mode, filename) is expected
+
+
+def test_build_graph_ingestor_does_not_attach_asr_params_for_pdf_upload() -> None:
+    """Regression: a worker with ``base_asr`` configured must not pin the
+    cluster-wide ASR params onto PDF ingest requests.
+
+    Before the fix the worker unconditionally executed
+    ``ingestor._asr_params = asr_params`` whenever ``base_asr`` was
+    truthy, which forced :func:`build_graph` into the audio-only branch
+    and crashed inside :class:`MediaChunkActor` when ffmpeg was absent.
+    """
+    base_extract: dict[str, object] = {}
+    base_asr = {"audio_endpoints": ["audio:50051", None]}
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+
+    ingestor, mode, _ = _build_graph_ingestor_from_spec(
+        "report.pdf",
+        b"%PDF-1.4 stub",
+        base_extract,
+        None,
+        spec,
+        base_asr=base_asr,
+    )
+
+    assert mode == "pdf"
+    assert (
+        ingestor._asr_params is None
+    ), f"PDF ingestion must not carry worker-wide ASR params. Got: {ingestor._asr_params!r}"
+
+
+def test_build_graph_ingestor_attaches_asr_params_for_audio_upload() -> None:
+    """A genuine audio upload under ``extraction_mode='auto'`` must still
+    carry the ASR params so MultiTypeExtractOperator can dispatch ASR.
+    """
+    base_extract: dict[str, object] = {}
+    base_asr = {"audio_endpoints": ["audio:50051", None]}
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+
+    ingestor, _, _ = _build_graph_ingestor_from_spec(
+        "lecture.mp3",
+        b"ID3\x03",
+        base_extract,
+        None,
+        spec,
+        base_asr=base_asr,
+    )
+
+    assert ingestor._asr_params is not None
+    assert tuple(ingestor._asr_params.audio_endpoints) == ("audio:50051", None)
+
+
+def test_build_graph_ingestor_attaches_asr_params_for_explicit_audio_mode() -> None:
+    """``extraction_mode='audio'`` must always attach the worker ASR params."""
+    base_extract: dict[str, object] = {}
+    base_asr = {"audio_endpoints": ["audio:50051", None]}
+    spec = {"extraction_mode": "audio", "stage_order": ["extract"]}
+
+    ingestor, mode, _ = _build_graph_ingestor_from_spec(
+        # Filename without a media extension — explicit mode wins.
+        "stream.bin",
+        b"binary",
+        base_extract,
+        None,
+        spec,
+        base_asr=base_asr,
+    )
+
+    assert mode == "audio"
+    assert ingestor._asr_params is not None
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("notes.txt", "text"),
+        ("page.html", "html"),
+        ("report.pdf", "pdf"),
+        ("diagram.png", "image"),
+        ("clip.mp4", "video"),
+        ("unknown.xyz", None),
+    ],
+)
+def test_infer_extraction_mode_from_filename(filename: str, expected: str | None) -> None:
+    assert infer_extraction_mode_from_filename(filename) == expected
+
+
+@pytest.mark.parametrize(
+    ("extraction_mode", "filename", "resolved"),
+    [
+        ("auto", "notes.txt", "text"),
+        ("auto", "page.html", "html"),
+        ("auto", "report.pdf", "pdf"),
+        ("pdf", "notes.txt", "pdf"),
+        ("text", "page.html", "text"),
+    ],
+)
+def test_resolve_service_extraction_mode(extraction_mode: str, filename: str, resolved: str) -> None:
+    assert _resolve_service_extraction_mode(extraction_mode, filename) == resolved
+
+
+def test_build_graph_ingestor_uses_typed_txt_html_shortcuts() -> None:
+    base_extract: dict[str, object] = {}
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+
+    txt_ingestor, txt_mode, _ = _build_graph_ingestor_from_spec(
+        "notes.txt",
+        b"The quick brown fox",
+        base_extract,
+        None,
+        spec,
+    )
+    assert txt_mode == "text"
+    assert txt_ingestor._extraction_mode == "text"
+    assert txt_ingestor._text_params is not None
+
+    html_ingestor, html_mode, _ = _build_graph_ingestor_from_spec(
+        "page.html",
+        b"<html><body><h1>Hi</h1></body></html>",
+        base_extract,
+        None,
+        spec,
+    )
+    assert html_mode == "html"
+    assert html_ingestor._extraction_mode == "html"
+    assert html_ingestor._html_params is not None
+
+
+def test_run_pipeline_in_process_rejects_empty_text_like_output() -> None:
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+    with pytest.raises(ValueError, match="Extraction produced no rows"):
+        _run_pipeline_in_process("empty.txt", b"", {}, None, None, spec)
+
+
+def test_run_pipeline_in_process_html_txt_produce_rows() -> None:
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+    html_rows, _, _ = _run_pipeline_in_process(
+        "page.html",
+        b"<html><body><h1>Title</h1><p>body</p></body></html>",
+        {},
+        None,
+        None,
+        spec,
+    )
+    txt_rows, _, _ = _run_pipeline_in_process(
+        "notes.txt",
+        b"Line one\nLine two\n",
+        {},
+        None,
+        None,
+        spec,
+    )
+    assert html_rows >= 1
+    assert txt_rows >= 1
+
+
+def test_build_graph_ingestor_omits_asr_params_when_worker_unconfigured() -> None:
+    """When the worker has no ASR endpoint, nothing should be attached
+    regardless of filename or extraction mode.
+    """
+    base_extract: dict[str, object] = {}
+    spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+
+    ingestor, _, _ = _build_graph_ingestor_from_spec(
+        "lecture.mp3",
+        b"ID3\x03",
+        base_extract,
+        None,
+        spec,
+        base_asr=None,
+    )
+
+    assert ingestor._asr_params is None

@@ -20,10 +20,10 @@ def test_embedded_ray_scripts_import_env_helpers_inside_try() -> None:
 
     for script in (harness_run._GRAPH_RUNNER_SCRIPT, _GRAPH_WRAPPER_SCRIPT):
         before_try, after_try = script.split("\ntry:\n", 1)
-        assert "from nemo_retriever.utils.hf_cache import collect_hf_runtime_env" not in before_try
-        assert "from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env" not in before_try
-        assert "from nemo_retriever.utils.hf_cache import collect_hf_runtime_env" in after_try
-        assert "from nemo_retriever.utils.remote_auth import collect_remote_auth_runtime_env" in after_try
+        assert "from nemo_retriever.models.hf_cache import collect_hf_runtime_env" not in before_try
+        assert "from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env" not in before_try
+        assert "from nemo_retriever.models.hf_cache import collect_hf_runtime_env" in after_try
+        assert "from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env" in after_try
 
 
 def test_evaluate_run_outcome_passes_when_process_succeeds_and_recall_present() -> None:
@@ -171,7 +171,7 @@ def test_build_command_uses_hidden_detection_file_by_default(tmp_path: Path) -> 
     )
     cmd, runtime_dir, detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
     assert "--run-mode" in cmd
-    assert cmd[cmd.index("--run-mode") + 1] == "batch"
+    assert cmd[cmd.index("--run-mode") + 1] == "inprocess"
     assert "--detection-summary-file" in cmd
     assert "--evaluation-mode" in cmd
     assert cmd[cmd.index("--evaluation-mode") + 1] == "beir"
@@ -893,6 +893,333 @@ def test_run_entry_returns_tags(monkeypatch, tmp_path: Path) -> None:
     assert result["tags"] == ["nightly", "candidate"]
 
 
+def test_run_service_mode_uses_finalized_service_ingest_result_contract(monkeypatch, tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    input_file = dataset_dir / "doc.pdf"
+    input_file.write_bytes(b"%PDF-1.4\n")
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        run_mode="service",
+        service_url="http://localhost:17670",
+        service_max_concurrency=2,
+    )
+
+    class FakeResult(list):
+        def __init__(self) -> None:
+            super().__init__([{"document_id": "doc-1", "status": "completed"}])
+            self.job_id = "job-1"
+            self.document_ids = ["doc-1"]
+            self.failures = []
+            self.elapsed_s = 2.0
+            self.job_status = "completed"
+
+    captured_init: dict[str, object] = {}
+
+    class FakeServiceIngestor:
+        def __init__(self, **kwargs) -> None:
+            captured_init.update(kwargs)
+
+        def ingest(self) -> FakeResult:
+            return FakeResult()
+
+    import nemo_retriever.service.service_ingestor as service_ingestor
+
+    monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
+    monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: [input_file])
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+    monkeypatch.setattr(harness_run, "_collect_run_metadata", lambda: {"host": "builder-01"})
+
+    payloads: dict[str, dict] = {}
+    monkeypatch.setattr(harness_run, "write_json", lambda _path, payload: payloads.setdefault("result", payload))
+
+    result = harness_run._run_service_mode(cfg, artifact_dir, run_id="r1")
+
+    assert captured_init["base_url"] == "http://localhost:17670"
+    assert captured_init["documents"] == [str(input_file)]
+    assert captured_init["max_concurrency"] == 2
+    assert result["success"] is True
+    assert result["service_job_id"] == "job-1"
+    assert result["service_document_ids"] == ["doc-1"]
+    assert "service_job_ids" not in result
+    assert payloads["result"]["service_job_id"] == "job-1"
+
+
+def test_run_service_mode_counts_pdf_pages_not_completed_documents(monkeypatch, tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    input_file = dataset_dir / "doc.pdf"
+    input_file.write_bytes(b"%PDF-1.4\n")
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        run_mode="service",
+        service_url="http://localhost:17670",
+    )
+
+    class FakeResult(list):
+        def __init__(self) -> None:
+            super().__init__([{"document_id": "doc-1", "status": "completed"}])
+            self.job_id = "job-1"
+            self.document_ids = ["doc-1"]
+            self.failures = []
+            self.elapsed_s = 2.0
+            self.job_status = "completed"
+
+    class FakeServiceIngestor:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def ingest(self) -> FakeResult:
+            return FakeResult()
+
+    import nemo_retriever.service.service_ingestor as service_ingestor
+
+    monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
+    monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: [input_file])
+    monkeypatch.setattr(harness_run, "_safe_pdf_page_count", lambda path: 7 if path == input_file else None)
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+    monkeypatch.setattr(harness_run, "_collect_run_metadata", lambda: {"host": "builder-01"})
+    monkeypatch.setattr(harness_run, "write_json", lambda _path, _payload: None)
+
+    result = harness_run._run_service_mode(cfg, artifact_dir, run_id="r1")
+
+    assert result["metrics"]["files"] == 1
+    assert result["metrics"]["pages"] == 7
+    assert result["metrics"]["pages_processed"] == 7
+    assert result["metrics"]["pages_failed"] == 0
+    assert result["metrics"]["pages_per_sec_ingest"] == 3.5
+    assert result["summary_metrics"]["pages"] == 7
+    assert result["summary_metrics"]["pages_per_sec_ingest"] == 3.5
+
+
+def test_run_service_mode_counts_failed_pdf_documents_as_pages(monkeypatch, tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    input_files = [dataset_dir / name for name in ("a.pdf", "b.pdf", "c.pdf")]
+    for input_file in input_files:
+        input_file.write_bytes(b"%PDF-1.4\n")
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        run_mode="service",
+        service_url="http://localhost:17670",
+    )
+
+    class FakeResult(list):
+        def __init__(self) -> None:
+            super().__init__(
+                [
+                    {"document_id": "doc-a", "status": "completed"},
+                    {"document_id": "doc-b", "status": "failed"},
+                    {"document_id": "doc-c", "status": "completed"},
+                ]
+            )
+            self.job_id = "job-1"
+            self.document_ids = ["doc-a", "doc-b", "doc-c"]
+            self.document_filenames = {"doc-a": "a.pdf", "doc-b": "b.pdf", "doc-c": "c.pdf"}
+            self.failures = [("doc-b", "boom")]
+            self.elapsed_s = 5.0
+            self.job_status = "partial_success"
+
+    class FakeServiceIngestor:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def ingest(self) -> FakeResult:
+            return FakeResult()
+
+    import nemo_retriever.service.service_ingestor as service_ingestor
+
+    monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
+    monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: input_files)
+    monkeypatch.setattr(harness_run, "_safe_pdf_page_count", lambda path: 5 if path in input_files else None)
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+    monkeypatch.setattr(harness_run, "_collect_run_metadata", lambda: {"host": "builder-01"})
+    monkeypatch.setattr(harness_run, "write_json", lambda _path, _payload: None)
+
+    result = harness_run._run_service_mode(cfg, artifact_dir, run_id="r1")
+
+    assert result["success"] is False
+    assert result["failure_reason"] == "5 page(s) failed during service ingestion"
+    assert result["metrics"]["files"] == 3
+    assert result["metrics"]["pages"] == 15
+    assert result["metrics"]["pages_processed"] == 10
+    assert result["metrics"]["pages_failed"] == 5
+    assert result["metrics"]["pages_per_sec_ingest"] == 3.0
+    assert result["summary_metrics"]["pages"] == 15
+    assert result["summary_metrics"]["pages_per_sec_ingest"] == 3.0
+
+
+def test_run_service_mode_does_not_reuse_page_count_for_unreadable_duplicate_basename(
+    monkeypatch, tmp_path: Path
+) -> None:
+    dataset_dir = tmp_path / "dataset"
+    readable_dir = dataset_dir / "readable"
+    unreadable_dir = dataset_dir / "unreadable"
+    readable_dir.mkdir(parents=True)
+    unreadable_dir.mkdir(parents=True)
+    readable_pdf = readable_dir / "doc.pdf"
+    unreadable_pdf = unreadable_dir / "doc.pdf"
+    readable_pdf.write_bytes(b"%PDF-1.4\n")
+    unreadable_pdf.write_bytes(b"%PDF-1.4\n")
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        run_mode="service",
+        service_url="http://localhost:17670",
+    )
+
+    class FakeResult(list):
+        def __init__(self) -> None:
+            super().__init__(
+                [
+                    {"document_id": "doc-readable", "status": "completed"},
+                    {"document_id": "doc-unreadable", "status": "failed"},
+                ]
+            )
+            self.job_id = "job-1"
+            self.document_ids = ["doc-readable", "doc-unreadable"]
+            self.document_filenames = {"doc-readable": "doc.pdf", "doc-unreadable": "doc.pdf"}
+            self.failures = [("doc-unreadable", "boom")]
+            self.elapsed_s = 2.0
+            self.job_status = "partial_success"
+
+    class FakeServiceIngestor:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def ingest(self) -> FakeResult:
+            return FakeResult()
+
+    import nemo_retriever.service.service_ingestor as service_ingestor
+
+    input_files = [readable_pdf, unreadable_pdf]
+    monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
+    monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: input_files)
+    monkeypatch.setattr(harness_run, "_safe_pdf_page_count", lambda path: 5 if path == readable_pdf else None)
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+    monkeypatch.setattr(harness_run, "_collect_run_metadata", lambda: {"host": "builder-01"})
+    monkeypatch.setattr(harness_run, "write_json", lambda _path, _payload: None)
+
+    result = harness_run._run_service_mode(cfg, artifact_dir, run_id="r1")
+
+    assert result["metrics"]["pages"] == 5
+    assert result["metrics"]["pages_failed"] == 1
+    assert result["metrics"]["pages_processed"] == 4
+    assert result["failure_reason"] == "1 page(s) failed during service ingestion"
+
+
+def test_run_service_mode_evaluates_beir_recall_against_service(monkeypatch, tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    input_file = dataset_dir / "doc.pdf"
+    input_file.write_bytes(b"%PDF-1.4\n")
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query_id,query,pdf_basename\nq1,hello,doc.pdf\n", encoding="utf-8")
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="jp20",
+        preset="base",
+        run_mode="service",
+        service_url="http://localhost:17670",
+        service_max_concurrency=2,
+        query_csv=str(query_csv),
+        evaluation_mode="beir",
+        beir_loader="jp20_csv",
+        beir_dataset_name="jp20",
+        beir_doc_id_field="pdf_basename",
+        beir_ks=(1, 5, 10),
+        recall_required=True,
+    )
+
+    class FakeResult(list):
+        def __init__(self) -> None:
+            super().__init__([{"document_id": "doc-1", "status": "completed"}])
+            self.job_id = "job-1"
+            self.document_ids = ["doc-1"]
+            self.failures = []
+            self.elapsed_s = 2.0
+            self.job_status = "completed"
+
+    class FakeServiceIngestor:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def ingest(self) -> FakeResult:
+            return FakeResult()
+
+    captured_beir: dict[str, object] = {}
+
+    class FakeBeirDataset:
+        query_ids = ["q1"]
+
+    def _fake_evaluate_service_beir(beir_cfg):
+        captured_beir["cfg"] = beir_cfg
+        return (
+            FakeBeirDataset(),
+            [[{"metadata": {"pdf_basename": "doc.pdf"}}]],
+            {"q1": {"doc.pdf": 1.0}},
+            {
+                "recall@1": 0.0,
+                "recall@5": 1.0,
+                "ndcg@10": 0.5,
+            },
+        )
+
+    import nemo_retriever.tools.recall.beir as beir
+    import nemo_retriever.service.service_ingestor as service_ingestor
+
+    monkeypatch.setattr(service_ingestor, "ServiceIngestor", FakeServiceIngestor)
+    monkeypatch.setattr(beir, "evaluate_service_beir", _fake_evaluate_service_beir)
+    monkeypatch.setattr(harness_run, "resolve_input_files", lambda *_args, **_kwargs: [input_file])
+    monkeypatch.setattr(harness_run, "last_commit", lambda: "abc123")
+    monkeypatch.setattr(harness_run, "now_timestr", lambda: "20260305_000000_UTC")
+    monkeypatch.setattr(harness_run, "_collect_run_metadata", lambda: {"host": "builder-01"})
+
+    payloads: dict[str, dict] = {}
+    monkeypatch.setattr(harness_run, "write_json", lambda _path, payload: payloads.setdefault("result", payload))
+
+    result = harness_run._run_service_mode(cfg, artifact_dir, run_id="r1")
+
+    beir_cfg = captured_beir["cfg"]
+    assert beir_cfg.service_url == "http://localhost:17670"
+    assert beir_cfg.dataset_name == str(query_csv.resolve())
+    assert beir_cfg.loader == "jp20_csv"
+    assert beir_cfg.ks == (1, 5, 10)
+    assert result["success"] is True
+    assert result["metrics"]["recall_5"] == 1.0
+    assert result["summary_metrics"]["recall_5"] == 1.0
+    assert result["summary_metrics"]["ndcg_10"] == 0.5
+    assert result["runtime_summary"]["evaluation_metrics"]["recall@5"] == 1.0
+    assert result["runtime_summary"]["evaluation_count"] == 1
+    assert payloads["result"]["metrics"]["recall_5"] == 1.0
+
+
 def test_execute_runs_does_not_write_sweep_results_file(monkeypatch, tmp_path: Path) -> None:
     session_dir = tmp_path / "nightly_session"
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -1090,7 +1417,7 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "dataset_label": "jp20",
             "dataset_dir": str(dataset_dir),
             "preset": "single_gpu",
-            "run_mode": "batch",
+            "run_mode": "inprocess",
             "query_csv": str(query_csv),
             "effective_query_csv": str(query_csv),
             "input_type": cfg.input_type,
@@ -1286,3 +1613,157 @@ def test_cli_run_accepts_repeated_tags(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert captured["tags"] == ["nightly", "candidate"]
+
+
+def test_cli_run_passes_managed_helm_options(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_run_entry(**kwargs) -> dict:
+        captured.update(kwargs)
+        return {
+            "run_name": "managed-pdf",
+            "artifact_dir": "/tmp/managed-pdf",
+            "success": True,
+            "return_code": 0,
+            "failure_reason": None,
+            "artifacts": {"runtime_metrics_dir": "/tmp/managed-pdf/runtime_metrics"},
+        }
+
+    monkeypatch.setattr(harness_run, "_run_entry", _fake_run_entry)
+
+    result = RUNNER.invoke(
+        harness_app,
+        [
+            "run",
+            "--dataset",
+            "/tmp/nrl-harness-smoke/pdf",
+            "--run-name",
+            "managed-pdf",
+            "--override",
+            "run_mode=service",
+            "--managed",
+            "--keep-up",
+            "--helm-chart",
+            "nemo-microservices/nemo-retriever",
+            "--helm-chart-version",
+            "26.5.0",
+            "--helm-release",
+            "nrl-smoke",
+            "--helm-namespace",
+            "nrl-smoke-ns",
+            "--helm-values-file",
+            "nemo_retriever/harness/helm-profiles/core.yaml",
+            "--helm-set",
+            "service.image.repository=nvcr.io/nvidia/nemo-microservices/nrl-service",
+            "--helm-set",
+            "service.image.tag=26.5.0",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["run_name"] == "managed-pdf"
+    assert captured["cli_helm_set"] == [
+        "service.image.repository=nvcr.io/nvidia/nemo-microservices/nrl-service",
+        "service.image.tag=26.5.0",
+    ]
+    assert "manage_service=True" in captured["cli_overrides"]
+    assert "keep_up=True" in captured["cli_overrides"]
+    assert "helm_chart=nemo-microservices/nemo-retriever" in captured["cli_overrides"]
+    assert "helm_chart_version=26.5.0" in captured["cli_overrides"]
+
+
+def test_run_entry_dispatches_managed_service(monkeypatch, tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        run_mode="service",
+        manage_service=True,
+    )
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(harness_run, "load_harness_config", lambda **_kwargs: cfg)
+
+    def _fake_managed_service_mode(_cfg, artifact_dir, run_id, tags=None, skip_local_history=False):
+        captured["cfg"] = _cfg
+        captured["artifact_dir"] = artifact_dir
+        captured["run_id"] = run_id
+        captured["tags"] = tags
+        return {
+            "success": True,
+            "return_code": 0,
+            "failure_reason": None,
+            "artifacts": {"runtime_metrics_dir": str(artifact_dir / "runtime_metrics")},
+        }
+
+    monkeypatch.setattr(harness_run, "_run_managed_service_mode", _fake_managed_service_mode)
+
+    result = harness_run._run_entry(
+        run_name="managed",
+        config_file=None,
+        session_dir=tmp_path,
+        dataset=None,
+        preset=None,
+        tags=["smoke"],
+    )
+
+    assert captured["cfg"] is cfg
+    assert captured["run_id"] == "managed"
+    assert captured["tags"] == ["smoke"]
+    assert result["run_name"] == "managed"
+    assert result["artifact_dir"] == str((tmp_path / "managed").resolve())
+
+
+def test_managed_service_mode_does_not_mutate_source_config(monkeypatch, tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        run_mode="service",
+        manage_service=True,
+    )
+    captured: dict[str, object] = {}
+
+    class FakeHelmServiceManager:
+        def __init__(self, _cfg: HarnessConfig) -> None:
+            captured["manager_cfg"] = _cfg
+
+        def start(self) -> int:
+            return 0
+
+        def get_service_url(self) -> str:
+            return "http://localhost:17670"
+
+        def dump_logs(self, _artifact_dir: Path) -> int:
+            return 0
+
+        def stop(self, *, uninstall: bool = True) -> int:
+            captured["uninstall"] = uninstall
+            return 0
+
+    def _fake_run_service_mode(_cfg, _artifact_dir, *, run_id, tags=None, skip_local_history=False):
+        captured["service_cfg"] = _cfg
+        return {
+            "success": True,
+            "return_code": 0,
+            "failure_reason": None,
+            "artifacts": {"runtime_metrics_dir": str((_artifact_dir / "runtime_metrics").resolve())},
+        }
+
+    import nemo_retriever.harness.helm_manager as helm_manager
+
+    monkeypatch.setattr(helm_manager, "HelmServiceManager", FakeHelmServiceManager)
+    monkeypatch.setattr(harness_run, "_run_service_mode", _fake_run_service_mode)
+    monkeypatch.setattr(harness_run, "write_json", lambda _path, _payload: None)
+
+    result = harness_run._run_managed_service_mode(cfg, tmp_path, run_id="managed")
+
+    assert result["managed_service"]["service_url"] == "http://localhost:17670"
+    assert cfg.service_url is None
+    assert captured["manager_cfg"] is cfg
+    assert captured["service_cfg"] is not cfg
+    assert captured["service_cfg"].service_url == "http://localhost:17670"
