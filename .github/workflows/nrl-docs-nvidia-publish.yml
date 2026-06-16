@@ -92,6 +92,8 @@ jobs:
           NOTIFY_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.notify-emails || '' }}
           NRL_DOCS_PUBLISH_VERSION_VAR: ${{ vars.NRL_DOCS_PUBLISH_VERSION }}
           DOCS_RELEASE_EMAILS_VAR: ${{ vars.DOCS_RELEASE_EMAILS }}
+          HEAD_COMMIT_MSG: ${{ github.event.head_commit.message || '' }}
+          GITHUB_REF_NAME: ${{ github.ref }}
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "dry_run=${DISPATCH_DRY_RUN}" >> "$GITHUB_OUTPUT"
@@ -103,10 +105,9 @@ jobs:
 
           VERSION="${VERSION_INPUT}"
           if [[ -z "${VERSION}" ]]; then
-            GITHUB_REF="${{ github.ref }}"
-            if [[ "${GITHUB_REF}" =~ -v([0-9]+\.[0-9]+(\.[0-9]+)?)$ ]]; then
+            if [[ "${GITHUB_REF_NAME}" =~ -v([0-9]+\.[0-9]+(\.[0-9]+)?)$ ]]; then
               VERSION="${BASH_REMATCH[1]}"
-            elif [[ "${GITHUB_REF}" =~ ^refs/tags/v([0-9]+\.[0-9]+(\.[0-9]+)?)$ ]]; then
+            elif [[ "${GITHUB_REF_NAME}" =~ ^refs/tags/v([0-9]+\.[0-9]+(\.[0-9]+)?)$ ]]; then
               VERSION="${BASH_REMATCH[1]}"
             fi
           fi
@@ -120,8 +121,7 @@ jobs:
           echo "site_url=${{ env.DOCS_SITE_URL_BASE }}/${VERSION}/" >> "$GITHUB_OUTPUT"
 
           if [[ "${{ github.event_name }}" != "workflow_dispatch" ]]; then
-            COMMIT_MSG="${{ github.event.head_commit.message || '' }}"
-            if [[ "${COMMIT_MSG}" =~ /not-latest ]] || [[ "${{ github.ref }}" =~ not-latest ]]; then
+            if [[ "${HEAD_COMMIT_MSG}" =~ /not-latest ]] || [[ "${GITHUB_REF_NAME}" =~ not-latest ]]; then
               echo "publish_latest=false" >> "$GITHUB_OUTPUT"
             fi
           fi
