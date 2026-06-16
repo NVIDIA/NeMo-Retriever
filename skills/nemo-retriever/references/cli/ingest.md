@@ -2,7 +2,7 @@
 
 End-to-end ingestion of supported documents and media into a Retriever index.
 The command runs extraction, optional caption/chunk/dedup behavior, embedding,
-and vector-store insert in one workflow.
+and LanceDB insert in one workflow.
 
 If flags below look stale, re-check the main help:
 
@@ -10,9 +10,8 @@ If flags below look stale, re-check the main help:
 <RETRIEVER_VENV>/bin/retriever ingest --help
 ```
 
-The main help lists the available modes. Use `retriever ingest local --help`,
-`retriever ingest batch --help`, or `retriever ingest service --help` only when
-you need mode-specific options.
+The main help lists available modes and points to mode-specific help when
+those options are needed.
 
 ## Default usage
 
