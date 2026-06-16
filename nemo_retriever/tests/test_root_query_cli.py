@@ -197,6 +197,61 @@ def test_root_query_passes_reranker_url(monkeypatch) -> None:
     assert json.loads(result.output) == []
 
 
+def test_root_query_passes_reranker_api_key_env(monkeypatch) -> None:
+    retriever_calls: list[dict[str, Any]] = []
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+    monkeypatch.setenv("NGC_INFERENCE_API_KEY", "inference-secret")
+
+    class FakeRetriever:
+        def __init__(self, **kwargs: Any) -> None:
+            retriever_calls.append(kwargs)
+
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "Which passages mention deployment?",
+            "--reranker-invoke-url",
+            "https://inference-api.nvidia.com/v1/rerank",
+            "--reranker-model-name",
+            "nvidia/nvidia/llama-3.2-nv-rerankqa-1b-v2",
+            "--reranker-api-key-env",
+            "NGC_INFERENCE_API_KEY",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert retriever_calls[0]["rerank_kwargs"] == {
+        "rerank_invoke_url": "https://inference-api.nvidia.com/v1/rerank",
+        "model_name": "nvidia/nvidia/llama-3.2-nv-rerankqa-1b-v2",
+        "api_key": "inference-secret",
+    }
+
+
+def test_root_query_reports_missing_reranker_api_key_env() -> None:
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "Which passages mention deployment?",
+            "--reranker-invoke-url",
+            "https://inference-api.nvidia.com/v1/rerank",
+            "--reranker-api-key-env",
+            "NGC_INFERENCE_API_KEY",
+        ],
+        env={"NVIDIA_API_KEY": "", "NGC_API_KEY": "", "NGC_INFERENCE_API_KEY": ""},
+    )
+
+    assert result.exit_code == 1
+    assert "Error: NGC_INFERENCE_API_KEY is not set or is empty." in result.output
+
+
 def test_root_query_rerank_flag_enables_local_rerank(monkeypatch) -> None:
     """``--rerank`` alone enables rerank with the local VL default model."""
     retriever_calls: list[dict[str, Any]] = []
