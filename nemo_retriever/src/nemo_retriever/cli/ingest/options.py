@@ -203,10 +203,14 @@ OverwriteOption = Annotated[
         ),
     ),
 ]
-RayAddressOption = Annotated[str | None, typer.Option("--ray-address", help="Ray address for batch ingest.")]
+RayAddressOption = Annotated[
+    str | None, typer.Option("--ray-address", help="Batch mode only. Ray address for batch ingest.")
+]
 RayLogToDriverOption = Annotated[
     bool | None,
-    typer.Option("--ray-log-to-driver/--no-ray-log-to-driver", help="Forward Ray worker logs to the driver."),
+    typer.Option(
+        "--ray-log-to-driver/--no-ray-log-to-driver", help="Batch mode only. Forward Ray worker logs to the driver."
+    ),
 ]
 PageElementsInvokeUrlOption = Annotated[
     str | None,
@@ -282,97 +286,123 @@ TextChunkOverlapTokensOption = Annotated[
 ]
 PdfSplitBatchSizeOption = Annotated[
     int | None,
-    typer.Option("--pdf-split-batch-size", min=1, help="PDF split batch size."),
+    typer.Option("--pdf-split-batch-size", min=1, help="Batch mode only. PDF split batch size."),
 ]
 PdfExtractWorkersOption = Annotated[
     int | None,
-    typer.Option("--pdf-extract-workers", min=1, help="Maximum Ray tasks for PDF extraction."),
+    typer.Option("--pdf-extract-workers", min=1, help="Batch mode only. Maximum Ray tasks for PDF extraction."),
 ]
 PdfExtractBatchSizeOption = Annotated[
     int | None,
-    typer.Option("--pdf-extract-batch-size", min=1, help="PDF extraction batch size per Ray task."),
+    typer.Option("--pdf-extract-batch-size", min=1, help="Batch mode only. PDF extraction batch size per Ray task."),
 ]
 PdfExtractCpusPerTaskOption = Annotated[
     float | None,
-    typer.Option("--pdf-extract-cpus-per-task", min=0.0, help="CPUs reserved per PDF extraction Ray task."),
+    typer.Option(
+        "--pdf-extract-cpus-per-task", min=0.0, help="Batch mode only. CPUs reserved per PDF extraction Ray task."
+    ),
 ]
 PageElementsWorkersOption = Annotated[
     int | None,
-    typer.Option("--page-elements-workers", min=1, help="Number of Ray actors for page-element detection."),
+    typer.Option(
+        "--page-elements-workers", min=1, help="Batch mode only. Number of Ray actors for page-element detection."
+    ),
 ]
 PageElementsBatchSizeOption = Annotated[
     int | None,
-    typer.Option("--page-elements-batch-size", min=1, help="Page-element detection batch size per actor."),
+    typer.Option(
+        "--page-elements-batch-size", min=1, help="Batch mode only. Page-element detection batch size per actor."
+    ),
 ]
 PageElementsCpusPerActorOption = Annotated[
     float | None,
-    typer.Option("--page-elements-cpus-per-actor", min=0.0, help="CPUs reserved per page-element detection actor."),
+    typer.Option(
+        "--page-elements-cpus-per-actor",
+        min=0.0,
+        help="Batch mode only. CPUs reserved per page-element detection actor.",
+    ),
 ]
 PageElementsGpusPerActorOption = Annotated[
     float | None,
     typer.Option(
-        "--page-elements-gpus-per-actor", min=0.0, help="GPUs reserved per local page-element detection actor."
+        "--page-elements-gpus-per-actor",
+        min=0.0,
+        help="Batch mode only. GPUs reserved per local page-element detection actor.",
     ),
 ]
 OcrWorkersOption = Annotated[
     int | None,
-    typer.Option("--ocr-workers", min=1, help="Number of Ray actors for OCR inference."),
+    typer.Option("--ocr-workers", min=1, help="Batch mode only. Number of Ray actors for OCR inference."),
 ]
 OcrBatchSizeOption = Annotated[
     int | None,
-    typer.Option("--ocr-batch-size", min=1, help="OCR inference batch size per actor."),
+    typer.Option("--ocr-batch-size", min=1, help="Batch mode only. OCR inference batch size per actor."),
 ]
 OcrCpusPerActorOption = Annotated[
     float | None,
-    typer.Option("--ocr-cpus-per-actor", min=0.0, help="CPUs reserved per OCR actor."),
+    typer.Option("--ocr-cpus-per-actor", min=0.0, help="Batch mode only. CPUs reserved per OCR actor."),
 ]
 OcrGpusPerActorOption = Annotated[
     float | None,
-    typer.Option("--ocr-gpus-per-actor", min=0.0, help="GPUs reserved per local OCR actor."),
+    typer.Option("--ocr-gpus-per-actor", min=0.0, help="Batch mode only. GPUs reserved per local OCR actor."),
 ]
 TableStructureWorkersOption = Annotated[
     int | None,
-    typer.Option("--table-structure-workers", min=1, help="Number of Ray actors for table-structure extraction."),
+    typer.Option(
+        "--table-structure-workers", min=1, help="Batch mode only. Number of Ray actors for table-structure extraction."
+    ),
 ]
 TableStructureBatchSizeOption = Annotated[
     int | None,
-    typer.Option("--table-structure-batch-size", min=1, help="Table-structure extraction batch size per actor."),
+    typer.Option(
+        "--table-structure-batch-size", min=1, help="Batch mode only. Table-structure extraction batch size per actor."
+    ),
 ]
 TableStructureCpusPerActorOption = Annotated[
     float | None,
-    typer.Option("--table-structure-cpus-per-actor", min=0.0, help="CPUs reserved per table-structure actor."),
+    typer.Option(
+        "--table-structure-cpus-per-actor", min=0.0, help="Batch mode only. CPUs reserved per table-structure actor."
+    ),
 ]
 TableStructureGpusPerActorOption = Annotated[
     float | None,
-    typer.Option("--table-structure-gpus-per-actor", min=0.0, help="GPUs reserved per local table-structure actor."),
+    typer.Option(
+        "--table-structure-gpus-per-actor",
+        min=0.0,
+        help="Batch mode only. GPUs reserved per local table-structure actor.",
+    ),
 ]
 NemotronParseWorkersOption = Annotated[
     int | None,
-    typer.Option("--nemotron-parse-workers", min=1, help="Number of Ray actors for Nemotron Parse."),
+    typer.Option("--nemotron-parse-workers", min=1, help="Batch mode only. Number of Ray actors for Nemotron Parse."),
 ]
 NemotronParseBatchSizeOption = Annotated[
     int | None,
-    typer.Option("--nemotron-parse-batch-size", min=1, help="Nemotron Parse batch size per actor."),
+    typer.Option("--nemotron-parse-batch-size", min=1, help="Batch mode only. Nemotron Parse batch size per actor."),
 ]
 NemotronParseGpusPerActorOption = Annotated[
     float | None,
-    typer.Option("--nemotron-parse-gpus-per-actor", min=0.0, help="GPUs reserved per local Nemotron Parse actor."),
+    typer.Option(
+        "--nemotron-parse-gpus-per-actor",
+        min=0.0,
+        help="Batch mode only. GPUs reserved per local Nemotron Parse actor.",
+    ),
 ]
 EmbedWorkersOption = Annotated[
     int | None,
-    typer.Option("--embed-workers", min=1, help="Number of Ray actors for embedding."),
+    typer.Option("--embed-workers", min=1, help="Batch mode only. Number of Ray actors for embedding."),
 ]
 EmbedBatchSizeOption = Annotated[
     int | None,
-    typer.Option("--embed-batch-size", min=1, help="Embedding batch size per actor."),
+    typer.Option("--embed-batch-size", min=1, help="Batch mode only. Embedding batch size per actor."),
 ]
 EmbedCpusPerActorOption = Annotated[
     float | None,
-    typer.Option("--embed-cpus-per-actor", min=0.0, help="CPUs reserved per embedding actor."),
+    typer.Option("--embed-cpus-per-actor", min=0.0, help="Batch mode only. CPUs reserved per embedding actor."),
 ]
 EmbedGpusPerActorOption = Annotated[
     float | None,
-    typer.Option("--embed-gpus-per-actor", min=0.0, help="GPUs reserved per local embedding actor."),
+    typer.Option("--embed-gpus-per-actor", min=0.0, help="Batch mode only. GPUs reserved per local embedding actor."),
 ]
 QuietOption = Annotated[
     bool,

@@ -8,7 +8,7 @@ import click
 import typer
 from typer.core import TyperGroup
 
-from nemo_retriever.cli.ingest.graph_commands import _batch_graph_ingest_command, _local_graph_ingest_command
+from nemo_retriever.cli.ingest.graph_commands import _graph_ingest_command
 from nemo_retriever.cli.ingest.service import _service_command
 
 _DEFAULT_COMMAND = "local"
@@ -28,6 +28,6 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-app.command("local")(_local_graph_ingest_command)
-app.command("batch")(_batch_graph_ingest_command)
+app.command("local")(_graph_ingest_command)
+app.command("batch")(_graph_ingest_command)
 app.command("service")(_service_command)

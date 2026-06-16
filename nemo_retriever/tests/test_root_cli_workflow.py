@@ -962,14 +962,14 @@ def test_root_ingest_help_lists_mode_subcommands() -> None:
     assert "--profile" not in result.output
 
 
-def test_root_ingest_local_help_does_not_expose_input_type() -> None:
+def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
     result = RUNNER.invoke(cli_main.app, ["ingest", "local", "--help"])
 
     assert result.exit_code == 0
     assert "--input-type" not in result.output
     assert "--run-mode" not in result.output
     assert "--service-url" not in result.output
-    assert "--ray-address" not in result.output
+    assert "--ray-address" in result.output
     assert "--profile" in result.output
     assert "[auto|fast-text]" in result.output
     assert "--extract-images" in result.output
@@ -986,6 +986,36 @@ def test_root_ingest_local_help_does_not_expose_input_type() -> None:
     assert "--dedup" in result.output
     assert "--caption" in result.output
     assert re.search(r"--no-caption(?!-)", result.output) is None
+
+
+@pytest.mark.parametrize(
+    ("args", "expected_flag"),
+    [
+        (["--ray-address", "ray://cluster:10001"], "--ray-address"),
+        (["--no-ray-log-to-driver"], "--ray-log-to-driver"),
+        (["--pdf-extract-workers", "2"], "--pdf-extract-workers"),
+    ],
+)
+def test_root_ingest_local_rejects_batch_only_options(tmp_path, args: list[str], expected_flag: str) -> None:
+    document = tmp_path / "local-batch-only.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(document), *args])
+
+    assert result.exit_code == 1
+    assert "Batch-only option(s) require `retriever ingest batch`" in result.output
+    assert expected_flag in result.output
+
+
+def test_root_ingest_default_local_rejects_batch_only_options(tmp_path) -> None:
+    document = tmp_path / "default-local-batch-only.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", "--ray-address", "ray://cluster:10001", str(document)])
+
+    assert result.exit_code == 1
+    assert "Batch-only option(s) require `retriever ingest batch`" in result.output
+    assert "--ray-address" in result.output
 
 
 def test_root_ingest_service_help_hides_local_only_options() -> None:
