@@ -831,6 +831,9 @@ def query_command(
     if output_format not in ("hits", "evidence"):
         typer.echo(f"Error: unknown --format {output_format!r} (use 'hits' or 'evidence').", err=True)
         raise typer.Exit(1)
+    if max_text_chars is not None and output_format != "hits":
+        typer.echo("Error: --max-text-chars only applies to --format hits.", err=True)
+        raise typer.Exit(1)
     if reranker_invoke_url is None:
         reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
     if embed_invoke_url is None:

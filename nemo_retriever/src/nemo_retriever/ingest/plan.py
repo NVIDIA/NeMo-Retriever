@@ -632,7 +632,10 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         "table_name": storage.table_name,
         "overwrite": bool(storage.overwrite),
     }
-    # Only inject hybrid when opted in, so the vector-only path keeps its legacy vdb_kwargs.
+    # `hybrid` is a vdb table-build knob, like `overwrite`/`uri`/`table_name` above: it rides
+    # on storage options and is forwarded as a LanceDB-backend ctor kwarg, where hybrid=True
+    # makes ingest also build the FTS/BM25 index that `query --hybrid` searches. Injected only
+    # when opted in, so vector-only ingests keep the exact legacy vdb_kwargs.
     if storage.hybrid:
         vdb_upload_kwargs["hybrid"] = True
     vdb_params = VdbUploadParams(vdb_kwargs=vdb_upload_kwargs)

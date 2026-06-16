@@ -10,7 +10,7 @@ a ``report.md`` + ``report.json`` per run plus a baseline-vs-skill comparison
 when several runs are passed.
 
 Unlike the runner, this script MAY import ``nemo_retriever`` to reuse
-``score.recall_at_k`` and ``llm.clients.judge.LLMJudge`` (it runs where the
+``score.recall_at_k`` and ``models.llm.clients.judge.LLMJudge`` (it runs where the
 codebase exists). Both imports degrade gracefully if unavailable.
 
 Usage:
@@ -460,7 +460,7 @@ def build_judge(model: str, api_base: str | None, api_key_env: str):
         print(f"  judge disabled: ${api_key_env} not set", file=sys.stderr)
         return None
     try:
-        from nemo_retriever.llm.clients.judge import LLMJudge  # type: ignore
+        from nemo_retriever.models.llm.clients.judge import LLMJudge  # type: ignore
     except Exception as exc:  # noqa: BLE001
         print(f"  judge disabled: cannot import LLMJudge ({exc})", file=sys.stderr)
         return None
@@ -477,7 +477,13 @@ def _load_judge_cache(run_dir: Path) -> dict[str, tuple]:
         r = json.loads(rp.read_text())
     except Exception:
         return {}
-    return {q["query_id"]: (q.get("judge_score"), q.get("judge_error", "")) for q in r.get("per_query", [])}
+    # Only reuse SUCCESSFUL judgements; a prior run that scored None (e.g. judge
+    # import broken / disabled) must not poison re-judging into skipping forever.
+    return {
+        q["query_id"]: (q.get("judge_score"), q.get("judge_error", ""))
+        for q in r.get("per_query", [])
+        if q.get("judge_score") is not None
+    }
 
 
 def apply_judge(

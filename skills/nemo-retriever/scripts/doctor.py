@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Verify the installed `retriever` engine satisfies the skill's contract.
 
 Usage: <RETRIEVER_VENV>/bin/python skills/retriever/scripts/doctor.py
@@ -51,8 +54,10 @@ def help_text(bin_path, subcmd):
 
 
 def main():
-    contract = json.load(open(os.path.join(CONTRACT_DIR, "cli-contract.json")))
-    rr_schema = json.load(open(os.path.join(CONTRACT_DIR, "query-result.schema.json")))
+    with open(os.path.join(CONTRACT_DIR, "cli-contract.json")) as _f:
+        contract = json.load(_f)
+    with open(os.path.join(CONTRACT_DIR, "query-result.schema.json")) as _f:
+        rr_schema = json.load(_f)
     item_schema = rr_schema["$defs"]["evidence_item"]
     cov_schema = rr_schema["$defs"]["coverage"]
 
