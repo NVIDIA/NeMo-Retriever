@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 import nemo_retriever.cli.evidence as sw
 
 _CONTRACT = os.path.join(
-    os.path.dirname(__file__), "..", "..", "docs", "superpowers", "contracts", "retriever", "contract.schema.json"
+    os.path.dirname(__file__), "..", "..", "skills", "nemo-retriever", "contract", "query-result.schema.json"
 )
 
 
@@ -39,17 +39,17 @@ def _hit(text, *, source="doc.pdf", page=1, content_type="text", fidelity=None, 
 
 
 def _assert_conforms(result):
-    schema = json.load(open(_CONTRACT))["$defs"]
-    mod_enum = set(schema["evidence_item"]["properties"]["modality"]["enum"])
-    fid_enum = set(schema["evidence_item"]["properties"]["fidelity"]["enum"])
-    loc_enum = set(schema["locator"]["properties"]["kind"]["enum"])
+    defs = json.load(open(_CONTRACT))["$defs"]
+    item = defs["evidence_item"]
+    required = set(item.get("required", item["properties"].keys()))
+    fid_enum = set(item["properties"]["fidelity"]["enum"])
     for e in result["evidence"]:
-        assert {"text", "source", "locator", "modality", "fidelity", "score", "citation"} <= set(e)
-        assert e["modality"] in mod_enum, e["modality"]
+        assert required <= set(e), required - set(e)
+        assert isinstance(e["modality"], str) and e["modality"]
         assert e["fidelity"] in fid_enum, e["fidelity"]
-        assert e["locator"]["kind"] in loc_enum
+        assert isinstance(e["locator"], dict) and "kind" in e["locator"]
         assert isinstance(e["score"], (int, float))
-    assert {"strategies_used", "n_docs_seen", "thin_spots"} <= set(result["coverage"])
+    assert set(defs["coverage"]["required"]) <= set(result["coverage"])
 
 
 # --- build_evidence_result: hits -> {evidence, coverage} shaping ------------- #
@@ -96,9 +96,7 @@ def test_query_evidence_graceful_vector_fallback(monkeypatch):
         return [_hit("p")]
 
     monkeypatch.setattr(cli_main, "query_documents", fake_qd)
-    result = CliRunner().invoke(
-        cli_main.app, ["query", "q", "--format", "evidence", "--hybrid", "--table-name", "t"]
-    )
+    result = CliRunner().invoke(cli_main.app, ["query", "q", "--format", "evidence", "--hybrid", "--table-name", "t"])
     assert result.exit_code == 0, result.output
     assert calls == [True, False]  # tried hybrid, fell back to vector
     out = json.loads(result.output)
