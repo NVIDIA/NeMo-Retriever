@@ -38,13 +38,12 @@ exclude_patterns = []
 html_theme = "nvidia_sphinx_theme"
 
 html_theme_options = {
+    # set the start date for copyright
+    "copyright_override": {"start": 2023},
+    "public_docs_features": True,
     "header_links": [
         ("Home", "index"),
-        ("GitHub", "https://github.com/NVIDIA/nvidia-sphinx-theme", True, "fab fa-github"),
-    ],
-    "footer_links": [
-        ("Privacy Policy", "https://www.nvidia.com/en-us/about-nvidia/privacy-policy/"),
-        ("Terms of Use", "https://www.nvidia.com/en-us/about-nvidia/legal-info/"),
+        ("GitHub", "https://github.com/NVIDIA/NeMo-Retriever", True, "fab fa-github"),
     ],
     "show_prev_next": True,  # Show next/previous buttons at bottom
 }

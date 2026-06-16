@@ -10,7 +10,7 @@ a ``report.md`` + ``report.json`` per run plus a baseline-vs-skill comparison
 when several runs are passed.
 
 Unlike the runner, this script MAY import ``nemo_retriever`` to reuse
-``score.recall_at_k`` and ``llm.clients.judge.LLMJudge`` (it runs where the
+``score.recall_at_k`` and ``models.llm.clients.judge.LLMJudge`` (it runs where the
 codebase exists). Both imports degrade gracefully if unavailable.
 
 Usage:
@@ -136,6 +136,12 @@ def load_gold(manifest_path: Path) -> dict[str, Gold]:
 _PIPELINE_SEP = re.compile(r"(?:;|&&|\|\||\||\n|\$\(|`)")
 _ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _WRAPPERS = {"sudo", "time", "nice", "nohup", "exec", "env", "command", "builtin"}
+# Leading shell keywords that precede a command inside control flow, e.g.
+# `if [ -n "$RETRIEVER_VENV" ]; then "$RETRIEVER_VENV/bin/retriever" query ...`
+# or `... fi "$RETRIEVER_BIN" query ...`. After splitting, the retriever segment may
+# start with `then`/`else`/`fi`/`done` etc., which must be stripped or the head token
+# reads as the keyword, not the command.
+_SHELL_KW = {"then", "do", "else", "elif", "fi", "done", "{"}
 _TIMEOUT_VAL_FLAGS = {"-k", "--kill-after", "-s", "--signal"}
 _PARSE_ERR = re.compile(r"pdf_basename|JSONDecodeError|Extra data|_default_decoder|KeyError", re.I)
 # The baseline profile installs a PATH shim that prints this and exits 127. A
@@ -159,7 +165,7 @@ def _strip_wrappers(seg: str) -> list[str]:
             if i < len(toks):  # the DURATION token
                 i += 1
             continue
-        if t in _WRAPPERS:
+        if t in _WRAPPERS or t in _SHELL_KW:
             i += 1
             continue
         break
@@ -170,7 +176,10 @@ def _seg_is_retriever(seg: str) -> bool:
     toks = _strip_wrappers(seg.strip())
     if not toks:
         return False
-    h = toks[0]
+    # Strip surrounding quotes so a guarded/quoted binary path like
+    # `"$RETRIEVER_VENV/bin/retriever"` is recognized (the var stays unexpanded,
+    # but the literal still ends in `/retriever`).
+    h = toks[0].strip("'\"")
     if h == "retriever" or h.endswith("/retriever"):
         return True
     if len(toks) >= 3 and toks[0] == "uv" and toks[1] == "run" and toks[2] == "retriever":
@@ -180,8 +189,33 @@ def _seg_is_retriever(seg: str) -> bool:
     return False
 
 
+# Var names assigned from a resolved retriever binary, e.g.
+# `RETRIEVER_BIN="$(command -v retriever)"`, `RETRIEVER_BIN="$RETRIEVER_VENV/bin/retriever"`,
+# or `RETRIEVER=retriever`. The agent builds these to harden against an unset
+# RETRIEVER_VENV, then invokes `"$RETRIEVER_BIN" query ...` — whose head is a $var,
+# not a `retriever` literal, so it slips past _seg_is_retriever.
+_RETR_VAR_ASSIGN = re.compile(r"\b([A-Za-z_]\w*)=[^\n;]*\bretriever\b")
+_VAR_REF = re.compile(r"^\$\{?([A-Za-z_]\w*)\}?$")
+
+
+def _retriever_bin_vars(cmd: str) -> set[str]:
+    return set(_RETR_VAR_ASSIGN.findall(cmd or ""))
+
+
 def cmd_uses_retriever(cmd: str) -> bool:
-    return any(_seg_is_retriever(s) for s in _PIPELINE_SEP.split(cmd or ""))
+    segs = _PIPELINE_SEP.split(cmd or "")
+    if any(_seg_is_retriever(s) for s in segs):
+        return True
+    # Variable indirection: VAR=<...retriever...> earlier, then `"$VAR" <subcommand>`.
+    rvars = _retriever_bin_vars(cmd)
+    if rvars:
+        for s in segs:
+            toks = _strip_wrappers(s.strip())
+            if len(toks) >= 2:  # head is the binary, plus at least a subcommand
+                m = _VAR_REF.match(toks[0].strip("'\""))
+                if m and m.group(1) in rvars:
+                    return True
+    return False
 
 
 def _retriever_piped_to_parser(cmd: str) -> bool:
@@ -191,6 +225,10 @@ def _retriever_piped_to_parser(cmd: str) -> bool:
 
 _CODEX_EXIT_RE = re.compile(r"exited with code (\d+)")
 _HITS_JSON_RE = re.compile(r'"page_number"')
+# Codex backgrounds a slow command (~1s yield) → output says "Process running with
+# session ID <n>"; the agent then polls it via a function_call whose arguments carry
+# {"session_id": <n>}. The clean exit lands on that poll, not the original query call.
+_BG_SESSION_RE = re.compile(r"running with session(?:\s+ID)?\s+(\d+)", re.I)
 
 
 def detect_retriever_usage_codex(agent_log: Path) -> dict[str, bool]:
@@ -207,6 +245,7 @@ def detect_retriever_usage_codex(agent_log: Path) -> dict[str, bool]:
         return {"attempted": False, "clean": False, "engine": False}
     calls: dict[str, str] = {}
     outs: dict[str, str] = {}
+    polls: dict[str, str] = {}  # call_id -> polled session_id (background-continue calls)
     hits_seen = False
     for line in agent_log.read_text().splitlines():
         if not line.strip():
@@ -227,6 +266,9 @@ def detect_retriever_usage_codex(agent_log: Path) -> dict[str, bool]:
             if isinstance(cmd, list):
                 cmd = " ".join(str(x) for x in cmd)
             calls[p.get("call_id")] = str(cmd)
+            sid = a.get("session_id")
+            if sid is not None:
+                polls[p.get("call_id")] = str(sid)
         elif p.get("type") == "function_call_output":
             o = p.get("output")
             if isinstance(o, dict):
@@ -236,6 +278,7 @@ def detect_retriever_usage_codex(agent_log: Path) -> dict[str, bool]:
             if _HITS_JSON_RE.search(o) and ('"source"' in o or '"text"' in o):
                 hits_seen = True
     attempted = clean = engine = False
+    retr_sessions: set[str] = set()  # session IDs opened by a backgrounded retriever query
     for cid, cmd in calls.items():
         if not cmd_uses_retriever(cmd):
             continue
@@ -247,11 +290,30 @@ def detect_retriever_usage_codex(agent_log: Path) -> dict[str, bool]:
         if m and m.group(1) == "0":
             clean = True
             engine = True
-    # Codex backgrounds `retriever query` (1s yield), so its hits often arrive in a
-    # later polled output rather than a clean exit. Credit that to engine — but ONLY
-    # when a real retriever-query command was attempted, so direct LanceDB pandas
-    # reads (which also emit page_number/source/text) aren't miscounted. Guarantees
-    # engine ⊆ attempted.
+        bg = _BG_SESSION_RE.search(out)  # query backgrounded → remember its session
+        if bg:
+            retr_sessions.add(bg.group(1))
+    # A backgrounded `retriever query` finishes in a later session-poll, not the original
+    # call — credit that poll's clean exit to the query. Follow re-yields (a poll may
+    # background again under a new session id) to a fixpoint, bounded by #polls.
+    if retr_sessions and not clean:
+        changed = True
+        while changed and not clean:
+            changed = False
+            for cid, sid in polls.items():
+                if sid not in retr_sessions:
+                    continue
+                out = outs.get(cid, "")
+                m = _CODEX_EXIT_RE.search(out)
+                if m and m.group(1) == "0":
+                    clean = engine = True
+                    break
+                nb = _BG_SESSION_RE.search(out)
+                if nb and nb.group(1) not in retr_sessions:
+                    retr_sessions.add(nb.group(1))
+                    changed = True
+    # Hits-JSON fallback (query returned results even if no clean exit was captured),
+    # gated on a real retriever attempt so direct LanceDB reads aren't miscounted.
     if attempted and hits_seen:
         engine = True
     return {"attempted": attempted, "clean": clean, "engine": engine}
@@ -398,7 +460,7 @@ def build_judge(model: str, api_base: str | None, api_key_env: str):
         print(f"  judge disabled: ${api_key_env} not set", file=sys.stderr)
         return None
     try:
-        from nemo_retriever.llm.clients.judge import LLMJudge  # type: ignore
+        from nemo_retriever.models.llm.clients.judge import LLMJudge  # type: ignore
     except Exception as exc:  # noqa: BLE001
         print(f"  judge disabled: cannot import LLMJudge ({exc})", file=sys.stderr)
         return None
@@ -415,7 +477,13 @@ def _load_judge_cache(run_dir: Path) -> dict[str, tuple]:
         r = json.loads(rp.read_text())
     except Exception:
         return {}
-    return {q["query_id"]: (q.get("judge_score"), q.get("judge_error", "")) for q in r.get("per_query", [])}
+    # Only reuse SUCCESSFUL judgements; a prior run that scored None (e.g. judge
+    # import broken / disabled) must not poison re-judging into skipping forever.
+    return {
+        q["query_id"]: (q.get("judge_score"), q.get("judge_error", ""))
+        for q in r.get("per_query", [])
+        if q.get("judge_score") is not None
+    }
 
 
 def apply_judge(

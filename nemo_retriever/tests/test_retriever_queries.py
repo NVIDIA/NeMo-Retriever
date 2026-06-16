@@ -104,6 +104,41 @@ class TestQueriesGraphExecution:
         retriever.queries(["q"])
         assert resolved.execute.call_args.kwargs["top_k"] == 12
 
+    def test_rerank_dataframe_output_orders_hits_by_score(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        vector_hits = [
+            {"text": "vector retrieval winner", "source": "vector.pdf", "page_number": 1},
+            {"text": "reranker winner", "source": "rerank.pdf", "page_number": 2},
+        ]
+        execute_kwargs: list[dict[str, Any]] = []
+
+        class FakeResolvedGraph:
+            def execute(self, _df: pd.DataFrame, **kwargs: Any) -> list[Any]:
+                execute_kwargs.append(kwargs)
+                return [
+                    pd.DataFrame(
+                        [
+                            {
+                                "query": "q",
+                                "text": "vector retrieval winner",
+                                "_hit": vector_hits[0],
+                                "rerank_score": 0.1,
+                            },
+                            {"query": "q", "text": "reranker winner", "_hit": vector_hits[1], "rerank_score": 0.9},
+                        ]
+                    )
+                ]
+
+        class FakeGraph:
+            def resolve_for_local_execution(self) -> FakeResolvedGraph:
+                return FakeResolvedGraph()
+
+        monkeypatch.setattr(Retriever, "_build_default_graph", lambda self, *, embed_extra=None: FakeGraph())
+
+        out = _make_retriever(top_k=1, rerank=True).query("q")
+
+        assert out == [{"text": "reranker winner", "source": "rerank.pdf", "page_number": 2, "_rerank_score": 0.9}]
+        assert [call["top_k"] for call in execute_kwargs] == [4]
+
     def test_query_delegates_to_queries(self) -> None:
         retriever = _make_retriever()
         expected = _make_hits(2)

@@ -1160,3 +1160,25 @@ def test_root_ingest_quiet_invokes_silencing_and_capture(monkeypatch, tmp_path) 
     assert silenced == [True]
     assert captured_use == [True]
     assert "Ingested 1 file(s) → 3 row(s) in LanceDB lancedb/nemo-retriever." in result.output
+
+
+def test_root_ingest_passes_hybrid_into_vdb_kwargs(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    doc = tmp_path / "a.pdf"
+    doc.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 1)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", str(doc), "--lancedb-uri", "/tmp/lancedb", "--table-name", "docs", "--hybrid"],
+    )
+
+    assert result.exit_code == 0
+    assert fake_ingestor.vdb_upload.call_args.args[0].vdb_kwargs == {
+        "uri": "/tmp/lancedb",
+        "table_name": "docs",
+        "overwrite": True,
+        "hybrid": True,
+    }

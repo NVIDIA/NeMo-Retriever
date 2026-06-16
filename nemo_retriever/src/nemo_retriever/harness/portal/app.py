@@ -34,10 +34,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from apscheduler.triggers.cron import CronTrigger
-
 from nemo_retriever.harness import history
-from nemo_retriever.harness import scheduler as sched_module
 from nemo_retriever.harness.config import VALID_EVALUATION_MODES
 
 mimetypes.add_type("text/javascript", ".jsx")
@@ -56,6 +53,13 @@ if not STATIC_DIR.is_dir():
 
 GITHUB_WEBHOOK_SECRET = os.environ.get("RETRIEVER_HARNESS_GITHUB_SECRET", "")
 GITHUB_REPO_URL_OVERRIDE = os.environ.get("RETRIEVER_HARNESS_GITHUB_REPO_URL", "")
+
+
+def _scheduler_module() -> Any:
+    """Import the scheduler only for code paths that use it."""
+    from nemo_retriever.harness import scheduler
+
+    return scheduler
 
 
 def _url_to_github_web(raw_url: str) -> str:
@@ -148,13 +152,14 @@ async def _runner_health_check_loop():
 async def _lifespan(app: FastAPI):
     _seed_default_run_code_ref()
     _init_mcp_server()
-    sched_module.start_scheduler()
+    scheduler = _scheduler_module()
+    scheduler.start_scheduler()
     global _runner_health_task
     _runner_health_task = asyncio.create_task(_runner_health_check_loop())
     yield
     if _runner_health_task:
         _runner_health_task.cancel()
-    sched_module.stop_scheduler()
+    scheduler.stop_scheduler()
 
 
 def _seed_default_run_code_ref() -> None:
@@ -2853,7 +2858,9 @@ def _compute_next_run(cron_expression: str, count: int = 1) -> list[str]:
     Returns ISO-8601 UTC strings.
     """
     try:
-        cron_kwargs = sched_module._parse_cron_expression(cron_expression)
+        from apscheduler.triggers.cron import CronTrigger
+
+        cron_kwargs = _scheduler_module()._parse_cron_expression(cron_expression)
         trigger = CronTrigger(**cron_kwargs)
         now = datetime.now(timezone.utc)
         times: list[str] = []
@@ -2917,7 +2924,7 @@ async def list_upcoming(count: int = Query(10, ge=1, le=50)):
 async def create_schedule(req: ScheduleCreateRequest):
     data = req.model_dump(exclude_unset=True)
     schedule = history.create_schedule(data)
-    sched_module.sync_schedule(schedule["id"])
+    _scheduler_module().sync_schedule(schedule["id"])
     return schedule
 
 
@@ -2935,7 +2942,7 @@ async def update_schedule_endpoint(schedule_id: int, req: ScheduleUpdateRequest)
         raise HTTPException(status_code=404, detail="Schedule not found")
     data = req.model_dump(exclude_unset=True)
     schedule = history.update_schedule(schedule_id, data)
-    sched_module.sync_schedule(schedule_id)
+    _scheduler_module().sync_schedule(schedule_id)
     return schedule
 
 
@@ -2943,14 +2950,14 @@ async def update_schedule_endpoint(schedule_id: int, req: ScheduleUpdateRequest)
 async def delete_schedule_endpoint(schedule_id: int):
     if not history.delete_schedule(schedule_id):
         raise HTTPException(status_code=404, detail="Schedule not found")
-    sched_module.sync_schedule(schedule_id)
+    _scheduler_module().sync_schedule(schedule_id)
     return {"ok": True}
 
 
 @app.post("/api/schedules/{schedule_id}/trigger")
 async def trigger_schedule(schedule_id: int):
     """Manually fire a schedule now, bypassing the cron timer."""
-    job = sched_module.trigger_schedule_now(schedule_id)
+    job = _scheduler_module().trigger_schedule_now(schedule_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Schedule not found")
     return job
@@ -2993,7 +3000,7 @@ async def github_webhook(request: Request):
     if not repo_full or not branch:
         return {"ok": True, "skipped": True, "reason": "missing repo or branch"}
 
-    dispatched = sched_module.handle_github_webhook(repo_full, branch, commit_sha)
+    dispatched = _scheduler_module().handle_github_webhook(repo_full, branch, commit_sha)
     return {"ok": True, "dispatched": len(dispatched), "jobs": [j["id"] for j in dispatched]}
 
 
@@ -3541,7 +3548,7 @@ async def deploy_latest(req: DeployRequest):
         time.sleep(2)
         logger.info("Restarting portal process after deploy…")
         try:
-            sched_module.stop_scheduler()
+            _scheduler_module().stop_scheduler()
         except Exception:
             pass
         os.execv(sys.executable, [sys.executable] + sys.argv)

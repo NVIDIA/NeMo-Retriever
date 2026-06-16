@@ -42,6 +42,7 @@ from nemo_retriever.ingest.plan import (
 from nemo_retriever.cli.ingest_workflow import (
     run_ingest_workflow,
 )
+from nemo_retriever.cli.evidence import build_evidence_result
 from nemo_retriever.cli.query_workflow import query_documents
 from nemo_retriever.query.options import (
     QueryEmbedOptions,
@@ -92,11 +93,27 @@ for _name, _module, _attr in _LAZY_SUBAPPS:
 _ROOT_CLI_ERRORS = (OSError, RuntimeError, ValueError, ValidationError)
 
 
-def _query_cli_hit(hit: RetrievalHit) -> dict[str, object]:
+def _query_cli_hit(hit: RetrievalHit, max_text_chars: int | None = None) -> dict[str, object]:
+    metadata = hit.get("metadata") or {}
+    modality = hit.get("content_type") or metadata.get("type") or "text"
+    # Relevance the engine ranked by: hybrid/rerank score if present, else the
+    # vector distance, else null. Hit ORDER is authoritative; score is informational.
+    if "_score" in hit and hit["_score"] is not None:
+        score: object = hit["_score"]
+    elif "_distance" in hit and hit["_distance"] is not None:
+        score = hit["_distance"]
+    else:
+        score = None
+    text = hit.get("text", "")
+    # Compact output: truncate to max_text_chars (0 = metadata-only). None = full text.
+    if max_text_chars is not None and max_text_chars >= 0 and len(text) > max_text_chars:
+        text = text[:max_text_chars] + ("…" if max_text_chars > 0 else "")
     return {
         "source": hit.get("source", ""),
         "page_number": hit.get("page_number"),
-        "text": hit.get("text", ""),
+        "text": text,
+        "modality": modality,
+        "score": score,
     }
 
 
@@ -168,6 +185,16 @@ def _version_callback(value: bool) -> None:
     info = get_version_info()
     typer.echo(info["full_version"])
     raise typer.Exit()
+
+
+def _api_key_from_env_option(env_key: str | None) -> str | None:
+    key = (env_key or "").strip()
+    if not key:
+        return None
+    value = os.environ.get(key, "").strip()
+    if not value:
+        raise ValueError(f"{key} is not set or is empty.")
+    return value
 
 
 def main() -> None:
@@ -354,6 +381,14 @@ def ingest_command(
         help=(
             "Overwrite the target LanceDB table by default. Use --append to add rows to an existing "
             "table without duplicate checks; rerunning the same inputs in append mode creates duplicates."
+        ),
+    ),
+    hybrid: bool = typer.Option(
+        False,
+        "--hybrid/--no-hybrid",
+        help=(
+            "Also build a full-text (BM25) index over the ingested text, so `query --hybrid` can "
+            "fuse lexical + vector retrieval. Opt-in (default off) — vector-only otherwise."
         ),
     ),
     ray_address: str | None = typer.Option(None, "--ray-address", help="Ray address for batch run mode."),
@@ -696,6 +731,7 @@ def ingest_command(
                         lancedb_uri=lancedb_uri,
                         table_name=table_name,
                         overwrite=overwrite,
+                        hybrid=hybrid,
                     ),
                 )
             )
@@ -757,7 +793,15 @@ def query_command(
         "--embed-model-name",
         help="Optional embedding model name override.",
     ),
-    reranker_invoke_url: str | None = typer.Option(None, "--reranker-invoke-url", help="Reranker NIM endpoint URL."),
+    reranker_invoke_url: str | None = typer.Option(None, "--reranker-invoke-url", help="Reranker endpoint URL."),
+    reranker_api_key_env: str | None = typer.Option(
+        None,
+        "--reranker-api-key-env",
+        help=(
+            "Environment variable containing the bearer token for --reranker-invoke-url. "
+            "If omitted, NVIDIA_API_KEY / NGC_API_KEY is used when set."
+        ),
+    ),
     reranker_model_name: str | None = typer.Option(
         None,
         "--reranker-model-name",
@@ -780,16 +824,46 @@ def query_command(
             "any of --reranker-invoke-url / --reranker-model-name / --reranker-backend is set."
         ),
     ),
+    hybrid: bool = typer.Option(
+        False,
+        "--hybrid/--no-hybrid",
+        help=(
+            "Fused vector + full-text (BM25) retrieval; falls back to vector-only if the table "
+            "has no FTS index. Opt-in (default off) — preserves the legacy vector-only default."
+        ),
+    ),
+    output_format: str = typer.Option(
+        "hits",
+        "--format",
+        help=(
+            "'hits' (default): raw ranked hit list (source/page/text/modality/score) — the legacy "
+            "output. 'evidence': answer-ready, fidelity-tagged, cited evidence + coverage (opt-in)."
+        ),
+    ),
+    max_text_chars: int | None = typer.Option(
+        None,
+        "--max-text-chars",
+        help="('hits' format only) Truncate each hit's text to N chars (0 = metadata-only). Default: full text.",
+    ),
 ) -> None:
+    if output_format not in ("hits", "evidence"):
+        typer.echo(f"Error: unknown --format {output_format!r} (use 'hits' or 'evidence').", err=True)
+        raise typer.Exit(1)
+    if max_text_chars is not None and output_format != "hits":
+        typer.echo("Error: --max-text-chars only applies to --format hits.", err=True)
+        raise typer.Exit(1)
     if reranker_invoke_url is None:
         reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
     if embed_invoke_url is None:
         embed_invoke_url = os.environ.get("EMBED_INVOKE_URL") or None
     rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     _silence_noisy_libraries()
+
     try:
-        with _quiet_capture():
-            hits = query_documents(
+        reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None
+
+        def _run(use_hybrid: bool) -> list:
+            return query_documents(
                 QueryRequest(
                     query=query,
                     retrieval=QueryRetrievalOptions(
@@ -797,6 +871,7 @@ def query_command(
                         candidate_k=candidate_k,
                         page_dedup=page_dedup,
                         content_types=content_types,
+                        hybrid=use_hybrid,
                     ),
                     embed=QueryEmbedOptions(
                         embed_invoke_url=embed_invoke_url,
@@ -807,6 +882,7 @@ def query_command(
                         reranker_invoke_url=reranker_invoke_url,
                         reranker_model_name=reranker_model_name,
                         reranker_backend=reranker_backend,
+                        reranker_api_key=reranker_api_key,
                     ),
                     storage=QueryStorageOptions(
                         lancedb_uri=lancedb_uri,
@@ -814,11 +890,29 @@ def query_command(
                     ),
                 )
             )
+
+        with _quiet_capture():
+            if hybrid:
+                try:
+                    hits = _run(True)
+                    strategies = ["semantic", "lexical"]
+                except Exception:  # noqa: BLE001 — e.g. table has no FTS index; degrade to vector-only
+                    hits = _run(False)
+                    strategies = ["semantic"]
+            else:
+                hits = _run(False)
+                strategies = ["semantic"]
     except _ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
-    typer.echo(json.dumps([_query_cli_hit(hit) for hit in hits], indent=2, sort_keys=True, default=str))
+    if output_format == "evidence":
+        result = build_evidence_result(hits, strategies)
+        typer.echo(json.dumps(result, indent=2, sort_keys=True, default=str))
+    else:
+        typer.echo(
+            json.dumps([_query_cli_hit(hit, max_text_chars) for hit in hits], indent=2, sort_keys=True, default=str)
+        )
 
 
 @app.callback()
