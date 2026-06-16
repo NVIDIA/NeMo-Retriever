@@ -4,8 +4,8 @@ Use this documentation to troubleshoot issues that arise when you use [NeMo Retr
 
 ## Can't process long, non-language text strings
 
-NeMo Retriever Library is designed to process language and language-length strings. 
-If you submit a document that contains extremely long, or non-language text strings, 
+NeMo Retriever Library is designed to process language and language-length strings.
+If you submit a document that contains extremely long, or non-language text strings,
 such as a DNA sequence, errors or unexpected results occur.
 
 ## Can't process malformed input files
@@ -17,7 +17,7 @@ When you run a job you might see errors similar to the following:
 - File may be malformed
 - Failed to format paragraph
 
-These errors can occur when your input file is malformed. 
+These errors can occur when your input file is malformed.
 Verify or fix the format of your input file, and try resubmitting your job.
 
 ## Audio or video extraction reports missing media dependencies { #audio-or-video-extraction-reports-missing-media-dependencies }
@@ -60,7 +60,7 @@ This path fails with `allowPrivilegeEscalation: false` or `readOnlyRootFilesyste
 
 ## Can't start new thread error
 
-In rare cases, when you run a job you might an see an error similar to `can't start new thread`. 
+In rare cases, when you run a job you might an see an error similar to `can't start new thread`.
 This error occurs when the maximum number of processes available to a single user is too low.
 To resolve the issue, set or raise the maximum number of processes (`-u`) by using the [ulimit](https://ss64.com/bash/ulimit.html) command.
 Before you change the `-u` setting, consider the following:
@@ -76,8 +76,8 @@ ulimit -u 10000
 
 ## Out-of-Memory (OOM) Error when Processing Large Datasets
 
-When you process a very large dataset with thousands of documents, you might encounter an Out-of-Memory (OOM) error. 
-This happens because NeMo Retriever Library materializes extraction results in system memory (RAM) while the job runs. 
+When you process a very large dataset with thousands of documents, you might encounter an Out-of-Memory (OOM) error.
+This happens because NeMo Retriever Library materializes extraction results in system memory (RAM) while the job runs.
 If the total size of the results exceeds the available memory, the process fails.
 
 To reduce memory pressure, try one or more of the following:
@@ -91,15 +91,15 @@ To reduce memory pressure, try one or more of the following:
 
 ## Embedding service fails to start with an unsupported batch size error
 
-On certain hardware, for example RTX 6000, 
+On certain hardware, for example RTX 6000,
 the embedding service might fail to start and you might see an error similar to the following.
 
 ```bash
 ValueError: Configured max_batch_size (30) is larger than the model''s supported max_batch_size (3).
 ```
 
-If you are using hardware where the embedding NIM uses the ONNX model profile, 
-you must set `EMBEDDER_BATCH_SIZE=3` in your environment. 
+If you are using hardware where the embedding NIM uses the ONNX model profile,
+you must set `EMBEDDER_BATCH_SIZE=3` in your environment.
 You can set the variable in your .env file or directly in your environment.
 
 
@@ -130,14 +130,14 @@ Also refer to [What is NeMo Retriever Library?](overview.md) and [Pre-Requisites
 
 ## Extract method nemotron-parse doesn't support image files
 
-Currently, extraction with Nemotron parse doesn't support image files, only scanned PDFs. 
+Currently, extraction with Nemotron parse doesn't support image files, only scanned PDFs.
 To work around this issue, convert image files to PDFs before you use `extract_method="nemotron_parse"`.
 
 
 
 ## Too many open files error
 
-In rare cases, when you run a job you might an see an error similar to `too many open files` or `max open file descriptor`. 
+In rare cases, when you run a job you might an see an error similar to `too many open files` or `max open file descriptor`.
 This error occurs when the open file descriptor limit for your service user account is too low.
 To resolve the issue, set or raise the maximum number of open file descriptors (`-n`) by using the [ulimit](https://ss64.com/bash/ulimit.html) command.
 Before you change the `-n` setting, consider the following:
@@ -153,8 +153,8 @@ ulimit -n 10000
 
 ## Triton server INFO messages incorrectly logged as errors
 
-Sometimes messages are incorrectly logged as errors, when they are information. 
-When this happens, you can ignore the errors, and treat the messages as information. 
+Sometimes messages are incorrectly logged as errors, when they are information.
+When this happens, you can ignore the errors, and treat the messages as information.
 For example, you might see log messages that look similar to the following.
 
 ```bash

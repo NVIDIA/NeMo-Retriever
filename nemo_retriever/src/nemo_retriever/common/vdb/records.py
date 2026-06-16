@@ -66,6 +66,25 @@ def _dict_or_empty(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
 
+def _derive_fidelity(content_type: Any, metadata: dict[str, Any], content_metadata: dict[str, Any]) -> str | None:
+    """Map a chunk's modality + real provenance signals to a trust tier.
+
+    verbatim (PDF text layer) > ocr (scanned/region OCR) > transcribed (ASR) >
+    vlm_caption (chart/image model caption). Returns None for unknown types so
+    the field is omitted rather than guessed.
+    """
+    t = str(content_type or "").lower()
+    if t in ("audio", "video", "video_frame"):
+        return "transcribed"
+    if t == "image":
+        return "ocr" if content_metadata.get("subtype") == "page_image" else "vlm_caption"
+    if t.startswith(("table", "chart", "infographic")):
+        return "ocr"
+    if t == "text":
+        return "ocr" if metadata.get("needs_ocr_for_text") is True else "verbatim"
+    return None
+
+
 def _client_record_from_graph_row(row: dict[str, Any]) -> dict[str, Any] | None:
     metadata = _dict_or_empty(row.get("metadata"))
 
@@ -84,6 +103,9 @@ def _client_record_from_graph_row(row: dict[str, Any]) -> dict[str, Any] | None:
     content_type = row.get("_content_type") or row.get("content_type")
     if content_type:
         content_metadata.setdefault("type", content_type)
+    fidelity = _derive_fidelity(content_type, metadata, content_metadata)
+    if fidelity:
+        content_metadata.setdefault("fidelity", fidelity)
     stored_image_uri = row.get("_stored_image_uri") or row.get("stored_image_uri")
     if stored_image_uri:
         content_metadata.setdefault("stored_image_uri", stored_image_uri)

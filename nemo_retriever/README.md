@@ -21,7 +21,7 @@ Before starting, make sure your system meets the following requirements:
 - The host is running CUDA 13.x so that `libcudart.so.13` is available.
 - Your GPUs are visible to the system and compatible with CUDA 13.x.
 ​
-If optical character recognition (OCR) fails with a `libcudart.so.13` error, install the CUDA 13 runtime for your platform and update `LD_LIBRARY_PATH` to include the CUDA lib64 directory, then rerun the pipeline. 
+If optical character recognition (OCR) fails with a `libcudart.so.13` error, install the CUDA 13 runtime for your platform and update `LD_LIBRARY_PATH` to include the CUDA lib64 directory, then rerun the pipeline.
 
 For example, the following command can be used to update the `LD_LIBRARY_PATH` value.
 
@@ -95,7 +95,8 @@ Skip this step if you are using remote NIM inference only.
 
 The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
 
-> **Note:** `retriever ingest` and `retriever pipeline run` default to `--run-mode inprocess` (single-process pandas). Pass `--run-mode batch` for Ray Data scale-out on larger workloads. Other modes are experimental and subject to change or removal.
+> **Note:** `retriever ingest` defaults to local, in-process execution. Use `retriever ingest batch ...` for Ray Data scale-out on larger workloads.
+> `retriever pipeline run` keeps its legacy `--run-mode` flag for compatibility and development workflows.
 
 The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, refer to [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
 
@@ -516,7 +517,7 @@ ingestor = (
   .embed(
     model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
     #works with plain "text"s, "image"s, and "text_image" pairs
-    embed_modality="text_image"  
+    embed_modality="text_image"
   )
 )
 ```
@@ -528,7 +529,7 @@ ingestor = ingestor.files(documents).extract(method="nemotron_parse")
 
 ## Run with remote inference, no local GPU required:
 
-For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) as an environment variable (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)). 
+For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) as an environment variable (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)).
 
 ```python
 ingestor = (
@@ -654,17 +655,18 @@ retriever-harness sweep --runs-config harness/vidore_sweep.yaml
 
 The same commands also work under the main CLI as `retriever harness ...` if you prefer a single top-level command namespace.
 
-### Pipeline image storage
+### Ingest image storage
 
-Use the pipeline CLI to persist extracted image assets to local storage or any
+Use root ingest to persist extracted image assets to local storage or any
 fsspec-compatible URI:
 
 ```bash
-retriever pipeline run ./data \
+retriever ingest ./data \
   --store-images-uri ./processed_docs/images
 ```
 
-The store stage writes the image payloads produced by the configured pipeline.
-With `--embed-granularity page`, stored assets are page images. With
+The store stage writes the image payloads produced by ingest. With
+`--embed-granularity page`, stored assets are page images. With
 `--embed-granularity element`, stored assets are element images. Store is not
-currently configured through the harness.
+currently configured through the harness; use `retriever pipeline run` only when
+you also need pipeline-specific compatibility artifacts.

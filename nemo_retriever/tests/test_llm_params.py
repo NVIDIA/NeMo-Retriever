@@ -234,7 +234,7 @@ class TestLLMJudgeConstruction:
         judge = LLMJudge(transport=transport)
         assert judge.model == "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
         assert judge.sampling.temperature == 0.1
-        assert judge.sampling.max_tokens == 4096
+        assert judge.sampling.max_tokens == 32768
 
     def test_custom_sampling_override(self):
         from nemo_retriever.models.llm.clients import LLMJudge
@@ -263,7 +263,7 @@ class TestLLMJudgeConstruction:
         assert judge.transport.extra_params == {"user": "t"}
         # Sampling stays at judge defaults even when using flat constructor.
         assert judge.sampling.temperature == 0.1
-        assert judge.sampling.max_tokens == 4096
+        assert judge.sampling.max_tokens == 32768
 
     def test_from_kwargs_accepts_sampling_overrides(self):
         from nemo_retriever.models.llm.clients import LLMJudge
@@ -362,7 +362,7 @@ class TestBackCompatCallSites:
         op = JudgingOperator(model="nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5")
         assert op._judge.model == "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
         assert op._judge.sampling.temperature == 0.1
-        assert op._judge.sampling.max_tokens == 4096
+        assert op._judge.sampling.max_tokens == 32768
 
     def test_judging_operator_plumbs_num_retries_to_inner_judge(self):
         """JudgingOperator(num_retries=...) must flow down to the LLMJudge it
