@@ -31,7 +31,7 @@ class HelmServiceManager:
     NIM_OPERATOR_RESOURCES = (
         "nemotron-page-elements-v3",
         "nemotron-table-structure-v1",
-        "nemotron-ocr-v1",
+        "nemotron-ocr-v2",
         "llama-nemotron-embed-vl-1b-v2",
         "llama-nemotron-rerank-1b-v2",
         "nemotron-parse",

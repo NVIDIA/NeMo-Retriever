@@ -1,5 +1,5 @@
 {{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.ocr.enabled true) -}}
-{{- $name := .Values.nimOperator.ocr.nimServiceName | default "nemotron-ocr-v1" -}}
+{{- $name := .Values.nimOperator.ocr.nimServiceName | default "nemotron-ocr-v2" -}}
 apiVersion: apps.nvidia.com/v1alpha1
 kind: NIMCache
 metadata:

@@ -235,6 +235,43 @@ class NimCacheModelProfileTests(TestCase):
                 "— that breaks pre-fix release behaviour.",
             )
 
+    def test_default_render_uses_ocr_v2_nim(self) -> None:
+        """Default OCR NIM resources must point at Nemotron OCR v2."""
+        proc = _helm_template()
+        _assert_helm_ok(self, proc)
+        docs = [raw for raw in yaml.safe_load_all(proc.stdout) if isinstance(raw, dict)]
+
+        ocr_cache = next(
+            doc
+            for doc in docs
+            if doc.get("kind") == "NIMCache" and doc.get("metadata", {}).get("name") == "nemotron-ocr-v2"
+        )
+        self.assertEqual(
+            ocr_cache["spec"]["source"]["ngc"]["modelPuller"],
+            "nvcr.io/nim/nvidia/nemotron-ocr-v2:1.4.0",
+        )
+
+        ocr_service = next(
+            doc
+            for doc in docs
+            if doc.get("kind") == "NIMService" and doc.get("metadata", {}).get("name") == "nemotron-ocr-v2"
+        )
+        self.assertEqual(
+            ocr_service["spec"]["image"]["repository"],
+            "nvcr.io/nim/nvidia/nemotron-ocr-v2",
+        )
+        self.assertEqual(ocr_service["spec"]["image"]["tag"], "1.4.0")
+
+        configmaps = [doc for doc in docs if doc.get("kind") == "ConfigMap"]
+        self.assertTrue(
+            any(
+                'ocr_invoke_url: "http://nemotron-ocr-v2:8000/v1/infer"'
+                in doc.get("data", {}).get("retriever-service.yaml", "")
+                for doc in configmaps
+            ),
+            "service config must auto-wire the OCR endpoint to the v2 NIMService.",
+        )
+
     def test_chart_wide_modelprofile_applies_to_every_nimcache(self) -> None:
         """``--set nimOperator.modelProfile.gpus[0]...`` must render on every NIMCache.
 
@@ -299,7 +336,7 @@ class NimCacheModelProfileTests(TestCase):
         # Every other NIMCache should still carry the chart-wide gpus
         # filter.  Spot-check one — the others are covered by the
         # previous test.
-        ocr = docs["nemotron-ocr-v1"]
+        ocr = docs["nemotron-ocr-v2"]
         self.assertEqual(
             ocr,
             {"gpus": [{"product": "NVIDIA-H100-80GB-HBM3"}]},
@@ -394,7 +431,9 @@ class NimCacheModelProfileTests(TestCase):
                 f"NIMCache `{name}` missing the rendered `model:` block.",
             )
 
-    def test_rendered_model_block_is_absent_when_chart_wide_filter_is_empty(self) -> None:
+    def test_rendered_model_block_is_absent_when_chart_wide_filter_is_empty(
+        self,
+    ) -> None:
         """Setting `nimOperator.modelProfile={}` explicitly must keep the field absent.
 
         The contract is "non-empty mapping renders the block; empty
