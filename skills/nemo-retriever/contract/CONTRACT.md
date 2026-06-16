@@ -29,8 +29,8 @@ invocation + result shape, not the full flag surface.
   `query-result.schema.json`.
 
 ## How drift gets caught
-`doctor.py` runs on the skill's setup turn and in CI (`tests/test_contract.py`). It
-performs a LIVE probe — ingest a tiny fixture, run `retriever query --format evidence`,
+`doctor.py` runs on the skill's setup turn. It
+performs a LIVE probe — ingest a tiny built-in document, run `retriever query --format evidence`,
 validate `{evidence, coverage}` (including the `fidelity` enum)
 against `query-result.schema.json` — plus static `--help` checks: the required
 subcommands (`ingest`, `query`) exist and `query` exposes its required

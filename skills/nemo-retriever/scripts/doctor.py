@@ -18,8 +18,15 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONTRACT_DIR = os.path.join(os.path.dirname(HERE), "contract")
-FIXTURE = os.path.join(os.path.dirname(HERE), "tests", "fixtures", "contract_probe.txt")
 EMBED_MODEL = "nvidia/llama-nemotron-embed-1b-v2"
+# Tiny self-contained probe doc, written to a temp corpus so the live ingest+query
+# check needs no external fixture file.
+PROBE_TEXT = (
+    "Contract probe document.\n"
+    "The capital of the test corpus is Probeville.\n"
+    "This single short text file exists only so doctor.py can ingest one tiny "
+    "document and run one query to assert the live hit schema.\n"
+)
 
 results = []  # (ok: bool, label: str, detail: str)
 
@@ -84,7 +91,8 @@ def main():
     try:
         corpus = os.path.join(tmp, "corpus")
         os.makedirs(corpus)
-        shutil.copy(FIXTURE, corpus)
+        with open(os.path.join(corpus, "contract_probe.txt"), "w") as probe_f:
+            probe_f.write(PROBE_TEXT)
         uri = os.path.join(tmp, "lancedb")
         table = "contract_probe"
         ing = subprocess.run(

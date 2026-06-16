@@ -1,3 +1,0 @@
-Contract probe document.
-The capital of the test corpus is Probeville.
-This single short text file exists only so doctor.py can ingest one tiny document and run one query to assert the live hit schema.
