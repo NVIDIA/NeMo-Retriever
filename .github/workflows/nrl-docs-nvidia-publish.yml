@@ -53,7 +53,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FW_CI_TEMPLATES_REF: v0.80.2
+  # Immutable pin for publish-docs (release v0.80.2). Do not use the mutable v0.80.2 tag.
+  FW_CI_TEMPLATES_REF: 563a769458cf1428194be49cb4de575b72d739e8
   DOCS_SITE_URL: https://docs.nvidia.com/nemo/retriever/
   S3_TARGET_PATH: developer/docs/nemo/retriever
   ARTIFACT_NAME: nrl-docs-nvidia-site
