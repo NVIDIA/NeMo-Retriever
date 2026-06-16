@@ -4,9 +4,14 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
+import typer
+
 from nemo_retriever.cli.ingest import options as opts
 from nemo_retriever.cli.ingest.shared import run_cli_workflow
 from nemo_retriever.cli.ingest_workflow import run_service_ingest_workflow
+from nemo_retriever.ingest.plan import TableOutputFormatValue
 from nemo_retriever.ingest.service import (
     ServiceIngestCaptionOptions,
     ServiceIngestChunkOptions,
@@ -24,10 +29,31 @@ from nemo_retriever.ingest.service import (
 def _service_command(
     documents: opts.DocumentsArgument,
     profile: opts.ProfileOption = "auto",
-    service_url: opts.ServiceUrlOption = "http://localhost:7670",
-    service_concurrency: opts.ServiceConcurrencyOption = 8,
-    service_api_token: opts.ServiceApiTokenOption = None,
-    dry_run: opts.ServiceDryRunOption = False,
+    service_url: Annotated[
+        str,
+        typer.Option("--service-url", help="Base URL of the retriever service."),
+    ] = "http://localhost:7670",
+    service_concurrency: Annotated[
+        int,
+        typer.Option("--service-concurrency", min=1, help="Maximum concurrent document uploads to the service."),
+    ] = 8,
+    service_api_token: Annotated[
+        str | None,
+        typer.Option(
+            "--service-api-token",
+            envvar="NEMO_RETRIEVER_API_TOKEN",
+            help=(
+                "Bearer token for authenticating with the retriever service. "
+                "Falls back to $NEMO_RETRIEVER_API_TOKEN."
+            ),
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run", help="Print the resolved service ingest request as JSON without creating an ingestor."
+        ),
+    ] = False,
     method: opts.MethodOption = None,
     dpi: opts.DpiOption = None,
     extract_text: opts.ExtractTextOption = None,
@@ -40,13 +66,25 @@ def _service_command(
     use_graphic_elements: opts.UseGraphicElementsOption = None,
     use_table_structure: opts.UseTableStructureOption = None,
     ocr_version: opts.OcrVersionOption = None,
-    table_output_format: opts.ServiceTableOutputFormatOption = None,
-    caption: opts.ServiceCaptionOption = False,
+    table_output_format: Annotated[
+        TableOutputFormatValue | None,
+        typer.Option("--table-output-format", help="Table text format. 'markdown' enables table-structure extraction."),
+    ] = None,
+    caption: Annotated[
+        bool,
+        typer.Option("--caption", help="Add an optional service-side VLM captioning stage after extraction."),
+    ] = False,
     caption_context_text_max_chars: opts.CaptionContextTextMaxCharsOption = None,
     caption_infographics: opts.CaptionInfographicsOption = None,
     dedup: opts.DedupOption = False,
     dedup_iou_threshold: opts.DedupIouThresholdOption = None,
-    store_images_uri: opts.ServiceStoreImagesUriOption = None,
+    store_images_uri: Annotated[
+        str | None,
+        typer.Option(
+            "--store-images-uri",
+            help="Store extracted images at this service-accessible path or fsspec-compatible URI.",
+        ),
+    ] = None,
     embed_modality: opts.EmbedModalityOption = None,
     embed_granularity: opts.EmbedGranularityOption = None,
     text_elements_modality: opts.TextElementsModalityOption = None,
@@ -54,7 +92,17 @@ def _service_command(
     text_chunk: opts.TextChunkOption = False,
     text_chunk_max_tokens: opts.TextChunkMaxTokensOption = None,
     text_chunk_overlap_tokens: opts.TextChunkOverlapTokensOption = None,
-    quiet: opts.ServiceQuietOption = True,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet/--no-quiet",
+            help=(
+                "Suppress verbose progress output. On success, prints only the final summary line. "
+                "On error, flushes captured output to stderr for debugging. Enabled by default; "
+                "pass --no-quiet for full verbose output."
+            ),
+        ),
+    ] = True,
 ) -> None:
     request = ServiceIngestPlanRequest(
         source=ServiceIngestSourceOptions(documents=documents, profile=profile),

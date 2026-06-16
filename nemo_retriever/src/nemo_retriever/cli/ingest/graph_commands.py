@@ -47,12 +47,10 @@ def _build_source_options(values: Mapping[str, Any]) -> IngestSourceOptions:
 
 
 def _build_runtime_options(values: Mapping[str, Any], *, run_mode: IngestRunModeValue) -> IngestRuntimeOptions:
-    option_values = _matching_option_values(values, IngestRuntimeOptions)
-    # The command name owns run_mode; ignore any parsed value if a future caller supplies one.
-    option_values.pop("run_mode", None)
     return IngestRuntimeOptions(
-        **option_values,
         run_mode=run_mode,
+        ray_address=values.get("ray_address"),
+        ray_log_to_driver=values.get("ray_log_to_driver"),
     )
 
 
@@ -113,19 +111,18 @@ def _build_storage_options(values: Mapping[str, Any]) -> IngestStorageOptions:
 
 def _build_graph_ingest_request(values: Mapping[str, Any], *, run_mode: IngestRunModeValue) -> IngestPlanRequest:
     batch_enabled = run_mode == "batch"
-    request_values = {
-        "source": _build_source_options(values),
-        "runtime": _build_runtime_options(values, run_mode=run_mode),
-        "extract": _build_extract_options(values, batch=_build_extract_batch_options(values, enabled=batch_enabled)),
-        "media": _build_media_options(values),
-        "caption": _build_caption_options(values),
-        "dedup": _build_dedup_options(values),
-        "chunk": _build_chunk_options(values),
-        "embed": _build_embed_options(values, batch=_build_embed_batch_options(values, enabled=batch_enabled)),
-        "image_store": _build_image_store_options(values),
-        "storage": _build_storage_options(values),
-    }
-    return IngestPlanRequest(**request_values)
+    return IngestPlanRequest(
+        source=_build_source_options(values),
+        runtime=_build_runtime_options(values, run_mode=run_mode),
+        extract=_build_extract_options(values, batch=_build_extract_batch_options(values, enabled=batch_enabled)),
+        media=_build_media_options(values),
+        caption=_build_caption_options(values),
+        dedup=_build_dedup_options(values),
+        chunk=_build_chunk_options(values),
+        embed=_build_embed_options(values, batch=_build_embed_batch_options(values, enabled=batch_enabled)),
+        image_store=_build_image_store_options(values),
+        storage=_build_storage_options(values),
+    )
 
 
 def _run_graph_ingest_from_parsed_options(parsed_options: Mapping[str, Any], *, run_mode: IngestRunModeValue) -> None:

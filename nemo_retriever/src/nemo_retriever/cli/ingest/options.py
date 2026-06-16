@@ -37,10 +37,6 @@ DryRunOption = Annotated[
     bool,
     typer.Option("--dry-run", help="Print the resolved ingest plan as JSON without creating an ingestor."),
 ]
-ServiceDryRunOption = Annotated[
-    bool,
-    typer.Option("--dry-run", help="Print the resolved service ingest request as JSON without creating an ingestor."),
-]
 MethodOption = Annotated[str | None, typer.Option("--method", help="PDF text extraction method.")]
 DpiOption = Annotated[int | None, typer.Option("--dpi", min=72, help="Render DPI for PDF page images.")]
 ExtractTextOption = Annotated[
@@ -147,10 +143,6 @@ CaptionOption = Annotated[
     bool,
     typer.Option("--caption", help="Add an optional VLM captioning stage after extraction."),
 ]
-ServiceCaptionOption = Annotated[
-    bool,
-    typer.Option("--caption", help="Add an optional service-side VLM captioning stage after extraction."),
-]
 CaptionInvokeUrlOption = Annotated[
     str | None,
     typer.Option(
@@ -201,12 +193,6 @@ StoreImagesUriOption = Annotated[
     str | None,
     typer.Option("--store-images-uri", help="Store extracted images at this local path or fsspec-compatible URI."),
 ]
-ServiceStoreImagesUriOption = Annotated[
-    str | None,
-    typer.Option(
-        "--store-images-uri", help="Store extracted images at this service-accessible path or fsspec-compatible URI."
-    ),
-]
 OverwriteOption = Annotated[
     bool,
     typer.Option(
@@ -248,10 +234,6 @@ TableOutputFormatOption = Annotated[
     typer.Option(
         "--table-output-format", help="Table text format. 'markdown' enables local table-structure extraction."
     ),
-]
-ServiceTableOutputFormatOption = Annotated[
-    TableOutputFormatValue | None,
-    typer.Option("--table-output-format", help="Table text format. 'markdown' enables table-structure extraction."),
 ]
 EmbedInvokeUrlOption = Annotated[str | None, typer.Option("--embed-invoke-url", help="Embedding NIM endpoint URL.")]
 EmbedModelNameOption = Annotated[
@@ -402,33 +384,6 @@ QuietOption = Annotated[
             "summary line. On error, flushes all captured output to stderr "
             "for debugging. Enabled by default; pass --no-quiet for the full "
             "verbose output."
-        ),
-    ),
-]
-ServiceUrlOption = Annotated[
-    str,
-    typer.Option("--service-url", help="Base URL of the retriever service."),
-]
-ServiceConcurrencyOption = Annotated[
-    int,
-    typer.Option("--service-concurrency", min=1, help="Maximum concurrent document uploads to the service."),
-]
-ServiceApiTokenOption = Annotated[
-    str | None,
-    typer.Option(
-        "--service-api-token",
-        envvar="NEMO_RETRIEVER_API_TOKEN",
-        help="Bearer token for authenticating with the retriever service. Falls back to $NEMO_RETRIEVER_API_TOKEN.",
-    ),
-]
-ServiceQuietOption = Annotated[
-    bool,
-    typer.Option(
-        "--quiet/--no-quiet",
-        help=(
-            "Suppress verbose progress output. On success, prints only the final summary line. "
-            "On error, flushes captured output to stderr for debugging. Enabled by default; "
-            "pass --no-quiet for full verbose output."
         ),
     ),
 ]

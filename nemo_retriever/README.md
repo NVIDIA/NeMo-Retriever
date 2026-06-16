@@ -654,17 +654,18 @@ retriever-harness sweep --runs-config harness/vidore_sweep.yaml
 
 The same commands also work under the main CLI as `retriever harness ...` if you prefer a single top-level command namespace.
 
-### Pipeline image storage
+### Ingest image storage
 
-Use the pipeline CLI to persist extracted image assets to local storage or any
+Use root ingest to persist extracted image assets to local storage or any
 fsspec-compatible URI:
 
 ```bash
-retriever pipeline run ./data \
+retriever ingest ./data \
   --store-images-uri ./processed_docs/images
 ```
 
-The store stage writes the image payloads produced by the configured pipeline.
-With `--embed-granularity page`, stored assets are page images. With
+The store stage writes the image payloads produced by ingest. With
+`--embed-granularity page`, stored assets are page images. With
 `--embed-granularity element`, stored assets are element images. Store is not
-currently configured through the harness.
+currently configured through the harness; use `retriever pipeline run` only when
+you also need pipeline-specific compatibility artifacts.
