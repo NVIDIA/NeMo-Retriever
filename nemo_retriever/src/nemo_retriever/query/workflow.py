@@ -22,7 +22,7 @@ def _build_rerank_kwargs(options: QueryRerankOptions) -> dict[str, str]:
         rerank_kwargs: dict[str, str] = {"rerank_invoke_url": reranker_url}
         if options.reranker_model_name:
             rerank_kwargs["model_name"] = options.reranker_model_name
-        api_key = resolve_remote_api_key()
+        api_key = resolve_remote_api_key(options.reranker_api_key)
         if api_key is not None:
             rerank_kwargs["api_key"] = api_key
         return rerank_kwargs

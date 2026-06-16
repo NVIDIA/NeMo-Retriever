@@ -12,9 +12,9 @@ Provides:
 Remote endpoint
 ---------------
 When ``rerank_invoke_url`` is set the actor/function calls a vLLM (>=0.14) or NIM
-server that exposes the NIM ranking REST API. The helper accepts
-either a fully qualified ``.../reranking`` URL or a base URL and appends
-``/v1/ranking`` automatically::
+server that exposes a ranking REST API. The helper accepts fully qualified
+``.../reranking``, ``.../v1/ranking``, or ``.../v1/rerank`` URLs. Other base
+URLs append ``/v1/ranking`` automatically::
 
     POST /v1/ranking
     {
@@ -89,6 +89,91 @@ def _default_rerank_invoke_url(model_name: str | None) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _normalize_rerank_endpoint(endpoint: str) -> str:
+    cleaned_endpoint = endpoint.rstrip("/")
+    if cleaned_endpoint.endswith(("/reranking", "/ranking", "/rerank")):
+        return cleaned_endpoint
+    return f"{cleaned_endpoint}/v1/ranking"
+
+
+def _uses_v1_rerank_schema(url: str) -> bool:
+    return url.rstrip("/").endswith("/rerank")
+
+
+def _set_score(scores: List[float], index: Any, score: Any) -> None:
+    if index is None or score is None:
+        return
+    try:
+        i = int(index)
+        parsed_score = float(score)
+    except (TypeError, ValueError):
+        return
+    if 0 <= i < len(scores):
+        scores[i] = parsed_score
+
+
+def _nim_ranking_payload(
+    query: str,
+    documents: List[str],
+    model_name: str,
+    images_b64: Optional[List[Optional[str]]],
+) -> dict[str, Any]:
+    passages = []
+    for i, d in enumerate(documents):
+        entry: Dict[str, Any] = {"text": d}
+        if images_b64 and i < len(images_b64) and images_b64[i]:
+            entry["image"] = images_b64[i]
+        passages.append(entry)
+    return {
+        "model": model_name,
+        "query": {"text": query},
+        "passages": passages,
+        "truncate": "END",
+    }
+
+
+def _v1_rerank_payload(
+    query: str,
+    documents: List[str],
+    model_name: str,
+    images_b64: Optional[List[Optional[str]]],
+) -> dict[str, Any]:
+    if images_b64 and any(images_b64):
+        raise ValueError("The /v1/rerank endpoint only supports text documents; use a /reranking endpoint for images.")
+    return {
+        "model": model_name,
+        "query": query,
+        "documents": documents,
+        "top_n": len(documents),
+    }
+
+
+def _nim_ranking_scores(data: Any, n_documents: int) -> List[float]:
+    scores = [float("-inf")] * n_documents
+    if not isinstance(data, dict):
+        return scores
+    rankings = data.get("rankings")
+    if not isinstance(rankings, list):
+        return scores
+    for item in rankings:
+        if isinstance(item, dict):
+            _set_score(scores, item.get("index"), item.get("logit"))
+    return scores
+
+
+def _v1_rerank_scores(data: Any, n_documents: int) -> List[float]:
+    scores = [float("-inf")] * n_documents
+    if not isinstance(data, dict):
+        return scores
+    results = data.get("results")
+    if not isinstance(results, list):
+        return scores
+    for item in results:
+        if isinstance(item, dict):
+            _set_score(scores, item.get("index"), item.get("relevance_score"))
+    return scores
+
+
 def _rerank_via_endpoint(
     query: str,
     documents: List[str],
@@ -101,12 +186,15 @@ def _rerank_via_endpoint(
     """
     Call a vLLM / NIM ranking endpoint and return per-document scores.
 
-    The server must expose the ranking API used by NeMo Retriever and NIM. Pass
-    either a full ``.../reranking`` URL or a base URL; base URLs are
-    normalized to ``.../v1/ranking``::
+    The server must expose a supported ranking API. Pass a full
+    ``.../reranking``, ``.../v1/ranking``, or ``.../v1/rerank`` URL. Base URLs
+    are normalized to ``.../v1/ranking``::
 
         POST {endpoint}/v1/ranking
         {"model": ..., "query": {"text": ...}, "passages": [{"text": ...}]}
+
+        POST https://inference-api.nvidia.com/v1/rerank
+        {"model": ..., "query": "...", "documents": ["..."], "top_n": N}
 
     Parameters
     ----------
@@ -117,7 +205,7 @@ def _rerank_via_endpoint(
     endpoint:
         Base URL of the reranking endpoint (e.g. ``http://localhost:8015
         ``). The function will append ``/v1/ranking`` if the URL does not
-        already end with ``/reranking``.
+        already end with ``/reranking``, ``/ranking``, or ``/rerank``.
     model_name:
         Model identifier sent to the remote endpoint (default
         ``"nvidia/llama-nemotron-rerank-1b-v2"``).
@@ -132,36 +220,21 @@ def _rerank_via_endpoint(
     """
     import requests
 
-    cleaned_endpoint = endpoint.rstrip("/")
-    if not cleaned_endpoint.endswith("/reranking"):
-        cleaned_endpoint = endpoint.rstrip("/") + "/v1/ranking"
-    url = cleaned_endpoint
+    url = _normalize_rerank_endpoint(endpoint)
+    use_v1_rerank_schema = _uses_v1_rerank_schema(url)
     headers = {"accept": "application/json", "Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    passages = []
-    for i, d in enumerate(documents):
-        entry: Dict[str, Any] = {"text": d}
-        if images_b64 and i < len(images_b64) and images_b64[i]:
-            entry["image"] = images_b64[i]
-        passages.append(entry)
-    payload = {
-        "model": model_name,
-        "query": {"text": query},
-        "passages": passages,
-        "truncate": "END",
-    }
+    if use_v1_rerank_schema:
+        payload = _v1_rerank_payload(query, documents, model_name, images_b64)
+    else:
+        payload = _nim_ranking_payload(query, documents, model_name, images_b64)
     response = requests.post(url, json=payload, headers=headers)
     response.raise_for_status()
     data = response.json()
-    # Build score list aligned with input document order.
-    scores = [float("-inf")] * len(documents)
-    for item in data.get("rankings", []):
-        idx = item.get("index")
-        score = item.get("logit")
-        if idx is not None and score is not None:
-            scores[idx] = float(score)
-    return scores
+    if use_v1_rerank_schema:
+        return _v1_rerank_scores(data, len(documents))
+    return _nim_ranking_scores(data, len(documents))
 
 
 # ---------------------------------------------------------------------------

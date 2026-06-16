@@ -187,6 +187,16 @@ def _version_callback(value: bool) -> None:
     raise typer.Exit()
 
 
+def _api_key_from_env_option(env_key: str | None) -> str | None:
+    key = (env_key or "").strip()
+    if not key:
+        return None
+    value = os.environ.get(key, "").strip()
+    if not value:
+        raise ValueError(f"{key} is not set or is empty.")
+    return value
+
+
 def main() -> None:
     app()
 
@@ -783,7 +793,15 @@ def query_command(
         "--embed-model-name",
         help="Optional embedding model name override.",
     ),
-    reranker_invoke_url: str | None = typer.Option(None, "--reranker-invoke-url", help="Reranker NIM endpoint URL."),
+    reranker_invoke_url: str | None = typer.Option(None, "--reranker-invoke-url", help="Reranker endpoint URL."),
+    reranker_api_key_env: str | None = typer.Option(
+        None,
+        "--reranker-api-key-env",
+        help=(
+            "Environment variable containing the bearer token for --reranker-invoke-url. "
+            "If omitted, NVIDIA_API_KEY / NGC_API_KEY is used when set."
+        ),
+    ),
     reranker_model_name: str | None = typer.Option(
         None,
         "--reranker-model-name",
@@ -841,35 +859,38 @@ def query_command(
     rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     _silence_noisy_libraries()
 
-    def _run(use_hybrid: bool) -> list:
-        return query_documents(
-            QueryRequest(
-                query=query,
-                retrieval=QueryRetrievalOptions(
-                    top_k=top_k,
-                    candidate_k=candidate_k,
-                    page_dedup=page_dedup,
-                    content_types=content_types,
-                    hybrid=use_hybrid,
-                ),
-                embed=QueryEmbedOptions(
-                    embed_invoke_url=embed_invoke_url,
-                    embed_model_name=embed_model_name,
-                ),
-                rerank=QueryRerankOptions(
-                    enabled=rerank,
-                    reranker_invoke_url=reranker_invoke_url,
-                    reranker_model_name=reranker_model_name,
-                    reranker_backend=reranker_backend,
-                ),
-                storage=QueryStorageOptions(
-                    lancedb_uri=lancedb_uri,
-                    table_name=table_name,
-                ),
-            )
-        )
-
     try:
+        reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None
+
+        def _run(use_hybrid: bool) -> list:
+            return query_documents(
+                QueryRequest(
+                    query=query,
+                    retrieval=QueryRetrievalOptions(
+                        top_k=top_k,
+                        candidate_k=candidate_k,
+                        page_dedup=page_dedup,
+                        content_types=content_types,
+                        hybrid=use_hybrid,
+                    ),
+                    embed=QueryEmbedOptions(
+                        embed_invoke_url=embed_invoke_url,
+                        embed_model_name=embed_model_name,
+                    ),
+                    rerank=QueryRerankOptions(
+                        enabled=rerank,
+                        reranker_invoke_url=reranker_invoke_url,
+                        reranker_model_name=reranker_model_name,
+                        reranker_backend=reranker_backend,
+                        reranker_api_key=reranker_api_key,
+                    ),
+                    storage=QueryStorageOptions(
+                        lancedb_uri=lancedb_uri,
+                        table_name=table_name,
+                    ),
+                )
+            )
+
         with _quiet_capture():
             if hybrid:
                 try:
