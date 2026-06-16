@@ -301,7 +301,7 @@ def test_build_graph_ingestor_applies_spec_extraction_mode(monkeypatch: pytest.M
 # ----------------------------------------------------------------------
 #
 # Regression coverage for the bug where the worker's ``ASRParams`` (built
-# from ``serviceConfig.nimEndpoints.audioGrpcEndpoint``) leaked into every
+# from ``serviceConfig.nimEndpoints.audioHttpEndpoint``) leaked into every
 # per-request ingestor and forced PDF uploads through the audio-only
 # graph, crashing inside ``MediaChunkActor`` with
 # ``RuntimeError: MediaChunkActor requires media dependencies; missing:
@@ -357,7 +357,7 @@ def test_build_graph_ingestor_does_not_attach_asr_params_for_pdf_upload() -> Non
     and crashed inside :class:`MediaChunkActor` when ffmpeg was absent.
     """
     base_extract: dict[str, object] = {}
-    base_asr = {"audio_endpoints": ["audio:50051", None]}
+    base_asr = {"audio_endpoints": [None, "http://audio:9000"]}
     spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
 
     ingestor, mode, _ = _build_graph_ingestor_from_spec(
@@ -380,7 +380,7 @@ def test_build_graph_ingestor_attaches_asr_params_for_audio_upload() -> None:
     carry the ASR params so MultiTypeExtractOperator can dispatch ASR.
     """
     base_extract: dict[str, object] = {}
-    base_asr = {"audio_endpoints": ["audio:50051", None]}
+    base_asr = {"audio_endpoints": [None, "http://audio:9000"]}
     spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
 
     ingestor, _, _ = _build_graph_ingestor_from_spec(
@@ -393,13 +393,13 @@ def test_build_graph_ingestor_attaches_asr_params_for_audio_upload() -> None:
     )
 
     assert ingestor._asr_params is not None
-    assert tuple(ingestor._asr_params.audio_endpoints) == ("audio:50051", None)
+    assert tuple(ingestor._asr_params.audio_endpoints) == (None, "http://audio:9000")
 
 
 def test_build_graph_ingestor_attaches_asr_params_for_explicit_audio_mode() -> None:
     """``extraction_mode='audio'`` must always attach the worker ASR params."""
     base_extract: dict[str, object] = {}
-    base_asr = {"audio_endpoints": ["audio:50051", None]}
+    base_asr = {"audio_endpoints": [None, "http://audio:9000"]}
     spec = {"extraction_mode": "audio", "stage_order": ["extract"]}
 
     ingestor, mode, _ = _build_graph_ingestor_from_spec(

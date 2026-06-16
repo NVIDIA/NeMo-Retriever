@@ -486,7 +486,7 @@ def test_build_inprocess_graph_supports_audio_execution_plan() -> None:
     plan.set_extraction(
         mode="audio",
         audio_chunk_params=AudioChunkParams(split_type="size", split_interval=42),
-        asr_params=ASRParams(audio_endpoints=("localhost:50051", None)),
+        asr_params=ASRParams(audio_endpoints=(None, "http://localhost:9000")),
     )
 
     graph = build_inprocess_graph(execution_plan=plan.build_execution_plan())
@@ -534,7 +534,7 @@ def test_build_graph_pdf_does_not_route_through_audio_when_asr_params_set() -> N
     """Regression: a configured ``asr_params`` must not force PDF ingestion
     through the audio-only ``MediaChunkActor → ASRActor`` graph.
 
-    When the retriever-service's ``serviceConfig.nimEndpoints.audioGrpcEndpoint``
+    When the retriever-service's ``serviceConfig.nimEndpoints.audioHttpEndpoint``
     is configured, the worker builds an ``ASRParams`` even for PDF uploads
     (the value is auto-derived from cluster config, not user intent).
     Previously this short-circuited :func:`build_graph` into the audio-only
@@ -545,7 +545,7 @@ def test_build_graph_pdf_does_not_route_through_audio_when_asr_params_set() -> N
     graph = build_graph(
         extraction_mode="pdf",
         extract_params=ExtractParams(method="pdfium"),
-        asr_params=ASRParams(audio_endpoints=("audio:50051", None)),
+        asr_params=ASRParams(audio_endpoints=(None, "http://audio:9000")),
     )
 
     names = _root_names(graph)
@@ -567,7 +567,7 @@ def test_build_graph_auto_does_not_route_through_audio_when_asr_params_set() -> 
     graph = build_graph(
         extraction_mode="auto",
         extract_params=ExtractParams(method="pdfium"),
-        asr_params=ASRParams(audio_endpoints=("audio:50051", None)),
+        asr_params=ASRParams(audio_endpoints=(None, "http://audio:9000")),
     )
 
     names = _root_names(graph)
@@ -585,7 +585,7 @@ def test_build_graph_audio_mode_still_uses_audio_only_graph() -> None:
         extraction_mode="audio",
         extract_params=ExtractParams(),
         audio_chunk_params=AudioChunkParams(),
-        asr_params=ASRParams(audio_endpoints=("audio:50051", None)),
+        asr_params=ASRParams(audio_endpoints=(None, "http://audio:9000")),
     )
 
     assert _root_names(graph)[:2] == ["MediaChunkActor", "ASRActor"]

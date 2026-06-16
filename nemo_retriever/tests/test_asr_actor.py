@@ -18,13 +18,13 @@ from unittest.mock import patch
 import pandas as pd
 
 from nemo_retriever.operators.extract.audio.asr_actor import ASRActor
-from nemo_retriever.operators.extract.audio.asr_actor import DEFAULT_NGC_ASR_FUNCTION_ID
+from nemo_retriever.operators.extract.audio.asr_actor import DEFAULT_NGC_ASR_HTTP_ENDPOINT
 from nemo_retriever.operators.extract.audio.asr_actor import apply_asr_to_df
 from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
 from nemo_retriever.common.params import ASRParams
 
 
-NVCF_GRPC_ENDPOINT = "grpc.nvcf.nvidia.com:443"
+HOSTED_HTTP_ENDPOINT = "https://ai.api.nvidia.com/v1/audio/nvidia/parakeet-ctc-1_1b-asr"
 
 
 def test_strip_pad_from_transcript():
@@ -51,7 +51,7 @@ def test_asr_actor_empty_batch():
         mock_client = MagicMock()
         mock_get.return_value = mock_client
 
-        params = ASRParams(audio_endpoints=("localhost:50051", None))
+        params = ASRParams(audio_endpoints=(None, "http://localhost:9000"))
         actor = ASRActor(params=params)
         empty = pd.DataFrame(columns=["path", "bytes"])
         out = actor(empty)
@@ -68,7 +68,7 @@ def test_asr_actor_mock_transcribe():
         mock_client.infer.return_value = ([], "hello world transcript")
         mock_get.return_value = mock_client
 
-        params = ASRParams(audio_endpoints=("localhost:50051", None))
+        params = ASRParams(audio_endpoints=(None, "http://localhost:9000"))
         actor = ASRActor(params=params)
         raw = b"\x00\x00\x00\x00"
         batch = pd.DataFrame(
@@ -114,7 +114,7 @@ def test_apply_asr_to_df():
                 }
             ]
         )
-        out = apply_asr_to_df(batch, asr_params={"audio_endpoints": ("localhost:50051", None)})
+        out = apply_asr_to_df(batch, asr_params={"audio_endpoints": (None, "http://localhost:9000")})
         assert isinstance(out, pd.DataFrame)
         assert len(out) == 1
         assert out["text"].iloc[0] == "applied transcript"
@@ -132,7 +132,7 @@ def test_asr_actor_remote_segment_audio():
         )
         mock_get.return_value = mock_client
 
-        params = ASRParams(audio_endpoints=("localhost:50051", None), segment_audio=True)
+        params = ASRParams(audio_endpoints=(None, "http://localhost:9000"), segment_audio=True)
         actor = ASRActor(params=params)
         batch = pd.DataFrame(
             [
@@ -189,7 +189,7 @@ def test_apply_asr_to_df_segment_audio():
         )
         out = apply_asr_to_df(
             batch,
-            asr_params={"audio_endpoints": ("localhost:50051", None), "segment_audio": True},
+            asr_params={"audio_endpoints": (None, "http://localhost:9000"), "segment_audio": True},
         )
         assert isinstance(out, pd.DataFrame)
         assert len(out) == 2
@@ -246,49 +246,43 @@ def test_local_asr_does_not_call_get_client():
             sys.modules["nemo_retriever.models.local"] = prev_local
 
 
-def test_asr_params_from_env_default_grpc_endpoint_preserves_nvidia_auth(monkeypatch):
+def test_asr_params_from_env_default_http_endpoint_preserves_nvidia_auth(monkeypatch):
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
     monkeypatch.delenv("NGC_API_KEY", raising=False)
-    monkeypatch.delenv("AUDIO_GRPC_ENDPOINT", raising=False)
-    monkeypatch.delenv("AUDIO_FUNCTION_ID", raising=False)
+    monkeypatch.delenv("AUDIO_HTTP_ENDPOINT", raising=False)
 
-    params = asr_params_from_env(default_grpc_endpoint=NVCF_GRPC_ENDPOINT)
+    params = asr_params_from_env(default_http_endpoint=HOSTED_HTTP_ENDPOINT)
 
-    assert params.audio_endpoints[0] == NVCF_GRPC_ENDPOINT
+    assert params.audio_endpoints[1] == HOSTED_HTTP_ENDPOINT
     assert params.auth_token == "nvapi-test"
-    assert params.function_id == DEFAULT_NGC_ASR_FUNCTION_ID
-    assert params.audio_infer_protocol == "grpc"
+    assert params.audio_infer_protocol == "http"
 
 
 def test_asr_params_from_env_without_endpoint_drops_nvidia_auth(monkeypatch):
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
-    monkeypatch.setenv("AUDIO_FUNCTION_ID", "function-test")
     monkeypatch.delenv("NGC_API_KEY", raising=False)
-    monkeypatch.delenv("AUDIO_GRPC_ENDPOINT", raising=False)
+    monkeypatch.delenv("AUDIO_HTTP_ENDPOINT", raising=False)
 
     params = asr_params_from_env()
 
     assert params.audio_endpoints == (None, None)
     assert params.auth_token is None
-    assert params.function_id is None
-    assert params.audio_infer_protocol == "grpc"
+    assert params.audio_infer_protocol == "http"
 
 
 def test_asr_cpu_actor_defaults_with_only_nvidia_auth_populate_remote_defaults(monkeypatch):
     from nemo_retriever.operators.extract.audio.cpu_actor import ASRCPUActor
 
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
-    monkeypatch.delenv("AUDIO_GRPC_ENDPOINT", raising=False)
-    monkeypatch.delenv("AUDIO_FUNCTION_ID", raising=False)
+    monkeypatch.delenv("AUDIO_HTTP_ENDPOINT", raising=False)
 
     with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
         actor = ASRCPUActor(params=asr_params_from_env())
 
     mock_get.assert_called_once()
-    assert actor._params.audio_endpoints[0] == NVCF_GRPC_ENDPOINT
+    assert actor._params.audio_endpoints[1] == DEFAULT_NGC_ASR_HTTP_ENDPOINT
     assert actor._params.auth_token == "nvapi-test"
-    assert actor._params.function_id == DEFAULT_NGC_ASR_FUNCTION_ID
-    assert actor._params.audio_infer_protocol == "grpc"
+    assert actor._params.audio_infer_protocol == "http"
 
 
 def test_local_asr_apply_asr_to_df():

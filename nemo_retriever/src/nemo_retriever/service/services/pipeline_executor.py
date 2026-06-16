@@ -271,7 +271,7 @@ def _request_needs_asr_params(extraction_mode: str | None, filename: str) -> boo
     """True iff the request is audio/video and should carry ``_asr_params``.
 
     The worker holds a single ``ASRParams`` derived from
-    ``serviceConfig.nimEndpoints.audioGrpcEndpoint``. Attaching that to
+    ``serviceConfig.nimEndpoints.audioHttpEndpoint``. Attaching that to
     every per-request ingestor is what caused the
     ``RuntimeError: MediaChunkActor requires media dependencies; missing:
     ffmpeg, ffprobe`` for PDF uploads — the audio-only graph branch then
@@ -413,7 +413,7 @@ def _build_graph_ingestor_from_spec(
         )
         # Only attach the worker-wide ASR params to the per-request ingestor
         # when the request is genuinely audio/video. ``asr_params`` is
-        # auto-derived from the cluster's ``audio_grpc_endpoint`` and would
+        # auto-derived from the cluster's ``audio_http_endpoint`` and would
         # otherwise taint every PDF / image / text / HTML upload with audio
         # state — which then mis-routes the request through the audio-only
         # graph in :func:`nemo_retriever.graph.ingestor_runtime.build_graph`
@@ -604,17 +604,17 @@ def build_caption_params(nim: NimEndpointsConfig) -> Any | None:
 def build_asr_params(nim: NimEndpointsConfig) -> Any | None:
     """Derive :class:`ASRParams` from service NIM endpoint config.
 
-    Returns ``None`` when no audio gRPC endpoint is configured, signalling
+    Returns ``None`` when no audio HTTP endpoint is configured, signalling
     that the audio pipeline should attempt local Parakeet (requires torch).
     """
-    if not nim.audio_grpc_endpoint:
+    if not nim.audio_http_endpoint:
         return None
 
     from nemo_retriever.common.params import ASRParams
 
     return ASRParams(
-        audio_endpoints=(nim.audio_grpc_endpoint, None),
-        audio_infer_protocol="grpc",
+        audio_endpoints=(None, nim.audio_http_endpoint),
+        audio_infer_protocol="http",
         auth_token=nim.api_key,
     )
 

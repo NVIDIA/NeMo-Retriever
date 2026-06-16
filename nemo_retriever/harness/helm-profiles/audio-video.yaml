@@ -9,7 +9,7 @@ topology:
 
 serviceConfig:
   nimEndpoints:
-    audioGrpcEndpoint: "audio:50051"
+    audioHttpEndpoint: "http://audio:9000"
   vectordb:
     enabled: true
 

@@ -171,7 +171,7 @@ class AudioChunkParams(_ParamsModel):
 
 
 class ASRParams(_ParamsModel):
-    """Params for ASR (Parakeet/Riva gRPC or local transformers backend).
+    """Params for ASR (remote Parakeet HTTP or local transformers backend).
 
     Choice of remote-NIM vs local-model is made by the :class:`ASRActor`
     archetype (CPU variant = remote, GPU variant = local), not by a flag here.
@@ -181,11 +181,7 @@ class ASRParams(_ParamsModel):
     """
 
     audio_endpoints: Tuple[Optional[str], Optional[str]] = (None, None)
-    audio_infer_protocol: str = "grpc"
-    # ``auto``: streaming (online) for NVCF; offline recognize for other gRPC
-    # endpoints (e.g. Helm Parakeet NIM with ``mode=ofl``).
-    audio_infer_mode: Literal["auto", "online", "offline"] = "auto"
-    function_id: Optional[str] = None
+    audio_infer_protocol: str = "http"
     auth_token: Optional[str] = None
     segment_audio: bool = False
 

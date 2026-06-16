@@ -10,7 +10,7 @@ serviceConfig:
     tableStructureInvokeUrl: "http://table-structure-nim.example.invalid:8000/v1/infer"
     ocrInvokeUrl: "http://ocr-nim.example.invalid:8000/v1/infer"
     embedInvokeUrl: "http://embed-nim.example.invalid:8000/v1/embeddings"
-    audioGrpcEndpoint: "audio-nim.example.invalid:50051"
+    audioHttpEndpoint: "http://audio-nim.example.invalid:9000"
   vectordb:
     enabled: true
 

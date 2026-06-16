@@ -13,7 +13,6 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.operators.extract.audio.asr_actor import DEFAULT_NGC_ASR_FUNCTION_ID
 from tests import _have_ffmpeg_binary
 from nemo_retriever.cli.audio.stage import _audio_extraction_json_path
 from nemo_retriever.cli.audio.stage import _run_extract_one
@@ -39,7 +38,7 @@ def test_audio_stage_extract_one_mocked_asr(tmp_path: Path):
     wav = tmp_path / "tiny.wav"
     _make_small_wav(wav, duration_sec=0.4)
     chunk_params = AudioChunkParams(split_type="size", split_interval=500_000)
-    asr_params = ASRParams(audio_endpoints=("localhost:50051", None))
+    asr_params = ASRParams(audio_endpoints=(None, "http://localhost:9000"))
 
     mock_client = MagicMock()
     mock_client.infer.return_value = ([], "mock transcript for stage test")
@@ -72,7 +71,7 @@ def test_audio_stage_extract_cli_writes_sidecar(tmp_path: Path):
             split_interval=500_000,
             video_audio_separate=False,
             use_env_asr=False,
-            audio_grpc_endpoint="localhost:50051",
+            audio_http_endpoint="http://localhost:9000",
             auth_token=None,
             limit=None,
             write_json=True,
@@ -94,9 +93,9 @@ def test_audio_stage_extract_cli_writes_sidecar(tmp_path: Path):
         assert chunk["text"] == "cli mock transcript"
 
 
-def test_audio_stage_extract_cli_grpc_endpoint_preserves_env_auth(monkeypatch, tmp_path: Path):
-    """CLI endpoint defaults must resolve together with env auth/function_id."""
-    endpoint = "grpc.nvcf.nvidia.com:443"
+def test_audio_stage_extract_cli_http_endpoint_preserves_env_auth(monkeypatch, tmp_path: Path):
+    """CLI endpoint defaults must resolve together with env auth."""
+    endpoint = "https://ai.api.nvidia.com/v1/audio/nvidia/parakeet-ctc-1_1b-asr"
     wav = tmp_path / "sample.wav"
     wav.write_bytes(b"")
     captured: dict[str, ASRParams] = {}
@@ -118,8 +117,7 @@ def test_audio_stage_extract_cli_grpc_endpoint_preserves_env_auth(monkeypatch, t
 
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
     monkeypatch.delenv("NGC_API_KEY", raising=False)
-    monkeypatch.delenv("AUDIO_GRPC_ENDPOINT", raising=False)
-    monkeypatch.delenv("AUDIO_FUNCTION_ID", raising=False)
+    monkeypatch.delenv("AUDIO_HTTP_ENDPOINT", raising=False)
 
     with (
         patch("nemo_retriever.cli.audio.stage.is_media_available", return_value=True),
@@ -133,16 +131,16 @@ def test_audio_stage_extract_cli_grpc_endpoint_preserves_env_auth(monkeypatch, t
             split_interval=500_000,
             video_audio_separate=False,
             use_env_asr=True,
-            audio_grpc_endpoint=endpoint,
+            audio_http_endpoint=endpoint,
             auth_token=None,
             limit=None,
             write_json=False,
         )
 
     asr_params = captured["asr_params"]
-    assert asr_params.audio_endpoints[0] == endpoint
+    assert asr_params.audio_endpoints[1] == endpoint
     assert asr_params.auth_token == "nvapi-test"
-    assert asr_params.function_id == DEFAULT_NGC_ASR_FUNCTION_ID
+    assert asr_params.audio_infer_protocol == "http"
 
 
 def test_audio_extraction_json_path():

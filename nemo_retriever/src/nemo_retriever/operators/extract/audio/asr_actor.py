@@ -8,8 +8,8 @@ ASRActor: Ray Data map_batches archetype for speech-to-text.
 The archetype resolves to one of two hardware-shaped variants:
 
   - :class:`nemo_retriever.audio.cpu_actor.ASRCPUActor` — remote-only.
-    Calls Parakeet/Riva via gRPC. Defaults to the public NVCF endpoint
-    (``grpc.nvcf.nvidia.com:443``) when ``audio_endpoints`` is left empty.
+    Calls Parakeet via HTTP. Defaults to the public build.nvidia.com endpoint
+    when ``audio_endpoints`` is left empty.
     Imports no torch.
   - :class:`nemo_retriever.audio.gpu_actor.ASRGPUActor` — local-only.
     Loads ``nvidia/parakeet-ctc-1.1b`` via HuggingFace transformers.
@@ -38,12 +38,12 @@ from nemo_retriever.common.params import ASRParams
 def _to_chunk_relative_seconds(value: Any, chunk_duration_secs: float) -> Optional[float]:
     """Coerce a per-utterance timestamp to seconds, divided down from ms when needed.
 
-    Local Parakeet returns seconds; the remote NIM client returns milliseconds.
-    A seconds-valued utterance can't exceed the chunk duration — so anything
-    past it must be ms. When the chunk duration is unknown (probe_media
-    couldn't resolve it for some segmented MP4s and chunk_actor.py substitutes
-    0.0), fall back to a value-range check: no legitimate audio segment lasts
-    more than an hour, so anything past 3600 must be ms.
+    Local Parakeet returns seconds; older remote clients returned milliseconds.
+    A seconds-valued utterance can't exceed the chunk duration, so anything past
+    it must be ms. When the chunk duration is unknown (probe_media couldn't
+    resolve it for some segmented MP4s and chunk_actor.py substitutes 0.0), fall
+    back to a value-range check: no legitimate audio segment lasts more than an
+    hour, so anything past 3600 must be ms.
     """
     if value is None:
         return None
@@ -59,7 +59,7 @@ def _to_chunk_relative_seconds(value: Any, chunk_duration_secs: float) -> Option
 
 
 def _use_remote(params: ASRParams) -> bool:
-    """True if at least one of audio_endpoints is set (use remote gRPC client).
+    """True if at least one of audio_endpoints is set (use remote HTTP client).
 
     Retained for the archetype's ``prefers_cpu_variant`` check; the CPU variant
     constructor doesn't gate on this anymore (it auto-defaults to NVCF when
@@ -102,65 +102,53 @@ def _concat_with_passthrough(processed: pd.DataFrame, passthrough: pd.DataFrame)
 
 logger = logging.getLogger(__name__)
 
-# Public NVCF Parakeet endpoint and the libmode function ID. Exposed as named
-# constants so Python callers can opt into NVCF without hardcoding strings:
-#   asr_params_from_env(default_grpc_endpoint=DEFAULT_NGC_ASR_GRPC_ENDPOINT)
-# These same constants are the default-fill source for ``ASRCPUActor`` so the
-# CPU variant works out of the box without any ``audio_endpoints`` plumbing.
-DEFAULT_NGC_ASR_GRPC_ENDPOINT = "grpc.nvcf.nvidia.com:443"
-DEFAULT_NGC_ASR_FUNCTION_ID = "bb0837de-8c7b-481f-9ec8-ef5663e9c1fa"
+# Public hosted Parakeet HTTP endpoint. This is also the default-fill source for
+# ``ASRCPUActor`` so the CPU variant works out of the box without endpoint
+# plumbing.
+DEFAULT_NGC_ASR_HTTP_ENDPOINT = "https://ai.api.nvidia.com/v1/audio/nvidia/parakeet-ctc-1_1b-asr"
 
 
 def asr_params_from_env(
     *,
-    grpc_endpoint_var: str = "AUDIO_GRPC_ENDPOINT",
+    http_endpoint_var: str = "AUDIO_HTTP_ENDPOINT",
     auth_token_var: str = "NVIDIA_API_KEY",
-    function_id_var: str = "AUDIO_FUNCTION_ID",
-    default_grpc_endpoint: Optional[str] = None,
-    default_function_id: Optional[str] = DEFAULT_NGC_ASR_FUNCTION_ID,
+    default_http_endpoint: Optional[str] = None,
 ) -> ASRParams:
     """
     Build ASRParams from environment variables, with optional Python-level defaults.
 
-    The CPU variant auto-defaults to NVCF when ``audio_endpoints`` is empty, so
+    The CPU variant auto-defaults to hosted HTTP when ``audio_endpoints`` is empty, so
     this helper is now mainly useful for callers who want to populate
     :class:`ASRParams` from env *without* instantiating an actor — e.g. when
     constructing a :class:`~nemo_retriever.graph_ingestor.GraphIngestor`.
 
-    Two opt-in paths to a custom (non-NVCF) endpoint, both honoured:
+    Two opt-in paths to a custom endpoint, both honoured:
 
-    - **Environment variable**: ``AUDIO_GRPC_ENDPOINT=grpc.nvcf.nvidia.com:443``
-      (NVCF) or ``AUDIO_GRPC_ENDPOINT=localhost:50051`` (local NIM).
-    - **Python API**: pass ``default_grpc_endpoint=...`` to this function. The
+    - **Environment variable**: ``AUDIO_HTTP_ENDPOINT=https://...`` (hosted)
+      or ``AUDIO_HTTP_ENDPOINT=http://localhost:9000`` (local NIM).
+    - **Python API**: pass ``default_http_endpoint=...`` to this function. The
       env var wins when both are present. Use the exported
-      :data:`DEFAULT_NGC_ASR_GRPC_ENDPOINT` constant for NVCF.
+      :data:`DEFAULT_NGC_ASR_HTTP_ENDPOINT` constant for hosted Parakeet.
 
     - ``NVIDIA_API_KEY`` — Bearer token; only consulted when an endpoint is set.
-    - ``AUDIO_FUNCTION_ID`` — NVCF function ID; defaults to ``default_function_id``
-      (the libmode Parakeet NIM) when an endpoint is set but the env var is unset.
     """
     import os
 
-    grpc_endpoint = (os.environ.get(grpc_endpoint_var) or "").strip()
-    if not grpc_endpoint and default_grpc_endpoint:
-        grpc_endpoint = default_grpc_endpoint.strip()
+    http_endpoint = (os.environ.get(http_endpoint_var) or "").strip()
+    if not http_endpoint and default_http_endpoint:
+        http_endpoint = default_http_endpoint.strip()
 
     auth_token = (os.environ.get(auth_token_var) or "").strip() or None
-    function_id = (os.environ.get(function_id_var) or "").strip() or None
 
-    if not grpc_endpoint:
+    if not http_endpoint:
         # Caller did not opt into a custom endpoint — leave audio_endpoints empty
-        # and let the actor's default-fill (or the GPU variant) decide. Drop any
-        # cloud credentials so they don't leak into a non-NVCF destination.
+        # and let the actor's default-fill (or the GPU variant) decide. Drop
+        # cloud credentials so they don't leak into an unintended destination.
         auth_token = None
-        function_id = None
-    elif function_id is None and default_function_id:
-        function_id = default_function_id
 
     return ASRParams(
-        audio_endpoints=(grpc_endpoint or None, None),
-        audio_infer_protocol="grpc",
-        function_id=function_id,
+        audio_endpoints=(None, http_endpoint or None),
+        audio_infer_protocol="http",
         auth_token=auth_token,
     )
 
@@ -179,23 +167,18 @@ except ImportError:
 def _get_client(params: ASRParams):  # noqa: ANN201
     if not _PARAKEET_AVAILABLE or create_audio_inference_client is None:
         raise RuntimeError(
-            "ASRCPUActor requires the Parakeet NIM client (vendored in nemo_retriever.api) "
-            "and the nvidia-riva-client gRPC stubs."
+            "ASRCPUActor requires the Parakeet NIM client (vendored in nemo_retriever.api) " "for HTTP transcription."
         )
-    grpc_endpoint = (params.audio_endpoints[0] or "").strip() or None
     http_endpoint = (params.audio_endpoints[1] or "").strip() or None
-    if not grpc_endpoint:
+    if not http_endpoint:
         raise ValueError(
-            "ASR audio_endpoints[0] (gRPC) must be set for Parakeet (e.g. localhost:50051 or grpc.nvcf.nvidia.com:443)."
+            "ASR audio_endpoints[1] (HTTP) must be set for Parakeet "
+            "(e.g. http://localhost:9000 or the hosted build endpoint)."
         )
     return create_audio_inference_client(
-        (grpc_endpoint, http_endpoint or ""),
-        infer_protocol=params.audio_infer_protocol or "grpc",
+        (None, http_endpoint),
+        infer_protocol=params.audio_infer_protocol or "http",
         auth_token=params.auth_token,
-        function_id=params.function_id,
-        use_ssl=bool("nvcf.nvidia.com" in grpc_endpoint and params.function_id),
-        ssl_cert=None,
-        infer_mode=params.audio_infer_mode,
     )
 
 
@@ -269,8 +252,8 @@ class _ASRActorBase:
                 seg_s_secs = _to_chunk_relative_seconds(segment.get("start"), chunk_dur)
                 seg_e_secs = _to_chunk_relative_seconds(segment.get("end"), chunk_dur)
                 # Wall-clock span: chunk start + the chunk-relative times the ASR
-                # backend produced. Local Parakeet emits seconds; remote emits
-                # milliseconds — normalized above against the chunk duration.
+                # backend produced. Timestamp units are normalized above against
+                # the chunk duration for compatibility with older remote outputs.
                 if seg_s_secs is not None:
                     segment_metadata["segment_start_seconds"] = seg_s_secs + chunk_start
                 if seg_e_secs is not None:
@@ -350,7 +333,7 @@ class ASRActor(ArchetypeOperator):
 
     def __init__(self, params: ASRParams | None = None) -> None:
         resolved_params = params or ASRParams()
-        # ``AUDIO_GRPC_ENDPOINT`` lets operators force the remote (CPU) variant
+        # ``AUDIO_HTTP_ENDPOINT`` lets operators force the remote (CPU) variant
         # from the environment when the caller didn't explicitly set endpoints
         # — mirrors the ``asr_params_from_env`` convention so a single env var
         # works whether you go through the helper or straight through the
@@ -359,12 +342,12 @@ class ASRActor(ArchetypeOperator):
         if not _use_remote(resolved_params):
             import os
 
-            env_grpc = (os.environ.get("AUDIO_GRPC_ENDPOINT") or "").strip()
-            if env_grpc:
+            env_http = (os.environ.get("AUDIO_HTTP_ENDPOINT") or "").strip()
+            if env_http:
                 resolved_params = resolved_params.model_copy(
                     update={
-                        "audio_endpoints": (env_grpc, resolved_params.audio_endpoints[1]),
-                        "audio_infer_protocol": "grpc",
+                        "audio_endpoints": (resolved_params.audio_endpoints[0], env_http),
+                        "audio_infer_protocol": "http",
                     }
                 )
         super().__init__(params=resolved_params)

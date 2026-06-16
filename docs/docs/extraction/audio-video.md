@@ -69,7 +69,7 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
 3. After the services are running, interact with the pipeline from Python (refer to the [Python API guide](nemo-retriever-api-reference.md) for parameter details).
 
-    - In `batch` mode, pass the in-cluster Parakeet gRPC endpoint through `ASRParams.audio_endpoints` (for example `audio:50051` from your Helm release). The retriever service auto-wires this endpoint; graph ingest does not.
+    - In `batch` mode, pass the in-cluster Parakeet HTTP endpoint through `ASRParams.audio_endpoints` (for example `http://audio:9000` from your Helm release). The retriever service auto-wires this endpoint; graph ingest does not.
 
     ```python
     from nemo_retriever import create_ingestor
@@ -80,7 +80,7 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
         .files("./data/*.wav")
         .extract_audio(
             asr_params=ASRParams(
-                audio_endpoints=("audio:50051", None),  # (grpc_endpoint, http_endpoint)
+                audio_endpoints=(None, "http://audio:9000"),  # (grpc_endpoint, http_endpoint)
                 segment_audio=True,
             ),
         )
@@ -96,9 +96,9 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
 Instead of running the pipeline locally, you can call Parakeet through [build.nvidia.com](https://build.nvidia.com/) hosted inference.
 
-1. On the Parakeet model page on [build.nvidia.com](https://build.nvidia.com/), create or copy an API key and note the function ID for hosted access. You need both before making API calls.
+1. On the Parakeet model page on [build.nvidia.com](https://build.nvidia.com/), create or copy an API key.
 
-2. Run inference from Python with the hosted gRPC endpoint and credentials from that page (the example below uses the default hosted gRPC hostname; confirm values in the **Get API Key** flow for your deployment). Pass hosted endpoint, function ID, and API key through `ASRParams` (`audio_endpoints`, `function_id`, `auth_token`).
+2. Run inference from Python with the hosted HTTP endpoint and credentials from that page. Pass hosted endpoint and API key through `ASRParams` (`audio_endpoints`, `auth_token`).
 
     ```python
     from nemo_retriever import create_ingestor
@@ -109,8 +109,7 @@ Instead of running the pipeline locally, you can call Parakeet through [build.nv
         .files("./data/*.mp3")
         .extract_audio(
             asr_params=ASRParams(
-                audio_endpoints=("grpc.nvcf.nvidia.com:443", None),  # (grpc_endpoint, http_endpoint)
-                function_id="<function ID>",
+                audio_endpoints=(None, "https://ai.api.nvidia.com/v1/audio/nvidia/parakeet-ctc-1_1b-asr"),
                 auth_token="<API key>",
                 segment_audio=True,
             ),

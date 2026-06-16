@@ -2,12 +2,12 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Remote ASR variant — calls Parakeet/Riva via gRPC, no local model weights.
+"""Remote ASR variant — calls Parakeet over HTTP, no local model weights.
 
 Mirrors the CPU-actor pattern used by ``page_elements/cpu_actor.py`` and
 ``ocr/cpu_ocr.py``: a class constant carries the public NIM endpoint and
 ``__init__`` fills it in when the caller didn't provide one. The default
-endpoint is the NVCF Parakeet deployment, so ``ASRCPUActor()`` with no args
+endpoint is the hosted Parakeet deployment, so ``ASRCPUActor()`` with no args
 "just works" against build.nvidia.com given an exported ``NVIDIA_API_KEY``.
 
 No torch / transformers imports anywhere on this code path.
@@ -24,8 +24,7 @@ import pandas as pd
 
 from nemo_retriever.operators.extract.audio import asr_actor as _asr_actor
 from nemo_retriever.operators.extract.audio.asr_actor import (
-    DEFAULT_NGC_ASR_FUNCTION_ID,
-    DEFAULT_NGC_ASR_GRPC_ENDPOINT,
+    DEFAULT_NGC_ASR_HTTP_ENDPOINT,
     _ASRActorBase,
     _concat_with_passthrough,
     _split_audio_rows,
@@ -38,13 +37,12 @@ logger = logging.getLogger(__name__)
 
 
 class ASRCPUActor(_ASRActorBase, AbstractOperator, CPUOperator):
-    """Remote Parakeet/Riva ASR. Defaults to the public NVCF endpoint.
+    """Remote Parakeet ASR. Defaults to the public hosted HTTP endpoint.
 
     When the caller supplies ``ASRParams`` with empty ``audio_endpoints``
     (the default), this actor fills in:
-      - ``audio_endpoints = (DEFAULT_GRPC_ENDPOINT, None)``
-      - ``audio_infer_protocol = "grpc"``
-      - ``function_id = DEFAULT_FUNCTION_ID`` (libmode Parakeet)
+      - ``audio_endpoints = (None, DEFAULT_HTTP_ENDPOINT)``
+      - ``audio_infer_protocol = "http"``
       - ``auth_token`` ← ``$NVIDIA_API_KEY`` if unset and the env var is present
 
     Mirrors the pattern used by ``PageElementDetectionCPUActor`` /
@@ -53,8 +51,7 @@ class ASRCPUActor(_ASRActorBase, AbstractOperator, CPUOperator):
     variant (:class:`~nemo_retriever.audio.gpu_actor.ASRGPUActor`).
     """
 
-    DEFAULT_GRPC_ENDPOINT = DEFAULT_NGC_ASR_GRPC_ENDPOINT
-    DEFAULT_FUNCTION_ID = DEFAULT_NGC_ASR_FUNCTION_ID
+    DEFAULT_HTTP_ENDPOINT = DEFAULT_NGC_ASR_HTTP_ENDPOINT
 
     def __init__(self, params: ASRParams | None = None) -> None:
         super().__init__(params=params)
@@ -65,11 +62,9 @@ class ASRCPUActor(_ASRActorBase, AbstractOperator, CPUOperator):
 
     @classmethod
     def _apply_actor_defaults(cls, params: ASRParams) -> ASRParams:
-        """Fill in NVCF defaults when the caller left ``audio_endpoints`` empty.
+        """Fill in hosted HTTP defaults when the caller left ``audio_endpoints`` empty.
 
         Env overrides honoured (in addition to the class-level constants):
-          - ``AUDIO_FUNCTION_ID`` — pin a specific NVCF Parakeet function-id
-            without code changes. Useful for A/B testing deployments.
           - ``NVIDIA_API_KEY`` — bearer token (also auto-resolved by
             ``_ParamsModel`` for ``api_key``-named fields elsewhere, but ASR
             historically uses ``auth_token`` which isn't matched by that
@@ -79,12 +74,9 @@ class ASRCPUActor(_ASRActorBase, AbstractOperator, CPUOperator):
         if grpc_ep or http_ep:
             return params  # caller supplied an endpoint — respect it
         updates: Dict[str, Any] = {
-            "audio_endpoints": (cls.DEFAULT_GRPC_ENDPOINT, None),
-            "audio_infer_protocol": "grpc",
+            "audio_endpoints": (None, cls.DEFAULT_HTTP_ENDPOINT),
+            "audio_infer_protocol": "http",
         }
-        if not params.function_id:
-            env_fid = (os.environ.get("AUDIO_FUNCTION_ID") or "").strip() or None
-            updates["function_id"] = env_fid or cls.DEFAULT_FUNCTION_ID
         if not params.auth_token:
             env_token = (os.environ.get("NVIDIA_API_KEY") or "").strip() or None
             if env_token:

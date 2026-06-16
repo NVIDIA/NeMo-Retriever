@@ -147,9 +147,8 @@ def test_extract_rejects_unknown_kwargs() -> None:
             document_type="mp3",
             extract_method="audio",
             extract_audio_params={
-                "grpc_endpoint": "grpc.nvcf.nvidia.com:443",
+                "http_endpoint": "https://ai.api.nvidia.com/v1/audio/nvidia/parakeet-ctc-1_1b-asr",
                 "auth_token": "fake-key",
-                "function_id": "fake-function-id",
                 "segment_audio": True,
             },
         )

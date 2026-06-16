@@ -65,7 +65,7 @@ def test_inprocess_audio_pipeline_with_mocked_asr(tmp_path: Path):
             .files([str(wav)])
             .extract_audio(
                 params=AudioChunkParams(split_type="size", split_interval=500_000),
-                asr_params=ASRParams(audio_endpoints=("localhost:50051", None)),
+                asr_params=ASRParams(audio_endpoints=(None, "http://localhost:9000")),
             )
         )
         results = ingestor.ingest()
@@ -98,7 +98,7 @@ def test_inprocess_audio_pipeline_with_mocked_segmented_asr(tmp_path: Path):
             .files([str(wav)])
             .extract_audio(
                 params=AudioChunkParams(split_type="size", split_interval=500_000),
-                asr_params=ASRParams(audio_endpoints=("localhost:50051", None), segment_audio=True),
+                asr_params=ASRParams(audio_endpoints=(None, "http://localhost:9000"), segment_audio=True),
             )
         )
         results = ingestor.ingest()
