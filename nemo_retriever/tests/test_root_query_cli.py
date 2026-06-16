@@ -37,8 +37,8 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
         },
     ]
     expected_output = [
-        {"source": "doc.pdf", "page_number": 1, "text": "passage"},
-        {"source": "other.pdf", "page_number": 2, "text": "other"},
+        {"source": "doc.pdf", "page_number": 1, "text": "passage", "modality": "text", "score": 0.2},
+        {"source": "other.pdf", "page_number": 2, "text": "other", "modality": "table", "score": 0.4},
     ]
 
     class FakeRetriever:
@@ -108,7 +108,7 @@ def test_root_query_passes_candidate_dedup_and_content_filters(monkeypatch) -> N
     assert result.exit_code == 0
     assert query_kwargs == [{"candidate_k": 3, "page_dedup": True, "content_types": "text,table"}]
     assert json.loads(result.output) == [
-        {"page_number": 1, "source": "doc.pdf", "text": "text row"},
+        {"page_number": 1, "source": "doc.pdf", "text": "text row", "modality": "text", "score": None},
     ]
 
 
@@ -277,3 +277,52 @@ def test_root_query_reports_os_errors(monkeypatch) -> None:
 
     assert result.exit_code == 1
     assert "Error: database unavailable" in result.output
+
+
+def test_root_query_passes_hybrid_into_vdb_kwargs(monkeypatch) -> None:
+    retriever_calls: list[dict[str, Any]] = []
+
+    class FakeRetriever:
+        def __init__(self, **kwargs: Any) -> None:
+            retriever_calls.append(kwargs)
+
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["query", "q", "--top-k", "5", "--lancedb-uri", "/tmp/lancedb", "--table-name", "docs", "--hybrid"],
+    )
+
+    assert result.exit_code == 0
+    assert retriever_calls == [
+        {"top_k": 5, "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "docs", "hybrid": True}}
+    ]
+
+
+def test_root_query_max_text_chars_truncates_and_omits(monkeypatch) -> None:
+    hits = [{"text": "abcdefghij", "source": "d.pdf", "page_number": 1, "metadata": {"type": "text"}, "_distance": 0.1}]
+
+    class FakeRetriever:
+        def __init__(self, **_: Any) -> None:
+            pass
+
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+            return hits
+
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
+
+    snip = RUNNER.invoke(cli_main.app, ["query", "q", "--max-text-chars", "5"])
+    assert snip.exit_code == 0
+    snip_hit = json.loads(snip.output)[0]
+    assert snip_hit["text"] == "abcde…"
+    assert snip_hit["modality"] == "text"  # non-text fields intact
+    assert snip_hit["source"] == "d.pdf"
+
+    meta = RUNNER.invoke(cli_main.app, ["query", "q", "--max-text-chars", "0"])
+    meta_hit = json.loads(meta.output)[0]
+    assert meta_hit["text"] == ""
+    assert meta_hit["source"] == "d.pdf"
+    assert meta_hit["page_number"] == 1
