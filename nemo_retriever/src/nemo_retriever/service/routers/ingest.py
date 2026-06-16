@@ -29,9 +29,9 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from starlette.responses import StreamingResponse
 
-from nemo_retriever.service.models.pipeline_spec import PipelineSpec
-from nemo_retriever.service.models.requests import IngestRequest, JobCreateRequest
-from nemo_retriever.service.models.responses import (
+from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
+from nemo_retriever.common.schemas.requests import IngestRequest, JobCreateRequest
+from nemo_retriever.common.schemas.responses import (
     DocumentIngestAccepted,
     DocumentStatusResponse,
     IngestAccepted,
@@ -42,7 +42,7 @@ from nemo_retriever.service.models.responses import (
     PageIngestAccepted,
     SidecarUploadResponse,
 )
-from nemo_retriever.service.policy import PolicyError, validate_pipeline_spec
+from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.service.services.event_bus import get_event_bus
 from nemo_retriever.service.services.job_tracker import MarkOutcome, get_job_tracker
 from nemo_retriever.service.services.metrics import get_metrics

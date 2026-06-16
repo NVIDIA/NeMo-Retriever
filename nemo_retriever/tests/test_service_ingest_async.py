@@ -21,8 +21,8 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_retriever.params import IngestExecuteParams
-from nemo_retriever.service_ingestor import ServiceIngestor, ServiceIngestResult
+from nemo_retriever.common.params import IngestExecuteParams
+from nemo_retriever.service.service_ingestor import ServiceIngestor, ServiceIngestResult
 
 
 # ----------------------------------------------------------------------

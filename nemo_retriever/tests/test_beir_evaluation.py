@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from nemo_retriever.pipeline import __main__ as pipeline_main
-from nemo_retriever.recall.beir import (
+from nemo_retriever.cli.pipeline import __main__ as pipeline_main
+from nemo_retriever.tools.recall.beir import (
     BeirConfig,
     BeirDataset,
     BO767_ANNOTATIONS_PATH,
@@ -64,7 +64,7 @@ def test_build_queries_by_id_warns_when_all_queries_filtered(caplog) -> None:
         {"query_id": 2, "query": "bonjour", "language": "fr"},
     ]
 
-    with caplog.at_level("WARNING", logger="nemo_retriever.recall.beir"):
+    with caplog.at_level("WARNING", logger="nemo_retriever.tools.recall.beir"):
         query_ids, queries = build_queries_by_id(rows, query_language="en")
 
     assert query_ids == []
@@ -78,7 +78,7 @@ def test_build_queries_by_id_warns_when_all_queries_filtered(caplog) -> None:
 def test_build_queries_by_id_warning_logs_normalized_query_language(caplog) -> None:
     rows = [{"query_id": 1, "query": "hello", "language": "english"}]
 
-    with caplog.at_level("WARNING", logger="nemo_retriever.recall.beir"):
+    with caplog.at_level("WARNING", logger="nemo_retriever.tools.recall.beir"):
         query_ids, queries = build_queries_by_id(rows, query_language="Français")
 
     assert query_ids == []
@@ -156,8 +156,8 @@ def test_resolve_beir_dataset_options_does_not_guess_unknown_dataset() -> None:
 
 
 def test_pipeline_beir_evaluation_keeps_custom_dataset_doc_id_default(monkeypatch) -> None:
-    import nemo_retriever.model as model_module
-    import nemo_retriever.recall.beir as beir_module
+    import nemo_retriever.models as model_module
+    import nemo_retriever.tools.recall.beir as beir_module
 
     captured: dict[str, BeirConfig] = {}
 
@@ -207,8 +207,8 @@ def test_pipeline_beir_evaluation_keeps_custom_dataset_doc_id_default(monkeypatc
 
 
 def test_pipeline_beir_evaluation_resolves_known_dataset_name(monkeypatch) -> None:
-    import nemo_retriever.model as model_module
-    import nemo_retriever.recall.beir as beir_module
+    import nemo_retriever.models as model_module
+    import nemo_retriever.tools.recall.beir as beir_module
 
     captured: dict[str, BeirConfig] = {}
 
@@ -551,7 +551,7 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
     )
 
     monkeypatch.setattr(
-        "nemo_retriever.recall.beir.load_beir_dataset",
+        "nemo_retriever.tools.recall.beir.load_beir_dataset",
         lambda *args, **kwargs: dataset,
     )
 
@@ -601,7 +601,7 @@ def test_evaluate_lancedb_beir_uses_loader_and_retriever(monkeypatch) -> None:
             assert queries == ["what is a qubit?"]
             return [[{"pdf_basename": "doc_a", "source_id": "/tmp/doc_a.pdf"}]]
 
-    monkeypatch.setattr("nemo_retriever.recall.beir.Retriever", _FakeRetriever)
+    monkeypatch.setattr("nemo_retriever.tools.recall.beir.Retriever", _FakeRetriever)
 
     cfg = BeirConfig(
         lancedb_uri="/tmp/lancedb",

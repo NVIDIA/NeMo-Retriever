@@ -650,7 +650,7 @@ def _build(
 
 def _auditwheel_repair_dist_dir(dist_dir: Path, *, exclude_libs: list[str] | None = None) -> None:
     """
-    Rewrite linux_* wheels to manylinux_* so TestPyPI/PyPI accept the upload.
+    Rewrite linux_* wheels to manylinux_* so PyPI accepts the upload.
     Requires ``patchelf`` on PATH (e.g. apt install patchelf).
 
     *exclude_libs* is a list of shared library basenames (e.g. ``libtorch_cpu.so``)
@@ -804,8 +804,8 @@ def main() -> int:
         "before building (repeatable; useful for ABI-coupled deps like torch)",
     )
     ap.add_argument("--upload", action="store_true", help="Upload built dists via twine")
-    ap.add_argument("--repository-url", default="https://test.pypi.org/legacy/", help="Twine repository URL")
-    ap.add_argument("--token-env", default="TEST_PYPI_API_TOKEN", help="Env var containing API token")
+    ap.add_argument("--repository-url", default="https://upload.pypi.org/legacy/", help="Twine repository URL")
+    ap.add_argument("--token-env", default="PYPI_API_TOKEN", help="Env var containing API token")
     ap.add_argument("--skip-existing", action="store_true", help="Pass --skip-existing to twine")
     ap.add_argument(
         "--twine-verbose",
@@ -821,7 +821,7 @@ def main() -> int:
     ap.add_argument(
         "--auditwheel-repair",
         action="store_true",
-        help="Run auditwheel repair on built wheels (manylinux tag; needed for PyPI/TestPyPI)",
+        help="Run auditwheel repair on built wheels (manylinux tag; needed for PyPI)",
     )
     ap.add_argument(
         "--auditwheel-exclude",

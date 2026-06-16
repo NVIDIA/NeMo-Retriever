@@ -14,7 +14,7 @@ import pytest
 
 lancedb = pytest.importorskip("lancedb")
 
-from nemo_retriever.vdb.lancedb import LanceDB
+from nemo_retriever.common.vdb.lancedb import LanceDB
 
 
 def _tiny_table(uri: str, *, create_fts_index: bool = False) -> None:

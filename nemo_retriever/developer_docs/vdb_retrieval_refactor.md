@@ -1,6 +1,6 @@
 # VDB Retrieval Refactor Scope and Current Contract
 
-**Module area:** `nemo_retriever.vdb`, `nemo_retriever.retriever`, graph pipeline recall
+**Module area:** `nemo_retriever.common.vdb`, `nemo_retriever.graph.retriever`, graph pipeline recall
 
 ## Purpose
 

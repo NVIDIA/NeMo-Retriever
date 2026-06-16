@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_retriever.service_ingestor import ServiceIngestor
+from nemo_retriever.service.service_ingestor import ServiceIngestor
 
 
 def test_save_to_disk_requires_output_directory() -> None:
@@ -82,7 +82,7 @@ def _stub_status_response(body: dict[str, Any]):
         def get(self, url: str) -> _FakeResp:
             return _FakeResp()
 
-    with patch("nemo_retriever.service_ingestor.httpx.Client", _FakeClient):
+    with patch("nemo_retriever.service.service_ingestor.httpx.Client", _FakeClient):
         yield captured
 
 

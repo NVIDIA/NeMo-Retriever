@@ -11,7 +11,7 @@ from typing import ClassVar
 
 from fastapi import HTTPException, UploadFile
 
-from nemo_retriever.service.models.base import RichModel
+from nemo_retriever.common.schemas.base import RichModel
 
 
 class FileCategory(str, Enum):
@@ -180,7 +180,7 @@ def enforce_media_dependencies(classification: FileClassification) -> None:
     if not category_requires_media_deps(classification.category):
         return
 
-    from nemo_retriever.audio.media_interface import (
+    from nemo_retriever.common.modality.audio.media_interface import (
         HELM_FFMPEG_INSTALL_VALUE,
         MANUAL_FFMPEG_INSTALL_COMMAND,
         is_media_available,

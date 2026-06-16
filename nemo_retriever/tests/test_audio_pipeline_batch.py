@@ -16,12 +16,12 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.audio.chunk_actor import _chunk_one
-from nemo_retriever.audio.media_interface import MediaInterface
+from nemo_retriever.operators.extract.audio.chunk_actor import _chunk_one
+from nemo_retriever.common.modality.audio.media_interface import MediaInterface
 from tests import _have_ffmpeg_binary
-from nemo_retriever.graph_ingestor import GraphIngestor
-from nemo_retriever.params import ASRParams
-from nemo_retriever.params import AudioChunkParams
+from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
+from nemo_retriever.common.params import ASRParams
+from nemo_retriever.common.params import AudioChunkParams
 
 
 def _make_small_wav(path: Path, duration_sec: float = 0.5, sample_rate: int = 8000) -> None:
@@ -59,7 +59,7 @@ def test_inprocess_audio_pipeline_with_mocked_asr(tmp_path: Path):
     mock_client = MagicMock()
     mock_client.infer.return_value = ([], "inprocess mock transcript")
 
-    with patch("nemo_retriever.audio.asr_actor._get_client", return_value=mock_client):
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client", return_value=mock_client):
         ingestor = (
             GraphIngestor(run_mode="inprocess", documents=[])
             .files([str(wav)])
@@ -92,7 +92,7 @@ def test_inprocess_audio_pipeline_with_mocked_segmented_asr(tmp_path: Path):
         "First sentence. Second sentence!",
     )
 
-    with patch("nemo_retriever.audio.asr_actor._get_client", return_value=mock_client):
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client", return_value=mock_client):
         ingestor = (
             GraphIngestor(run_mode="inprocess", documents=[])
             .files([str(wav)])
@@ -121,7 +121,7 @@ def test_inprocess_audio_pipeline_local_asr_mocked(tmp_path: Path):
     After the ASR CPU/GPU split, the archetype only picks the GPU variant when a
     GPU is detected, so we mock ``gather_local_resources`` to advertise one.
     """
-    from nemo_retriever.utils.ray_resource_hueristics import Resources
+    from nemo_retriever.common.ray_resource_hueristics import Resources
 
     wav = tmp_path / "small.wav"
     _make_small_wav(wav, duration_sec=0.5)
@@ -130,10 +130,10 @@ def test_inprocess_audio_pipeline_local_asr_mocked(tmp_path: Path):
     mock_model.transcribe_with_segments.return_value = [("local asr mock transcript", [])]
 
     with patch(
-        "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+        "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
         return_value=Resources(cpu_count=8, gpu_count=1),
-    ), patch("nemo_retriever.audio.asr_actor._get_client") as mock_get_client, patch(
-        "nemo_retriever.model.local.ParakeetCTC1B1ASR", return_value=mock_model
+    ), patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get_client, patch(
+        "nemo_retriever.models.local.ParakeetCTC1B1ASR", return_value=mock_model
     ):
         ingestor = (
             GraphIngestor(run_mode="inprocess", documents=[])

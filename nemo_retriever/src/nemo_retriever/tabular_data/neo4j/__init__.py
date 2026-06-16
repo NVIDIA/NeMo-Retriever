@@ -6,7 +6,7 @@
 Neo4j connection and utilities for the tabular_data stack.
 """
 
-from .neo4j_connection import (
+from nemo_retriever.tabular_data.neo4j.neo4j_connection import (
     Neo4jConnection,
     get_neo4j_conn,
 )

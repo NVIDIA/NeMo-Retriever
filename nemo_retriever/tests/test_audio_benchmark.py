@@ -31,7 +31,7 @@ def test_audio_benchmark_run_mock_asr(tmp_path: Path):
     wav = tmp_path / "tiny.wav"
     _make_small_wav(wav, duration_sec=0.3)
 
-    from nemo_retriever.utils.benchmark.audio_extract_actor import run_benchmark
+    from nemo_retriever.tools.benchmark.audio_extract_actor import run_benchmark
 
     try:
         run_benchmark(

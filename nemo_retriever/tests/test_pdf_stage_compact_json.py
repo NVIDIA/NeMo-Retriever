@@ -8,7 +8,7 @@ that bloat sidecars for programmatic consumers."""
 
 from __future__ import annotations
 
-from nemo_retriever.pdf.stage import _strip_null_empty
+from nemo_retriever.cli.pdf.stage import _strip_null_empty
 
 
 def test_strip_drops_nulls_and_empty_collections():

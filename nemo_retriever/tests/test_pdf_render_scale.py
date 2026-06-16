@@ -18,8 +18,8 @@ import pytest
 PIL = pytest.importorskip("PIL")
 from PIL import Image  # noqa: E402
 
-_extract = pytest.importorskip("nemo_retriever.pdf.extract")
-_ocr = pytest.importorskip("nemo_retriever.ocr.ocr")
+_extract = pytest.importorskip("nemo_retriever.operators.extract.pdf.extract")
+_ocr = pytest.importorskip("nemo_retriever.operators.extract.ocr.ocr")
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +102,7 @@ class TestIsScannedPageImport:
 
     def test_is_scanned_page_matches_api(self):
         """The imported function should be the same object as the api/ version."""
-        from nemo_retriever.api.util.pdf.pdfium import is_scanned_page
+        from nemo_retriever.common.api.util.pdf.pdfium import is_scanned_page
 
         assert _extract._is_scanned_page is is_scanned_page
 

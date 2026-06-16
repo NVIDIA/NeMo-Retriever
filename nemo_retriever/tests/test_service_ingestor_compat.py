@@ -38,7 +38,7 @@ import pytest
 
 import nemo_retriever.service.client as _client_module
 from nemo_retriever import RetrieverServiceCompatibilityError
-from nemo_retriever.service_ingestor import ServiceIngestor
+from nemo_retriever.service.service_ingestor import ServiceIngestor
 
 
 # ----------------------------------------------------------------------

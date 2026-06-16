@@ -8,12 +8,12 @@ from unittest.mock import patch, MagicMock
 
 import requests
 
-from nemo_retriever.nim.error_reporter import (
+from nemo_retriever.models.nim.error_reporter import (
     _errors,
     drain_errors,
     report_error,
 )
-from nemo_retriever.nim.probe import (
+from nemo_retriever.models.nim.probe import (
     _probe_results,
     drain_probe_results,
     probe_endpoint,
@@ -30,7 +30,7 @@ class TestProbeResultCollection:
         _probe_results.clear()
 
     def test_connection_refused_appends_unreachable(self):
-        with patch("nemo_retriever.nim.probe.requests.get", side_effect=requests.ConnectionError("refused")):
+        with patch("nemo_retriever.models.nim.probe.requests.get", side_effect=requests.ConnectionError("refused")):
             probe_endpoint("http://localhost:8009/v1/invoke", name="ocr", prefix="TestActor")
 
         results = drain_probe_results()
@@ -41,7 +41,7 @@ class TestProbeResultCollection:
         assert "UNREACHABLE" in results[0].detail
 
     def test_timeout_appends_timeout(self):
-        with patch("nemo_retriever.nim.probe.requests.get", side_effect=requests.Timeout("timed out")):
+        with patch("nemo_retriever.models.nim.probe.requests.get", side_effect=requests.Timeout("timed out")):
             probe_endpoint("http://localhost:8009/v1/invoke", name="ocr", prefix="TestActor")
 
         results = drain_probe_results()
@@ -54,7 +54,7 @@ class TestProbeResultCollection:
         mock_resp = MagicMock()
         mock_resp.ok = True
         mock_resp.status_code = 200
-        with patch("nemo_retriever.nim.probe.requests.get", return_value=mock_resp):
+        with patch("nemo_retriever.models.nim.probe.requests.get", return_value=mock_resp):
             probe_endpoint("http://localhost:8009/v1/invoke", name="ocr", prefix="TestActor")
 
         results = drain_probe_results()
@@ -62,7 +62,7 @@ class TestProbeResultCollection:
         assert results[0].status == "ok"
 
     def test_drain_clears_results(self):
-        with patch("nemo_retriever.nim.probe.requests.get", side_effect=requests.ConnectionError()):
+        with patch("nemo_retriever.models.nim.probe.requests.get", side_effect=requests.ConnectionError()):
             probe_endpoint("http://localhost:8009/v1/invoke", name="ocr", prefix="TestActor")
 
         first = drain_probe_results()
@@ -71,7 +71,7 @@ class TestProbeResultCollection:
         assert len(second) == 0
 
     def test_multiple_probes_accumulate(self):
-        with patch("nemo_retriever.nim.probe.requests.get", side_effect=requests.ConnectionError()):
+        with patch("nemo_retriever.models.nim.probe.requests.get", side_effect=requests.ConnectionError()):
             probe_endpoint("http://localhost:8009/v1/invoke", name="ocr", prefix="Actor1")
             probe_endpoint("http://localhost:8006/v1/invoke", name="table-structure", prefix="Actor2")
 
@@ -84,8 +84,8 @@ class TestProbeResultCollection:
         mock_resp = MagicMock()
         mock_resp.ok = False
         mock_resp.status_code = 404
-        with patch("nemo_retriever.nim.probe.requests.get", return_value=mock_resp):
-            with patch("nemo_retriever.nim.probe.requests.post", side_effect=requests.ConnectionError()):
+        with patch("nemo_retriever.models.nim.probe.requests.get", return_value=mock_resp):
+            with patch("nemo_retriever.models.nim.probe.requests.post", side_effect=requests.ConnectionError()):
                 probe_endpoint(
                     "http://localhost:8009/v1/invoke",
                     name="ocr",

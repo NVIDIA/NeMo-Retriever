@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-from nemo_retriever.graph.abstract_operator import AbstractOperator
-from nemo_retriever.graph.cpu_operator import CPUOperator
-from nemo_retriever.graph.gpu_operator import GPUOperator
+from nemo_retriever.operators.abstract_operator import AbstractOperator
+from nemo_retriever.operators.cpu_operator import CPUOperator
+from nemo_retriever.operators.gpu_operator import GPUOperator
 
 __all__ = ["AbstractOperator", "CPUOperator", "GPUOperator"]

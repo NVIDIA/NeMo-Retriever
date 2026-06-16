@@ -5,8 +5,8 @@
 """
 Unit tests for nemo_retriever.audio: ASRActor (with mocked Parakeet client).
 
-Avoids importing nemo_retriever.model (and thus torch) by not eagerly loading
-the model package; local-ASR tests inject a fake nemo_retriever.model.local
+Avoids importing nemo_retriever.models (and thus torch) by not eagerly loading
+the model package; local-ASR tests inject a fake nemo_retriever.models.local
 into sys.modules so the real module is never loaded.
 """
 
@@ -17,11 +17,11 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from nemo_retriever.audio.asr_actor import ASRActor
-from nemo_retriever.audio.asr_actor import DEFAULT_NGC_ASR_FUNCTION_ID
-from nemo_retriever.audio.asr_actor import apply_asr_to_df
-from nemo_retriever.audio.asr_actor import asr_params_from_env
-from nemo_retriever.params import ASRParams
+from nemo_retriever.operators.extract.audio.asr_actor import ASRActor
+from nemo_retriever.operators.extract.audio.asr_actor import DEFAULT_NGC_ASR_FUNCTION_ID
+from nemo_retriever.operators.extract.audio.asr_actor import apply_asr_to_df
+from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
+from nemo_retriever.common.params import ASRParams
 
 
 NVCF_GRPC_ENDPOINT = "grpc.nvcf.nvidia.com:443"
@@ -29,12 +29,12 @@ NVCF_GRPC_ENDPOINT = "grpc.nvcf.nvidia.com:443"
 
 def test_strip_pad_from_transcript():
     """Transformers backend post-process removes <pad> and normalizes spaces."""
-    # Some tests monkeypatch nemo_retriever.model.local with a mock module object.
+    # Some tests monkeypatch nemo_retriever.models.local with a mock module object.
     # Ensure we import the real package submodule for this test.
-    local_mod = sys.modules.get("nemo_retriever.model.local")
+    local_mod = sys.modules.get("nemo_retriever.models.local")
     if local_mod is not None and not hasattr(local_mod, "__path__"):
-        sys.modules.pop("nemo_retriever.model.local", None)
-    from nemo_retriever.model.local.parakeet_ctc_1_1b_asr import _strip_pad_from_transcript
+        sys.modules.pop("nemo_retriever.models.local", None)
+    from nemo_retriever.models.local.parakeet_ctc_1_1b_asr import _strip_pad_from_transcript
 
     assert _strip_pad_from_transcript("") == ""
     assert _strip_pad_from_transcript("  ") == ""
@@ -47,7 +47,7 @@ def test_strip_pad_from_transcript():
 
 
 def test_asr_actor_empty_batch():
-    with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
         mock_client = MagicMock()
         mock_get.return_value = mock_client
 
@@ -63,7 +63,7 @@ def test_asr_actor_empty_batch():
 
 
 def test_asr_actor_mock_transcribe():
-    with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
         mock_client = MagicMock()
         mock_client.infer.return_value = ([], "hello world transcript")
         mock_get.return_value = mock_client
@@ -96,7 +96,7 @@ def test_asr_actor_mock_transcribe():
 
 
 def test_apply_asr_to_df():
-    with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
         mock_client = MagicMock()
         mock_client.infer.return_value = ([], "applied transcript")
         mock_get.return_value = mock_client
@@ -121,7 +121,7 @@ def test_apply_asr_to_df():
 
 
 def test_asr_actor_remote_segment_audio():
-    with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
         mock_client = MagicMock()
         mock_client.infer.return_value = (
             [
@@ -163,7 +163,7 @@ def test_asr_actor_remote_segment_audio():
 
 
 def test_apply_asr_to_df_segment_audio():
-    with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
         mock_client = MagicMock()
         mock_client.infer.return_value = (
             [
@@ -200,17 +200,17 @@ def test_apply_asr_to_df_segment_audio():
 def test_local_asr_does_not_call_get_client():
     """After the CPU/GPU split the local-Parakeet path is :class:`ASRGPUActor`,
     which must never touch the remote ``_get_client`` factory."""
-    from nemo_retriever.audio.gpu_actor import ASRGPUActor
+    from nemo_retriever.operators.extract.audio.gpu_actor import ASRGPUActor
 
     mock_model = MagicMock()
     mock_model.transcribe_with_segments.return_value = [("mocked local transcript", [])]
     mock_class = MagicMock(return_value=mock_model)
     mock_local = MagicMock()
     mock_local.ParakeetCTC1B1ASR = mock_class
-    prev_local = sys.modules.get("nemo_retriever.model.local")
-    sys.modules["nemo_retriever.model.local"] = mock_local
+    prev_local = sys.modules.get("nemo_retriever.models.local")
+    sys.modules["nemo_retriever.models.local"] = mock_local
     try:
-        with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+        with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
             params = ASRParams(audio_endpoints=(None, None))
             actor = ASRGPUActor(params=params)
 
@@ -241,9 +241,9 @@ def test_local_asr_does_not_call_get_client():
             assert len(call_args) == 1
     finally:
         if prev_local is None:
-            sys.modules.pop("nemo_retriever.model.local", None)
+            sys.modules.pop("nemo_retriever.models.local", None)
         else:
-            sys.modules["nemo_retriever.model.local"] = prev_local
+            sys.modules["nemo_retriever.models.local"] = prev_local
 
 
 def test_asr_params_from_env_default_grpc_endpoint_preserves_nvidia_auth(monkeypatch):
@@ -275,13 +275,13 @@ def test_asr_params_from_env_without_endpoint_drops_nvidia_auth(monkeypatch):
 
 
 def test_asr_cpu_actor_defaults_with_only_nvidia_auth_populate_remote_defaults(monkeypatch):
-    from nemo_retriever.audio.cpu_actor import ASRCPUActor
+    from nemo_retriever.operators.extract.audio.cpu_actor import ASRCPUActor
 
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
     monkeypatch.delenv("AUDIO_GRPC_ENDPOINT", raising=False)
     monkeypatch.delenv("AUDIO_FUNCTION_ID", raising=False)
 
-    with patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+    with patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
         actor = ASRCPUActor(params=asr_params_from_env())
 
     mock_get.assert_called_once()
@@ -299,20 +299,20 @@ def test_local_asr_apply_asr_to_df():
     ``gather_local_resources`` source — every dispatch site (executor,
     archetype, resolver, multi-type op) reads through that one attribute.
     """
-    from nemo_retriever.utils.ray_resource_hueristics import Resources
+    from nemo_retriever.common.ray_resource_hueristics import Resources
 
     mock_model = MagicMock()
     mock_model.transcribe_with_segments.return_value = [("apply local text", [])]
     mock_class = MagicMock(return_value=mock_model)
     mock_local = MagicMock()
     mock_local.ParakeetCTC1B1ASR = mock_class
-    prev_local = sys.modules.get("nemo_retriever.model.local")
-    sys.modules["nemo_retriever.model.local"] = mock_local
+    prev_local = sys.modules.get("nemo_retriever.models.local")
+    sys.modules["nemo_retriever.models.local"] = mock_local
     try:
         with patch(
-            "nemo_retriever.utils.ray_resource_hueristics.gather_local_resources",
+            "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
             return_value=Resources(cpu_count=8, gpu_count=1),
-        ), patch("nemo_retriever.audio.asr_actor._get_client") as mock_get:
+        ), patch("nemo_retriever.operators.extract.audio.asr_actor._get_client") as mock_get:
             batch = pd.DataFrame(
                 [
                     {
@@ -333,6 +333,6 @@ def test_local_asr_apply_asr_to_df():
             assert out["text"].iloc[0] == "apply local text"
     finally:
         if prev_local is None:
-            sys.modules.pop("nemo_retriever.model.local", None)
+            sys.modules.pop("nemo_retriever.models.local", None)
         else:
-            sys.modules["nemo_retriever.model.local"] = prev_local
+            sys.modules["nemo_retriever.models.local"] = prev_local

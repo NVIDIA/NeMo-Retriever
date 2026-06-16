@@ -9,11 +9,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nemo_retriever.api.internal.primitives.nim.model_interface.parakeet import (
+from nemo_retriever.models.nim.primitives.model_interface.parakeet import (
     ParakeetClient,
     resolve_audio_infer_mode,
 )
-from nemo_retriever.params import ASRParams
+from nemo_retriever.common.params import ASRParams
 
 
 @pytest.mark.parametrize(
@@ -36,7 +36,7 @@ def test_resolve_audio_infer_mode_rejects_unknown() -> None:
         resolve_audio_infer_mode("batch", "localhost:50051")
 
 
-@patch("nemo_retriever.api.internal.primitives.nim.model_interface.parakeet.riva_client")
+@patch("nemo_retriever.models.nim.primitives.model_interface.parakeet.riva_client")
 def test_parakeet_client_transcribe_uses_offline_for_self_hosted(mock_riva) -> None:
     mock_asr = MagicMock()
     mock_riva.ASRService.return_value = mock_asr
@@ -45,7 +45,7 @@ def test_parakeet_client_transcribe_uses_offline_for_self_hosted(mock_riva) -> N
 
     client = ParakeetClient("localhost:18019", infer_mode="auto")
     with patch(
-        "nemo_retriever.api.internal.primitives.nim.model_interface.parakeet.convert_to_mono_wav",
+        "nemo_retriever.models.nim.primitives.model_interface.parakeet.convert_to_mono_wav",
         return_value=b"RIFFfake",
     ):
         client.transcribe(base64.b64encode(b"audio").decode())
@@ -54,7 +54,7 @@ def test_parakeet_client_transcribe_uses_offline_for_self_hosted(mock_riva) -> N
     mock_asr.streaming_response_generator.assert_not_called()
 
 
-@patch("nemo_retriever.api.internal.primitives.nim.model_interface.parakeet.riva_client")
+@patch("nemo_retriever.models.nim.primitives.model_interface.parakeet.riva_client")
 def test_parakeet_client_transcribe_uses_offline_when_explicit(mock_riva) -> None:
     mock_asr = MagicMock()
     mock_riva.ASRService.return_value = mock_asr
@@ -63,7 +63,7 @@ def test_parakeet_client_transcribe_uses_offline_when_explicit(mock_riva) -> Non
 
     client = ParakeetClient("localhost:18019", infer_mode="offline")
     with patch(
-        "nemo_retriever.api.internal.primitives.nim.model_interface.parakeet.convert_to_mono_wav",
+        "nemo_retriever.models.nim.primitives.model_interface.parakeet.convert_to_mono_wav",
         return_value=b"RIFFfake",
     ):
         client.transcribe(base64.b64encode(b"audio").decode())
@@ -72,7 +72,7 @@ def test_parakeet_client_transcribe_uses_offline_when_explicit(mock_riva) -> Non
     mock_asr.streaming_response_generator.assert_not_called()
 
 
-@patch("nemo_retriever.api.internal.primitives.nim.model_interface.parakeet.riva_client")
+@patch("nemo_retriever.models.nim.primitives.model_interface.parakeet.riva_client")
 def test_parakeet_client_transcribe_uses_streaming_for_nvcf(mock_riva) -> None:
     mock_asr = MagicMock()
     mock_riva.ASRService.return_value = mock_asr
@@ -88,7 +88,7 @@ def test_parakeet_client_transcribe_uses_streaming_for_nvcf(mock_riva) -> None:
         infer_mode="auto",
     )
     with patch(
-        "nemo_retriever.api.internal.primitives.nim.model_interface.parakeet.convert_to_mono_wav",
+        "nemo_retriever.models.nim.primitives.model_interface.parakeet.convert_to_mono_wav",
         return_value=b"RIFFfake",
     ), patch.object(client, "_streaming_transcribe", return_value=MagicMock(results=[])) as mock_stream:
         client.transcribe(base64.b64encode(b"audio").decode())

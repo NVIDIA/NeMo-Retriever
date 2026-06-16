@@ -2,7 +2,7 @@
 
 Use this page for speech and audio extraction with Parakeet ASR and for video workflows that combine audio with OCR on frames or derived images.
 
-For air-gapped or disconnected deployments, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+For air-gapped or disconnected deployments, refer to [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
 
 **Sections:** [Speech and audio (Parakeet)](#speech-and-audio-extraction) · [Run Parakeet on the cluster (Helm)](#run-parakeet-on-the-cluster-helm) · [Parakeet with hosted inference (build.nvidia.com)](#parakeet-hosted-inference-build-nvidia) · [Video and frame OCR](#video-and-frame-ocr)
 
@@ -18,7 +18,7 @@ Supported file types for speech extraction today:
 - `mp3`, `wav`
 - `mp4`, `mov`, `mkv`, `avi` — common video containers; the audio track is transcribed (same extensions as in [What is NeMo Retriever Library?](overview.md))
 
-[NeMo Retriever Library](overview.md) supports extracting speech from audio for Retrieval Augmented Generation (RAG). Similar to how the multimodal document pipeline uses detection and OCR microservices, NeMo Retriever Library uses the [parakeet-1-1b-ctc-en-us ASR NIM](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) to transcribe speech to text, then embeddings via the NeMo Retriever embedding path.
+[NeMo Retriever Library](overview.md) supports extracting speech from audio for Retrieval Augmented Generation (RAG). Similar to how the multimodal document pipeline uses detection and OCR microservices, NeMo Retriever Library uses the [parakeet-1-1b-ctc-en-us ASR NIM](https://docs.nvidia.com/nim/speech/latest/asr/deploy-asr-models/parakeet-ctc-en-us.html) to transcribe speech to text, then embeddings through the NeMo Retriever embedding path.
 
 Before running audio extraction from Python with either self-hosted or hosted Parakeet, install the multimedia extra so the Parakeet ASR client can decode and resample audio:
 
@@ -48,53 +48,49 @@ For Kubernetes deployments with network access to package repositories, set
 [Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image)
 to install ffmpeg/ffprobe at service startup. This runtime path requires
 package-repository network egress, a writable root filesystem, and a security
-policy that allows the image's scoped sudo use. For air-gapped clusters, see
+policy that allows the image's scoped sudo use. For air-gapped clusters, refer to
 [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
 
 !!! important
 
     Due to limitations in available VRAM controls in the current release, the parakeet-1-1b-ctc-en-us ASR NIM must run on a [dedicated additional GPU](prerequisites-support-matrix.md#model-hardware-requirements). For the full list of requirements, refer to the [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md#model-hardware-requirements).
 
-This pipeline enables retrieval at the speech segment level when you enable segmenting (see examples below).
+This pipeline enables retrieval at the speech segment level when you enable segmenting (refer to the examples below).
 
 ![Overview diagram](images/audio.png)
 
 ## Run Parakeet on the cluster (Helm) { #run-parakeet-on-the-cluster-helm }
 
-Use the following procedure to run the NIM on your own infrastructure. Self-hosted Parakeet runs on Kubernetes via the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md). Enable the ASR NIM per [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default) and the [Helm chart — NIM operator sub-stack](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#nim-operator-sub-stack); pin the workload to a dedicated GPU and wire the ASR endpoint in your pipeline.
+Use the following procedure to run the NIM on your own infrastructure. Self-hosted Parakeet runs on Kubernetes through the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md). Enable the ASR NIM per [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default). GPU pinning and endpoint wiring are documented in [Parakeet ASR](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#audio-video-parakeet).
 
-After deploy, call the pipeline from Python:
+1. Deploy or upgrade with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) and enable Parakeet for your release (refer to [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default)). Follow [Deployment options](deployment-options.md).
 
-    Pin the Parakeet workload to the dedicated GPU with your Helm values or the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html) (for example, node selectors, resource limits, or device requests appropriate to your cluster).
+2. If the service will process audio or video files, set `service.installFfmpeg=true` in the Helm chart when your cluster allows runtime package installation; for air-gapped clusters, refer to [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image) for `service.image` overrides.
 
-1. Deploy or upgrade with the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) and enable Parakeet for your release (see [Optional Helm NIMs](prerequisites-support-matrix.md#optional-helm-nims-not-auto-wired-by-default)). Follow [Deployment options](deployment-options.md).
+3. After the services are running, interact with the pipeline from Python (refer to the [Python API guide](nemo-retriever-api-reference.md) for parameter details).
 
-2. If the service will process audio or video files, set `service.installFfmpeg=true` in the Helm chart when your cluster allows runtime package installation; for air-gapped clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment) and the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image) for `service.image` overrides.
-
-3. After the services are running, interact with the pipeline from Python.
-
-    - The `Ingestor` object initializes the ingestion process.
-    - The `files` method specifies the input files to process.
-    - The `extract_audio` method runs audio extraction.
+    - In `batch` mode, pass the in-cluster Parakeet gRPC endpoint through `ASRParams.audio_endpoints` (for example `audio:50051` from your Helm release). The retriever service auto-wires this endpoint; graph ingest does not.
 
     ```python
-    from nemo_retriever.params.models import ASRParams
+    from nemo_retriever import create_ingestor
+    from nemo_retriever.common.params.models import ASRParams
 
     ingestor = (
-        Ingestor()
+        create_ingestor(run_mode="batch")
         .files("./data/*.wav")
         .extract_audio(
-            asr_params=ASRParams(segment_audio=True),
+            asr_params=ASRParams(
+                audio_endpoints=("audio:50051", None),  # (grpc_endpoint, http_endpoint)
+                segment_audio=True,
+            ),
         )
     )
-)
-```
-
-To generate one extracted element for each sentence-like ASR segment, include `extract_audio_params={"segment_audio": True}` when calling `.extract(...)`. This option applies when audio extraction runs with a self-hosted Parakeet NIM or using build.nvidia.com hosted inference, but has no effect when using the local Hugging Face Parakeet model.
+    results = ingestor.ingest()
+    ```
 
     To generate one extracted element for each sentence-like ASR segment, pass `asr_params=ASRParams(segment_audio=True)` to `.extract_audio(...)`. This option applies when audio extraction runs with a self-hosted Parakeet NIM or using build.nvidia.com hosted inference, but has no effect when using the local Hugging Face Parakeet model.
 
-    For more Python examples, refer to [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+    For more runnable examples, refer to [Workflow: Ingest documents](workflow-document-ingestion.md).
 
 ## Parakeet with hosted inference (build.nvidia.com) { #parakeet-hosted-inference-build-nvidia }
 
@@ -102,18 +98,14 @@ Instead of running the pipeline locally, you can call Parakeet through [build.nv
 
 1. On the Parakeet model page on [build.nvidia.com](https://build.nvidia.com/), create or copy an API key and note the function ID for hosted access. You need both before making API calls.
 
-2. Run inference from Python with the hosted gRPC endpoint and credentials from that page (the example below uses the default hosted gRPC hostname; confirm values in the **Get API Key** flow for your deployment).
-
-    - The `Ingestor` object initializes the ingestion process.
-    - The `files` method specifies the input files to process.
-    - The `extract_audio` method runs audio extraction.
-    - The hosted gRPC endpoint, function ID, and API key are routed through `ASRParams`. Pass them via `asr_params=ASRParams(...)`; the ASR actor reads `audio_endpoints`, `function_id`, and `auth_token` from that object.
+2. Run inference from Python with the hosted gRPC endpoint and credentials from that page (the example below uses the default hosted gRPC hostname; confirm values in the **Get API Key** flow for your deployment). Pass hosted endpoint, function ID, and API key through `ASRParams` (`audio_endpoints`, `function_id`, `auth_token`).
 
     ```python
-    from nemo_retriever.params.models import ASRParams
+    from nemo_retriever import create_ingestor
+    from nemo_retriever.common.params.models import ASRParams
 
     ingestor = (
-        Ingestor()
+        create_ingestor(run_mode="batch")
         .files("./data/*.mp3")
         .extract_audio(
             asr_params=ASRParams(
@@ -124,21 +116,22 @@ Instead of running the pipeline locally, you can call Parakeet through [build.nv
             ),
         )
     )
+    results = ingestor.ingest()
     ```
 
     !!! tip
 
-        For more Python examples, refer to [Python Quick Start Guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/client/client_examples/examples/python_client_usage.ipynb).
+        For more runnable examples, refer to [Workflow: Ingest documents](workflow-document-ingestion.md).
 
 ## Video and frame OCR { #video-and-frame-ocr }
 
-For video assets, NeMo Retriever Library can combine audio or speech processing (see [Speech and audio extraction](#speech-and-audio-extraction) above) with visual text extraction when OCR applies to frames or derived images.
+For video assets, NeMo Retriever Library can combine audio or speech processing (refer to [Speech and audio extraction](#speech-and-audio-extraction) above) with visual text extraction when OCR applies to frames or derived images.
 
-For OCR-oriented extract methods on scanned or image-heavy content, see [OCR and scanned documents](multimodal-extraction.md#ocr-and-scanned-documents), [text and layout extraction](multimodal-extraction.md#text-and-layout-extraction), and [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) for advanced visual parsing.
+For OCR-oriented extract methods on scanned or image-heavy content, refer to [OCR and scanned documents](multimodal-extraction.md#ocr-and-scanned-documents), [text and layout extraction](multimodal-extraction.md#text-and-layout-extraction), and [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse) for advanced visual parsing.
 
-Container formats and early-access video types are listed under [supported file types and formats](multimodal-extraction.md#supported-file-types-and-formats) (see [What is NeMo Retriever Library?](overview.md) for the full list).
+Container formats and early-access video types are listed under [supported file types and formats](multimodal-extraction.md#supported-file-types-and-formats) (refer to [What is NeMo Retriever Library?](overview.md) for the full list).
 
-For end-to-end RAG stacks that include multimodal ingestion, see the [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) and related solution pages on [NVIDIA Build](https://build.nvidia.com/).
+For end-to-end RAG stacks that include multimodal ingestion, refer to the [NVIDIA AI Blueprints catalog](https://build.nvidia.com/explore/discover) and related solution pages on [NVIDIA Build](https://build.nvidia.com/).
 
 ## Related topics { #related-topics }
 

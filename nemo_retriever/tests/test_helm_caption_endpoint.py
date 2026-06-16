@@ -37,7 +37,7 @@ from typing import Sequence
 from unittest import SkipTest, TestCase, main
 
 
-# Must match nemo_retriever.caption.model_profiles.OMNI_REMOTE_MODEL_ID.
+# Must match nemo_retriever.common.modality.caption.model_profiles.OMNI_REMOTE_MODEL_ID.
 _OMNI_REMOTE_MODEL_ID = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 _OMNI_OPERATOR_SERVICE = "nemotron-3-nano-omni-30b-a3b-reasoning"
 _OMNI_INVOKE_PATH = "/v1/chat/completions"

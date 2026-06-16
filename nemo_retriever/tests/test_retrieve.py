@@ -14,7 +14,7 @@ import os
 
 from typer.testing import CliRunner
 
-import nemo_retriever.adapters.cli.sdk_workflow as sw
+import nemo_retriever.cli.evidence as sw
 
 _CONTRACT = os.path.join(
     os.path.dirname(__file__), "..", "..", "docs", "superpowers", "contracts", "retriever", "contract.schema.json"
@@ -86,12 +86,12 @@ def test_build_evidence_result_empty_thin_spot():
 # --- `query --format evidence`: CLI integration ----------------------------- #
 def test_query_evidence_graceful_vector_fallback(monkeypatch):
     """--hybrid tries hybrid, falls back to vector-only when the table has no FTS index."""
-    cli_main = importlib.import_module("nemo_retriever.adapters.cli.main")
+    cli_main = importlib.import_module("nemo_retriever.cli.main")
     calls = []
 
-    def fake_qd(question, **k):
-        calls.append(k.get("hybrid"))
-        if k.get("hybrid"):
+    def fake_qd(request):
+        calls.append(request.retrieval.hybrid)
+        if request.retrieval.hybrid:
             raise RuntimeError("no FTS index")
         return [_hit("p")]
 
@@ -107,8 +107,8 @@ def test_query_evidence_graceful_vector_fallback(monkeypatch):
 
 
 def test_query_evidence_cli_prints_json(monkeypatch) -> None:
-    cli_main = importlib.import_module("nemo_retriever.adapters.cli.main")
-    monkeypatch.setattr(cli_main, "query_documents", lambda question, **k: [])
+    cli_main = importlib.import_module("nemo_retriever.cli.main")
+    monkeypatch.setattr(cli_main, "query_documents", lambda request: [])
     result = CliRunner().invoke(
         cli_main.app, ["query", "q", "--format", "evidence", "--no-hybrid", "--table-name", "t"]
     )

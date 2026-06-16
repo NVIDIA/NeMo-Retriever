@@ -6,6 +6,6 @@
 
 from __future__ import annotations
 
-from nemo_retriever.graph.content_operators import ExplodeContentActor
+from nemo_retriever.operators.graph_ops.content_operators import ExplodeContentActor
 
 __all__ = ["ExplodeContentActor"]

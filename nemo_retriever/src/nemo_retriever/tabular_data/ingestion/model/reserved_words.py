@@ -21,6 +21,20 @@ class Labels:
     ]
 
 
+class TableTypes:
+    """Canonical ``table_type`` on Neo4j ``Table`` nodes (Postgres ``information_schema`` style)."""
+
+    VIEW = "view"
+    MATERIALIZED_VIEW = "materialized view"
+    BASE_TABLE = "base table"
+
+    LIST_OF_ALL = [
+        VIEW,
+        MATERIALIZED_VIEW,
+        BASE_TABLE,
+    ]
+
+
 class Edges:
     CONTAINS = "CONTAINS"
     FOREIGN_KEY = "FOREIGN_KEY"

@@ -74,7 +74,7 @@ def test_category_requires_media_deps_only_audio_and_video() -> None:
 def test_enforce_media_dependencies_passes_through_non_media() -> None:
     """Non-media uploads never invoke the FFmpeg probe."""
     with patch(
-        "nemo_retriever.audio.media_interface.is_media_available",
+        "nemo_retriever.common.modality.audio.media_interface.is_media_available",
         return_value=False,
     ) as is_avail:
         for category in (
@@ -90,7 +90,7 @@ def test_enforce_media_dependencies_passes_through_non_media() -> None:
 def test_enforce_media_dependencies_passes_when_ffmpeg_available() -> None:
     """Media uploads pass through when ffmpeg/ffprobe are installed."""
     with patch(
-        "nemo_retriever.audio.media_interface.is_media_available",
+        "nemo_retriever.common.modality.audio.media_interface.is_media_available",
         return_value=True,
     ):
         enforce_media_dependencies(_classification(FileCategory.AUDIO))
@@ -101,11 +101,11 @@ def test_enforce_media_dependencies_raises_501_with_actionable_detail() -> None:
     """Missing FFmpeg → HTTP 501 with Helm value + apt-get command."""
     with (
         patch(
-            "nemo_retriever.audio.media_interface.is_media_available",
+            "nemo_retriever.common.modality.audio.media_interface.is_media_available",
             return_value=False,
         ),
         patch(
-            "nemo_retriever.audio.media_interface.missing_media_dependencies",
+            "nemo_retriever.common.modality.audio.media_interface.missing_media_dependencies",
             return_value=["ffmpeg", "ffprobe"],
         ),
     ):
@@ -148,11 +148,11 @@ def app_with_stub_pool_no_ffmpeg(monkeypatch: pytest.MonkeyPatch):
         _stub_batch,
     )
     monkeypatch.setattr(
-        "nemo_retriever.audio.media_interface.is_media_available",
+        "nemo_retriever.common.modality.audio.media_interface.is_media_available",
         lambda: False,
     )
     monkeypatch.setattr(
-        "nemo_retriever.audio.media_interface.missing_media_dependencies",
+        "nemo_retriever.common.modality.audio.media_interface.missing_media_dependencies",
         lambda *_, **__: ["ffmpeg", "ffprobe"],
     )
 
@@ -225,11 +225,11 @@ def test_startup_logs_warning_when_ffmpeg_missing(caplog: pytest.LogCaptureFixtu
     """The lifespan startup logs a clear WARNING when FFmpeg is missing."""
     with (
         patch(
-            "nemo_retriever.audio.media_interface.is_media_available",
+            "nemo_retriever.common.modality.audio.media_interface.is_media_available",
             return_value=False,
         ),
         patch(
-            "nemo_retriever.audio.media_interface.missing_media_dependencies",
+            "nemo_retriever.common.modality.audio.media_interface.missing_media_dependencies",
             return_value=["ffmpeg", "ffprobe"],
         ),
     ):
@@ -247,7 +247,7 @@ def test_startup_logs_warning_when_ffmpeg_missing(caplog: pytest.LogCaptureFixtu
 def test_startup_logs_info_when_ffmpeg_present(caplog: pytest.LogCaptureFixture) -> None:
     """The lifespan startup confirms FFmpeg availability with an INFO log."""
     with patch(
-        "nemo_retriever.audio.media_interface.is_media_available",
+        "nemo_retriever.common.modality.audio.media_interface.is_media_available",
         return_value=True,
     ):
         with caplog.at_level(logging.INFO, logger="nemo_retriever.service.app"):

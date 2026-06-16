@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nemo_retriever.skill_eval.cli import _resolve_workdir_root
+from nemo_retriever.tools.skill_eval.cli import _resolve_workdir_root
 
 
 def test_resolve_workdir_root_makes_relative_path_absolute(monkeypatch, tmp_path) -> None:

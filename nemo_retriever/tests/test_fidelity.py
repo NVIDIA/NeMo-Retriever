@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from nemo_retriever.vdb.records import _client_record_from_graph_row, _derive_fidelity
+from nemo_retriever.common.vdb.records import _client_record_from_graph_row, _derive_fidelity
 
 
 def _fidelity_of(row: dict) -> object:
