@@ -49,7 +49,7 @@ def _tiny_table(uri: str, *, create_fts_index: bool = False) -> None:
 def test_retrieval_where_filters_rows() -> None:
     d = tempfile.mkdtemp()
     _tiny_table(d)
-    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False)
+    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False, hybrid=False)
     qv = [1.0, 0.0]
     unfiltered = op.retrieval([qv], top_k=10, table_path=d, table_name="t")
     assert len(unfiltered[0]) == 2
@@ -61,7 +61,7 @@ def test_retrieval_where_filters_rows() -> None:
 def test_retrieval_filter_alias() -> None:
     d = tempfile.mkdtemp()
     _tiny_table(d)
-    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False)
+    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False, hybrid=False)
     qv = [1.0, 0.0]
     filtered = op.retrieval([qv], top_k=10, table_path=d, table_name="t", _filter="text = 'beta'")
     assert len(filtered[0]) == 1
@@ -71,7 +71,7 @@ def test_retrieval_filter_alias() -> None:
 def test_retrieval_where_precedence_over_filter() -> None:
     d = tempfile.mkdtemp()
     _tiny_table(d)
-    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False)
+    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False, hybrid=False)
     qv = [1.0, 0.0]
     filtered = op.retrieval(
         [qv],
@@ -88,7 +88,7 @@ def test_retrieval_where_precedence_over_filter() -> None:
 def test_retrieval_metadata_like_predicate() -> None:
     d = tempfile.mkdtemp()
     _tiny_table(d)
-    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False)
+    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False, hybrid=False)
     qv = [1.0, 0.0]
     pred = '%"doc_id": "x"%'
     filtered = op.retrieval([qv], top_k=10, table_path=d, table_name="t", where=f"metadata LIKE '{pred}'")

@@ -206,6 +206,16 @@ OverwriteOption = Annotated[
         ),
     ),
 ]
+HybridOption = Annotated[
+    bool,
+    typer.Option(
+        "--hybrid/--no-hybrid",
+        help=(
+            "Also build a full-text (BM25) index over ingested text so query --hybrid can fuse "
+            "lexical and vector retrieval. Disabled by default."
+        ),
+    ),
+]
 RayAddressOption = Annotated[
     str | None, typer.Option("--ray-address", help="Batch mode only. Ray address for batch ingest.")
 ]

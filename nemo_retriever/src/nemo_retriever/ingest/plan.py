@@ -203,6 +203,8 @@ class IngestStorageOptions:
     lancedb_uri: str = "lancedb"
     table_name: str = "nemo-retriever"
     overwrite: bool = True
+    # Also build the LanceDB FTS/BM25 index so `query --hybrid` can fuse lexical + vector.
+    hybrid: bool = False
 
 
 @dataclass(frozen=True)
@@ -641,13 +643,15 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     )
     extract_params = ExtractParams(**extract_kwargs)
     embed_params = EmbedParams(**embed_kwargs) if embed_kwargs else None
-    vdb_params = VdbUploadParams(
-        vdb_kwargs={
-            "uri": storage.lancedb_uri,
-            "table_name": storage.table_name,
-            "overwrite": bool(storage.overwrite),
-        }
-    )
+    vdb_upload_kwargs = {
+        "uri": storage.lancedb_uri,
+        "table_name": storage.table_name,
+        "overwrite": bool(storage.overwrite),
+    }
+    # Keep vector-only ingest kwargs unchanged unless hybrid indexing is explicitly requested.
+    if storage.hybrid:
+        vdb_upload_kwargs["hybrid"] = True
+    vdb_params = VdbUploadParams(vdb_kwargs=vdb_upload_kwargs)
     caption_params = build_caption_params(
         enabled=request.caption.enabled,
         caption_invoke_url=request.caption.caption_invoke_url,

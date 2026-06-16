@@ -14,6 +14,9 @@ class QueryRetrievalOptions:
     candidate_k: int | None = None
     page_dedup: bool = False
     content_types: str | Sequence[str] | None = None
+    # Fused vector + full-text (BM25) retrieval. Opt-in (default off) preserves the
+    # legacy vector-only path; requires the LanceDB table to carry an FTS index.
+    hybrid: bool = False
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,7 @@ class QueryRerankOptions:
     reranker_invoke_url: str | None = None
     reranker_model_name: str | None = None
     reranker_backend: str | None = None
+    reranker_api_key: str | None = None
 
 
 @dataclass(frozen=True)

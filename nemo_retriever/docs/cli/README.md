@@ -114,6 +114,21 @@ retriever ingest ./data/multimodal_test.pdf \
 build.nvidia.com endpoints. `NGC_API_KEY` is used separately when pulling or
 running self-hosted NIM containers.
 
+For NVIDIA inference hub rerank models that expose the Cohere-style rerank
+route, pass the full `/v1/rerank` URL and the model name shown in the hub
+snippet:
+
+```bash
+export NGC_INFERENCE_API_KEY=...
+
+retriever query "What is in this document?" \
+  --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
+  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
+  --reranker-invoke-url https://inference-api.nvidia.com/v1/rerank \
+  --reranker-model-name nvidia/nvidia/llama-3.2-nv-rerankqa-1b-v2 \
+  --reranker-api-key-env NGC_INFERENCE_API_KEY
+```
+
 ### Query result controls
 
 `retriever query` returns compact JSON hits with `source`, `page_number`, and

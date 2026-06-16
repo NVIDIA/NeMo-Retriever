@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "retriever/query-result",
+  "title": "retriever query --format evidence result (engine, contract 0.1.0)",
+  "description": "What `retriever query <question> --format evidence` emits and the skill reasons over (query's default output is the legacy `--format hits` flat list).",
+  "type": "object",
+  "required": ["evidence", "coverage"],
+  "properties": {
+    "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence_item" } },
+    "coverage": { "$ref": "#/$defs/coverage" }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "evidence_item": {
+      "type": "object",
+      "required": ["text", "source", "locator", "modality", "fidelity", "score", "citation"],
+      "properties": {
+        "text": { "type": "string" },
+        "source": { "type": "string", "description": "source basename (.pdf stripped)" },
+        "locator": { "type": "object", "description": "{ kind: page|segment|timestamp|bbox, value }" },
+        "modality": { "type": "string", "description": "text | table | chart | image | audio | video_frame" },
+        "fidelity": { "type": "string", "enum": ["verbatim", "ocr", "transcribed", "vlm_caption"] },
+        "score": { "type": "number", "description": "relevance/distance; hit ORDER is authoritative" },
+        "citation": { "type": "string", "description": "source + locator, ready to cite" }
+      },
+      "additionalProperties": true
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["strategies_used", "n_docs_seen", "thin_spots"],
+      "properties": {
+        "strategies_used": { "type": "array" },
+        "n_docs_seen": { "type": "integer" },
+        "thin_spots": { "type": "array" }
+      },
+      "additionalProperties": true
+    }
+  }
+}
