@@ -29,7 +29,6 @@ from nemo_retriever.adapters.cli.sdk_workflow import (
     build_evidence_result,
     ingest_documents,
     query_documents,
-    verify_claim,
 )
 from nemo_retriever.adapters.cli._hit_format import _query_cli_hit
 from nemo_retriever.version import get_version_info
@@ -812,77 +811,9 @@ def query_command(
         result = build_evidence_result(hits, strategies)
         typer.echo(json.dumps(result, indent=2, sort_keys=True, default=str))
     else:
-        typer.echo(json.dumps([_query_cli_hit(hit, max_text_chars) for hit in hits], indent=2, sort_keys=True, default=str))
-
-
-@app.command("verify")
-def verify_command(
-    claim: str = typer.Argument(..., help="Claim to find independent evidence for."),
-    source: str = typer.Option(
-        ..., "--source", help="Document the claim is attributed to (basename, with or without .pdf)."
-    ),
-    page: int | None = typer.Option(None, "--page", help="Restrict to this 1-indexed page/segment."),
-    against: str = typer.Option(
-        "text,table", "--against", help="Comma-separated modalities treated as independent evidence."
-    ),
-    lancedb_uri: str = typer.Option(DEFAULT_LANCEDB_URI, "--lancedb-uri", help="LanceDB database URI."),
-    table_name: str = typer.Option(DEFAULT_TABLE_NAME, "--table-name", help="LanceDB table name."),
-) -> None:
-    """Fetch independent text/table evidence for a claim's location (you judge agreement)."""
-    try:
-        result = verify_claim(
-            claim,
-            source,
-            page=page,
-            lancedb_uri=lancedb_uri,
-            table_name=table_name,
-            against=against,
+        typer.echo(
+            json.dumps([_query_cli_hit(hit, max_text_chars) for hit in hits], indent=2, sort_keys=True, default=str)
         )
-    except _ROOT_CLI_ERRORS as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(1) from exc
-    typer.echo(json.dumps(result, indent=2, sort_keys=True, default=str))
-
-
-@app.command("serve-models")
-def serve_models_command(
-    embed_model_name: str = typer.Option(
-        "nvidia/llama-nemotron-embed-1b-v2", "--embed-model-name", help="Embedding model to serve warm."
-    ),
-    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind the vLLM server."),
-    embed_port: int = typer.Option(8081, "--embed-port", help="Port for the embeddings server."),
-    ready_timeout: float = typer.Option(600.0, "--ready-timeout", help="Seconds to wait for readiness."),
-) -> None:
-    """Serve a WARM embedder so `retriever query` avoids the per-query cold-load.
-
-    Prints an `export EMBED_INVOKE_URL=...` line; query/verify/MCP honor that env var.
-    A warm query must also pass `--embed-model-name` matching the served model.
-    """
-    import signal as _signal
-
-    from nemo_retriever.adapters.cli import serve_models as sm
-
-    argv = sm.build_vllm_argv(embed_model_name, host, embed_port)
-    proc = sm.spawn(argv)  # own process group, so the whole vLLM tree can be reaped
-
-    def _on_sigterm(_signum, _frame):
-        # Default SIGTERM would skip cleanup and orphan the vLLM children.
-        raise SystemExit(0)
-
-    _signal.signal(_signal.SIGTERM, _on_sigterm)
-    try:
-        if not sm.wait_ready(host, embed_port, timeout=ready_timeout):
-            typer.echo("Error: embedder server did not become ready in time.", err=True)
-            raise typer.Exit(1)
-        typer.echo(f"Embedder warm at {sm.embeddings_url(host, embed_port)}")
-        typer.echo(sm.export_line(host, embed_port))
-        typer.echo(sm.usage_hint(embed_model_name))
-        typer.echo("Leave this running; Ctrl-C to stop.")
-        proc.wait()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        sm.terminate_group(proc)
 
 
 @app.callback()

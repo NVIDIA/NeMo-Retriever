@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Single-sourced query-hit shaping, shared by the CLI and the MCP surface."""
+"""Single-sourced query-hit shaping for the CLI."""
 
 from __future__ import annotations
 

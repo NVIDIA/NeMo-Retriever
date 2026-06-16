@@ -7,8 +7,7 @@ Exits 0 if all checks pass, 1 otherwise. Always runs a LIVE ingest+query probe.
 The skill's one primitive is `retriever query --format evidence --hybrid` ->
 {evidence, coverage}; this doctor gates on THAT invocation and result shape. `query`'s
 DEFAULTS are unchanged (legacy `hits` output, vector-only) — `evidence`/`hybrid` are
-opt-in flags the skill passes. `verify`/`mcp` still ship but the skill does not depend
-on them (CONTRACT.md legacy block), so neither is gated here.
+opt-in flags the skill passes, so neither is gated here.
 """
 import json
 import os
