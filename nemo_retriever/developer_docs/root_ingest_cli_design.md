@@ -60,15 +60,18 @@ families:
 - graph ingest: local and batch runtime modes for `GraphIngestor`
 - service ingest: a client for a remote `ServiceIngestor` service
 
-A single command with `--run-mode` has to show many options that only some modes
-can honor. That forces either a denylist or late validation after Typer already
-accepted the flags. Subcommands make invalid states unrepresentable:
+A single command with `--run-mode` has to mix graph-owned options and
+service-owned options in one help surface. Subcommands keep the ownership split
+visible:
 
-- `retriever ingest local ...` cannot accept Ray tuning.
-- `retriever ingest batch ...` can accept Ray tuning.
-- `retriever ingest service ...` cannot accept LanceDB target flags, local NIM
-  endpoint URLs, local embed backend flags, Ray tuning, `--ocr-lang`, or local
-  audio/video controls.
+- `retriever ingest local ...` and `retriever ingest batch ...` share the graph
+  ingest callback and typed graph request.
+- `retriever ingest batch ...` maps to graph `run_mode="batch"`.
+- `retriever ingest local ...` maps to graph `run_mode="inprocess"` and rejects
+  batch-only Ray tuning before request construction.
+- `retriever ingest service ...` has a separate parser surface and cannot accept
+  LanceDB target flags, local NIM endpoint URLs, local embed backend flags, Ray
+  tuning, `--ocr-lang`, or local audio/video controls.
 
 This is separation of concerns, not loss of parity. The CLI maps to
 `run_mode="inprocess"` or `run_mode="batch"` at the graph boundary. The Python
@@ -95,11 +98,10 @@ Canonical ingest files:
 | `ingest/execution.py` | Executes resolved graph ingest plans through `GraphIngestor`. |
 | `ingest/service.py` | Service ingest request dataclasses, service request resolution, service execution. |
 
-The Typer layer is adapter-only. Typer callbacks are private Python
-functions (`_local_graph_ingest_command`, `_batch_graph_ingest_command`,
-and `_service_command`) because the public surface is the shell command, not the
-callback symbol. Programmatic use
-should go through the ingest plan/service APIs or `create_ingestor(...)`.
+The Typer layer is adapter-only. Typer callbacks are private Python functions
+(`_graph_ingest_command` and `_service_command`) because the public surface is
+the shell command, not the callback symbol. Programmatic use should go through
+the ingest plan/service APIs or `create_ingestor(...)`.
 
 ## Request Flow
 
@@ -180,15 +182,18 @@ The few name differences are semantic, not accidental. For example,
 
 ## Batch-Only Fields
 
-Batch-only fields are attached only inside the batch graph command:
+Local and batch share one graph Typer callback so the duplicated public graph
+contract stays in one signature. Batch-only fields are declared on that shared
+callback, labeled as batch-only in help, and rejected for local/default mode
+before building `IngestPlanRequest`:
 
 - Ray runtime: `--ray-address`, `--ray-log-to-driver`
 - extraction tuning: PDF split/extract, page elements, OCR, table structure,
   Nemotron Parse workers, batch sizes, CPUs, GPUs
 - embedding tuning: embed workers, batch size, CPUs, GPUs
 
-Local ingest never exposes those options. Service ingest never receives those
-dataclasses.
+Service ingest never receives those dataclasses and does not expose those
+options.
 
 ## Service Mode
 
@@ -225,13 +230,14 @@ commands.
 For an option that already exists in the graph ingest plan:
 
 1. Add or reuse a Typer alias in `cli/ingest/options.py`.
-2. Add the parameter to `_local_graph_ingest_command`,
-   `_batch_graph_ingest_command`, or both.
+2. Add the parameter to `_graph_ingest_command`.
 3. If the CLI parameter name matches the request field, no mapping list is
    needed; the dataclass-field matcher picks it up from `ingest.plan`. If the
    CLI name differs, keep the semantic mapping explicit in `graph_commands.py`.
-4. Add or update a focused root CLI test that asserts the typed request field.
-5. Update CLI docs if the option is user-facing.
+4. If the option is batch-only, add it to `_BATCH_ONLY_FLAGS` so local/default
+   mode rejects it before request construction.
+5. Add or update a focused root CLI test that asserts the typed request field.
+6. Update CLI docs if the option is user-facing.
 
 For an option that does not exist in the graph ingest plan:
 
