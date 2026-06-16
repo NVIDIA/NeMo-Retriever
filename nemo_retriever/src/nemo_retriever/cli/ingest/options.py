@@ -23,7 +23,10 @@ DocumentsArgument = Annotated[
 ]
 ProfileOption = Annotated[
     IngestProfileValue,
-    typer.Option("--profile", help="Ingest profile: auto or fast-text."),
+    typer.Option(
+        "--profile",
+        help="Ingest profile: auto or fast-text. Use fast-text for large text-only PDF fallback.",
+    ),
 ]
 LanceDbUriOption = Annotated[
     str,

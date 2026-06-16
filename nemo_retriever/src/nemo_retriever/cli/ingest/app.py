@@ -12,7 +12,7 @@ from nemo_retriever.cli.ingest.graph_commands import _graph_ingest_command
 from nemo_retriever.cli.ingest.service import _service_command
 
 _DEFAULT_COMMAND = "local"
-_GROUP_OPTIONS = {"--help", "-h", "--install-completion", "--show-completion"}
+_GROUP_OPTIONS = {"--help", "-h"}
 
 
 class DefaultLocalIngestGroup(TyperGroup):
@@ -24,7 +24,10 @@ class DefaultLocalIngestGroup(TyperGroup):
 
 app = typer.Typer(
     cls=DefaultLocalIngestGroup,
-    help="Ingest documents into Retriever indexes. Omitting a mode runs local ingest.",
+    help=(
+        "Ingest documents into Retriever indexes. Omitting a mode runs local ingest. "
+        "Use local, batch, or service --help for mode-specific options."
+    ),
     no_args_is_help=True,
 )
 

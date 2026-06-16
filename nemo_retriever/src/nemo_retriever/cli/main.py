@@ -109,8 +109,16 @@ def query_command(
         "--content-types",
         help="Comma-separated content types to keep, such as text,table; untyped hits are excluded.",
     ),
-    lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI."),
-    table_name: str = typer.Option("nemo-retriever", "--table-name", help="LanceDB table name."),
+    lancedb_uri: str = typer.Option(
+        "lancedb",
+        "--lancedb-uri",
+        help="LanceDB database URI to read; match the value used for retriever ingest --lancedb-uri.",
+    ),
+    table_name: str = typer.Option(
+        "nemo-retriever",
+        "--table-name",
+        help="LanceDB table name to read; match the value used for retriever ingest --table-name.",
+    ),
     embed_invoke_url: str | None = typer.Option(None, "--embed-invoke-url", help="Embedding NIM endpoint URL."),
     embed_model_name: str | None = typer.Option(
         None,

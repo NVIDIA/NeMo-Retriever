@@ -3,24 +3,16 @@
 Use this when `./lancedb/nemo-retriever.lance` does not exist yet.
 
 `retriever ingest ./pdfs/` runs the full local ingest workflow: text extraction,
-page-element detection, OCR where needed, embedding, and LanceDB insert. On very
-large corpora the OCR and page-element stages dominate runtime, so always build
-an index but choose the recipe by corpus size.
+page-element detection, OCR where needed, embedding, and LanceDB insert. Always
+use the default root ingest path unless the user explicitly asks for a different
+mode or profile.
 
 ```bash
-TOTAL_PAGES=$(<RETRIEVER_VENV>/bin/python -c "import pypdfium2, glob; print(sum(len(pypdfium2.PdfDocument(p)) for p in glob.glob('./pdfs/*.pdf')))" 2>/dev/null || echo 0)
-echo "total_pages=$TOTAL_PAGES"
-if [ "$TOTAL_PAGES" -le 50000 ]; then
-  <RETRIEVER_VENV>/bin/retriever ingest ./pdfs/ \
-    --embed-model-name nvidia/llama-nemotron-embed-1b-v2
-else
-  <RETRIEVER_VENV>/bin/retriever ingest ./pdfs/ \
-    --profile fast-text \
-    --embed-model-name nvidia/llama-nemotron-embed-1b-v2
-fi
+<RETRIEVER_VENV>/bin/retriever ingest ./pdfs/ \
+  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-Both branches write the same default LanceDB table:
+The command writes the default LanceDB table:
 `lancedb/nemo-retriever`. That is the table `retriever query` reads by default.
 Keep `--lancedb-uri` and `--table-name` aligned if you override either one.
 
@@ -32,14 +24,6 @@ on error. On success you should see one summary line similar to:
 ```text
 Ingested N file(s) -> M row(s) in LanceDB lancedb/nemo-retriever.
 ```
-
-The `fast-text` branch skips expensive PDF recall stages and focuses on pdfium
-text extraction plus embedding. It is strictly better to have a text-only index
-than no index at all: the per-query pdfium text-extract fallback re-extracts a
-full PDF per query, which is both slow and expensive.
-
-Use `retriever ingest batch ./pdfs/ --profile fast-text` only when Ray/batch
-throughput is explicitly desired and the environment can support it.
 
 Do not pre-OCR, do not pre-chunk, and do not write Python wrappers. The CLI
 handles extraction, optional page-element detection/OCR, embedding, and LanceDB

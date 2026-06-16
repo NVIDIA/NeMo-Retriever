@@ -4,32 +4,29 @@ End-to-end ingestion of supported documents and media into a Retriever index.
 The command runs extraction, optional caption/chunk/dedup behavior, embedding,
 and vector-store insert in one workflow.
 
-If flags below look stale, re-check:
+If flags below look stale, re-check the main help:
 
 ```bash
 <RETRIEVER_VENV>/bin/retriever ingest --help
-<RETRIEVER_VENV>/bin/retriever ingest local --help
-<RETRIEVER_VENV>/bin/retriever ingest batch --help
-<RETRIEVER_VENV>/bin/retriever ingest service --help
 ```
 
-## Modes
+The main help lists the available modes. Use `retriever ingest local --help`,
+`retriever ingest batch --help`, or `retriever ingest service --help` only when
+you need mode-specific options.
 
-Use root ingest as the public CLI. Do not use `--run-mode` on this command.
-Mode is command structure:
+## Default usage
 
-| Command | Use When | Storage |
-|---|---|---|
-| `retriever ingest DOCUMENTS...` | Default local/in-process ingest. Best for setup turns, CI, and small/medium corpora. | local LanceDB |
-| `retriever ingest local DOCUMENTS...` | Same as the default, but explicit. | local LanceDB |
-| `retriever ingest batch DOCUMENTS...` | Ray/batch ingest and batch tuning. | local LanceDB |
-| `retriever ingest service DOCUMENTS...` | Send ingest work to a running retriever service. | service-owned vector DB |
+Use root ingest as the skill default:
 
-Python `create_ingestor(run_mode=...)` still exists for programmatic use. The
-root CLI intentionally uses subcommands so each mode shows only the options it
-can honor.
+```bash
+<RETRIEVER_VENV>/bin/retriever ingest DOCUMENTS...
+```
 
-## Canonical Invocations
+Do not use `--run-mode` with root ingest. Omitting a mode runs local/in-process
+ingest and writes to LanceDB. Use an explicit mode only when the user asks for
+one or when the CLI help makes that mode necessary.
+
+## Canonical invocations
 
 Ingest a single file into the default table (`lancedb/nemo-retriever.lance`):
 
@@ -47,15 +44,6 @@ Large text-only PDF fallback:
 
 ```bash
 <RETRIEVER_VENV>/bin/retriever ingest data/pdfs/ --profile fast-text
-```
-
-Batch ingest with tuning:
-
-```bash
-<RETRIEVER_VENV>/bin/retriever ingest batch data/pdfs/ \
-  --profile fast-text \
-  --pdf-extract-workers 4 \
-  --embed-workers 2
 ```
 
 Optional local VLM captioning:
@@ -83,14 +71,6 @@ Write to a custom DB / table:
   --table-name my-corpus
 ```
 
-Service ingest:
-
-```bash
-<RETRIEVER_VENV>/bin/retriever ingest service data/corpus/ \
-  --service-url http://localhost:7670 \
-  --service-concurrency 8
-```
-
 ## Inputs
 
 - Positional `DOCUMENTS...` is required and repeatable.
@@ -101,25 +81,20 @@ Service ingest:
 
 ## Outputs
 
-Local and batch ingest write a LanceDB dataset at
+Default ingest writes a LanceDB dataset at
 `<lancedb-uri>/<table-name>.lance`. Default:
 `./lancedb/nemo-retriever.lance`.
 
 Each row includes extracted text or captions, source metadata, page information
 when available, and an embedding vector.
 
-Service ingest writes to the vector database configured by the remote service.
-The client does not expose `--lancedb-uri` or `--table-name` in service mode.
-
-## Key Flags
-
-Graph ingest (`retriever ingest`, `local`, `batch`):
+## Key flags
 
 | Flag | Default | Notes |
 |---|---|---|
 | `--lancedb-uri` | `lancedb` | Path or URI of the LanceDB database. |
-| `--table-name` | `nemo-retriever` | LanceDB table to write into. Must match `retriever query` on read. |
-| `--profile` | `auto` | `fast-text` disables expensive PDF recall stages for a text-only fallback. |
+| `--table-name` | `nemo-retriever` | LanceDB table to write into. |
+| `--profile` | `auto` | `fast-text` disables expensive PDF extraction stages for a text-only fallback. |
 | `--overwrite/--append` | overwrite | Use `--append` only when duplicates are acceptable. |
 | `--caption` | `false` | Optional VLM captioning stage after extraction. |
 | `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, local/default caption behavior is used. |
@@ -128,24 +103,7 @@ Graph ingest (`retriever ingest`, `local`, `batch`):
 | `--text-chunk` | `false` | Enable token chunking during extraction. |
 | `--dry-run` | `false` | Print the resolved request/plan JSON without creating an ingestor. |
 
-Batch-only flags:
-
-| Flag Family | Examples |
-|---|---|
-| Ray runtime | `--ray-address`, `--ray-log-to-driver` |
-| PDF/extract tuning | `--pdf-split-batch-size`, `--pdf-extract-workers`, `--ocr-workers` |
-| actor resources | `--page-elements-gpus-per-actor`, `--ocr-cpus-per-actor` |
-| embedding tuning | `--embed-workers`, `--embed-batch-size` |
-
-Service-only flags:
-
-| Flag | Default | Notes |
-|---|---|---|
-| `--service-url` | `http://localhost:7670` | Retriever service base URL. |
-| `--service-concurrency` | `8` | Maximum concurrent document uploads. |
-| `--service-api-token` | env fallback | Also reads `NEMO_RETRIEVER_API_TOKEN`. |
-
-## Pipeline Shape
+## Pipeline shape
 
 The root ingest entrypoint expands inputs, builds a manifest, resolves the
 selected profile into typed ingest options, and calls the canonical ingest
@@ -155,7 +113,7 @@ audio, and video branches without relying on `retriever pipeline run`.
 Use `retriever pipeline run` only for legacy or development behavior such as
 intermediate Parquet artifacts, pipeline reports, eval, recall, or harness work.
 
-## Common Failure Modes
+## Common failure modes
 
 - **`Clamping num_partitions from 16 to 7`** - informational, not an error.
   LanceDB IVF index needs `num_partitions < row_count`; this happens on very
@@ -171,5 +129,3 @@ intermediate Parquet artifacts, pipeline reports, eval, recall, or harness work.
 ## Related
 
 - [[query]] - search the table this command writes.
-- `retriever vector-store --help` - utilities for inspecting or moving LanceDB
-  tables.
