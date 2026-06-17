@@ -490,7 +490,7 @@ and **ocr** (no `graphic_elements` operator NIM in this chart). For image
 captioning, set `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true` — see
 [Image captioning (Omni 30B)](#image-captioning-omni-30b) for the
 chart-side wiring and
-[Image captioning — NIM and hardware](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-nim-hardware)
+[Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605)
 for the product matrix.
 
 #### Image captioning (Omni 30B) { #image-captioning-omni-30b }
@@ -1156,7 +1156,7 @@ nimOperator:
 - For **offline captioning**, enable
   `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning` and point the pipeline
   caption endpoint at the in-cluster NIM URL (see
-  [Image captioning — NIM and hardware](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-nim-hardware)).
+  [Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605)).
 
 ### Mirroring pattern
 
