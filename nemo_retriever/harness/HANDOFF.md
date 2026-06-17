@@ -70,7 +70,7 @@ Prefer **`summary_metrics`** for dashboards (small set: pages, ingest timing, re
 - `recall_required: true` without recall metrics → harness failure (`missing_recall_metrics`).
 - Relative `query_csv` resolves next to the YAML file, then repo root.
 - Dataset paths under `/datasets/retrieval-eval/...` may resolve to `/raid/$USER/...` when the former is missing.
-- Store is not configured through the harness. Use `retriever pipeline run --store-images-uri <uri>` for local or object-storage image assets.
+- Store is not configured through the harness. Use `retriever ingest --store-images-uri <uri>` for normal local or object-storage image assets; use `retriever pipeline run --store-images-uri <uri>` only for pipeline-specific compatibility workflows.
 
 ## Backlog (maintainers / agents)
 

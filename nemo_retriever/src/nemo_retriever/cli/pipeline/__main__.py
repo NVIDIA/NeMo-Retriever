@@ -58,6 +58,7 @@ from typing import Any, Optional, TextIO
 import pandas as pd
 import typer
 
+from nemo_retriever.ingest import service as ingest_service
 from nemo_retriever.ingest.execution import execute_ingest_plan
 from nemo_retriever.ingest.plan import (
     IngestCaptionOptions,
@@ -121,7 +122,7 @@ _PANEL_SERVICE = "Service Mode"
 # bound to local execution (Ray actors, GPU placement), or never wired
 # through the service ingestor (VDB upload is handled server-side; audio
 # and video extract paths still run locally). Flags wired into the
-# service ``PipelineSpec`` by ``_build_service_ingestor`` — extract knobs, embed
+# service ``PipelineSpec`` by ``ingest.service.build_service_ingestor`` — extract knobs, embed
 # granularity / modality, dedup threshold, caption behaviour, text chunk
 # config, ``--store-images-uri`` — are intentionally NOT in this list and
 # pass through to ``ServiceIngestor``; the server's
@@ -191,16 +192,6 @@ _SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
 
 
 def _reject_service_incompatible_flags(ctx: typer.Context) -> None:
-    """Raise ``typer.BadParameter`` if any ingest-only flag was user-supplied.
-
-    Only flags whose click parameter source is ``COMMANDLINE`` or
-    ``ENVIRONMENT`` are treated as user-supplied — flags carrying their
-    declared default do not trigger the error.
-    """
-    # Compare by enum *name*, not identity: depending on the environment,
-    # typer may return a source from its vendored ``typer._click.core`` enum
-    # rather than ``click.core.ParameterSource``, and the two enums are
-    # distinct objects whose members never compare equal via ``in``.
     user_set: list[str] = []
     for cli_flag, param_name in _SERVICE_INCOMPATIBLE_FLAGS:
         source = ctx.get_parameter_source(param_name)
@@ -319,7 +310,7 @@ def _format_vdb_target(vdb_op: str, vdb_kwargs: Optional[dict[str, Any]]) -> str
 def _resolve_file_patterns(input_path: Path, input_type: str) -> list[str]:
     """Resolve input paths to glob patterns, recursing into subdirectories.
 
-    Uses :func:`~nemo_retriever.utils.input_files.resolve_input_patterns` (``**``
+    Uses :func:`~nemo_retriever.common.input_files.resolve_input_patterns` (``**``
     segments) and keeps only patterns that match at least one file, matching the
     historical ``graph_pipeline`` / main-branch behavior.
     """
@@ -496,69 +487,6 @@ def _build_embed_params(
     )
 
 
-def _service_extraction_mode(input_type: str) -> str:
-    """Map CLI ``--input-type`` to :class:`PipelineSpec` ``extraction_mode``."""
-    return {
-        "pdf": "pdf",
-        "doc": "pdf",
-        "txt": "text",
-        "html": "html",
-        "audio": "audio",
-        "video": "auto",
-    }.get(input_type, "auto")
-
-
-def _service_text_chunk_dict(text_chunk_params: TextChunkParams) -> dict[str, Any]:
-    """Serialize text-chunk knobs allowed by the service split_config policy."""
-    from nemo_retriever.common.policy import _DEFAULT_ALLOWED_SPLIT_KEYS
-
-    raw = text_chunk_params.model_dump(exclude_none=True)
-    return {key: value for key, value in raw.items() if key in _DEFAULT_ALLOWED_SPLIT_KEYS}
-
-
-def _attach_service_extract_stage(
-    ingestor: Any,
-    *,
-    input_type: str,
-    extract_params: ExtractParams,
-    enable_text_chunk: bool,
-    text_chunk_params: TextChunkParams,
-) -> Any:
-    """Wire the extraction stage for the remote service ingestor."""
-    chunk_dict = _service_text_chunk_dict(text_chunk_params) if enable_text_chunk else None
-    if input_type == "image":
-        return ingestor.extract_image_files(
-            extract_params,
-            split_config={"image": chunk_dict} if chunk_dict else None,
-        )
-    return ingestor.extract(
-        extract_params,
-        split_config=_split_config_for_input_type(input_type, chunk_dict),
-        extraction_mode=_service_extraction_mode(input_type),
-    )
-
-
-def _split_config_for_input_type(
-    input_type: str,
-    chunk_dict: Optional[dict[str, Any]],
-) -> Optional[dict[str, Any]]:
-    if chunk_dict is None:
-        return None
-    if input_type in {"pdf", "doc"}:
-        return {"pdf": chunk_dict}
-    if input_type == "txt":
-        return {"text": chunk_dict}
-    if input_type == "html":
-        return {"html": chunk_dict}
-    if input_type == "image":
-        return {"image": chunk_dict}
-    if input_type == "audio":
-        return {"audio": chunk_dict}
-    if input_type == "video":
-        return {"video": chunk_dict, "audio": chunk_dict}
-    return None
-
-
 def _parse_vdb_kwargs_json(vdb_kwargs_json: Optional[str]) -> dict[str, Any]:
     """Parse opaque nv-ingest-client VDB constructor kwargs from CLI JSON."""
     if vdb_kwargs_json:
@@ -572,82 +500,12 @@ def _parse_vdb_kwargs_json(vdb_kwargs_json: Optional[str]) -> dict[str, Any]:
     return {}
 
 
-def _build_service_ingestor(
-    *,
-    file_patterns: list[str],
-    input_type: str,
-    extract_params: ExtractParams,
-    embed_params: EmbedParams,
-    text_chunk_params: TextChunkParams,
-    enable_text_chunk: bool,
-    enable_dedup: bool,
-    enable_caption: bool,
-    dedup_iou_threshold: float,
-    caption_invoke_url: Optional[str],
-    caption_context_text_max_chars: int,
-    caption_temperature: float,
-    caption_top_p: Optional[float],
-    caption_max_tokens: int,
-    store_images_uri: Optional[str],
-    service_url: str = "http://localhost:7670",
-    service_concurrency: int = 8,
-    service_api_token: Optional[str] = None,
-) -> Any:
-    """Construct a remote-service ingestor with service-compatible stages."""
-    from nemo_retriever.service.service_ingestor import ServiceIngestor
-
-    resolved_files: list[str] = []
-    for pattern in file_patterns:
-        resolved_files.extend(sorted(_glob.glob(pattern, recursive=True)))
-    if not resolved_files:
-        raise typer.BadParameter("No files matched the input patterns for service mode.")
-
-    ingestor = ServiceIngestor(
-        base_url=service_url,
-        max_concurrency=service_concurrency,
-        api_token=service_api_token,
-    ).files(resolved_files)
-
-    ingestor = _attach_service_extract_stage(
-        ingestor,
-        input_type=input_type,
-        extract_params=extract_params,
-        enable_text_chunk=enable_text_chunk,
-        text_chunk_params=text_chunk_params,
-    )
-
-    if enable_dedup:
-        ingestor = ingestor.dedup(DedupParams(iou_threshold=dedup_iou_threshold))
-
-    if enable_caption:
-        if caption_invoke_url is not None:
-            logger.warning(
-                "Ignoring --caption-invoke-url in service mode; the retriever service "
-                "uses its operator-configured caption endpoint."
-            )
-        ingestor = ingestor.caption(
-            CaptionParams(
-                context_text_max_chars=caption_context_text_max_chars,
-                temperature=caption_temperature,
-                top_p=caption_top_p,
-                max_tokens=caption_max_tokens,
-            )
-        )
-
-    ingestor = ingestor.embed(embed_params)
-
-    if store_images_uri is not None:
-        ingestor = ingestor.store(StoreParams(storage_uri=store_images_uri))
-
-    return ingestor
-
-
 def _collect_results(run_mode: str, result: Any) -> tuple[list[dict[str, Any]], Any, float, int]:
     """Materialize the graph result into a list of records + DataFrame.
 
     Ingest may return a ``pandas.DataFrame`` (in-process and batch graph paths,
     where batch materializes via ``ds.to_pandas()`` in the executor) or a
-    :class:`~nemo_retriever.service_ingestor.ServiceIngestResult` (service mode);
+    :class:`~nemo_retriever.service.service_ingestor.ServiceIngestResult` (service mode);
     normalize to a consistent ``(records, DataFrame, secs, units)`` tuple.
 
     Returns ``(records, result_df, ray_download_secs, num_input_units)``.
@@ -1427,7 +1285,7 @@ def run(
             pipeline_vdb_upload = VdbUploadParams(vdb_op=resolved_vdb_op, vdb_kwargs=resolved_vdb_kwargs)
 
         logger.info("Building graph pipeline (run_mode=%s) for %s ...", run_mode, input_path)
-        ingestor = None
+        service_request = None
         ingest_plan = None
         local_execute_kwargs: dict[str, Any] = {}
         if run_mode == "service":
@@ -1481,25 +1339,30 @@ def run(
                 embed_gpus_per_actor=embed_gpus_per_actor,
                 local_ingest_embed_backend=local_ingest_embed_backend,
             )
-            ingestor = _build_service_ingestor(
-                file_patterns=file_patterns,
+            service_request = ingest_service.ServiceIngestRequest(
+                documents=file_patterns,
                 input_type=input_type,
                 extract_params=extract_params,
                 embed_params=embed_params,
                 text_chunk_params=text_chunk_params,
                 enable_text_chunk=enable_text_chunk,
-                enable_dedup=enable_dedup,
-                enable_caption=enable_caption,
-                dedup_iou_threshold=dedup_iou_threshold,
-                caption_invoke_url=caption_invoke_url,
-                caption_context_text_max_chars=caption_context_text_max_chars,
-                caption_temperature=caption_temperature,
-                caption_top_p=caption_top_p,
-                caption_max_tokens=caption_max_tokens,
-                store_images_uri=store_images_uri,
-                service_url=service_url,
-                service_concurrency=service_concurrency,
-                service_api_token=service_api_token,
+                dedup_params=DedupParams(iou_threshold=dedup_iou_threshold) if enable_dedup else None,
+                caption_params=(
+                    CaptionParams(
+                        context_text_max_chars=caption_context_text_max_chars,
+                        temperature=caption_temperature,
+                        top_p=caption_top_p,
+                        max_tokens=caption_max_tokens,
+                    )
+                    if enable_caption
+                    else None
+                ),
+                store_params=StoreParams(storage_uri=store_images_uri) if store_images_uri is not None else None,
+                connection=ingest_service.ServiceIngestConnectionOptions(
+                    service_url=service_url,
+                    service_concurrency=service_concurrency,
+                    service_api_token=service_api_token,
+                ),
             )
         else:
             if store_actors and store_images_uri is None:
@@ -1638,7 +1501,9 @@ def run(
 
         def _run_ingest() -> Any:
             if run_mode == "service":
-                return ingestor.ingest()
+                if service_request is None:
+                    raise RuntimeError("service_request must be resolved before execution in service mode")
+                return ingest_service.execute_service_ingest_request(service_request).result
             if ingest_plan is None:
                 raise RuntimeError("ingest_plan must be resolved before execution in non-service mode")
             return execute_ingest_plan(ingest_plan, **local_execute_kwargs).result
