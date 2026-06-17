@@ -49,7 +49,7 @@ NeMo Retriever Library detects tables as structured page elements, processes the
 
 Charts and infographic regions are classified with other page layout elements (tables, text blocks, titles) and processed through layout detection and OCR. `extract_charts` and `extract_infographics` are enabled by default. Outputs use the same metadata schema as other extracted objects.
 
-Chart-labeled PDF regions are **not** routed through the Omni caption stage; they remain on the layout-and-OCR path. For scope and validation guidance, see [Image captioning](prerequisites-support-matrix.md#image-captioning-2605).
+Chart-labeled PDF regions are **not** routed through the Omni caption stage; they remain on the layout-and-OCR path. For scope and validation guidance, see [Image captioning](prerequisites-support-matrix.md#image-captioning-nim-hardware).
 
 For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning) and set `caption_infographics=True` when you need VLM captions on infographic regions.
 
@@ -81,7 +81,7 @@ Image captioning generates natural-language descriptions for unstructured image 
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
-- [Image captioning](prerequisites-support-matrix.md#image-captioning-2605)
+- [Image captioning](prerequisites-support-matrix.md#image-captioning-nim-hardware)
 
 ## Metadata and content schema { #metadata-and-content-schema }
 

@@ -103,9 +103,11 @@ These NIM microservices are **optional** for the default extraction pipeline. Th
 | `nemotron_3_nano_omni_30b_a3b_reasoning` | [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) | Supported image captioning for 26.05 when you enable the caption stage |
 | `audio` | [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) | [Audio and video](audio-video.md) transcription |
 
-### Image captioning (26.05) { #image-captioning-2605 }
+### Image captioning — NIM and hardware { #image-captioning-nim-hardware }
 
-For 26.05, use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above.
+<span id="image-captioning-2605"></span>
+
+Use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above.
 
 !!! important "PDF chart regions are not captioned by Omni"
 

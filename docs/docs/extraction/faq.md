@@ -25,7 +25,7 @@ For chart-labeled PDF regions and other caption scope limits, see [Are PDF chart
 
 ## Are PDF chart or figure regions captioned when Omni is enabled?
 
-No. Chart-labeled PDF regions are not routed through Omni captioning. See [Image captioning](prerequisites-support-matrix.md#image-captioning-2605) for scope, validation, and what the caption stage covers.
+No. Chart-labeled PDF regions are not routed through Omni captioning. See [Image captioning](prerequisites-support-matrix.md#image-captioning-nim-hardware) for scope, validation, and what the caption stage covers.
 
 ## When should I consider advanced visual parsing?
 
