@@ -31,6 +31,7 @@ class QueryRerankOptions:
     reranker_invoke_url: str | None = None
     reranker_model_name: str | None = None
     reranker_backend: str | None = None
+    reranker_api_key: str | None = None
 
 
 @dataclass(frozen=True)

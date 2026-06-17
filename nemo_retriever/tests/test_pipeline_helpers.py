@@ -11,10 +11,10 @@ import pytest
 import typer
 
 import nemo_retriever.cli.pipeline as pipeline_pkg
+from nemo_retriever.ingest.service import ServiceIngestRequest, build_service_ingestor
 from nemo_retriever.common.params import EmbedParams, ExtractParams, TextChunkParams
 from nemo_retriever.cli.pipeline.__main__ import (
     _build_embed_params,
-    _build_service_ingestor,
     _collect_results,
     _count_input_units,
     _count_uploadable_vdb_records,
@@ -62,22 +62,15 @@ def test_build_service_ingestor_wires_extract_embed_and_chunking(tmp_path: Path)
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF-1.4")
 
-    ingestor = _build_service_ingestor(
-        file_patterns=[str(pdf)],
-        input_type="pdf",
-        extract_params=ExtractParams(method="ocr", extract_text=False, dpi=300),
-        embed_params=EmbedParams(embed_granularity="page"),
-        text_chunk_params=TextChunkParams(max_tokens=64, overlap_tokens=8),
-        enable_text_chunk=True,
-        enable_dedup=False,
-        enable_caption=False,
-        dedup_iou_threshold=0.8,
-        caption_invoke_url=None,
-        caption_context_text_max_chars=0,
-        caption_temperature=1.0,
-        caption_top_p=None,
-        caption_max_tokens=1024,
-        store_images_uri=None,
+    ingestor = build_service_ingestor(
+        ServiceIngestRequest(
+            documents=[str(pdf)],
+            input_type="pdf",
+            extract_params=ExtractParams(method="ocr", extract_text=False, dpi=300),
+            embed_params=EmbedParams(embed_granularity="page"),
+            text_chunk_params=TextChunkParams(max_tokens=64, overlap_tokens=8),
+            enable_text_chunk=True,
+        )
     )
 
     assert isinstance(ingestor, ServiceIngestor)

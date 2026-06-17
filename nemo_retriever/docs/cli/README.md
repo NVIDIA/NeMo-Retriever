@@ -1,81 +1,55 @@
-# Retriever CLI — replacement examples for the legacy ingestion-service CLI
+# Retriever CLI
 
-This folder contains `retriever` command-line examples that deliver the same
-end-user outcomes as the legacy **ingestion-service** CLI examples that used to
-live under `docs/`, `api/`, `client/`, and `deploy/` in older repository layouts.
+This page describes the public `retriever` command-line workflow for document
+ingest and retrieval.
 
-The historical CLI documentation is **not removed** from the ecosystem — these files sit
-alongside it as a new-CLI counterpart you can link to or migrate to.
+For product-facing examples, prefer these commands:
 
-## Supported vs development / experimental subcommands
+- `retriever ingest` - ingest supported documents and media into a Retriever index.
+- `retriever query` - query a local LanceDB table written by ingest.
 
-For product use and published examples, treat only these top-level subcommands as
-the **supported public path**:
+`retriever pipeline run` remains available as a development and compatibility
+command for legacy pipeline workflows, evaluation, intermediate artifacts, and
+pipeline-specific debugging. It is not the preferred public ingest interface.
 
-- **`retriever ingest`** — ingest documents into LanceDB
-- **`retriever query`** — query an existing LanceDB table
+## Public ingest shape
 
-`retriever pipeline` remains available as a **development / compatibility**
-wrapper, including `retriever pipeline run`, while ingestion behavior migrates
-onto the same implementation used by `retriever ingest`. Prefer `retriever
-ingest` and `retriever query` for user-facing workflows.
+`retriever ingest` defaults to local, in-process ingest:
 
-Any other top-level `retriever` subcommand — including but not limited to
-`pipeline`, `pdf`, `html`, `txt`, `audio`, `chart`, `benchmark`, `harness`,
-`eval`, `recall`, `service`, `local`, `compare`, `image`, and `skill-eval` —
-is **development and experimental**. These commands may change without public
-compatibility guarantees.
+```bash
+retriever ingest DOCUMENTS...
+```
 
-## Key shape difference
+Explicit modes are also available:
 
-The legacy **ingestion-service** CLI was a **single command that talks to a running REST service on
-`localhost:7670`** and composes work via repeated `--task extract|split|caption|embed|dedup|filter|udf`.
+```bash
+retriever ingest local DOCUMENTS...
+retriever ingest batch DOCUMENTS...
+retriever ingest service DOCUMENTS...
+```
 
-`retriever` is a **multi-subcommand Typer app**. Public ingest/query examples
-should map to `retriever ingest INPUT_PATH` followed by `retriever query ...`.
-`retriever pipeline run INPUT_PATH` is still present for development workflows
-that need pipeline-only evaluation, runtime summaries, Parquet export, or
-service-mode compatibility.
+The root ingest CLI uses subcommands instead of a `--run-mode` flag. Choose
+the command that matches where ingest runs and where results are stored.
 
-| Old intent | New subcommand |
-|------------|----------------|
-| Extract + embed + store a batch of documents | `retriever ingest` |
-| Run an ad-hoc PDF extraction stage | `retriever pdf stage` |
-| Run an HTML / text / audio / chart stage | `retriever html run`, `retriever txt run`, `retriever audio extract`, `retriever chart run` |
-| Upload stage output to LanceDB | `retriever ingest` |
-| Query LanceDB + compute recall@k | `retriever recall vdb-recall` |
-| Run a QA evaluation sweep | `retriever eval run` |
-| Serve / submit to the online REST API | `retriever online serve` / `retriever online stream-pdf` |
-| Benchmark stage throughput | `retriever benchmark {split,extract,audio-extract,page-elements,ocr,all}` |
-| Benchmark orchestration | `retriever harness {run,sweep,nightly,summary,compare}` |
+| Command | What It Does | Writes To | Use When |
+|---|---|---|---|
+| `retriever ingest ...` | Local in-process ingest | local LanceDB | Default local ingest and CI/small corpus runs. |
+| `retriever ingest local ...` | Local in-process ingest | local LanceDB | Same as the default, but explicit. |
+| `retriever ingest batch ...` | Ray-backed batch ingest | local LanceDB | Larger or batch-tuned runs. |
+| `retriever ingest service ...` | Sends documents to a Retriever service | service-configured storage | Remote service ingest. |
 
-Rows that use subcommands other than `ingest` or `query` are
-[development and experimental](#supported-vs-development--experimental-subcommands).
-
-## Contents
-
-| Topic | Location | Replaces example(s) in |
-|-------|----------|------------------------|
-| Quick start | [below](#quick-start) | Legacy service quickstart; **Helm** + [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) |
-| CLI reference | [below](#cli-reference) | Prior `cli-reference` pages under `docs/docs/extraction/` |
-| Client usage walk-through | [below](#client-usage-walk-through) | `client/client_examples/examples/cli_client_usage.ipynb` |
-| PDF pre-splitting | [API guide](../../../docs/docs/extraction/nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest); [Large PDF page batches](#large-pdf-page-batches) below | Prior extraction docs |
-| Benchmarking | [`benchmarking.md`](benchmarking.md) | `docs/docs/extraction/benchmarking.md` and `nemo_retriever/harness/HANDOFF.md` |
+This separation keeps invalid flag combinations out of the parser. For example,
+service ingest does not expose LanceDB target flags, Ray tuning, local endpoint
+configuration, local embed backend selection, or local media controls.
 
 <!-- --8<-- [start:quickstart] -->
 
 > Use `retriever ingest` and `retriever query` for product-facing workflows.
-> `retriever pipeline` is development / compatibility only; see
-> [Supported vs development / experimental subcommands](#supported-vs-development--experimental-subcommands).
+> `retriever pipeline run` is development / compatibility only.
 
 ## Quick start
 
-For deployment of NeMo Retriever / **NIM** containers, use
-[nemo_retriever/helm](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm)
-and the [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/)
-Helm install guides.
-
-### Ingest a PDF
+### Ingest a PDF locally
 
 ```bash
 retriever ingest ./data/multimodal_test.pdf \
@@ -85,19 +59,45 @@ retriever ingest ./data/multimodal_test.pdf \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-Then query the LanceDB table:
+Then query the default LanceDB table:
 
 ```bash
 retriever query "What is in this document?" \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-Development-only pipeline features such as `--save-intermediate`, runtime
-summaries, and post-ingest evaluation remain on `retriever pipeline run` while
-the public path is restricted to ingest/query.
+By default, local ingest writes to `lancedb/nemo-retriever` and `retriever query`
+reads from the same table.
 
-Route stages to self-hosted or hosted NIM endpoints by passing only the URLs you
-want to override:
+The `retriever query` examples below apply to local and batch ingest output
+written to LanceDB. Service ingest sends documents to a remote service; querying
+service-owned storage is handled by that service deployment.
+
+### Ingest a larger corpus with batch mode
+
+```bash
+retriever ingest batch ./data/pdf_corpus \
+  --profile fast-text \
+  --pdf-extract-workers 4 \
+  --embed-workers 2
+```
+
+Batch mode exposes Ray runtime and batch tuning flags such as `--ray-address`,
+`--pdf-extract-workers`, `--ocr-workers`, and `--embed-workers`.
+
+### Ingest through a Retriever service
+
+```bash
+retriever ingest service ./data/pdf_corpus \
+  --service-url http://localhost:7670 \
+  --service-concurrency 8
+```
+
+Use `--service-api-token` or `NEMO_RETRIEVER_API_TOKEN` when the service requires
+a bearer token. Service ingest does not expose `--lancedb-uri`; the service owns
+its vector database configuration.
+
+### Route ingest to hosted or self-hosted NIM endpoints
 
 ```bash
 export NVIDIA_API_KEY=nvapi-...
@@ -108,31 +108,34 @@ retriever ingest ./data/multimodal_test.pdf \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+```
+
+`NVIDIA_API_KEY` is required only when those URLs point at hosted
+build.nvidia.com endpoints. `NGC_API_KEY` is used separately when pulling or
+running self-hosted NIM containers.
+
+For NVIDIA inference hub rerank models that expose the Cohere-style rerank
+route, pass the full `/v1/rerank` URL and the model name shown in the hub
+snippet:
+
+```bash
+export NGC_INFERENCE_API_KEY=...
 
 retriever query "What is in this document?" \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
-  --reranker-invoke-url https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking
+  --reranker-invoke-url https://inference-api.nvidia.com/v1/rerank \
+  --reranker-model-name nvidia/nvidia/llama-3.2-nv-rerankqa-1b-v2 \
+  --reranker-api-key-env NGC_INFERENCE_API_KEY
 ```
 
 ### Query result controls
 
-`retriever query` returns compact JSON hits with `source`, `page_number`, and `text`.
-By default it retrieves and returns `--top-k` rows. Use these controls when you
-need a wider candidate pool or a narrower result shape:
+`retriever query` returns compact JSON hits with `source`, `page_number`, and
+`text`. Use `--candidate-k`, `--page-dedup`, and `--content-types` to shape the
+result set after vector retrieval:
 
 ```bash
-# Retrieve 30 candidates, then return the best 10.
-retriever query "where is the warranty limitation discussed?" \
-  --candidate-k 30
-
-# Keep only the first hit from each document page.
-retriever query "which pages discuss operating costs?" \
-  --top-k 5 \
-  --candidate-k 30 \
-  --page-dedup
-
-# Search a wider pool, then keep only table rows.
 retriever query "annual revenue by region" \
   --top-k 5 \
   --candidate-k 40 \
@@ -153,313 +156,137 @@ When querying a table ingested with an explicit embedding model, pass the same
 captioned image rows emitted by ingest. Hits with missing or unknown content
 types are excluded while `--content-types` is active.
 
-`NVIDIA_API_KEY` is required only when those URLs point at hosted
-build.nvidia.com endpoints. `NGC_API_KEY` is used separately when pulling or
-running self-hosted NIM containers.
-
-### What you get
-
-- Extracted text, tables, and charts as rows in LanceDB at `./lancedb` (default
-  table name `nemo-retriever`).
-- Compact JSON retrieval hits from `retriever query`, including source, page,
-  and text fields.
-- Extracted image assets when `retriever ingest` is run with
-  `--store-images-uri`.
-- Pipeline-only development artifacts such as extraction Parquet, runtime
-  summaries, and evaluation reports remain available through
-  `retriever pipeline run`.
-- Progress and stage logs on stderr.
-
-### Inspect the results
-
-```bash
-ls ./lancedb
-```
-
-```python
-import lancedb
-
-db = lancedb.connect("./lancedb")
-tbl = db.open_table("nemo-retriever")
-print(tbl.to_pandas().head())
-```
-
-Or query via the Retriever Python client (`nemo_retriever/README.md`):
-
-```python
-from nemo_retriever.retriever import Retriever
-
-retriever = Retriever(
-    vdb_kwargs={"uri": "lancedb", "table_name": "nemo-retriever"},
-    embed_kwargs={
-        "model_name": "nvidia/llama-nemotron-embed-1b-v2",
-        "embed_model_name": "nvidia/llama-nemotron-embed-1b-v2",
-    },
-    top_k=5,
-)
-hits = retriever.query(
-    "Given their activities, which animal is responsible for the typos?"
-)
-```
-
-### Larger datasets
-
-- Omitting `--run-mode` defaults to `inprocess` (single-process pandas; no Ray startup).
-- Ray Data scale-out: `retriever ingest ./data/pdf_corpus --run-mode batch`.
-- Tune throughput with `--pdf-extract-workers`, `--pdf-extract-batch-size`,
-  `--page-elements-workers`, `--page-elements-batch-size`, `--ocr-workers`,
-  `--ocr-batch-size`, `--embed-workers`, and `--embed-batch-size`.
-
 <!-- --8<-- [end:quickstart] -->
 
-## CLI reference
+## Common ingest options
 
-`retriever` is the Typer app installed with the `nemo-retriever` package. Subcommand
-support policy: [Supported vs development / experimental subcommands](#supported-vs-development--experimental-subcommands).
+### Local and batch ingest
 
-Document ingestion for users is `retriever ingest INPUT_PATH`, followed by
-`retriever query` for retrieval. `retriever pipeline run INPUT_PATH` is retained
-as a development / compatibility wrapper for pipeline-only behavior.
+These options apply to `retriever ingest`, `retriever ingest local`, and
+`retriever ingest batch` unless otherwise noted.
+
+| Option | Default | Notes |
+|---|---|---|
+| `DOCUMENTS...` | required | Files, directories, or shell globs. Supported file families are detected automatically. |
+| `--profile` | `auto` | `auto` is normal manifest-routed ingest. `fast-text` is a PDF/document text-only profile for faster fallback ingest. |
+| `--lancedb-uri` | `lancedb` | LanceDB database URI. |
+| `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. |
+| `--overwrite/--append` | overwrite | Overwrite the table by default; use `--append` to add rows. |
+| `--method` | planner default | PDF extraction method such as `pdfium` or `nemotron_parse`. |
+| `--extract-text`, `--extract-tables`, `--extract-charts` | planner default | Enable or disable extraction families. |
+| `--ocr-version` | planner default | OCR engine version for local extraction. |
+| `--ocr-lang` | planner default | OCR v2 language selector for local extraction. |
+| `--caption` | off | Add a captioning stage. |
+| `--dedup` | off | Add image deduplication before captioning and embedding. |
+| `--text-chunk` | off | Enable token chunking during extraction. |
+| `--store-images-uri` | unset | Store extracted images at a local path or fsspec-compatible URI. |
+| `--dry-run` | off | Print the resolved ingest plan without creating an ingestor. |
+| `--quiet/--no-quiet` | quiet | Suppress verbose progress output by default. |
+
+Batch-only options include `--ray-address`, `--ray-log-to-driver`,
+`--pdf-split-batch-size`, `--pdf-extract-workers`, `--ocr-workers`,
+`--table-structure-workers`, `--nemotron-parse-workers`, `--embed-workers`, and
+related batch-size / CPU / GPU tuning flags.
+
+### Service ingest
+
+`retriever ingest service` exposes only service-supported request controls.
+It does not expose LanceDB target flags, Ray tuning, local endpoint URLs/API
+keys, local embed backend selection, `--ocr-lang`, or local audio/video media
+controls.
+
+| Option | Default | Notes |
+|---|---|---|
+| `DOCUMENTS...` | required | Files, directories, or shell globs sent to the service client. |
+| `--service-url` | `http://localhost:7670` | Retriever service base URL. |
+| `--service-concurrency` | `8` | Maximum concurrent document uploads. |
+| `--service-api-token` | env fallback | Bearer token; also reads `NEMO_RETRIEVER_API_TOKEN`. |
+| `--profile` | `auto` | Same profile names as local and batch ingest where supported. |
+| `--caption`, `--dedup`, `--text-chunk` | off | Service-supported ingest controls. |
+| `--store-images-uri` | unset | Service-accessible image storage URI. |
+| `--dry-run` | off | Print the resolved service ingest request. Tokens are redacted. |
+
+## Examples
+
+### Custom LanceDB location
 
 ```bash
-retriever --version
-retriever --help
-retriever ingest --help
-retriever query --help
+retriever ingest ./data/multimodal_test.pdf \
+  --lancedb-uri ./my-lancedb \
+  --table-name my-corpus
 ```
 
-### Extract a PDF with defaults
-
 ```bash
-retriever ingest ./data/test.pdf
+retriever query "What is in this document?" \
+  --lancedb-uri ./my-lancedb \
+  --table-name my-corpus
 ```
 
-Results go to LanceDB (`./lancedb`, table `nemo-retriever` by default). Use
-`retriever pipeline run --save-intermediate` only when you need development
-Parquet artifacts.
-
-### Text chunking and PDF page batches
-
-Splitting is intrinsic to the pipeline. Control text chunks with `--text-chunk`. For
-PDF pre-splitting and `--pdf-split-batch-size`, see
-[PDF pre-splitting](../../../docs/docs/extraction/nemo-retriever-api-reference.md#pdf-pre-splitting-for-parallel-ingest)
-and [Large PDF page batches](#large-pdf-page-batches):
+### Fast text-only PDF fallback
 
 ```bash
-retriever pipeline run ./data/test.pdf \
-  --input-type pdf \
-  --no-extract-tables --no-extract-charts \
-  --text-chunk --text-chunk-max-tokens 512 --text-chunk-overlap-tokens 64 \
-  --save-intermediate ./processed_docs
+retriever ingest ./data/pdf_corpus \
+  --profile fast-text \
+  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-There is no split-only mode without extraction; narrow flags to text extraction if you
-only need chunk boundaries.
-
-### Nemotron OCR v2 language mode { #nemotron-ocr-v2-language-mode }
-
-The default OCR engine for **local** extraction (Hugging Face weights, no remote
-`--ocr-invoke-url`) is **Nemotron OCR v2**, which runs in **multilingual** mode
-by default (`multi`).
-
-| Flag | Values | Notes |
-|------|--------|-------|
-| `--ocr-lang` | `multi` (default), `english` | v2 only — English-only selector |
-| `--ocr-version` | `v2` (default), `v1` | `v1` is the legacy English-only engine |
+### OCR language mode
 
 ```bash
-retriever pipeline run ./data/scanned.pdf \
-  --input-type pdf \
-  --method pdfium_hybrid \
+retriever ingest ./data/scanned.pdf \
+  --ocr-version v2 \
   --ocr-lang english
-
-retriever ingest ./data/scanned.pdf --ocr-version v1
 ```
 
-Set the equivalent `ocr_lang` and `ocr_version` fields on `ExtractParams` (or the
-ingest API) in Python.
+For mixed-script documents, use `--ocr-lang multi` where supported by the local
+OCR engine.
 
-Remote OCR NIM endpoints choose their own model and language behavior. Local
-`--ocr-lang` and `--ocr-version` are not sent on remote requests. For hosted
-examples until OCR v2 is published on build.nvidia.com, keep
-`--ocr-invoke-url` pointed at `nemotron-ocr-v1` (refer to [Quick start](#quick-start)).
-
-### PDF and Office documents
-
-Run once per input type (`--input-type doc` matches `*.docx` and `*.pptx`):
+### Text chunking
 
 ```bash
-retriever pipeline run ./data/test.pdf \
-  --input-type pdf \
-  --method pdfium \
-  --text-chunk --text-chunk-max-tokens 512 \
-  --save-intermediate ./processed_docs
-
-retriever pipeline run ./data/test.docx \
-  --input-type doc \
-  --text-chunk --text-chunk-max-tokens 512 \
-  --save-intermediate ./processed_docs
+retriever ingest ./data/test.pdf \
+  --text-chunk \
+  --text-chunk-max-tokens 512 \
+  --text-chunk-overlap-tokens 64
 ```
 
-Mixed PDF and docx in one invocation is not supported.
-
-### Large PDF page batches
+### Captioning and image storage
 
 ```bash
-retriever pipeline run ./data/test.pdf \
-  --input-type pdf \
-  --method pdfium \
-  --extract-text --no-extract-tables --no-extract-charts \
-  --pdf-split-batch-size 64 \
-  --save-intermediate ./processed_docs
-```
-
-### Caption images
-
-```bash
-retriever pipeline run ./data/test.pdf \
-  --input-type pdf \
-  --method pdfium \
+retriever ingest ./data/test.pdf \
   --caption \
-  --caption-model-name nvidia/nemotron-3-nano-omni-30b-a3b-reasoning \
   --caption-invoke-url https://integrate.api.nvidia.com/v1/chat/completions \
   --api-key "${NVIDIA_API_KEY}" \
-  --store-images-uri ./processed_docs/images \
-  --save-intermediate ./processed_docs
+  --store-images-uri ./processed_docs/images
 ```
 
-Custom caption prompts and `reasoning` flags are not exposed on the CLI — use
-`nemo_retriever.ingestor.Ingestor.caption(...)` in Python.
+## Results and diagnostics
 
-### Directory of documents
+Local and batch ingest report the number of input files and LanceDB rows written:
 
-```bash
-retriever pipeline run ./data/pdf_corpus \
-  --input-type pdf \
-  --method pdfium \
-  --save-intermediate ./processed_docs
+```text
+Ingested 20 file(s) -> 1884 row(s) in LanceDB lancedb/nemo-retriever.
 ```
 
-There is no `dataset.json` loader; pass a directory or glob of files.
+Service ingest reports the row count returned by the service result when
+available:
 
-### Store images to object storage
-
-```bash
-retriever pipeline run ./data/test.pdf \
-  --input-type pdf \
-  --method pdfium \
-  --store-images-uri s3://my-bucket/images \
-  --save-intermediate ./processed_docs
+```text
+Ingested 20 file(s) -> 1940 row(s) through retriever service http://localhost:7670.
 ```
 
-Image URIs are written to row metadata. Use `--store-actors` to tune object-storage
-write concurrency.
+Use `--dry-run` on any ingest mode to inspect the resolved request without
+creating an ingestor or contacting the service.
 
-### Where results live
+## Development / compatibility command
 
-- **LanceDB** — `--lancedb-uri lancedb` (default), table `nv-ingest`. Query via
-  `retriever recall vdb-recall …` or `nemo_retriever.retriever.Retriever`.
-- **Parquet** — `--save-intermediate <dir>` writes `<dir>/extraction.parquet`.
-- **Images** — `--store-images-uri <uri>` (local path or fsspec URI). Storage follows
-  `--embed-granularity` (page vs element images).
+Use `retriever pipeline run` only when you need pipeline-specific behavior that
+is intentionally not part of the first-class ingest/query workflow, such as:
 
-### Errors and exit codes
+- `--save-intermediate` Parquet artifacts.
+- runtime metrics and pipeline reports.
+- eval, recall, harness, or BEIR/QA workflows.
+- legacy compatibility while callers migrate to `retriever ingest` and
+  `retriever query`.
 
-`retriever pipeline run` exits **0** on success and **non-zero** on validation or
-pipeline failures. Use `--debug` or `--log-file <path>` for diagnostics.
-
-## Client usage walk-through
-
-Counterpart to `client/client_examples/examples/cli_client_usage.ipynb`. Covers help, a
-single-PDF run, a batch directory run, and inspecting results. Drop these cells into a
-notebook (e.g. `retriever_client_usage.ipynb`) if you prefer.
-
-### Help
-
-```bash
-retriever --help
-retriever pipeline run --help
-```
-
-Top-level `--help` lists the subcommand tree; `pipeline run --help` shows the
-ingest-specific flags used below.
-
-### Run a single PDF
-
-```bash
-retriever pipeline run "${SAMPLE_PDF0}" \
-  --input-type pdf \
-  --method pdfium \
-  --extract-text --extract-tables --extract-charts \
-  --dedup --dedup-iou-threshold 0.45 \
-  --store-images-uri "${OUTPUT_DIRECTORY_SINGLE}/images" \
-  --save-intermediate "${OUTPUT_DIRECTORY_SINGLE}"
-```
-
-- Table/structure detectors are chosen automatically; there is no CLI flag to pick a
-  specific table-extraction backend.
-- `--dedup` with `--dedup-iou-threshold` removes duplicate image elements.
-- There is no image scale/aspect-ratio filter in the `retriever` CLI today.
-- `--store-images-uri` persists image assets at the configured embed granularity.
-
-### Run a batch of PDFs
-
-```bash
-# $PDF_DIR is a directory of PDFs.
-retriever pipeline run "${PDF_DIR}" \
-  --input-type pdf \
-  --method pdfium \
-  --extract-text --extract-tables --extract-charts \
-  --dedup --dedup-iou-threshold 0.45 \
-  --store-images-uri "${OUTPUT_DIRECTORY_BATCH}/images" \
-  --save-intermediate "${OUTPUT_DIRECTORY_BATCH}"
-```
-
-- Pass a directory or glob; there is no built-in `dataset.json` loader.
-- Tune throughput with `--pdf-split-batch-size`, `--pdf-extract-batch-size`, etc.
-
-### Inspect results
-
-```python
-import pyarrow.parquet as pq
-import lancedb
-
-df = pq.read_table(f"{OUTPUT_DIRECTORY_BATCH}/extraction.parquet").to_pandas()
-print(df[["source_id", "text", "content_type"]].head())
-
-db = lancedb.connect("./lancedb")
-tbl = db.open_table("nv-ingest")
-print(tbl.to_pandas().head())
-```
-
-## Gaps with no retriever-CLI equivalent (kept out of this folder)
-
-The following legacy **ingestion-service** CLI examples are **not** migrated here because the
-new CLI does not yet expose an equivalent — continue to use the **ingestion-service** CLI
-for these cases:
-
-- `--task 'udf:{…}'` — user-defined functions ([NeMo Retriever Graph](../../src/nemo_retriever/graph/README.md#nemo-retriever-graph)). `retriever` does not expose UDFs.
-- `--task 'filter:{content_type:"image", min_size:…, min_aspect_ratio:…, max_aspect_ratio:…}'`.
-  The image scale/aspect-ratio filter stage is not reproduced in the new CLI.
-- Bare service submission (legacy CLI `--doc foo.pdf` with no extract tasks
-  and full content-type metadata returned by the service). `retriever online submit`
-  is currently a stub — only `retriever online stream-pdf` is implemented.
-- `gen_dataset.py` dataset creation with enumeration and sampling.
-- `--collect_profiling_traces --zipkin_host --zipkin_port`. Use
-  `--runtime-metrics-dir` / `--runtime-metrics-prefix` instead for a different
-  metrics flavor.
-
-## Conventions used in the examples
-
-- Input paths assume you invoke `retriever` from the `nemo_retriever/`
-  directory (or point at absolute paths).
-- `--save-intermediate <dir>` writes the extraction DataFrame as
-  `<dir>/extraction.parquet` for inspection. LanceDB output goes to `--lancedb-uri`
-  (defaults to `./lancedb`).
-- `--store-images-uri <uri>` stores extracted image assets to a local path or
-  an fsspec URI (e.g. `s3://bucket/prefix`). Page granularity stores page
-  images; element granularity stores element images.
-- `--run-mode inprocess` (the default) runs single-process pandas without Ray; ideal for single-file demos and CI.
-- `--run-mode batch` uses Ray Data for throughput on larger corpora.
-
-Run `retriever pipeline run --help` for the authoritative flag list.
+Run `retriever pipeline run --help` for the compatibility command flag list.
