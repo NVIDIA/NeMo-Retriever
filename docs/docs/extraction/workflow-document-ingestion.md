@@ -2,7 +2,7 @@
 
 This page covers extracting content from documents and turning that content into a searchable vector collection in one place so you can scroll and search (for example with Ctrl+F) instead of jumping across multiple short workflow stubs.
 
-## Ingest and extract
+## Ingest and extract { #ingest-and-extract }
 
 Document ingestion is the step where NeMo Retriever Library reads your files (PDFs, Office documents, images, and other [supported formats](multimodal-extraction.md#supported-file-types-and-formats)), runs extraction and optional enrichment, and returns structured content you can embed and index.
 
@@ -16,7 +16,7 @@ Pipeline concepts and stage overview appear in [Key concepts](concepts.md). Defa
 
 `create_ingestor(...)` returns a `GraphIngestor`, which chains `.extract()`, `.embed()`, and `.vdb_upload()` into one graph. The Python example below stops after `.embed()` so you can inspect chunks first; append `.vdb_upload(vdb_op="lancedb", vdb_kwargs={...})` before `.ingest()` to write directly to LanceDB (refer to [Vector databases](vdbs.md)). For directory-scale corpus ingest, the `graph_pipeline` CLI below is the canonical path used in evaluation workflows.
 
-## Choose how you call the library
+## Choose how you call the library { #choose-how-you-call-the-library }
 
 The following examples match the [NeMo Retriever Library README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/README.md). They assume a checkout of the [NeMo Retriever](https://github.com/NVIDIA/NeMo-Retriever) repository and the `batch` run mode with local GPU inference unless you configure remote NIMs.
 

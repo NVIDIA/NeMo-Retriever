@@ -2,7 +2,19 @@
 
 Before you begin using [NeMo Retriever Library](overview.md), confirm your software stack, deployment hardware, and—if you use them—advanced features (audio and video, Nemotron Parse, VLM image captioning, reranking) against the guidance in this page.
 
-## Software Requirements
+## On this page { #on-this-page }
+
+- [Software Requirements](#software-requirements)
+- [Hardware Requirements](#hardware-requirements)
+- [Core and Advanced Pipeline Features](#core-and-advanced-pipeline-features)
+    - [Default Helm NIMs](#default-helm-nims)
+    - [OCR artifacts (Helm vs local Hugging Face)](#nemotron-ocr-v2-language-mode)
+    - [Optional Helm NIMs (not auto-wired)](#optional-helm-nims-not-auto-wired-by-default)
+    - [Image captioning (26.05)](#image-captioning-2605)
+- [Model Hardware Requirements](#model-hardware-requirements)
+- [Related Topics](#related-topics)
+
+## Software Requirements { #software-requirements }
 
 - Linux operating systems (Ubuntu 22.04 or later recommended)
 - [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (NVIDIA Driver >= `580`, CUDA >= `13.0`)
@@ -23,7 +35,7 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 
     When you use UV, create the environment with Python 3.12 — for example, `uv venv --python 3.12`. This matches the `requires-python` metadata in the library packages.
 
-## Hardware Requirements
+## Hardware Requirements { #hardware-requirements }
 
 The full ingestion pipeline is designed to consume significant CPU and memory resources to achieve maximal parallelism. 
 Resource usage scales up to the limits of your deployed system.
@@ -60,11 +72,11 @@ For production deployments processing large volumes of documents, consider:
 
 Ensure your deployment environment meets these specifications before running the full pipeline. Resource-constrained environments may experience performance degradation.
 
-## Core and Advanced Pipeline Features
+## Core and Advanced Pipeline Features { #core-and-advanced-pipeline-features }
 
 The NeMo Retriever Library extraction core pipeline features run on a single A10G or better GPU.
 
-### Default Helm NIMs
+### Default Helm NIMs { #default-helm-nims }
 
 The production Helm chart enables these NIM microservices **by default** (for example via `nimOperator.*.enabled=true`):
 
@@ -122,7 +134,7 @@ Optional features listed in the table above require additional GPU support, disk
 
 For published NIM model IDs and deployment-specific constraints, use the product support matrices linked under [Related Topics](#related-topics) below.
 
-## Model Hardware Requirements
+## Model Hardware Requirements { #model-hardware-requirements }
 
 NeMo Retriever Library supports the following GPU hardware given system constraints in the table.
 
@@ -158,7 +170,7 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 
 and run only the embedder, reranker, and your vector database.
 
-## Related Topics
+## Related Topics { #related-topics }
 
 - [Troubleshooting](troubleshoot.md)
 - [Release Notes](releasenotes.md)

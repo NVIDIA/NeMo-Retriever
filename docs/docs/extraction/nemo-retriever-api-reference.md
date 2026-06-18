@@ -1,6 +1,6 @@
 # NeMo Retriever API Reference
 
-## PDF pre-splitting for parallel ingest
+## PDF pre-splitting for parallel ingest { #pdf-pre-splitting-for-parallel-ingest }
 
 Large PDFs are split into page batches before Ray processing so extraction can run in parallel. This happens on the default ingest path; you do not need extra configuration for typical workloads.
 
