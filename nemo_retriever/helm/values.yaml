@@ -486,9 +486,9 @@ serviceConfig:
     # the operator-managed Omni NIM is enabled. Override to point at a
     # different VLM SKU.
     captionModelName: ""
-    # gRPC endpoint for the Parakeet ASR NIM (e.g. "parakeet-nim:50051").
+    # HTTP endpoint for the Parakeet ASR NIM (e.g. "http://parakeet-nim:9000").
     # Required for audio/video ingestion in service mode (without torch).
-    audioGrpcEndpoint: ""
+    audioHttpEndpoint: ""
 
   # Pipeline worker pools.  Workers are abstract dispatchers — sizing
   # depends on whether they do local GPU work or fan out to remote NIMs.

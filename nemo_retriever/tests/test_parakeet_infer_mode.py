@@ -7,96 +7,49 @@ from __future__ import annotations
 import base64
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from nemo_retriever.models.nim.primitives.model_interface.parakeet import (
     ParakeetClient,
-    resolve_audio_infer_mode,
+    parse_transcription_response,
 )
 from nemo_retriever.common.params import ASRParams
 
 
-@pytest.mark.parametrize(
-    ("mode", "endpoint", "expected"),
-    [
-        ("auto", "localhost:18019", "offline"),
-        ("auto", "parakeet-nim:50051", "offline"),
-        ("auto", "audio:50051", "offline"),
-        ("auto", "grpc.nvcf.nvidia.com:443", "online"),
-        ("online", "localhost:18019", "online"),
-        ("offline", "grpc.nvcf.nvidia.com:443", "offline"),
-    ],
-)
-def test_resolve_audio_infer_mode(mode: str, endpoint: str, expected: str) -> None:
-    assert resolve_audio_infer_mode(mode, endpoint) == expected
+def test_parakeet_client_posts_http_transcription_request() -> None:
+    response = MagicMock()
+    response.json.return_value = {"text": "hello world", "segments": [{"start": 0.0, "end": 1.0, "text": "hello"}]}
 
-
-def test_resolve_audio_infer_mode_rejects_unknown() -> None:
-    with pytest.raises(ValueError, match="audio_infer_mode"):
-        resolve_audio_infer_mode("batch", "localhost:50051")
-
-
-@patch("nemo_retriever.models.nim.primitives.model_interface.parakeet.riva_client")
-def test_parakeet_client_transcribe_uses_offline_for_self_hosted(mock_riva) -> None:
-    mock_asr = MagicMock()
-    mock_riva.ASRService.return_value = mock_asr
-    mock_riva.AudioEncoding.LINEAR_PCM = "LINEAR_PCM"
-    mock_riva.RecognitionConfig.return_value = MagicMock()
-
-    client = ParakeetClient("localhost:18019", infer_mode="auto")
+    client = ParakeetClient("http://localhost:9000", auth_token="nvapi-test")
     with patch(
         "nemo_retriever.models.nim.primitives.model_interface.parakeet.convert_to_mono_wav",
         return_value=b"RIFFfake",
-    ):
-        client.transcribe(base64.b64encode(b"audio").decode())
+    ), patch(
+        "nemo_retriever.models.nim.primitives.model_interface.parakeet.requests.post", return_value=response
+    ) as post:
+        segments, transcript = client.transcribe(base64.b64encode(b"audio").decode())
 
-    mock_asr.offline_recognize.assert_called_once()
-    mock_asr.streaming_response_generator.assert_not_called()
-
-
-@patch("nemo_retriever.models.nim.primitives.model_interface.parakeet.riva_client")
-def test_parakeet_client_transcribe_uses_offline_when_explicit(mock_riva) -> None:
-    mock_asr = MagicMock()
-    mock_riva.ASRService.return_value = mock_asr
-    mock_riva.AudioEncoding.LINEAR_PCM = "LINEAR_PCM"
-    mock_riva.RecognitionConfig.return_value = MagicMock()
-
-    client = ParakeetClient("localhost:18019", infer_mode="offline")
-    with patch(
-        "nemo_retriever.models.nim.primitives.model_interface.parakeet.convert_to_mono_wav",
-        return_value=b"RIFFfake",
-    ):
-        client.transcribe(base64.b64encode(b"audio").decode())
-
-    mock_asr.offline_recognize.assert_called_once()
-    mock_asr.streaming_response_generator.assert_not_called()
+    response.raise_for_status.assert_called_once()
+    post.assert_called_once()
+    url = post.call_args.args[0]
+    kwargs = post.call_args.kwargs
+    assert url == "http://localhost:9000/v1/audio/transcriptions"
+    assert kwargs["headers"]["Authorization"] == "Bearer nvapi-test"
+    assert kwargs["data"] == {"language": "en-US", "response_format": "verbose_json"}
+    assert kwargs["files"]["file"] == ("audio.wav", b"RIFFfake", "audio/wav")
+    assert transcript == "hello world"
+    assert segments == [{"start": 0.0, "end": 1.0, "text": "hello"}]
 
 
-@patch("nemo_retriever.models.nim.primitives.model_interface.parakeet.riva_client")
-def test_parakeet_client_transcribe_uses_streaming_for_nvcf(mock_riva) -> None:
-    mock_asr = MagicMock()
-    mock_riva.ASRService.return_value = mock_asr
-    mock_riva.AudioEncoding.LINEAR_PCM = "LINEAR_PCM"
-    mock_riva.RecognitionConfig.return_value = MagicMock()
-    mock_riva.StreamingRecognitionConfig.return_value = MagicMock()
-    mock_asr.streaming_response_generator.return_value = []
-
-    client = ParakeetClient(
-        "grpc.nvcf.nvidia.com:443",
-        function_id="fn-1",
-        auth_token="nvapi-test",
-        infer_mode="auto",
+def test_parse_transcription_response_falls_back_to_segments() -> None:
+    segments, transcript = parse_transcription_response(
+        {"segments": [{"start": 0.0, "end": 0.5, "text": "hello"}, {"start": 0.5, "end": 1.0, "text": "world"}]}
     )
-    with patch(
-        "nemo_retriever.models.nim.primitives.model_interface.parakeet.convert_to_mono_wav",
-        return_value=b"RIFFfake",
-    ), patch.object(client, "_streaming_transcribe", return_value=MagicMock(results=[])) as mock_stream:
-        client.transcribe(base64.b64encode(b"audio").decode())
-
-    mock_stream.assert_called_once()
-    mock_asr.offline_recognize.assert_not_called()
+    assert transcript == "hello world"
+    assert segments == [
+        {"start": 0.0, "end": 0.5, "text": "hello"},
+        {"start": 0.5, "end": 1.0, "text": "world"},
+    ]
 
 
-def test_asr_params_default_infer_mode_is_auto() -> None:
-    params = ASRParams(audio_endpoints=("localhost:50051", None))
-    assert params.audio_infer_mode == "auto"
+def test_asr_params_default_infer_protocol_is_http() -> None:
+    params = ASRParams(audio_endpoints=(None, "http://localhost:9000"))
+    assert params.audio_infer_protocol == "http"

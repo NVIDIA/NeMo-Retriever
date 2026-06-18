@@ -253,7 +253,7 @@ Mapping (key -> Service name, default invokePath):
   nemotron_3_nano_omni_30b_a3b_reasoning -> nemotron-3-nano-omni-30b-a3b-reasoning   /v1/chat/completions
 
 Audio ASR (Parakeet) is configured directly via
-  serviceConfig.nimEndpoints.audioGrpcEndpoint (no NIM Operator auto-wire).
+  serviceConfig.nimEndpoints.audioHttpEndpoint (no NIM Operator auto-wire).
 */}}
 
 {{/*

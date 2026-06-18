@@ -497,7 +497,7 @@ def _should_build_audio_graph(
 
     The mere presence of ``asr_params`` is **not** a sufficient signal:
     in service mode ``asr_params`` is auto-derived from the cluster's
-    ``audio_grpc_endpoint`` and would otherwise force every PDF upload
+    ``audio_http_endpoint`` and would otherwise force every PDF upload
     through the audio-only graph.
     """
     if (extraction_mode or "").strip().lower() == "audio":

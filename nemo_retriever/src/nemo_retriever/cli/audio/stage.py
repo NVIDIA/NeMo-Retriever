@@ -172,12 +172,12 @@ def extract(
     use_env_asr: bool = typer.Option(
         True,
         "--use-env-asr/--no-use-env-asr",
-        help="Build ASR params from AUDIO_GRPC_ENDPOINT, NVIDIA_API_KEY, AUDIO_FUNCTION_ID when set.",
+        help="Build ASR params from AUDIO_HTTP_ENDPOINT and NVIDIA_API_KEY when set.",
     ),
-    audio_grpc_endpoint: Optional[str] = typer.Option(
+    audio_http_endpoint: Optional[str] = typer.Option(
         None,
-        "--audio-grpc-endpoint",
-        help="Override gRPC endpoint for ASR (else from env or local Parakeet).",
+        "--audio-http-endpoint",
+        help="Override HTTP endpoint for ASR (else from env or local Parakeet).",
     ),
     auth_token: Optional[str] = typer.Option(
         None,
@@ -198,8 +198,8 @@ def extract(
     """
     Scan input_dir for audio/video files, run chunk + ASR, and write extraction JSON sidecars.
 
-    Uses local Parakeet when no ASR endpoint is set; use NVIDIA_API_KEY + AUDIO_FUNCTION_ID
-    (or --audio-grpc-endpoint) for cloud ASR.
+    Uses local Parakeet when no ASR endpoint is set; use NVIDIA_API_KEY
+    (or --audio-http-endpoint) for hosted ASR.
     """
     print(f"Audio stage extract: input_dir={input_dir!s} glob={glob!r} output_dir={output_dir!s}", flush=True)
     sys.stdout.flush()
@@ -217,12 +217,13 @@ def extract(
     )
 
     if use_env_asr:
-        asr_params = asr_params_from_env(default_grpc_endpoint=audio_grpc_endpoint)
+        asr_params = asr_params_from_env(default_http_endpoint=audio_http_endpoint)
         if auth_token is not None:
             asr_params = asr_params.model_copy(update={"auth_token": auth_token})
     else:
         asr_params = ASRParams(
-            audio_endpoints=(audio_grpc_endpoint or "", None),
+            audio_endpoints=(None, audio_http_endpoint or ""),
+            audio_infer_protocol="http",
             auth_token=auth_token,
         )
 
@@ -243,7 +244,7 @@ def extract(
     #   - explicit audio_endpoints  -> CPU variant (remote NIM)
     #   - no endpoint, GPU present  -> GPU variant (local Parakeet)
     #   - no endpoint, no GPU       -> CPU variant defaults to NVCF Parakeet
-    if (asr_params.audio_endpoints[0] or "").strip():
+    if (asr_params.audio_endpoints[1] or "").strip():
         asr_mode = "remote (explicit endpoint)"
     else:
         asr_mode = "archetype-resolved (GPU local / NVCF default)"
