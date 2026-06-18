@@ -83,7 +83,7 @@ Chart-classified PDF regions stay on the layout/OCR path; only non-chart image r
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
-- [Image captioning — NIM and hardware](prerequisites-support-matrix.md#image-captioning-nim-hardware)
+- [Image captioning (26.05)](prerequisites-support-matrix.md#image-captioning-2605)
 
 ## Metadata and content schema { #metadata-and-content-schema }
 
