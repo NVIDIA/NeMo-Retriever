@@ -36,7 +36,8 @@ Together, repartition + full batch mean **`process()`** receives **every row at 
 
 ### Wiring ingestion today
 
-- **CLI** (`retriever pipeline run …`): builds `VdbUploadParams` and `GraphIngestor.vdb_upload(...)`, which appends `IngestVdbOperator` to the graph after embed/store and before webhook.
+- **Root CLI** (`retriever ingest ...`): writes to LanceDB through the shared graph ingest path.
+- **Compatibility CLI** (`retriever pipeline run ...`): builds `VdbUploadParams` and `GraphIngestor.vdb_upload(...)`, which appends `IngestVdbOperator` to the graph after embed/store and before webhook.
 - **Direct API**:
 
 ```python

@@ -1,3 +1,5 @@
+"""Low-level ingestor execution plan used by graph executors and the fluent API."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
