@@ -93,6 +93,8 @@ table = db.open_table("nemo_retriever_collection")
 
 **`Retriever.query` + `where`:** LanceDB applies the predicate before ranking. For post-filter logic in Python, use a wider `top_k` first.
 
+For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+
 ```python
 from nemo_retriever.graph.retriever import Retriever
 
