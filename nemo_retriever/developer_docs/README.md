@@ -8,4 +8,5 @@ architecture, subsystems, and developer-facing tools.
 | Topic | Description |
 |-------|-------------|
 | [Graph Pipeline Registry](graph_pipeline_registry.md) | Central registry for managing, inspecting, comparing, and serializing golden pipeline graphs. |
+| [Root Ingest CLI Design](root_ingest_cli_design.md) | Reviewer guide for the `retriever ingest` local, batch, and service CLI ownership split. |
 | [VDB Retrieval Refactor Scope](vdb_retrieval_refactor.md) | Motivation, in-scope paths, and ownership boundaries for graph-pipeline VDB-agnostic retrieval. |

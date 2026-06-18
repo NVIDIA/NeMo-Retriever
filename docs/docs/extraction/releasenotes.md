@@ -25,8 +25,8 @@ Highlights for the 26.05 release include:
 
 ### CLI
 
-- Root CLI adds `retriever ingest` and `retriever query` with NIM URL flags, batch tuning, and LanceDB overwrite/append controls, plus `retriever pipeline` for graph execution  
-- For product use, only `retriever ingest`, `retriever query`, and `retriever pipeline` (for example `retriever pipeline run`) are supported; other top-level subcommands—including `pdf`, `html`, `eval`, `benchmark`, `harness`, `online`, `compare`, `image`, and `skill-eval`—are development and experimental  
+- Root CLI adds first-class `retriever ingest` and `retriever query` commands with NIM URL flags, batch tuning, and LanceDB overwrite/append controls
+- For product ingest and retrieval, prefer `retriever ingest` and `retriever query`; `retriever pipeline run` remains available for compatibility and development workflows. Other top-level subcommands—including `pdf`, `html`, `eval`, `benchmark`, `harness`, `online`, `compare`, `image`, and `skill-eval`—are development and experimental
 
 ### Retriever Service and deployment
 

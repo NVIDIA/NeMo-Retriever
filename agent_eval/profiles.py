@@ -186,8 +186,13 @@ def build_query_workdir(*, base_dir: Path, query_dir: Path, profile: str, agent:
     """Create a per-query workdir that symlinks the shared base contents."""
     wd = query_dir / "workdir"
     wd.mkdir(parents=True, exist_ok=True)
+    # AGENT_EVAL_NO_PDFS=1 withholds the raw ./pdfs from the agent so it cannot
+    # fall back to reading source files (pdftotext/pypdf) — forces retriever use.
+    no_pdfs = os.environ.get("AGENT_EVAL_NO_PDFS") == "1"
     # Shared, read-only-ish artifacts: symlink to the base.
     for name in ("pdfs", "lancedb"):
+        if name == "pdfs" and no_pdfs:
+            continue
         src = base_dir / name
         dst = wd / name
         if src.exists() and not dst.exists():
