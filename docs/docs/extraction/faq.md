@@ -12,8 +12,8 @@ This documentation contains the Frequently Asked Questions (FAQ) for [NeMo Retri
 
 You can use the CLI or Python APIs to perform extraction only, and then consume the results.
 Using the Python API, `results` is a list object with one entry.
-For code examples, see the Jupyter notebooks [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/nv-ingest/blob/main/examples/llama_index_multimodal_rag.ipynb) 
-and [Multimodal RAG with LangChain](https://github.com/NVIDIA/nv-ingest/blob/main/examples/langchain_multimodal_rag.ipynb).
+For code examples, see the Jupyter notebooks [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/examples/llama_index_multimodal_rag.ipynb) 
+and [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/examples/langchain_multimodal_rag.ipynb).
 
 
 
