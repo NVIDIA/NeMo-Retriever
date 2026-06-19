@@ -9,7 +9,7 @@ To get started using [NeMo Retriever Library](overview.md), you can try one of t
 
 ## Dataset Downloads for Benchmarking
 
-If you plan to run benchmarking or evaluation tests, you must download the [Benchmark Datasets (Bo20, Bo767, Bo10k)](https://github.com/NVIDIA/nv-ingest/blob/main/evaluation/digital_corpora_download.ipynb) from Digital Corpora. This is a prerequisite for all benchmarking operations.
+If you plan to run benchmarking or evaluation tests, you must download the [Benchmark Datasets (Bo20, Bo767, Bo10k)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/evaluation/digital_corpora_download.ipynb) from Digital Corpora. This is a prerequisite for all benchmarking operations.
 
 ## Getting Started
 
@@ -17,17 +17,17 @@ To get started with the basics, try one of the following guides or notebooks:
 
 - [CLI Client Quick Start Guide](quickstart-guide.md#ingest_cli_example) — walkthrough for `nv-ingest-cli` / `retriever` with the self-hosted stack
 - [Python Client Quick Start Guide](quickstart-guide.md#ingest_python_example) — walkthrough for the Python client with the self-hosted stack
-- [How to add metadata to your documents and filter searches](https://github.com/NVIDIA/nv-ingest/blob/main/examples/metadata_and_filtered_search.ipynb)
-- [How to reindex a collection](https://github.com/NVIDIA/nv-ingest/blob/main/examples/reindex_example.ipynb)
+- [How to add metadata to your documents and filter searches](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/examples/metadata_and_filtered_search.ipynb)
+- [How to reindex a collection](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/examples/reindex_example.ipynb)
 
 
 For more advanced scenarios, try one of the following notebooks:
 
-- [Build a Custom Vector Database Operator](https://github.com/NVIDIA/nv-ingest/blob/main/examples/building_vdb_operator.ipynb)
-- [Try Enterprise RAG Blueprint](https://github.com/NVIDIA/nv-ingest/blob/main/deploy/pdf-blueprint.ipynb)
-- [Evaluate bo767 retrieval recall accuracy with NV-Ingest and Milvus](https://github.com/NVIDIA/nv-ingest/blob/main/evaluation/bo767_recall.ipynb)
-- [Multimodal RAG with LangChain](https://github.com/NVIDIA/nv-ingest/blob/main/examples/langchain_multimodal_rag.ipynb)
-- [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/nv-ingest/blob/main/examples/llama_index_multimodal_rag.ipynb)
+- [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/examples/building_vdb_operator.ipynb)
+- [Try Enterprise RAG Blueprint](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/deploy/pdf-blueprint.ipynb)
+- [Evaluate bo767 retrieval recall accuracy with NV-Ingest and Milvus](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/evaluation/bo767_recall.ipynb)
+- [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/examples/langchain_multimodal_rag.ipynb)
+- [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/examples/llama_index_multimodal_rag.ipynb)
 
 
 
