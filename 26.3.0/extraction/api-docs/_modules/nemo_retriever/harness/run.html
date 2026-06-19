@@ -1,0 +1,1057 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.harness.run &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/harness/run';</script>
+
+    <link rel="icon" href="../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.harness.run</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.harness.run</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">errno</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">importlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">metadata</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pty</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">select</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shlex</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">socket</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">typer</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.harness.artifacts</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">create_run_artifact_dir</span><span class="p">,</span>
+    <span class="n">create_session_dir</span><span class="p">,</span>
+    <span class="n">last_commit</span><span class="p">,</span>
+    <span class="n">now_timestr</span><span class="p">,</span>
+    <span class="n">write_json</span><span class="p">,</span>
+    <span class="n">write_session_summary</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.harness.config</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DEFAULT_NIGHTLY_CONFIG_PATH</span><span class="p">,</span>
+    <span class="n">HarnessConfig</span><span class="p">,</span>
+    <span class="n">TUNING_FIELDS</span><span class="p">,</span>
+    <span class="n">load_harness_config</span><span class="p">,</span>
+    <span class="n">load_runs_config</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.harness.parsers</span><span class="w"> </span><span class="kn">import</span> <span class="n">StreamMetrics</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.harness.recall_adapters</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_recall_query_file</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.utils.input_files</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_input_files</span>
+
+<span class="n">ANSI_ESCAPE_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;\x1B(?:[@-Z</span><span class="se">\\</span><span class="s2">-_]|\[[0-?]*[ -/]*[@-~])&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_collect_gpu_metadata</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+            <span class="p">[</span><span class="s2">&quot;nvidia-smi&quot;</span><span class="p">,</span> <span class="s2">&quot;--query-gpu=driver_version&quot;</span><span class="p">,</span> <span class="s2">&quot;--format=csv,noheader&quot;</span><span class="p">],</span>
+            <span class="n">check</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+    <span class="n">output_lines</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()</span> <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()]</span>
+    <span class="n">combined_output</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">stdout</span><span class="si">}</span><span class="se">\n</span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">stderr</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">if</span> <span class="s2">&quot;No devices were found&quot;</span> <span class="ow">in</span> <span class="n">combined_output</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">0</span><span class="p">,</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">returncode</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">output_lines</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">0</span><span class="p">,</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">output_lines</span><span class="p">),</span> <span class="n">output_lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_collect_run_metadata</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">host</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">gethostname</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="ow">or</span> <span class="s2">&quot;unknown&quot;</span>
+    <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+        <span class="n">host</span> <span class="o">=</span> <span class="s2">&quot;unknown&quot;</span>
+
+    <span class="n">version_info</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">sys</span><span class="p">,</span> <span class="s2">&quot;version_info&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">version_info</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">python_version</span> <span class="o">=</span> <span class="s2">&quot;unknown&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">python_version</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">version_info</span><span class="o">.</span><span class="n">major</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">version_info</span><span class="o">.</span><span class="n">minor</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">version_info</span><span class="o">.</span><span class="n">micro</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">ray_version</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">version</span><span class="p">(</span><span class="s2">&quot;ray&quot;</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">metadata</span><span class="o">.</span><span class="n">PackageNotFoundError</span><span class="p">:</span>
+        <span class="n">ray_version</span> <span class="o">=</span> <span class="s2">&quot;unknown&quot;</span>
+
+    <span class="n">gpu_count</span><span class="p">,</span> <span class="n">cuda_driver</span> <span class="o">=</span> <span class="n">_collect_gpu_metadata</span><span class="p">()</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;host&quot;</span><span class="p">:</span> <span class="n">host</span><span class="p">,</span>
+        <span class="s2">&quot;gpu_count&quot;</span><span class="p">:</span> <span class="n">gpu_count</span><span class="p">,</span>
+        <span class="s2">&quot;cuda_driver&quot;</span><span class="p">:</span> <span class="n">cuda_driver</span><span class="p">,</span>
+        <span class="s2">&quot;ray_version&quot;</span><span class="p">:</span> <span class="n">ray_version</span><span class="p">,</span>
+        <span class="s2">&quot;python_version&quot;</span><span class="p">:</span> <span class="n">python_version</span><span class="p">,</span>
+    <span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_tags</span><span class="p">(</span><span class="n">tags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="n">normalized</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+    <span class="k">for</span> <span class="n">raw</span> <span class="ow">in</span> <span class="n">tags</span> <span class="ow">or</span> <span class="p">[]:</span>
+        <span class="n">tag</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">tag</span> <span class="ow">or</span> <span class="n">tag</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span>
+        <span class="n">normalized</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">normalized</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_recall_metric_key</span><span class="p">(</span><span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">metric</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">key</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">metric</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;recall@&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;recall_&quot;</span> <span class="o">+</span> <span class="n">metric</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;@&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">metric</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;@&quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_safe_pdf_page_count</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">pypdfium2</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pdfium</span>  <span class="c1"># type: ignore</span>
+
+        <span class="n">doc</span> <span class="o">=</span> <span class="n">pdfium</span><span class="o">.</span><span class="n">PdfDocument</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">))</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">count</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">doc</span><span class="p">))</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="n">count</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">get_page_count</span><span class="p">())</span>  <span class="c1"># type: ignore[attr-defined]</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">doc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="k">pass</span>
+        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_summary_metrics</span><span class="p">(</span>
+    <span class="n">cfg</span><span class="p">:</span> <span class="n">HarnessConfig</span><span class="p">,</span>
+    <span class="n">metrics_payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+    <span class="n">runtime_summary</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">summary_metrics</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;pages&quot;</span><span class="p">:</span> <span class="n">metrics_payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;pages&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;ingest_secs&quot;</span><span class="p">:</span> <span class="n">metrics_payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ingest_secs&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;pages_per_sec_ingest&quot;</span><span class="p">:</span> <span class="n">metrics_payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;pages_per_sec_ingest&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;recall_5&quot;</span><span class="p">:</span> <span class="n">metrics_payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;recall_5&quot;</span><span class="p">),</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="n">summary_metrics</span><span class="p">[</span><span class="s2">&quot;pages&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">runtime_summary</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="n">runtime_pages</span> <span class="o">=</span> <span class="n">runtime_summary</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;num_pages&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">runtime_pages</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">runtime_pages</span> <span class="o">=</span> <span class="n">runtime_summary</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;input_pages&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">runtime_pages</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">summary_metrics</span><span class="p">[</span><span class="s2">&quot;pages&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">runtime_pages</span><span class="p">)</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+                <span class="n">summary_metrics</span><span class="p">[</span><span class="s2">&quot;pages&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">summary_metrics</span><span class="p">[</span><span class="s2">&quot;pages&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cfg</span><span class="o">.</span><span class="n">input_type</span> <span class="o">==</span> <span class="s2">&quot;pdf&quot;</span><span class="p">:</span>
+        <span class="n">total_pages</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">counted_any</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">resolve_input_files</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">dataset_dir</span><span class="p">),</span> <span class="n">cfg</span><span class="o">.</span><span class="n">input_type</span><span class="p">):</span>
+            <span class="n">page_count</span> <span class="o">=</span> <span class="n">_safe_pdf_page_count</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">page_count</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">counted_any</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">total_pages</span> <span class="o">+=</span> <span class="n">page_count</span>
+        <span class="k">if</span> <span class="n">counted_any</span><span class="p">:</span>
+            <span class="n">summary_metrics</span><span class="p">[</span><span class="s2">&quot;pages&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">total_pages</span>
+
+    <span class="k">if</span> <span class="n">summary_metrics</span><span class="p">[</span><span class="s2">&quot;pages_per_sec_ingest&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">pages</span> <span class="o">=</span> <span class="n">summary_metrics</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;pages&quot;</span><span class="p">)</span>
+        <span class="n">ingest_secs</span> <span class="o">=</span> <span class="n">summary_metrics</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ingest_secs&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">pages</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">ingest_secs</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="kc">None</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">}:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">summary_metrics</span><span class="p">[</span><span class="s2">&quot;pages_per_sec_ingest&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">pages</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">ingest_secs</span><span class="p">),</span> <span class="mi">2</span><span class="p">)</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">ZeroDivisionError</span><span class="p">):</span>
+                <span class="n">summary_metrics</span><span class="p">[</span><span class="s2">&quot;pages_per_sec_ingest&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">summary_metrics</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_lancedb_uri</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">HarnessConfig</span><span class="p">,</span> <span class="n">artifact_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">lancedb_uri</span> <span class="ow">or</span> <span class="s2">&quot;lancedb&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">raw</span> <span class="o">==</span> <span class="s2">&quot;lancedb&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">((</span><span class="n">artifact_dir</span> <span class="o">/</span> <span class="s2">&quot;lancedb&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">())</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">p</span><span class="o">.</span><span class="n">is_absolute</span><span class="p">():</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="p">(</span><span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">()</span> <span class="o">/</span> <span class="n">p</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_command</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">HarnessConfig</span><span class="p">,</span> <span class="n">artifact_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">run_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Path</span><span class="p">,</span> <span class="n">Path</span><span class="p">,</span> <span class="n">Path</span><span class="p">]:</span>
+    <span class="n">runtime_dir</span> <span class="o">=</span> <span class="n">artifact_dir</span> <span class="o">/</span> <span class="s2">&quot;runtime_metrics&quot;</span>
+    <span class="n">runtime_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">write_detection_file</span><span class="p">:</span>
+        <span class="n">detection_summary_file</span> <span class="o">=</span> <span class="n">artifact_dir</span> <span class="o">/</span> <span class="s2">&quot;detection_summary.json&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Keep detection summary out of top-level artifacts unless explicitly requested.</span>
+        <span class="n">detection_summary_file</span> <span class="o">=</span> <span class="n">runtime_dir</span> <span class="o">/</span> <span class="s2">&quot;.detection_summary.json&quot;</span>
+    <span class="n">query_csv</span> <span class="o">=</span> <span class="n">prepare_recall_query_file</span><span class="p">(</span>
+        <span class="n">query_csv</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">query_csv</span><span class="p">)</span> <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">query_csv</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">recall_adapter</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">recall_adapter</span><span class="p">,</span>
+        <span class="n">output_dir</span><span class="o">=</span><span class="n">runtime_dir</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">executable</span><span class="p">,</span>
+        <span class="s2">&quot;-m&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;nemo_retriever.examples.batch_pipeline&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">dataset_dir</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()),</span>
+        <span class="s2">&quot;--input-type&quot;</span><span class="p">,</span>
+        <span class="n">cfg</span><span class="o">.</span><span class="n">input_type</span><span class="p">,</span>
+        <span class="s2">&quot;--query-csv&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">query_csv</span><span class="p">),</span>
+        <span class="s2">&quot;--recall-match-mode&quot;</span><span class="p">,</span>
+        <span class="n">cfg</span><span class="o">.</span><span class="n">recall_match_mode</span><span class="p">,</span>
+        <span class="s2">&quot;--no-recall-details&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--pdf-extract-tasks&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">pdf_extract_workers</span><span class="p">),</span>
+        <span class="s2">&quot;--pdf-extract-cpus-per-task&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">pdf_extract_num_cpus</span><span class="p">),</span>
+        <span class="s2">&quot;--pdf-extract-batch-size&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">pdf_extract_batch_size</span><span class="p">),</span>
+        <span class="s2">&quot;--pdf-split-batch-size&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">pdf_split_batch_size</span><span class="p">),</span>
+        <span class="s2">&quot;--page-elements-batch-size&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">page_elements_batch_size</span><span class="p">),</span>
+        <span class="s2">&quot;--page-elements-actors&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">page_elements_workers</span><span class="p">),</span>
+        <span class="s2">&quot;--ocr-actors&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">ocr_workers</span><span class="p">),</span>
+        <span class="s2">&quot;--ocr-batch-size&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">ocr_batch_size</span><span class="p">),</span>
+        <span class="s2">&quot;--embed-actors&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">embed_workers</span><span class="p">),</span>
+        <span class="s2">&quot;--embed-batch-size&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">embed_batch_size</span><span class="p">),</span>
+        <span class="s2">&quot;--page-elements-cpus-per-actor&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">page_elements_cpus_per_actor</span><span class="p">),</span>
+        <span class="s2">&quot;--ocr-cpus-per-actor&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">ocr_cpus_per_actor</span><span class="p">),</span>
+        <span class="s2">&quot;--embed-cpus-per-actor&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">embed_cpus_per_actor</span><span class="p">),</span>
+        <span class="s2">&quot;--page-elements-gpus-per-actor&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">gpu_page_elements</span><span class="p">),</span>
+        <span class="s2">&quot;--ocr-gpus-per-actor&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">gpu_ocr</span><span class="p">),</span>
+        <span class="s2">&quot;--embed-gpus-per-actor&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">gpu_embed</span><span class="p">),</span>
+        <span class="s2">&quot;--embed-model-name&quot;</span><span class="p">,</span>
+        <span class="n">cfg</span><span class="o">.</span><span class="n">embed_model_name</span><span class="p">,</span>
+        <span class="s2">&quot;--runtime-metrics-dir&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">runtime_dir</span><span class="p">),</span>
+        <span class="s2">&quot;--runtime-metrics-prefix&quot;</span><span class="p">,</span>
+        <span class="n">run_id</span><span class="p">,</span>
+        <span class="s2">&quot;--detection-summary-file&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">detection_summary_file</span><span class="p">),</span>
+        <span class="s2">&quot;--lancedb-uri&quot;</span><span class="p">,</span>
+        <span class="n">_resolve_lancedb_uri</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">artifact_dir</span><span class="p">),</span>
+    <span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">ray_address</span><span class="p">:</span>
+        <span class="n">cmd</span> <span class="o">+=</span> <span class="p">[</span><span class="s2">&quot;--ray-address&quot;</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">ray_address</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">hybrid</span><span class="p">:</span>
+        <span class="n">cmd</span> <span class="o">+=</span> <span class="p">[</span><span class="s2">&quot;--hybrid&quot;</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">cmd</span><span class="p">,</span> <span class="n">runtime_dir</span><span class="p">,</span> <span class="n">detection_summary_file</span><span class="p">,</span> <span class="n">query_csv</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_evaluate_run_outcome</span><span class="p">(</span>
+    <span class="n">process_rc</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">recall_required</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span> <span class="n">recall_metrics</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">process_rc</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">reason</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;subprocess_exit_</span><span class="si">{</span><span class="n">process_rc</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">return</span> <span class="n">process_rc</span><span class="p">,</span> <span class="n">reason</span><span class="p">,</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">recall_required</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">recall_metrics</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">98</span><span class="p">,</span> <span class="s2">&quot;missing_recall_metrics&quot;</span><span class="p">,</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="kc">True</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_json_if_exists</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
+    <span class="k">except</span> <span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">data</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_consume_parseable_output</span><span class="p">(</span><span class="n">metrics</span><span class="p">:</span> <span class="n">StreamMetrics</span><span class="p">,</span> <span class="n">parse_buffer</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">while</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">parse_buffer</span><span class="p">:</span>
+        <span class="n">line</span><span class="p">,</span> <span class="n">parse_buffer</span> <span class="o">=</span> <span class="n">parse_buffer</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">cleaned</span> <span class="o">=</span> <span class="n">ANSI_ESCAPE_RE</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">line</span><span class="p">)</span>
+        <span class="n">metrics</span><span class="o">.</span><span class="n">consume</span><span class="p">(</span><span class="n">cleaned</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">parse_buffer</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_run_subprocess_with_tty</span><span class="p">(</span><span class="n">cmd</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">metrics</span><span class="p">:</span> <span class="n">StreamMetrics</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run command in a pseudo-terminal so Ray renders rich progress.</span>
+
+<span class="sd">    We still parse lines from the PTY stream to extract benchmark metrics.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">master_fd</span><span class="p">,</span> <span class="n">slave_fd</span> <span class="o">=</span> <span class="n">pty</span><span class="o">.</span><span class="n">openpty</span><span class="p">()</span>
+    <span class="n">parse_buffer</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">proc</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">(</span>
+            <span class="n">cmd</span><span class="p">,</span>
+            <span class="n">stdin</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">stdout</span><span class="o">=</span><span class="n">slave_fd</span><span class="p">,</span>
+            <span class="n">stderr</span><span class="o">=</span><span class="n">slave_fd</span><span class="p">,</span>
+            <span class="n">close_fds</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">slave_fd</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">read_fds</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">select</span><span class="o">.</span><span class="n">select</span><span class="p">([</span><span class="n">master_fd</span><span class="p">],</span> <span class="p">[],</span> <span class="p">[],</span> <span class="mf">0.1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">master_fd</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">read_fds</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">proc</span><span class="o">.</span><span class="n">poll</span><span class="p">()</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">break</span>
+                <span class="k">continue</span>
+
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">chunk</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">master_fd</span><span class="p">,</span> <span class="mi">4096</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                <span class="c1"># PTY EOF on Linux often appears as EIO.</span>
+                <span class="k">if</span> <span class="n">exc</span><span class="o">.</span><span class="n">errno</span> <span class="o">==</span> <span class="n">errno</span><span class="o">.</span><span class="n">EIO</span><span class="p">:</span>
+                    <span class="k">break</span>
+                <span class="k">raise</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">chunk</span><span class="p">:</span>
+                <span class="k">break</span>
+
+            <span class="n">text</span> <span class="o">=</span> <span class="n">chunk</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">&quot;replace&quot;</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+            <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+            <span class="n">parse_buffer</span> <span class="o">+=</span> <span class="n">text</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\r</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">parse_buffer</span> <span class="o">=</span> <span class="n">_consume_parseable_output</span><span class="p">(</span><span class="n">metrics</span><span class="p">,</span> <span class="n">parse_buffer</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">parse_buffer</span><span class="p">:</span>
+            <span class="n">cleaned_tail</span> <span class="o">=</span> <span class="n">ANSI_ESCAPE_RE</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">parse_buffer</span><span class="p">)</span>
+            <span class="n">metrics</span><span class="o">.</span><span class="n">consume</span><span class="p">(</span><span class="n">cleaned_tail</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">proc</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">master_fd</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_run_single</span><span class="p">(</span><span class="n">cfg</span><span class="p">:</span> <span class="n">HarnessConfig</span><span class="p">,</span> <span class="n">artifact_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">run_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">tags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">cmd</span><span class="p">,</span> <span class="n">runtime_dir</span><span class="p">,</span> <span class="n">detection_summary_file</span><span class="p">,</span> <span class="n">effective_query_csv</span> <span class="o">=</span> <span class="n">_build_command</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">artifact_dir</span><span class="p">,</span> <span class="n">run_id</span><span class="p">)</span>
+    <span class="n">command_text</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">shlex</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">token</span><span class="p">)</span> <span class="k">for</span> <span class="n">token</span> <span class="ow">in</span> <span class="n">cmd</span><span class="p">)</span>
+    <span class="p">(</span><span class="n">artifact_dir</span> <span class="o">/</span> <span class="s2">&quot;command.txt&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">command_text</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+
+    <span class="n">typer</span><span class="o">.</span><span class="n">echo</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">=== Running </span><span class="si">{</span><span class="n">run_id</span><span class="si">}</span><span class="s2"> ===&quot;</span><span class="p">)</span>
+    <span class="n">typer</span><span class="o">.</span><span class="n">echo</span><span class="p">(</span><span class="n">command_text</span><span class="p">)</span>
+
+    <span class="n">metrics</span> <span class="o">=</span> <span class="n">StreamMetrics</span><span class="p">()</span>
+    <span class="n">process_rc</span> <span class="o">=</span> <span class="n">_run_subprocess_with_tty</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">metrics</span><span class="p">)</span>
+    <span class="n">run_metadata</span> <span class="o">=</span> <span class="n">_collect_run_metadata</span><span class="p">()</span>
+    <span class="n">runtime_summary_path</span> <span class="o">=</span> <span class="n">runtime_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run_id</span><span class="si">}</span><span class="s2">.runtime.summary.json&quot;</span>
+    <span class="n">runtime_summary</span> <span class="o">=</span> <span class="n">_read_json_if_exists</span><span class="p">(</span><span class="n">runtime_summary_path</span><span class="p">)</span>
+    <span class="n">detection_summary</span> <span class="o">=</span> <span class="n">_read_json_if_exists</span><span class="p">(</span><span class="n">detection_summary_file</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">cfg</span><span class="o">.</span><span class="n">write_detection_file</span> <span class="ow">and</span> <span class="n">detection_summary_file</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="n">detection_summary_file</span><span class="o">.</span><span class="n">unlink</span><span class="p">()</span>
+
+    <span class="n">recall_metrics_normalized</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">metrics</span><span class="o">.</span><span class="n">recall_metrics</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">recall_metrics_normalized</span><span class="p">[</span><span class="n">_normalize_recall_metric_key</span><span class="p">(</span><span class="n">key</span><span class="p">)]</span> <span class="o">=</span> <span class="n">val</span>
+
+    <span class="n">effective_rc</span><span class="p">,</span> <span class="n">failure_reason</span><span class="p">,</span> <span class="n">success</span> <span class="o">=</span> <span class="n">_evaluate_run_outcome</span><span class="p">(</span>
+        <span class="n">process_rc</span><span class="o">=</span><span class="n">process_rc</span><span class="p">,</span>
+        <span class="n">recall_required</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">recall_required</span><span class="p">),</span>
+        <span class="n">recall_metrics</span><span class="o">=</span><span class="n">metrics</span><span class="o">.</span><span class="n">recall_metrics</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">metrics_payload</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="n">metrics</span><span class="o">.</span><span class="n">files</span><span class="p">,</span>
+        <span class="s2">&quot;pages&quot;</span><span class="p">:</span> <span class="n">metrics</span><span class="o">.</span><span class="n">pages</span><span class="p">,</span>
+        <span class="s2">&quot;ingest_secs&quot;</span><span class="p">:</span> <span class="n">metrics</span><span class="o">.</span><span class="n">ingest_secs</span><span class="p">,</span>
+        <span class="s2">&quot;pages_per_sec_ingest&quot;</span><span class="p">:</span> <span class="n">metrics</span><span class="o">.</span><span class="n">pages_per_sec_ingest</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">recall_metrics_normalized</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">summary_metrics</span> <span class="o">=</span> <span class="n">_resolve_summary_metrics</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">metrics_payload</span><span class="p">,</span> <span class="n">runtime_summary</span><span class="p">)</span>
+
+    <span class="n">result_payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;timestamp&quot;</span><span class="p">:</span> <span class="n">now_timestr</span><span class="p">(),</span>
+        <span class="s2">&quot;latest_commit&quot;</span><span class="p">:</span> <span class="n">last_commit</span><span class="p">(),</span>
+        <span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="n">success</span><span class="p">,</span>
+        <span class="s2">&quot;return_code&quot;</span><span class="p">:</span> <span class="n">effective_rc</span><span class="p">,</span>
+        <span class="s2">&quot;failure_reason&quot;</span><span class="p">:</span> <span class="n">failure_reason</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;test_config&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;dataset_label&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">dataset_label</span><span class="p">,</span>
+            <span class="s2">&quot;dataset_dir&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">dataset_dir</span><span class="p">,</span>
+            <span class="s2">&quot;preset&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">preset</span><span class="p">,</span>
+            <span class="s2">&quot;query_csv&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">query_csv</span><span class="p">,</span>
+            <span class="s2">&quot;effective_query_csv&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">effective_query_csv</span><span class="p">),</span>
+            <span class="s2">&quot;input_type&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">input_type</span><span class="p">,</span>
+            <span class="s2">&quot;recall_required&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">recall_required</span><span class="p">,</span>
+            <span class="s2">&quot;recall_match_mode&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">recall_match_mode</span><span class="p">,</span>
+            <span class="s2">&quot;recall_adapter&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">recall_adapter</span><span class="p">,</span>
+            <span class="s2">&quot;ray_address&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">ray_address</span><span class="p">,</span>
+            <span class="s2">&quot;hybrid&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">hybrid</span><span class="p">,</span>
+            <span class="s2">&quot;embed_model_name&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">embed_model_name</span><span class="p">,</span>
+            <span class="s2">&quot;write_detection_file&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">write_detection_file</span><span class="p">,</span>
+            <span class="s2">&quot;lancedb_uri&quot;</span><span class="p">:</span> <span class="n">_resolve_lancedb_uri</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">artifact_dir</span><span class="p">),</span>
+            <span class="s2">&quot;tuning&quot;</span><span class="p">:</span> <span class="p">{</span><span class="n">field</span><span class="p">:</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">field</span><span class="p">)</span> <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">TUNING_FIELDS</span><span class="p">)},</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;metrics&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;files&quot;</span><span class="p">:</span> <span class="n">metrics</span><span class="o">.</span><span class="n">files</span><span class="p">,</span>
+            <span class="s2">&quot;pages&quot;</span><span class="p">:</span> <span class="n">metrics</span><span class="o">.</span><span class="n">pages</span><span class="p">,</span>
+            <span class="s2">&quot;ingest_secs&quot;</span><span class="p">:</span> <span class="n">metrics</span><span class="o">.</span><span class="n">ingest_secs</span><span class="p">,</span>
+            <span class="s2">&quot;pages_per_sec_ingest&quot;</span><span class="p">:</span> <span class="n">metrics</span><span class="o">.</span><span class="n">pages_per_sec_ingest</span><span class="p">,</span>
+            <span class="s2">&quot;rows_processed&quot;</span><span class="p">:</span> <span class="n">metrics</span><span class="o">.</span><span class="n">rows_processed</span><span class="p">,</span>
+            <span class="s2">&quot;rows_per_sec_ingest&quot;</span><span class="p">:</span> <span class="n">metrics</span><span class="o">.</span><span class="n">rows_per_sec_ingest</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">recall_metrics_normalized</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;summary_metrics&quot;</span><span class="p">:</span> <span class="n">summary_metrics</span><span class="p">,</span>
+        <span class="s2">&quot;run_metadata&quot;</span><span class="p">:</span> <span class="n">run_metadata</span><span class="p">,</span>
+        <span class="s2">&quot;runtime_summary&quot;</span><span class="p">:</span> <span class="n">runtime_summary</span><span class="p">,</span>
+        <span class="s2">&quot;detection_summary&quot;</span><span class="p">:</span> <span class="n">detection_summary</span><span class="p">,</span>
+        <span class="s2">&quot;artifacts&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;command_file&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">((</span><span class="n">artifact_dir</span> <span class="o">/</span> <span class="s2">&quot;command.txt&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()),</span>
+            <span class="s2">&quot;runtime_metrics_dir&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">runtime_dir</span><span class="o">.</span><span class="n">resolve</span><span class="p">()),</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">write_detection_file</span><span class="p">:</span>
+        <span class="n">result_payload</span><span class="p">[</span><span class="s2">&quot;artifacts&quot;</span><span class="p">][</span><span class="s2">&quot;detection_summary_file&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">detection_summary_file</span><span class="o">.</span><span class="n">resolve</span><span class="p">())</span>
+    <span class="k">if</span> <span class="n">tags</span><span class="p">:</span>
+        <span class="n">result_payload</span><span class="p">[</span><span class="s2">&quot;tags&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">tags</span><span class="p">)</span>
+
+    <span class="n">write_json</span><span class="p">(</span><span class="n">artifact_dir</span> <span class="o">/</span> <span class="s2">&quot;results.json&quot;</span><span class="p">,</span> <span class="n">result_payload</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result_payload</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_run_entry</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">run_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">session_dir</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">dataset</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">preset</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">sweep_overrides</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">cli_overrides</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">recall_required</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">tags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">cfg</span> <span class="o">=</span> <span class="n">load_harness_config</span><span class="p">(</span>
+        <span class="n">config_file</span><span class="o">=</span><span class="n">config_file</span><span class="p">,</span>
+        <span class="n">dataset</span><span class="o">=</span><span class="n">dataset</span><span class="p">,</span>
+        <span class="n">preset</span><span class="o">=</span><span class="n">preset</span><span class="p">,</span>
+        <span class="n">sweep_overrides</span><span class="o">=</span><span class="n">sweep_overrides</span><span class="p">,</span>
+        <span class="n">cli_overrides</span><span class="o">=</span><span class="n">cli_overrides</span><span class="p">,</span>
+        <span class="n">cli_recall_required</span><span class="o">=</span><span class="n">recall_required</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">session_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">artifact_dir</span> <span class="o">=</span> <span class="n">create_run_artifact_dir</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">dataset_label</span><span class="p">,</span> <span class="n">run_name</span><span class="o">=</span><span class="n">run_name</span><span class="p">,</span> <span class="n">base_dir</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">artifacts_dir</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">resolved_run_name</span> <span class="o">=</span> <span class="n">run_name</span> <span class="ow">or</span> <span class="n">cfg</span><span class="o">.</span><span class="n">dataset_label</span>
+        <span class="n">artifact_dir</span> <span class="o">=</span> <span class="n">session_dir</span> <span class="o">/</span> <span class="n">resolved_run_name</span>
+        <span class="n">artifact_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">resolved_run_name</span> <span class="o">=</span> <span class="n">run_name</span> <span class="ow">or</span> <span class="n">cfg</span><span class="o">.</span><span class="n">dataset_label</span>
+    <span class="n">normalized_tags</span> <span class="o">=</span> <span class="n">_normalize_tags</span><span class="p">(</span><span class="n">tags</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">_run_single</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">artifact_dir</span><span class="p">,</span> <span class="n">run_id</span><span class="o">=</span><span class="n">resolved_run_name</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="n">normalized_tags</span><span class="p">)</span>
+    <span class="n">run_result</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;run_name&quot;</span><span class="p">:</span> <span class="n">resolved_run_name</span><span class="p">,</span>
+        <span class="s2">&quot;dataset&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">dataset_label</span><span class="p">,</span>
+        <span class="s2">&quot;preset&quot;</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">preset</span><span class="p">,</span>
+        <span class="s2">&quot;artifact_dir&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">artifact_dir</span><span class="o">.</span><span class="n">resolve</span><span class="p">()),</span>
+        <span class="s2">&quot;success&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]),</span>
+        <span class="s2">&quot;return_code&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;return_code&quot;</span><span class="p">]),</span>
+        <span class="s2">&quot;failure_reason&quot;</span><span class="p">:</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;failure_reason&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;metrics&quot;</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;summary_metrics&quot;</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metrics&quot;</span><span class="p">,</span> <span class="p">{}))),</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">normalized_tags</span><span class="p">:</span>
+        <span class="n">run_result</span><span class="p">[</span><span class="s2">&quot;tags&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">normalized_tags</span>
+    <span class="k">return</span> <span class="n">run_result</span>
+
+
+<div class="viewcode-block" id="execute_runs">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.run.execute_runs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">execute_runs</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">runs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+    <span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">session_prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">preset_override</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">base_artifacts_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">tags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]:</span>
+    <span class="n">session_dir</span> <span class="o">=</span> <span class="n">create_session_dir</span><span class="p">(</span><span class="n">session_prefix</span><span class="p">,</span> <span class="n">base_dir</span><span class="o">=</span><span class="n">base_artifacts_dir</span><span class="p">)</span>
+    <span class="n">run_results</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">run</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">runs</span><span class="p">):</span>
+        <span class="n">run_name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="sa">f</span><span class="s2">&quot;run_</span><span class="si">{</span><span class="n">idx</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">:</span><span class="s2">03d</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">run_result</span> <span class="o">=</span> <span class="n">_run_entry</span><span class="p">(</span>
+            <span class="n">run_name</span><span class="o">=</span><span class="n">run_name</span><span class="p">,</span>
+            <span class="n">config_file</span><span class="o">=</span><span class="n">config_file</span><span class="p">,</span>
+            <span class="n">session_dir</span><span class="o">=</span><span class="n">session_dir</span><span class="p">,</span>
+            <span class="n">dataset</span><span class="o">=</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;dataset&quot;</span><span class="p">),</span>
+            <span class="n">preset</span><span class="o">=</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;preset&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">preset_override</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">preset_override</span><span class="p">,</span>
+            <span class="n">sweep_overrides</span><span class="o">=</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;overrides&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;overrides&quot;</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">run</span><span class="p">,</span>
+            <span class="n">recall_required</span><span class="o">=</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;recall_required&quot;</span><span class="p">),</span>
+            <span class="n">tags</span><span class="o">=</span><span class="n">tags</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">run_results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">run_result</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">session_dir</span><span class="p">,</span> <span class="n">run_results</span></div>
+
+
+
+<div class="viewcode-block" id="run_command">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.run.run_command">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">run_command</span><span class="p">(</span>
+    <span class="n">dataset</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span><span class="o">...</span><span class="p">,</span> <span class="s2">&quot;--dataset&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Dataset name from config or direct path.&quot;</span><span class="p">),</span>
+    <span class="n">preset</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;--preset&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Preset override.&quot;</span><span class="p">),</span>
+    <span class="n">config</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;--config&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Path to harness test config YAML.&quot;</span><span class="p">),</span>
+    <span class="n">run_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;--run-name&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Optional run name label.&quot;</span><span class="p">),</span>
+    <span class="n">override</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">([],</span> <span class="s2">&quot;--override&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Override values with KEY=VALUE.&quot;</span><span class="p">),</span>
+    <span class="n">tag</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">([],</span> <span class="s2">&quot;--tag&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Run tag to persist in harness artifacts. Repeatable.&quot;</span><span class="p">),</span>
+    <span class="n">recall_required</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;--recall-required/--no-recall-required&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Override recall-required gate for this run.&quot;</span>
+    <span class="p">),</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">_run_entry</span><span class="p">(</span>
+        <span class="n">run_name</span><span class="o">=</span><span class="n">run_name</span><span class="p">,</span>
+        <span class="n">config_file</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
+        <span class="n">session_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">dataset</span><span class="o">=</span><span class="n">dataset</span><span class="p">,</span>
+        <span class="n">preset</span><span class="o">=</span><span class="n">preset</span><span class="p">,</span>
+        <span class="n">cli_overrides</span><span class="o">=</span><span class="n">override</span><span class="p">,</span>
+        <span class="n">recall_required</span><span class="o">=</span><span class="n">recall_required</span><span class="p">,</span>
+        <span class="n">tags</span><span class="o">=</span><span class="n">tag</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">typer</span><span class="o">.</span><span class="n">echo</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Result: </span><span class="si">{</span><span class="s1">&#39;PASS&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;success&#39;</span><span class="p">]</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;FAIL&#39;</span><span class="si">}</span><span class="s2"> | &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;return_code=</span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;return_code&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> | artifact_dir=</span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;artifact_dir&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+    <span class="k">raise</span> <span class="n">typer</span><span class="o">.</span><span class="n">Exit</span><span class="p">(</span><span class="n">code</span><span class="o">=</span><span class="mi">0</span> <span class="k">if</span> <span class="n">result</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]</span> <span class="k">else</span> <span class="mi">1</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="sweep_command">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.run.sweep_command">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">sweep_command</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;--config&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Path to harness test config YAML.&quot;</span><span class="p">),</span>
+    <span class="n">runs_config</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">DEFAULT_NIGHTLY_CONFIG_PATH</span><span class="p">),</span> <span class="s2">&quot;--runs-config&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Path to sweep runs YAML.&quot;</span><span class="p">),</span>
+    <span class="n">preset</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;--preset&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Force preset for all sweep runs.&quot;</span><span class="p">),</span>
+    <span class="n">session_prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span><span class="s2">&quot;sweep&quot;</span><span class="p">,</span> <span class="s2">&quot;--session-prefix&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Session directory prefix.&quot;</span><span class="p">),</span>
+    <span class="n">tag</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">([],</span> <span class="s2">&quot;--tag&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Session tag to persist on each run. Repeatable.&quot;</span><span class="p">),</span>
+    <span class="n">dry_run</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span><span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;--dry-run&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Print run plan without executing.&quot;</span><span class="p">),</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">normalized_tags</span> <span class="o">=</span> <span class="n">_normalize_tags</span><span class="p">(</span><span class="n">tag</span><span class="p">)</span>
+    <span class="n">runs</span> <span class="o">=</span> <span class="n">load_runs_config</span><span class="p">(</span><span class="n">runs_config</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">dry_run</span><span class="p">:</span>
+        <span class="n">typer</span><span class="o">.</span><span class="n">echo</span><span class="p">(</span><span class="s2">&quot;Sweep dry run:&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">run</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">runs</span><span class="p">):</span>
+            <span class="n">tag_text</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot; tags=</span><span class="si">{</span><span class="n">normalized_tags</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">normalized_tags</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+            <span class="n">plan_line</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">idx</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">:</span><span class="s2">03d</span><span class="si">}</span><span class="s2">: name=</span><span class="si">{</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;name&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2"> &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;dataset=</span><span class="si">{</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;dataset&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2"> preset=</span><span class="si">{</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;preset&#39;</span><span class="p">)</span><span class="si">}{</span><span class="n">tag_text</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+            <span class="n">typer</span><span class="o">.</span><span class="n">echo</span><span class="p">(</span><span class="n">plan_line</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">typer</span><span class="o">.</span><span class="n">Exit</span><span class="p">(</span><span class="n">code</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="n">session_dir</span><span class="p">,</span> <span class="n">run_results</span> <span class="o">=</span> <span class="n">execute_runs</span><span class="p">(</span>
+        <span class="n">runs</span><span class="o">=</span><span class="n">runs</span><span class="p">,</span>
+        <span class="n">config_file</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
+        <span class="n">session_prefix</span><span class="o">=</span><span class="n">session_prefix</span><span class="p">,</span>
+        <span class="n">preset_override</span><span class="o">=</span><span class="n">preset</span><span class="p">,</span>
+        <span class="n">tags</span><span class="o">=</span><span class="n">normalized_tags</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">summary_path</span> <span class="o">=</span> <span class="n">write_session_summary</span><span class="p">(</span>
+        <span class="n">session_dir</span><span class="p">,</span>
+        <span class="n">run_results</span><span class="p">,</span>
+        <span class="n">session_type</span><span class="o">=</span><span class="s2">&quot;sweep&quot;</span><span class="p">,</span>
+        <span class="n">config_path</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">runs_config</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span><span class="o">.</span><span class="n">resolve</span><span class="p">()),</span>
+    <span class="p">)</span>
+
+    <span class="n">typer</span><span class="o">.</span><span class="n">echo</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Sweep session: </span><span class="si">{</span><span class="n">session_dir</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">typer</span><span class="o">.</span><span class="n">echo</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Session summary: </span><span class="si">{</span><span class="n">summary_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">failed</span> <span class="o">=</span> <span class="p">[</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">run_results</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;success&quot;</span><span class="p">]]</span>
+    <span class="k">raise</span> <span class="n">typer</span><span class="o">.</span><span class="n">Exit</span><span class="p">(</span><span class="n">code</span><span class="o">=</span><span class="mi">0</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">failed</span> <span class="k">else</span> <span class="mi">1</span><span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+nemo\_retriever.adapters package
+================================
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   nemo_retriever.adapters.cli
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.adapters
+   :members:
+   :show-inheritance:
+   :undoc-members:

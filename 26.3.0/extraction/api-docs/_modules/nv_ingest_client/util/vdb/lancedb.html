@@ -1,0 +1,1061 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nv_ingest_client.util.vdb.lancedb &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nv_ingest_client/util/vdb/lancedb';</script>
+
+    <link rel="icon" href="../../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../../index.html" class="nav-link">Module code</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="../vdb.html" class="nav-link">nv_ingest_client.util.vdb</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nv_ingest_client.util.vdb.lancedb</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nv_ingest_client.util.vdb.lancedb</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">timedelta</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">urllib.parse</span><span class="w"> </span><span class="kn">import</span> <span class="n">urlparse</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">lancedb</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pyarrow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pa</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">lancedb.rerankers</span><span class="w"> </span><span class="kn">import</span> <span class="n">RRFReranker</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nv_ingest_client.util.transport</span><span class="w"> </span><span class="kn">import</span> <span class="n">infer_microservice</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nv_ingest_client.util.vdb.adt_vdb</span><span class="w"> </span><span class="kn">import</span> <span class="n">VDB</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nv_ingest_client.util.vdb.milvus</span><span class="w"> </span><span class="kn">import</span> <span class="n">nv_rerank</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_json_str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert Python objects (dict/list/etc.) to a compact JSON string.</span>
+
+<span class="sd">    LanceDB table schema stores `metadata` and `source` as strings, so we must</span>
+<span class="sd">    serialize nested structures before ingestion.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">value</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">,</span> <span class="s2">&quot;:&quot;</span><span class="p">),</span> <span class="n">default</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_maybe_parse_json</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Best-effort parse for JSON-serialized string columns.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">list</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">value</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">value</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">s</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{}</span>
+    <span class="c1"># Avoid accidental parsing of plain strings that are not JSON objects/arrays.</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;{&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">s</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;[&quot;</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">value</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">value</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_record_timing</span><span class="p">(</span><span class="n">event</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">duration_s</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">extra</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+    <span class="n">timing_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;NV_INGEST_LANCEDB_TIMING_PATH&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">timing_path</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;event&quot;</span><span class="p">:</span> <span class="n">event</span><span class="p">,</span>
+        <span class="s2">&quot;duration_s&quot;</span><span class="p">:</span> <span class="n">duration_s</span><span class="p">,</span>
+        <span class="s2">&quot;timestamp_s&quot;</span><span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">extra</span><span class="p">:</span>
+        <span class="n">payload</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">extra</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">timing_path</span><span class="p">),</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">timing_path</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_text_for_element</span><span class="p">(</span><span class="n">element</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract searchable text from an element based on document_type.</span>
+
+<span class="sd">    Matches Milvus behavior: for images, use caption/OCR text instead of raw content.</span>
+<span class="sd">    This prevents base64-encoded images from being stored in the text field.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">doc_type</span> <span class="o">=</span> <span class="n">element</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;document_type&quot;</span><span class="p">)</span>
+    <span class="n">metadata</span> <span class="o">=</span> <span class="n">element</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metadata&quot;</span><span class="p">,</span> <span class="p">{})</span>
+
+    <span class="k">if</span> <span class="n">doc_type</span> <span class="o">==</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">doc_type</span> <span class="o">==</span> <span class="s2">&quot;structured&quot;</span><span class="p">:</span>
+        <span class="c1"># Tables, charts, infographics</span>
+        <span class="n">table_meta</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;table_metadata&quot;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="k">return</span> <span class="n">table_meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;table_content&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">doc_type</span> <span class="o">==</span> <span class="s2">&quot;image&quot;</span><span class="p">:</span>
+        <span class="c1"># Use caption/OCR text, not raw base64 image data</span>
+        <span class="n">image_meta</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;image_metadata&quot;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="n">content_meta</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content_metadata&quot;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="k">if</span> <span class="n">content_meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;subtype&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;page_image&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">image_meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">image_meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;caption&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">doc_type</span> <span class="o">==</span> <span class="s2">&quot;audio&quot;</span><span class="p">:</span>
+        <span class="n">audio_meta</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;audio_metadata&quot;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="k">return</span> <span class="n">audio_meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;audio_transcript&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Fallback for unknown types</span>
+        <span class="k">return</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="create_lancedb_results">
+<a class="viewcode-back" href="../../../../nv-ingest-client/nv_ingest_client.util.vdb.html#nv_ingest_client.util.vdb.lancedb.create_lancedb_results">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_lancedb_results</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Transform NV-Ingest pipeline results into LanceDB ingestible rows.</span>
+
+<span class="sd">    Extracts appropriate text based on document_type rather than storing</span>
+<span class="sd">    raw content (which may include base64 images).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : list</span>
+<span class="sd">        Pipeline output results.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">lancedb_rows</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">result</span><span class="p">:</span>
+            <span class="n">metadata</span> <span class="o">=</span> <span class="n">element</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metadata&quot;</span><span class="p">,</span> <span class="p">{})</span>
+            <span class="n">doc_type</span> <span class="o">=</span> <span class="n">element</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;document_type&quot;</span><span class="p">)</span>
+
+            <span class="c1"># Check if embedding exists</span>
+            <span class="n">embedding</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;embedding&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">embedding</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="n">content_meta</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;content_metadata&quot;</span><span class="p">,</span> <span class="p">{})</span>
+
+            <span class="c1"># Extract appropriate text based on document type</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">_get_text_for_element</span><span class="p">(</span><span class="n">element</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">text</span><span class="p">:</span>
+                <span class="n">source_name</span> <span class="o">=</span> <span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;source_metadata&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;source_name&quot;</span><span class="p">,</span> <span class="s2">&quot;unknown&quot;</span><span class="p">)</span>
+                <span class="n">pg_num</span> <span class="o">=</span> <span class="n">content_meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;page_number&quot;</span><span class="p">)</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No text found for entity: </span><span class="si">{</span><span class="n">source_name</span><span class="si">}</span><span class="s2"> page: </span><span class="si">{</span><span class="n">pg_num</span><span class="si">}</span><span class="s2"> type: </span><span class="si">{</span><span class="n">doc_type</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">continue</span>
+
+            <span class="n">lancedb_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;vector&quot;</span><span class="p">:</span> <span class="n">embedding</span><span class="p">,</span>
+                    <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">text</span><span class="p">,</span>
+                    <span class="c1"># Stored as strings in LanceDB; serialize nested structures.</span>
+                    <span class="s2">&quot;metadata&quot;</span><span class="p">:</span> <span class="n">_json_str</span><span class="p">(</span><span class="n">content_meta</span><span class="p">),</span>
+                    <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="n">_json_str</span><span class="p">(</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;source_metadata&quot;</span><span class="p">,</span> <span class="p">{})),</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">lancedb_rows</span></div>
+
+
+
+<div class="viewcode-block" id="LanceDB">
+<a class="viewcode-back" href="../../../../nv-ingest-client/nv_ingest_client.util.vdb.html#nv_ingest_client.util.vdb.lancedb.LanceDB">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LanceDB</span><span class="p">(</span><span class="n">VDB</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;LanceDB operator implementing the VDB interface.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">uri</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">table_name</span><span class="o">=</span><span class="s2">&quot;nv-ingest&quot;</span><span class="p">,</span>
+        <span class="n">index_type</span><span class="o">=</span><span class="s2">&quot;IVF_HNSW_SQ&quot;</span><span class="p">,</span>
+        <span class="n">metric</span><span class="o">=</span><span class="s2">&quot;l2&quot;</span><span class="p">,</span>
+        <span class="n">num_partitions</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span>
+        <span class="n">num_sub_vectors</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span>
+        <span class="n">hybrid</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">fts_language</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;English&quot;</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">uri</span> <span class="o">=</span> <span class="n">uri</span> <span class="ow">or</span> <span class="s2">&quot;lancedb&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">overwrite</span> <span class="o">=</span> <span class="n">overwrite</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">table_name</span> <span class="o">=</span> <span class="n">table_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index_type</span> <span class="o">=</span> <span class="n">index_type</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">metric</span> <span class="o">=</span> <span class="n">metric</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_partitions</span> <span class="o">=</span> <span class="n">num_partitions</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_sub_vectors</span> <span class="o">=</span> <span class="n">num_sub_vectors</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">hybrid</span> <span class="o">=</span> <span class="n">hybrid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fts_language</span> <span class="o">=</span> <span class="n">fts_language</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="LanceDB.create_index">
+<a class="viewcode-back" href="../../../../nv-ingest-client/nv_ingest_client.util.vdb.html#nv_ingest_client.util.vdb.lancedb.LanceDB.create_index">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_index</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">records</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">table_name</span><span class="o">=</span><span class="s2">&quot;nv-ingest&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a LanceDB table and populate it with transformed records.&quot;&quot;&quot;</span>
+        <span class="n">connect_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="n">db</span> <span class="o">=</span> <span class="n">lancedb</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">uri</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">uri</span><span class="p">)</span>
+        <span class="n">_record_timing</span><span class="p">(</span><span class="s2">&quot;lancedb.connect&quot;</span><span class="p">,</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">connect_start</span><span class="p">)</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">create_lancedb_results</span><span class="p">(</span><span class="n">records</span><span class="p">)</span>
+        <span class="n">schema</span> <span class="o">=</span> <span class="n">pa</span><span class="o">.</span><span class="n">schema</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">pa</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="s2">&quot;vector&quot;</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">list_</span><span class="p">(</span><span class="n">pa</span><span class="o">.</span><span class="n">float32</span><span class="p">(),</span> <span class="mi">2048</span><span class="p">)),</span>
+                <span class="n">pa</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">string</span><span class="p">()),</span>
+                <span class="n">pa</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="s2">&quot;metadata&quot;</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">string</span><span class="p">()),</span>
+                <span class="n">pa</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="s2">&quot;source&quot;</span><span class="p">,</span> <span class="n">pa</span><span class="o">.</span><span class="n">string</span><span class="p">()),</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">create_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="n">table</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">create_table</span><span class="p">(</span>
+            <span class="n">table_name</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">results</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="n">schema</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;overwrite&quot;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">overwrite</span> <span class="k">else</span> <span class="s2">&quot;append&quot;</span>
+        <span class="p">)</span>
+        <span class="n">_record_timing</span><span class="p">(</span>
+            <span class="s2">&quot;lancedb.create_table&quot;</span><span class="p">,</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">create_start</span><span class="p">,</span>
+            <span class="p">{</span><span class="s2">&quot;rows&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">)},</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">table</span></div>
+
+
+<div class="viewcode-block" id="LanceDB.write_to_index">
+<a class="viewcode-back" href="../../../../nv-ingest-client/nv_ingest_client.util.vdb.html#nv_ingest_client.util.vdb.lancedb.LanceDB.write_to_index">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">write_to_index</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">records</span><span class="p">,</span>
+        <span class="n">table</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">index_type</span><span class="o">=</span><span class="s2">&quot;IVF_HNSW_SQ&quot;</span><span class="p">,</span>
+        <span class="n">metric</span><span class="o">=</span><span class="s2">&quot;l2&quot;</span><span class="p">,</span>
+        <span class="n">num_partitions</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span>
+        <span class="n">num_sub_vectors</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span>
+        <span class="n">hybrid</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">fts_language</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create vector and optionally FTS indexes on the LanceDB table.&quot;&quot;&quot;</span>
+        <span class="n">hybrid</span> <span class="o">=</span> <span class="n">hybrid</span> <span class="k">if</span> <span class="n">hybrid</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">hybrid</span>
+        <span class="n">fts_language</span> <span class="o">=</span> <span class="n">fts_language</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">fts_language</span>
+
+        <span class="n">vector_index_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="n">table</span><span class="o">.</span><span class="n">create_index</span><span class="p">(</span>
+            <span class="n">index_type</span><span class="o">=</span><span class="n">index_type</span><span class="p">,</span>
+            <span class="n">metric</span><span class="o">=</span><span class="n">metric</span><span class="p">,</span>
+            <span class="n">num_partitions</span><span class="o">=</span><span class="n">num_partitions</span><span class="p">,</span>
+            <span class="n">num_sub_vectors</span><span class="o">=</span><span class="n">num_sub_vectors</span><span class="p">,</span>
+            <span class="n">vector_column_name</span><span class="o">=</span><span class="s2">&quot;vector&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">index_stub</span> <span class="ow">in</span> <span class="n">table</span><span class="o">.</span><span class="n">list_indices</span><span class="p">():</span>
+            <span class="n">table</span><span class="o">.</span><span class="n">wait_for_index</span><span class="p">([</span><span class="n">index_stub</span><span class="o">.</span><span class="n">name</span><span class="p">],</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timedelta</span><span class="p">(</span><span class="n">seconds</span><span class="o">=</span><span class="mi">600</span><span class="p">))</span>
+        <span class="n">_record_timing</span><span class="p">(</span><span class="s2">&quot;lancedb.vector_index_ready&quot;</span><span class="p">,</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">vector_index_start</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">hybrid</span><span class="p">:</span>
+            <span class="n">fts_index_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+            <span class="n">table</span><span class="o">.</span><span class="n">create_fts_index</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="n">language</span><span class="o">=</span><span class="n">fts_language</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">index_stub</span> <span class="ow">in</span> <span class="n">table</span><span class="o">.</span><span class="n">list_indices</span><span class="p">():</span>
+                <span class="k">if</span> <span class="s2">&quot;text&quot;</span> <span class="ow">in</span> <span class="n">index_stub</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">or</span> <span class="s2">&quot;fts&quot;</span> <span class="ow">in</span> <span class="n">index_stub</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+                    <span class="n">table</span><span class="o">.</span><span class="n">wait_for_index</span><span class="p">([</span><span class="n">index_stub</span><span class="o">.</span><span class="n">name</span><span class="p">],</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timedelta</span><span class="p">(</span><span class="n">seconds</span><span class="o">=</span><span class="mi">600</span><span class="p">))</span>
+            <span class="n">_record_timing</span><span class="p">(</span><span class="s2">&quot;lancedb.fts_index_ready&quot;</span><span class="p">,</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">fts_index_start</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="LanceDB.run">
+<a class="viewcode-back" href="../../../../nv-ingest-client/nv_ingest_client.util.vdb.html#nv_ingest_client.util.vdb.lancedb.LanceDB.run">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">records</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Orchestrate index creation and data ingestion.&quot;&quot;&quot;</span>
+        <span class="n">table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_index</span><span class="p">(</span><span class="n">records</span><span class="o">=</span><span class="n">records</span><span class="p">,</span> <span class="n">table_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">table_name</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">write_to_index</span><span class="p">(</span>
+            <span class="n">records</span><span class="p">,</span>
+            <span class="n">table</span><span class="o">=</span><span class="n">table</span><span class="p">,</span>
+            <span class="n">index_type</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">index_type</span><span class="p">,</span>
+            <span class="n">metric</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">metric</span><span class="p">,</span>
+            <span class="n">num_partitions</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">num_partitions</span><span class="p">,</span>
+            <span class="n">num_sub_vectors</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">num_sub_vectors</span><span class="p">,</span>
+            <span class="n">hybrid</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">hybrid</span><span class="p">,</span>
+            <span class="n">fts_language</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">fts_language</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">records</span></div>
+
+
+<div class="viewcode-block" id="LanceDB.retrieval">
+<a class="viewcode-back" href="../../../../nv-ingest-client/nv_ingest_client.util.vdb.html#nv_ingest_client.util.vdb.lancedb.LanceDB.retrieval">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">retrieval</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">queries</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run LanceDB retrieval, using hybrid search if enabled.&quot;&quot;&quot;</span>
+        <span class="n">hybrid</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;hybrid&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">hybrid</span><span class="p">)</span>
+        <span class="n">table_path</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;table_path&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">uri</span><span class="p">)</span>
+        <span class="n">table_name</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;table_name&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">table_name</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">hybrid</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">lancedb_hybrid_retrieval</span><span class="p">(</span>
+                <span class="n">queries</span><span class="p">,</span>
+                <span class="n">table_path</span><span class="o">=</span><span class="n">table_path</span><span class="p">,</span>
+                <span class="n">table_name</span><span class="o">=</span><span class="n">table_name</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">lancedb_retrieval</span><span class="p">(</span>
+            <span class="n">queries</span><span class="p">,</span>
+            <span class="n">table_path</span><span class="o">=</span><span class="n">table_path</span><span class="p">,</span>
+            <span class="n">table_name</span><span class="o">=</span><span class="n">table_name</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="lancedb_retrieval">
+<a class="viewcode-back" href="../../../../nv-ingest-client/nv_ingest_client.util.vdb.html#nv_ingest_client.util.vdb.lancedb.lancedb_retrieval">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">lancedb_retrieval</span><span class="p">(</span>
+    <span class="n">queries</span><span class="p">,</span>
+    <span class="n">table_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;nv-ingest&quot;</span><span class="p">,</span>
+    <span class="n">table</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">embedding_endpoint</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;http://localhost:8012/v1&quot;</span><span class="p">,</span>
+    <span class="n">nvidia_api_key</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;nvidia/llama-nemotron-embed-1b-v2&quot;</span><span class="p">,</span>
+    <span class="n">top_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">refine_factor</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+    <span class="n">n_probe</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
+    <span class="n">nv_ranker</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">nv_ranker_endpoint</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">nv_ranker_model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">nv_ranker_top_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+    <span class="n">result_fields</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Standalone LanceDB retrieval function.</span>
+
+<span class="sd">    This is the primary interface for LanceDB vector search. It embeds queries using the</span>
+<span class="sd">    specified embedding model and performs vector similarity search against</span>
+<span class="sd">    a LanceDB table.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    queries : list[str]</span>
+<span class="sd">        Text queries to search for.</span>
+<span class="sd">    table_path : str, optional</span>
+<span class="sd">        Path to the LanceDB database directory (the `uri` used during ingestion).</span>
+<span class="sd">        Required if `table` is not provided.</span>
+<span class="sd">    table_name : str, optional</span>
+<span class="sd">        Name of the table within the LanceDB database (default: &quot;nv-ingest&quot;).</span>
+<span class="sd">    table : object, optional</span>
+<span class="sd">        Pre-opened LanceDB table object. If provided, table_path and table_name</span>
+<span class="sd">        are ignored. Useful for reusing connections or testing.</span>
+<span class="sd">    embedding_endpoint : str, optional</span>
+<span class="sd">        URL of the embedding microservice (default: &quot;http://localhost:8012/v1&quot;).</span>
+<span class="sd">    nvidia_api_key : str, optional</span>
+<span class="sd">        NVIDIA API key for authentication. If None, no auth is used.</span>
+<span class="sd">    model_name : str, optional</span>
+<span class="sd">        Name of the embedding model (default: &quot;nvidia/llama-nemotron-embed-1b-v2&quot;).</span>
+<span class="sd">    top_k : int, optional</span>
+<span class="sd">        Number of results to return per query (default: 10).</span>
+<span class="sd">    refine_factor : int, optional</span>
+<span class="sd">        LanceDB search refine factor for accuracy (default: 50).</span>
+<span class="sd">    n_probe : int, optional</span>
+<span class="sd">        Number of partitions to probe during search (default: 64).</span>
+<span class="sd">    nv_ranker : bool, optional</span>
+<span class="sd">        Whether to apply NV reranker after retrieval (default: False).</span>
+<span class="sd">    nv_ranker_endpoint : str, optional</span>
+<span class="sd">        URL of the reranker microservice.</span>
+<span class="sd">    nv_ranker_model_name : str, optional</span>
+<span class="sd">        Name of the reranker model.</span>
+<span class="sd">    nv_ranker_top_k : int, optional</span>
+<span class="sd">        Number of candidates to fetch before reranking (default: 50).</span>
+<span class="sd">    result_fields : list, optional</span>
+<span class="sd">        List of field names to retrieve from each hit document (default:</span>
+<span class="sd">        [&quot;text&quot;, &quot;metadata&quot;, &quot;source&quot;]).</span>
+<span class="sd">    **kwargs</span>
+<span class="sd">        Additional keyword arguments (ignored, for API compatibility).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    list[list[dict]]</span>
+<span class="sd">        For each query, a list of result dicts formatted to match Milvus output</span>
+<span class="sd">        structure for recall scoring compatibility.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">table</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">table_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Either table or table_path must be provided&quot;</span><span class="p">)</span>
+        <span class="n">db</span> <span class="o">=</span> <span class="n">lancedb</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">uri</span><span class="o">=</span><span class="n">table_path</span><span class="p">)</span>
+        <span class="n">table</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="n">table_name</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">result_fields</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">result_fields</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;metadata&quot;</span><span class="p">,</span> <span class="s2">&quot;source&quot;</span><span class="p">]</span>
+
+    <span class="n">embed_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+    <span class="n">embed_model</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span>
+        <span class="n">infer_microservice</span><span class="p">,</span>
+        <span class="n">model_name</span><span class="o">=</span><span class="n">model_name</span><span class="p">,</span>
+        <span class="n">embedding_endpoint</span><span class="o">=</span><span class="n">embedding_endpoint</span><span class="p">,</span>
+        <span class="n">nvidia_api_key</span><span class="o">=</span><span class="n">nvidia_api_key</span><span class="p">,</span>
+        <span class="n">input_type</span><span class="o">=</span><span class="s2">&quot;query&quot;</span><span class="p">,</span>
+        <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;embeddings&quot;</span><span class="p">],</span>
+        <span class="n">grpc</span><span class="o">=</span><span class="ow">not</span> <span class="p">(</span><span class="s2">&quot;http&quot;</span> <span class="ow">in</span> <span class="n">urlparse</span><span class="p">(</span><span class="n">embedding_endpoint</span><span class="p">)</span><span class="o">.</span><span class="n">scheme</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">query_embeddings</span> <span class="o">=</span> <span class="n">embed_model</span><span class="p">(</span><span class="n">queries</span><span class="p">)</span>
+    <span class="n">_record_timing</span><span class="p">(</span>
+        <span class="s2">&quot;lancedb.embed_queries&quot;</span><span class="p">,</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">embed_start</span><span class="p">,</span>
+        <span class="p">{</span><span class="s2">&quot;query_count&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">queries</span><span class="p">)},</span>
+    <span class="p">)</span>
+
+    <span class="n">search_top_k</span> <span class="o">=</span> <span class="n">nv_ranker_top_k</span> <span class="k">if</span> <span class="n">nv_ranker</span> <span class="k">else</span> <span class="n">top_k</span>
+
+    <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">search_durations</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">query_embed</span> <span class="ow">in</span> <span class="n">query_embeddings</span><span class="p">:</span>
+        <span class="n">search_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="n">search_results</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">table</span><span class="o">.</span><span class="n">search</span><span class="p">([</span><span class="n">query_embed</span><span class="p">],</span> <span class="n">vector_column_name</span><span class="o">=</span><span class="s2">&quot;vector&quot;</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">result_fields</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="n">search_top_k</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">refine_factor</span><span class="p">(</span><span class="n">refine_factor</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">nprobes</span><span class="p">(</span><span class="n">n_probe</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">to_list</span><span class="p">()</span>
+        <span class="p">)</span>
+        <span class="n">search_durations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">search_start</span><span class="p">)</span>
+        <span class="n">formatted</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">search_results</span><span class="p">:</span>
+            <span class="n">source</span> <span class="o">=</span> <span class="n">_maybe_parse_json</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;source&quot;</span><span class="p">))</span>
+            <span class="n">content_meta</span> <span class="o">=</span> <span class="n">_maybe_parse_json</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metadata&quot;</span><span class="p">))</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="n">source</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;source_id&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span> <span class="k">if</span> <span class="n">source</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">source</span><span class="p">)}</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">content_meta</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="c1"># Back-compat: previously this code used `metadata` as `page_number`.</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">page_number</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">content_meta</span><span class="p">)</span>  <span class="c1"># type: ignore[arg-type]</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="n">page_number</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+                <span class="n">content_meta</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;page_number&quot;</span><span class="p">:</span> <span class="n">page_number</span><span class="p">}</span>
+
+            <span class="n">formatted</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;entity&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="n">source</span><span class="p">,</span>
+                        <span class="s2">&quot;content_metadata&quot;</span><span class="p">:</span> <span class="n">content_meta</span><span class="p">,</span>
+                        <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">),</span>
+                    <span class="p">}</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+        <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">formatted</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">search_durations</span><span class="p">:</span>
+        <span class="n">total_search</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">search_durations</span><span class="p">)</span>
+        <span class="n">_record_timing</span><span class="p">(</span>
+            <span class="s2">&quot;lancedb.vector_search&quot;</span><span class="p">,</span>
+            <span class="n">total_search</span><span class="p">,</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;query_count&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">search_durations</span><span class="p">),</span>
+                <span class="s2">&quot;avg_query_s&quot;</span><span class="p">:</span> <span class="n">total_search</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">search_durations</span><span class="p">),</span>
+                <span class="s2">&quot;max_query_s&quot;</span><span class="p">:</span> <span class="nb">max</span><span class="p">(</span><span class="n">search_durations</span><span class="p">),</span>
+            <span class="p">},</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">nv_ranker</span><span class="p">:</span>
+        <span class="n">rerank_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="n">rerank_results</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">num_queries</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">queries</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">candidates</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">queries</span><span class="p">,</span> <span class="n">results</span><span class="p">),</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">num_queries</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Reranking query </span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">num_queries</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">rerank_results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">nv_rerank</span><span class="p">(</span>
+                    <span class="n">query</span><span class="p">,</span>
+                    <span class="n">candidates</span><span class="p">,</span>
+                    <span class="n">reranker_endpoint</span><span class="o">=</span><span class="n">nv_ranker_endpoint</span><span class="p">,</span>
+                    <span class="n">model_name</span><span class="o">=</span><span class="n">nv_ranker_model_name</span><span class="p">,</span>
+                    <span class="n">topk</span><span class="o">=</span><span class="n">top_k</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">rerank_results</span>
+        <span class="n">_record_timing</span><span class="p">(</span>
+            <span class="s2">&quot;lancedb.nv_rerank&quot;</span><span class="p">,</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">rerank_start</span><span class="p">,</span>
+            <span class="p">{</span><span class="s2">&quot;query_count&quot;</span><span class="p">:</span> <span class="n">num_queries</span><span class="p">},</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">results</span></div>
+
+
+
+<div class="viewcode-block" id="lancedb_hybrid_retrieval">
+<a class="viewcode-back" href="../../../../nv-ingest-client/nv_ingest_client.util.vdb.html#nv_ingest_client.util.vdb.lancedb.lancedb_hybrid_retrieval">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">lancedb_hybrid_retrieval</span><span class="p">(</span>
+    <span class="n">queries</span><span class="p">,</span>
+    <span class="n">table_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">table_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;nv-ingest&quot;</span><span class="p">,</span>
+    <span class="n">table</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="n">embedding_endpoint</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;http://localhost:8012/v1&quot;</span><span class="p">,</span>
+    <span class="n">nvidia_api_key</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;nvidia/llama-nemotron-embed-1b-v2&quot;</span><span class="p">,</span>
+    <span class="n">top_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">refine_factor</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+    <span class="n">n_probe</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
+    <span class="n">nv_ranker</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">nv_ranker_endpoint</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">nv_ranker_model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">nv_ranker_top_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+    <span class="n">result_fields</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    LanceDB hybrid retrieval combining vector similarity with BM25 full-text search.</span>
+
+<span class="sd">    Uses RRF reranking to merge dense and sparse results. Requires an FTS index</span>
+<span class="sd">    on the text column (set hybrid=True during ingestion).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">table</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">table_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Either table or table_path must be provided&quot;</span><span class="p">)</span>
+        <span class="n">db</span> <span class="o">=</span> <span class="n">lancedb</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">uri</span><span class="o">=</span><span class="n">table_path</span><span class="p">)</span>
+        <span class="n">table</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">open_table</span><span class="p">(</span><span class="n">table_name</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">result_fields</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">result_fields</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;metadata&quot;</span><span class="p">,</span> <span class="s2">&quot;source&quot;</span><span class="p">]</span>
+
+    <span class="n">embed_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+    <span class="n">embed_model</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span>
+        <span class="n">infer_microservice</span><span class="p">,</span>
+        <span class="n">model_name</span><span class="o">=</span><span class="n">model_name</span><span class="p">,</span>
+        <span class="n">embedding_endpoint</span><span class="o">=</span><span class="n">embedding_endpoint</span><span class="p">,</span>
+        <span class="n">nvidia_api_key</span><span class="o">=</span><span class="n">nvidia_api_key</span><span class="p">,</span>
+        <span class="n">input_type</span><span class="o">=</span><span class="s2">&quot;query&quot;</span><span class="p">,</span>
+        <span class="n">output_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;embeddings&quot;</span><span class="p">],</span>
+        <span class="n">grpc</span><span class="o">=</span><span class="ow">not</span> <span class="p">(</span><span class="s2">&quot;http&quot;</span> <span class="ow">in</span> <span class="n">urlparse</span><span class="p">(</span><span class="n">embedding_endpoint</span><span class="p">)</span><span class="o">.</span><span class="n">scheme</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">query_embeddings</span> <span class="o">=</span> <span class="n">embed_model</span><span class="p">(</span><span class="n">queries</span><span class="p">)</span>
+    <span class="n">_record_timing</span><span class="p">(</span>
+        <span class="s2">&quot;lancedb.embed_queries&quot;</span><span class="p">,</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">embed_start</span><span class="p">,</span>
+        <span class="p">{</span><span class="s2">&quot;query_count&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">queries</span><span class="p">)},</span>
+    <span class="p">)</span>
+
+    <span class="n">search_top_k</span> <span class="o">=</span> <span class="n">nv_ranker_top_k</span> <span class="k">if</span> <span class="n">nv_ranker</span> <span class="k">else</span> <span class="n">top_k</span>
+    <span class="n">reranker</span> <span class="o">=</span> <span class="n">RRFReranker</span><span class="p">()</span>
+
+    <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">search_durations</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">query_text</span><span class="p">,</span> <span class="n">query_embed</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">queries</span><span class="p">,</span> <span class="n">query_embeddings</span><span class="p">):</span>
+        <span class="n">search_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="n">search_results</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">table</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">query_type</span><span class="o">=</span><span class="s2">&quot;hybrid&quot;</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">vector</span><span class="p">(</span><span class="n">query_embed</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">text</span><span class="p">(</span><span class="n">query_text</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">result_fields</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">limit</span><span class="p">(</span><span class="n">search_top_k</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">refine_factor</span><span class="p">(</span><span class="n">refine_factor</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">nprobes</span><span class="p">(</span><span class="n">n_probe</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">rerank</span><span class="p">(</span><span class="n">reranker</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">to_list</span><span class="p">()</span>
+        <span class="p">)</span>
+        <span class="n">search_durations</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">search_start</span><span class="p">)</span>
+        <span class="n">formatted</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">search_results</span><span class="p">:</span>
+            <span class="n">formatted</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;entity&quot;</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;source_id&quot;</span><span class="p">:</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;source&quot;</span><span class="p">)},</span>
+                        <span class="s2">&quot;content_metadata&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;page_number&quot;</span><span class="p">:</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metadata&quot;</span><span class="p">)},</span>
+                        <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">),</span>
+                    <span class="p">}</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+        <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">formatted</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">search_durations</span><span class="p">:</span>
+        <span class="n">total_search</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">search_durations</span><span class="p">)</span>
+        <span class="n">_record_timing</span><span class="p">(</span>
+            <span class="s2">&quot;lancedb.hybrid_search&quot;</span><span class="p">,</span>
+            <span class="n">total_search</span><span class="p">,</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;query_count&quot;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">search_durations</span><span class="p">),</span>
+                <span class="s2">&quot;avg_query_s&quot;</span><span class="p">:</span> <span class="n">total_search</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">search_durations</span><span class="p">),</span>
+                <span class="s2">&quot;max_query_s&quot;</span><span class="p">:</span> <span class="nb">max</span><span class="p">(</span><span class="n">search_durations</span><span class="p">),</span>
+            <span class="p">},</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">nv_ranker</span><span class="p">:</span>
+        <span class="n">rerank_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="n">rerank_results</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">num_queries</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">queries</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="p">(</span><span class="n">query</span><span class="p">,</span> <span class="n">candidates</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">queries</span><span class="p">,</span> <span class="n">results</span><span class="p">),</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">num_queries</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Reranking query </span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">num_queries</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">rerank_results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">nv_rerank</span><span class="p">(</span>
+                    <span class="n">query</span><span class="p">,</span>
+                    <span class="n">candidates</span><span class="p">,</span>
+                    <span class="n">reranker_endpoint</span><span class="o">=</span><span class="n">nv_ranker_endpoint</span><span class="p">,</span>
+                    <span class="n">model_name</span><span class="o">=</span><span class="n">nv_ranker_model_name</span><span class="p">,</span>
+                    <span class="n">topk</span><span class="o">=</span><span class="n">top_k</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">rerank_results</span>
+        <span class="n">_record_timing</span><span class="p">(</span>
+            <span class="s2">&quot;lancedb.nv_rerank&quot;</span><span class="p">,</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">rerank_start</span><span class="p">,</span>
+            <span class="p">{</span><span class="s2">&quot;query_count&quot;</span><span class="p">:</span> <span class="n">num_queries</span><span class="p">},</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">results</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

@@ -1,0 +1,1181 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.pdf.stage &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/pdf/stage';</script>
+
+    <link rel="icon" href="../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.pdf.stage</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.pdf.stage</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.ingest_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_ingest_config_section</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.pdf.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_pdf_extractor_schema_from_dict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.pdf.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">pdf_files_to_ledger_df</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rich.console</span><span class="w"> </span><span class="kn">import</span> <span class="n">Console</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">typer</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nv_ingest_api.internal.extract.pdf.pdf_extractor</span><span class="w"> </span><span class="kn">import</span> <span class="n">extract_primitives_from_pdf_internal</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nv_ingest_api.internal.schemas.extract.extract_pdf_schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">PDFExtractorSchema</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nv_ingest_api.internal.primitives.tracing.tagging</span><span class="w"> </span><span class="kn">import</span> <span class="n">traceable_func</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+
+<span class="n">console</span> <span class="o">=</span> <span class="n">Console</span><span class="p">()</span>
+<span class="n">app</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Typer</span><span class="p">(</span><span class="n">help</span><span class="o">=</span><span class="s2">&quot;Extract PDF primitives from PDF files.&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_argv_has_any</span><span class="p">(</span><span class="n">flags</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return True if any of the given flags appear in sys.argv.</span>
+
+<span class="sd">    Supports `--flag value` and `--flag=value` forms.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">argv</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">flags</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">argv</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="n">f</span> <span class="o">+</span> <span class="s2">&quot;=&quot;</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">prefix</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">argv</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">return</span> <span class="kc">False</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_yaml_config</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">typer</span><span class="o">.</span><span class="n">BadParameter</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed reading YAML config </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">e</span>
+    <span class="k">if</span> <span class="n">data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="n">typer</span><span class="o">.</span><span class="n">BadParameter</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;YAML config must be a mapping/object at top-level: </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">data</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="o">*</span><span class="n">keys</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the first present key among `keys` from raw, else None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">raw</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_page_elements_config</span><span class="p">(</span><span class="n">raw</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Normalize YAML config into flat keys matching CLI parameter names.</span>
+
+<span class="sd">    Supports either flat keys (e.g. `yolox_grpc_endpoint`) or nested keys under:</span>
+<span class="sd">      endpoints.yolox.{grpc,http}</span>
+<span class="sd">      endpoints.nemotron_parse.{grpc,http,model_name}</span>
+<span class="sd">      extract.{text,images,tables,charts,infographics,page_as_image,text_depth}</span>
+<span class="sd">      outputs.{write_json,json_output_dir}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">raw</span> <span class="ow">or</span> <span class="p">{})</span>
+
+    <span class="n">endpoints</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;endpoints&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;endpoints&quot;</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+    <span class="n">yolox</span> <span class="o">=</span> <span class="n">endpoints</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;yolox&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">endpoints</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;yolox&quot;</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+    <span class="n">nemo</span> <span class="o">=</span> <span class="n">endpoints</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;nemotron_parse&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">endpoints</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;nemotron_parse&quot;</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+
+    <span class="n">extract</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extract&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extract&quot;</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+    <span class="n">outputs</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;outputs&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;outputs&quot;</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+
+    <span class="n">out</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;input_dir&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;input_dir&quot;</span><span class="p">,</span> <span class="s2">&quot;input-dir&quot;</span><span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;method&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;method&quot;</span><span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;auth_token&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;auth_token&quot;</span><span class="p">,</span> <span class="s2">&quot;auth-token&quot;</span><span class="p">)</span>
+
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;yolox_grpc_endpoint&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;yolox_grpc_endpoint&quot;</span><span class="p">,</span> <span class="s2">&quot;yolox-grpc-endpoint&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">_cfg_get</span><span class="p">(</span>
+        <span class="n">yolox</span><span class="p">,</span> <span class="s2">&quot;grpc&quot;</span><span class="p">,</span> <span class="s2">&quot;grpc_endpoint&quot;</span><span class="p">,</span> <span class="s2">&quot;grpc-endpoint&quot;</span>
+    <span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;yolox_http_endpoint&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;yolox_http_endpoint&quot;</span><span class="p">,</span> <span class="s2">&quot;yolox-http-endpoint&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">_cfg_get</span><span class="p">(</span>
+        <span class="n">yolox</span><span class="p">,</span> <span class="s2">&quot;http&quot;</span><span class="p">,</span> <span class="s2">&quot;http_endpoint&quot;</span><span class="p">,</span> <span class="s2">&quot;http-endpoint&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;nemotron_parse_grpc_endpoint&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_cfg_get</span><span class="p">(</span>
+        <span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;nemotron_parse_grpc_endpoint&quot;</span><span class="p">,</span> <span class="s2">&quot;nemotron-parse-grpc-endpoint&quot;</span>
+    <span class="p">)</span> <span class="ow">or</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">nemo</span><span class="p">,</span> <span class="s2">&quot;grpc&quot;</span><span class="p">,</span> <span class="s2">&quot;grpc_endpoint&quot;</span><span class="p">,</span> <span class="s2">&quot;grpc-endpoint&quot;</span><span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;nemotron_parse_http_endpoint&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_cfg_get</span><span class="p">(</span>
+        <span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;nemotron_parse_http_endpoint&quot;</span><span class="p">,</span> <span class="s2">&quot;nemotron-parse-http-endpoint&quot;</span>
+    <span class="p">)</span> <span class="ow">or</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">nemo</span><span class="p">,</span> <span class="s2">&quot;http&quot;</span><span class="p">,</span> <span class="s2">&quot;http_endpoint&quot;</span><span class="p">,</span> <span class="s2">&quot;http-endpoint&quot;</span><span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;nemotron_parse_model_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_cfg_get</span><span class="p">(</span>
+        <span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;nemotron_parse_model_name&quot;</span><span class="p">,</span> <span class="s2">&quot;nemotron-parse-model-name&quot;</span>
+    <span class="p">)</span> <span class="ow">or</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">nemo</span><span class="p">,</span> <span class="s2">&quot;model_name&quot;</span><span class="p">,</span> <span class="s2">&quot;model-name&quot;</span><span class="p">)</span>
+
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;extract_text&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;extract_text&quot;</span><span class="p">,</span> <span class="s2">&quot;extract-text&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="s2">&quot;extract_text&quot;</span> <span class="ow">in</span> <span class="n">raw</span> <span class="k">else</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">extract</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;extract_images&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;extract_images&quot;</span><span class="p">,</span> <span class="s2">&quot;extract-images&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="s2">&quot;extract_images&quot;</span> <span class="ow">in</span> <span class="n">raw</span> <span class="k">else</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">extract</span><span class="p">,</span> <span class="s2">&quot;images&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;extract_tables&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;extract_tables&quot;</span><span class="p">,</span> <span class="s2">&quot;extract-tables&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="s2">&quot;extract_tables&quot;</span> <span class="ow">in</span> <span class="n">raw</span> <span class="k">else</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">extract</span><span class="p">,</span> <span class="s2">&quot;tables&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;extract_charts&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;extract_charts&quot;</span><span class="p">,</span> <span class="s2">&quot;extract-charts&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="s2">&quot;extract_charts&quot;</span> <span class="ow">in</span> <span class="n">raw</span> <span class="k">else</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">extract</span><span class="p">,</span> <span class="s2">&quot;charts&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;extract_infographics&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;extract_infographics&quot;</span><span class="p">,</span> <span class="s2">&quot;extract-infographics&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;extract_infographics&quot;</span> <span class="ow">in</span> <span class="n">raw</span>
+        <span class="k">else</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">extract</span><span class="p">,</span> <span class="s2">&quot;infographics&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;extract_page_as_image&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;extract_page_as_image&quot;</span><span class="p">,</span> <span class="s2">&quot;extract-page-as-image&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;extract_page_as_image&quot;</span> <span class="ow">in</span> <span class="n">raw</span>
+        <span class="k">else</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">extract</span><span class="p">,</span> <span class="s2">&quot;page_as_image&quot;</span><span class="p">,</span> <span class="s2">&quot;page-as-image&quot;</span><span class="p">,</span> <span class="s2">&quot;page_as_image&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;text_depth&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;text_depth&quot;</span><span class="p">,</span> <span class="s2">&quot;text-depth&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">extract</span><span class="p">,</span> <span class="s2">&quot;text_depth&quot;</span><span class="p">,</span> <span class="s2">&quot;text-depth&quot;</span><span class="p">)</span>
+
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;write_json_outputs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;write_json_outputs&quot;</span><span class="p">,</span> <span class="s2">&quot;write-json-outputs&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;write_json_outputs&quot;</span> <span class="ow">in</span> <span class="n">raw</span>
+        <span class="k">else</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">outputs</span><span class="p">,</span> <span class="s2">&quot;write_json&quot;</span><span class="p">,</span> <span class="s2">&quot;write-json&quot;</span><span class="p">,</span> <span class="s2">&quot;write_json_outputs&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;json_output_dir&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;json_output_dir&quot;</span><span class="p">,</span> <span class="s2">&quot;json-output-dir&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">_cfg_get</span><span class="p">(</span>
+        <span class="n">outputs</span><span class="p">,</span> <span class="s2">&quot;json_output_dir&quot;</span><span class="p">,</span> <span class="s2">&quot;json-output-dir&quot;</span>
+    <span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;limit&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;limit&quot;</span><span class="p">)</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;render_mode&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_cfg_get</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="s2">&quot;render_mode&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Drop Nones so &quot;not specified&quot; stays not specified.</span>
+    <span class="k">return</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_atomic_write_json</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">obj</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Atomically write JSON to disk (write temp file then replace).</span>
+
+<span class="sd">    Kept local to the PDF stage to avoid importing heavier stage utilities.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">tmp_path</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">with_name</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">name</span> <span class="o">+</span> <span class="s2">&quot;.tmp&quot;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">tmp_path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;w&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+
+            <span class="n">os</span><span class="o">.</span><span class="n">fsync</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">fileno</span><span class="p">())</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">pass</span>
+    <span class="n">tmp_path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_to_jsonable</span><span class="p">(</span><span class="n">obj</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Best-effort conversion to JSON-serializable builtins.</span>
+
+<span class="sd">    PDF primitive metadata can contain numpy/pandas scalar-like objects depending on backend;</span>
+<span class="sd">    this sanitizes them without pulling in optional heavy deps.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">obj</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">obj</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span><span class="nb">str</span><span class="p">(</span><span class="n">k</span><span class="p">):</span> <span class="n">_to_jsonable</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">obj</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">_to_jsonable</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">obj</span><span class="p">]</span>
+
+    <span class="c1"># numpy scalar / pandas scalar-like</span>
+    <span class="n">item</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="s2">&quot;item&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">item</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">_to_jsonable</span><span class="p">(</span><span class="n">item</span><span class="p">())</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+    <span class="n">tolist</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="s2">&quot;tolist&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">tolist</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">_to_jsonable</span><span class="p">(</span><span class="n">tolist</span><span class="p">())</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">pass</span>
+
+    <span class="c1"># fallback</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_pdf_json_out_path</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+    <span class="c1"># Mirror stage2 naming: append suffix to the full filename.</span>
+    <span class="k">return</span> <span class="n">pdf_path</span><span class="o">.</span><span class="n">with_name</span><span class="p">(</span><span class="n">pdf_path</span><span class="o">.</span><span class="n">name</span> <span class="o">+</span> <span class="s2">&quot;.pdf_extraction.json&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_safe_pdf_page_count</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Best-effort page count for a PDF path.</span>
+
+<span class="sd">    Used only for progress reporting; failures should not fail extraction.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">pypdfium2</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pdfium</span>  <span class="c1"># type: ignore</span>
+
+        <span class="n">doc</span> <span class="o">=</span> <span class="n">pdfium</span><span class="o">.</span><span class="n">PdfDocument</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">doc</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">doc</span><span class="o">.</span><span class="n">get_page_count</span><span class="p">())</span>  <span class="c1"># type: ignore[attr-defined]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">doc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="c1"># If we can&#39;t read page count, fall back to 0 (still shows PDF progress).</span>
+        <span class="k">return</span> <span class="mi">0</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_iter_ledger_pdf_paths</span><span class="p">(</span><span class="n">df_ledger</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Yield (source_id, source_name, pdf_path_str_or_none) from the input ledger.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">df_ledger</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">source_id</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;source_id&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span>
+        <span class="n">source_name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;source_name&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span>
+        <span class="n">meta</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metadata&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metadata&quot;</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+        <span class="n">custom</span> <span class="o">=</span> <span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;custom_content&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;custom_content&quot;</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">custom</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;path&quot;</span><span class="p">)</span>
+        <span class="n">path_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">))</span> <span class="ow">and</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">yield</span> <span class="n">source_id</span><span class="p">,</span> <span class="n">source_name</span><span class="p">,</span> <span class="n">path_str</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_primitive_source_id</span><span class="p">(</span><span class="n">meta</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">meta</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">source</span> <span class="o">=</span> <span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;source_metadata&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;source_metadata&quot;</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+    <span class="n">sid</span> <span class="o">=</span> <span class="n">source</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;source_id&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;source_id&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">sid</span><span class="p">)</span> <span class="k">if</span> <span class="n">sid</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_primitive_pdf_path</span><span class="p">(</span><span class="n">meta</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">meta</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">custom</span> <span class="o">=</span> <span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;custom_content&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;custom_content&quot;</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">custom</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;path&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">path</span> <span class="k">else</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_write_pdf_extraction_json_outputs</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">df_ledger</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">extracted_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">task_config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+    <span class="n">elapsed_seconds</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">output_dir</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Path</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Write one JSON per input PDF (sidecar) summarizing extracted primitives.</span>
+
+<span class="sd">    The JSON payload mirrors the stage2 family shape:</span>
+<span class="sd">      {schema_version, stage, model, &lt;input&gt;, &lt;outputs&gt;, timing}</span>
+
+<span class="sd">    Additionally, it includes `extracted_df_records`, a JSON-friendly list of dicts</span>
+<span class="sd">    with the same columns as the raw `extracted_df` output:</span>
+<span class="sd">      [{&quot;document_type&quot;: ..., &quot;metadata&quot;: ..., &quot;uuid&quot;: ...}, ...]</span>
+<span class="sd">    so downstream stages can reconstruct a `pandas.DataFrame` directly.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">out_paths</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="c1"># Pre-bucket primitives by best-effort identifiers.</span>
+    <span class="n">prims_by_source_id</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">prims_by_pdf_path</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">extracted_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">meta</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metadata&quot;</span><span class="p">)</span>
+        <span class="n">uuid</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">meta</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">uuid</span> <span class="o">=</span> <span class="n">meta</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;uuid&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">uuid</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">uuid</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;uuid&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="sa">f</span><span class="s2">&quot;row:</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span>
+
+        <span class="c1"># Keep a DataFrame-shaped record so downstream stages can do:</span>
+        <span class="c1">#   df = pd.DataFrame(payload[&quot;extracted_df_records&quot;])</span>
+        <span class="n">record</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;uuid&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="p">),</span>
+            <span class="s2">&quot;document_type&quot;</span><span class="p">:</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;document_type&quot;</span><span class="p">),</span>
+            <span class="s2">&quot;metadata&quot;</span><span class="p">:</span> <span class="n">_to_jsonable</span><span class="p">(</span><span class="n">meta</span><span class="p">),</span>
+        <span class="p">}</span>
+
+        <span class="n">sid</span> <span class="o">=</span> <span class="n">_primitive_source_id</span><span class="p">(</span><span class="n">meta</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">sid</span><span class="p">:</span>
+            <span class="n">prims_by_source_id</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">sid</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+
+        <span class="n">p</span> <span class="o">=</span> <span class="n">_primitive_pdf_path</span><span class="p">(</span><span class="n">meta</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">p</span><span class="p">:</span>
+            <span class="n">prims_by_pdf_path</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+
+    <span class="n">out_base_dir</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">output_dir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">out_base_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span>
+
+    <span class="n">method</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">task_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;method&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;pdf_extraction&quot;</span><span class="p">)</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="n">task_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;params&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">task_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;params&quot;</span><span class="p">),</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+
+    <span class="k">for</span> <span class="n">source_id</span><span class="p">,</span> <span class="n">source_name</span><span class="p">,</span> <span class="n">pdf_path_str</span> <span class="ow">in</span> <span class="n">_iter_ledger_pdf_paths</span><span class="p">(</span><span class="n">df_ledger</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">pdf_path_str</span><span class="p">:</span>
+            <span class="c1"># No stable path to write next to; skip.</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Prefer source_id mapping; fall back to path mapping.</span>
+        <span class="n">records</span> <span class="o">=</span> <span class="n">prims_by_source_id</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">source_id</span><span class="p">)</span> <span class="ow">or</span> <span class="n">prims_by_pdf_path</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">pdf_path_str</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+
+        <span class="n">pdf_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">pdf_path_str</span><span class="p">)</span>
+        <span class="n">out_path</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="p">(</span><span class="n">out_base_dir</span> <span class="o">/</span> <span class="n">_pdf_json_out_path</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">)</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">out_base_dir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="k">else</span> <span class="n">_pdf_json_out_path</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="n">payload</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;schema_version&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+            <span class="s2">&quot;stage&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+            <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">method</span><span class="p">,</span>
+            <span class="s2">&quot;pdf&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">),</span> <span class="s2">&quot;source_id&quot;</span><span class="p">:</span> <span class="n">source_id</span><span class="p">,</span> <span class="s2">&quot;source_name&quot;</span><span class="p">:</span> <span class="n">source_name</span><span class="p">},</span>
+            <span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="n">method</span><span class="p">,</span> <span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="n">_to_jsonable</span><span class="p">(</span><span class="n">params</span><span class="p">)},</span>
+            <span class="c1"># Back-compat: keep the old key.</span>
+            <span class="s2">&quot;primitives&quot;</span><span class="p">:</span> <span class="n">records</span><span class="p">,</span>
+            <span class="c1"># New: explicitly labeled as the raw extracted_df rows.</span>
+            <span class="s2">&quot;extracted_df_records&quot;</span><span class="p">:</span> <span class="n">records</span><span class="p">,</span>
+            <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">elapsed_seconds</span><span class="p">)},</span>
+        <span class="p">}</span>
+        <span class="n">_atomic_write_json</span><span class="p">(</span><span class="n">out_path</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span>
+        <span class="n">out_paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">out_path</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">out_paths</span>
+
+
+<div class="viewcode-block" id="make_pdf_task_config">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.pdf.html#nemo_retriever.pdf.stage.make_pdf_task_config">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">make_pdf_task_config</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;pdfium&quot;</span><span class="p">,</span>
+    <span class="n">extract_text</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">extract_images</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">extract_tables</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">extract_charts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">extract_infographics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">extract_page_as_image</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">text_depth</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;page&quot;</span><span class="p">,</span>
+    <span class="n">extract_method</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build the `task_config` dict expected by `nv-ingest-api` PDF extraction internals.&quot;&quot;&quot;</span>
+    <span class="n">params</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;extract_text&quot;</span><span class="p">:</span> <span class="n">extract_text</span><span class="p">,</span>
+        <span class="s2">&quot;extract_images&quot;</span><span class="p">:</span> <span class="n">extract_images</span><span class="p">,</span>
+        <span class="s2">&quot;extract_tables&quot;</span><span class="p">:</span> <span class="n">extract_tables</span><span class="p">,</span>
+        <span class="s2">&quot;extract_charts&quot;</span><span class="p">:</span> <span class="n">extract_charts</span><span class="p">,</span>
+        <span class="s2">&quot;extract_infographics&quot;</span><span class="p">:</span> <span class="n">extract_infographics</span><span class="p">,</span>
+        <span class="s2">&quot;extract_page_as_image&quot;</span><span class="p">:</span> <span class="n">extract_page_as_image</span><span class="p">,</span>
+        <span class="s2">&quot;text_depth&quot;</span><span class="p">:</span> <span class="n">text_depth</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">extract_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Some callsites use params[&quot;extract_method&quot;] while others use task_config[&quot;method&quot;].</span>
+        <span class="n">params</span><span class="p">[</span><span class="s2">&quot;extract_method&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">extract_method</span>
+
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="n">method</span><span class="p">,</span> <span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="n">params</span><span class="p">}</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_pdf_ledger_df</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">required</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;content&quot;</span><span class="p">,</span> <span class="s2">&quot;source_id&quot;</span><span class="p">,</span> <span class="s2">&quot;source_name&quot;</span><span class="p">,</span> <span class="s2">&quot;document_type&quot;</span><span class="p">,</span> <span class="s2">&quot;metadata&quot;</span><span class="p">}</span>
+    <span class="n">missing</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">required</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;PDF ledger DataFrame is missing required columns: </span><span class="si">{</span><span class="n">missing</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="extract_pdf_primitives_from_ledger_df">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.pdf.html#nemo_retriever.pdf.stage.extract_pdf_primitives_from_ledger_df">[docs]</a>
+<span class="nd">@traceable_func</span><span class="p">(</span><span class="n">trace_name</span><span class="o">=</span><span class="s2">&quot;retriever::pdf_extraction&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_pdf_primitives_from_ledger_df</span><span class="p">(</span>
+    <span class="n">df_ledger</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">task_config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+    <span class="n">extractor_config</span><span class="p">:</span> <span class="n">PDFExtractorSchema</span><span class="p">,</span>
+    <span class="n">write_json_outputs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">json_output_dir</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">trace_info</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Pure-Python PDF extraction (no Ray required).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">      - extracted_df: columns [&quot;document_type&quot;, &quot;metadata&quot;, &quot;uuid&quot;]</span>
+<span class="sd">      - info: includes `execution_trace_log`</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_pdf_ledger_df</span><span class="p">(</span><span class="n">df_ledger</span><span class="p">)</span>
+
+    <span class="c1"># `nv-ingest-api` engines treat this as a string-keyed mapping of trace timestamps.</span>
+    <span class="c1"># The Ray pipeline stage uses `{}` as well; using a list can trigger</span>
+    <span class="c1"># &quot;list indices must be integers or slices, not str&quot;.</span>
+    <span class="n">execution_trace_log</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="n">extracted_df</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <span class="n">extract_primitives_from_pdf_internal</span><span class="p">(</span>
+            <span class="n">df_extraction_ledger</span><span class="o">=</span><span class="n">df_ledger</span><span class="p">,</span>
+            <span class="n">task_config</span><span class="o">=</span><span class="n">task_config</span><span class="p">,</span>
+            <span class="n">extractor_config</span><span class="o">=</span><span class="n">extractor_config</span><span class="p">,</span>
+            <span class="n">execution_trace_log</span><span class="o">=</span><span class="n">execution_trace_log</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;PDF extraction failed&quot;</span><span class="p">)</span>
+        <span class="k">raise</span>
+
+    <span class="n">info</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">info</span> <span class="ow">or</span> <span class="p">{})</span>
+    <span class="n">info</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">&quot;execution_trace_log&quot;</span><span class="p">,</span> <span class="n">execution_trace_log</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">write_json_outputs</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">written</span> <span class="o">=</span> <span class="n">_write_pdf_extraction_json_outputs</span><span class="p">(</span>
+                <span class="n">df_ledger</span><span class="o">=</span><span class="n">df_ledger</span><span class="p">,</span>
+                <span class="n">extracted_df</span><span class="o">=</span><span class="n">extracted_df</span><span class="p">,</span>
+                <span class="n">task_config</span><span class="o">=</span><span class="n">task_config</span><span class="p">,</span>
+                <span class="n">elapsed_seconds</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">elapsed</span><span class="p">),</span>
+                <span class="n">output_dir</span><span class="o">=</span><span class="n">json_output_dir</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">info</span><span class="p">[</span><span class="s2">&quot;json_outputs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">written</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="c1"># JSON output is best-effort; don&#39;t fail extraction if serialization/IO fails.</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;Failed writing PDF extraction JSON outputs&quot;</span><span class="p">)</span>
+            <span class="n">info</span><span class="p">[</span><span class="s2">&quot;json_outputs_error&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;failed_writing_json_outputs&quot;</span>
+
+    <span class="k">return</span> <span class="n">extracted_df</span><span class="p">,</span> <span class="n">info</span></div>
+
+
+
+<div class="viewcode-block" id="render_page_elements">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.pdf.html#nemo_retriever.pdf.stage.render_page_elements">[docs]</a>
+<span class="nd">@app</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="s2">&quot;page-elements&quot;</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">render_page_elements</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;--config&quot;</span><span class="p">,</span>
+        <span class="n">exists</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">dir_okay</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">file_okay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Optional ingest YAML config file. If omitted, we auto-discover ./ingest-config.yaml then &quot;</span>
+            <span class="s2">&quot;$HOME/.ingest-config.yaml. Explicitly passed CLI flags override YAML.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">),</span>
+    <span class="n">input_dir</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;--input-dir&quot;</span><span class="p">,</span>
+        <span class="n">exists</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">file_okay</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">dir_okay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Directory to scan recursively for *.pdf (can be provided via --config).&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="s2">&quot;pdfium&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--method&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;PDF extraction method (e.g. &#39;pdfium&#39;, &#39;pdfium_hybrid&#39;, &#39;ocr&#39;, &#39;nemotron_parse&#39;, &#39;tika&#39;).&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">auth_token</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;--auth-token&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Auth token for NIM-backed services (e.g. YOLOX / Nemotron Parse).&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">yolox_grpc_endpoint</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;--yolox-grpc-endpoint&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;YOLOX gRPC endpoint (e.g. &#39;page-elements:8001&#39;). Required for method &#39;pdfium&#39; family.&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">yolox_http_endpoint</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;--yolox-http-endpoint&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;YOLOX HTTP endpoint (e.g. &#39;http://page-elements:8000/v1/infer&#39;). Required for method &#39;pdfium&#39; family.&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">nemotron_parse_grpc_endpoint</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;--nemotron-parse-grpc-endpoint&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Nemotron Parse gRPC endpoint (required for method &#39;nemotron_parse&#39;).&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">nemotron_parse_http_endpoint</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;--nemotron-parse-http-endpoint&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Nemotron Parse HTTP endpoint (required for method &#39;nemotron_parse&#39;).&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">nemotron_parse_model_name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;--nemotron-parse-model-name&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Nemotron Parse model name (optional; defaults to schema default).&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">extract_text</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;--extract-text/--no-extract-text&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Extract text primitives.&quot;</span><span class="p">),</span>
+    <span class="n">extract_images</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;--extract-images/--no-extract-images&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Extract image primitives.&quot;</span>
+    <span class="p">),</span>
+    <span class="n">extract_tables</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;--extract-tables/--no-extract-tables&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Extract table primitives.&quot;</span>
+    <span class="p">),</span>
+    <span class="n">extract_charts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;--extract-charts/--no-extract-charts&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Extract chart primitives.&quot;</span>
+    <span class="p">),</span>
+    <span class="n">extract_infographics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;--extract-infographics/--no-extract-infographics&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Extract infographic primitives.&quot;</span>
+    <span class="p">),</span>
+    <span class="n">extract_page_as_image</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;--extract-page-as-image/--no-extract-page-as-image&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Extract full page images as primitives.&quot;</span>
+    <span class="p">),</span>
+    <span class="n">text_depth</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="s2">&quot;page&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--text-depth&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Text depth for extracted text primitives: &#39;page&#39; or &#39;document&#39;.&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">render_mode</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="s2">&quot;fit_to_model&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--render-mode&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Page rendering mode: &#39;full_dpi&#39; (render at DPI then resize_pad) or &quot;</span>
+            <span class="s2">&quot;&#39;fit_to_model&#39; (render at nv-ingest fit-to-1024 scale, ~93 DPI for US Letter).&quot;</span>
+        <span class="p">),</span>
+    <span class="p">),</span>
+    <span class="n">write_json_outputs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">True</span><span class="p">,</span>
+        <span class="s2">&quot;--write-json-outputs/--no-write-json-outputs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Write one &lt;pdf&gt;.pdf_extraction.json sidecar per input PDF.&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">json_output_dir</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span>
+        <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;--json-output-dir&quot;</span><span class="p">,</span>
+        <span class="n">file_okay</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">dir_okay</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Optional directory to write JSON outputs into (instead of next to PDFs).&quot;</span><span class="p">,</span>
+    <span class="p">),</span>
+    <span class="n">limit</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">typer</span><span class="o">.</span><span class="n">Option</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;--limit&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Optionally limit number of PDFs processed.&quot;</span><span class="p">),</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Scan `input_dir` for PDFs and run nv-ingest-api PDF extraction, writing primitives JSON sidecars.</span>
+
+<span class="sd">    This command is intentionally &quot;directory-first&quot; so you can point it at a folder of PDFs</span>
+<span class="sd">    and get per-PDF outputs without having to build a ledger by hand.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Load consolidated ingest config (section: pdf).</span>
+    <span class="n">cfg_raw</span> <span class="o">=</span> <span class="n">_normalize_page_elements_config</span><span class="p">(</span><span class="n">load_ingest_config_section</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">section</span><span class="o">=</span><span class="s2">&quot;pdf&quot;</span><span class="p">))</span>
+
+    <span class="c1"># Merge: YAML provides defaults; explicit CLI flags override YAML.</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--input-dir&quot;</span><span class="p">]):</span>
+        <span class="k">if</span> <span class="s2">&quot;input_dir&quot;</span> <span class="ow">in</span> <span class="n">cfg_raw</span><span class="p">:</span>
+            <span class="n">input_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">cfg_raw</span><span class="p">[</span><span class="s2">&quot;input_dir&quot;</span><span class="p">]))</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--method&quot;</span><span class="p">]):</span>
+        <span class="n">method</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;method&quot;</span><span class="p">,</span> <span class="n">method</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--auth-token&quot;</span><span class="p">]):</span>
+        <span class="n">auth_token</span> <span class="o">=</span> <span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;auth_token&quot;</span><span class="p">,</span> <span class="n">auth_token</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--yolox-grpc-endpoint&quot;</span><span class="p">]):</span>
+        <span class="n">yolox_grpc_endpoint</span> <span class="o">=</span> <span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;yolox_grpc_endpoint&quot;</span><span class="p">,</span> <span class="n">yolox_grpc_endpoint</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--yolox-http-endpoint&quot;</span><span class="p">]):</span>
+        <span class="n">yolox_http_endpoint</span> <span class="o">=</span> <span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;yolox_http_endpoint&quot;</span><span class="p">,</span> <span class="n">yolox_http_endpoint</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--nemotron-parse-grpc-endpoint&quot;</span><span class="p">]):</span>
+        <span class="n">nemotron_parse_grpc_endpoint</span> <span class="o">=</span> <span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;nemotron_parse_grpc_endpoint&quot;</span><span class="p">,</span> <span class="n">nemotron_parse_grpc_endpoint</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--nemotron-parse-http-endpoint&quot;</span><span class="p">]):</span>
+        <span class="n">nemotron_parse_http_endpoint</span> <span class="o">=</span> <span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;nemotron_parse_http_endpoint&quot;</span><span class="p">,</span> <span class="n">nemotron_parse_http_endpoint</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--nemotron-parse-model-name&quot;</span><span class="p">]):</span>
+        <span class="n">nemotron_parse_model_name</span> <span class="o">=</span> <span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;nemotron_parse_model_name&quot;</span><span class="p">,</span> <span class="n">nemotron_parse_model_name</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--extract-text&quot;</span><span class="p">,</span> <span class="s2">&quot;--no-extract-text&quot;</span><span class="p">]):</span>
+        <span class="n">extract_text</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extract_text&quot;</span><span class="p">,</span> <span class="n">extract_text</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--extract-images&quot;</span><span class="p">,</span> <span class="s2">&quot;--no-extract-images&quot;</span><span class="p">]):</span>
+        <span class="n">extract_images</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extract_images&quot;</span><span class="p">,</span> <span class="n">extract_images</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--extract-tables&quot;</span><span class="p">,</span> <span class="s2">&quot;--no-extract-tables&quot;</span><span class="p">]):</span>
+        <span class="n">extract_tables</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extract_tables&quot;</span><span class="p">,</span> <span class="n">extract_tables</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--extract-charts&quot;</span><span class="p">,</span> <span class="s2">&quot;--no-extract-charts&quot;</span><span class="p">]):</span>
+        <span class="n">extract_charts</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extract_charts&quot;</span><span class="p">,</span> <span class="n">extract_charts</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--extract-infographics&quot;</span><span class="p">,</span> <span class="s2">&quot;--no-extract-infographics&quot;</span><span class="p">]):</span>
+        <span class="n">extract_infographics</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extract_infographics&quot;</span><span class="p">,</span> <span class="n">extract_infographics</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--extract-page-as-image&quot;</span><span class="p">,</span> <span class="s2">&quot;--no-extract-page-as-image&quot;</span><span class="p">]):</span>
+        <span class="n">extract_page_as_image</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extract_page_as_image&quot;</span><span class="p">,</span> <span class="n">extract_page_as_image</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--text-depth&quot;</span><span class="p">]):</span>
+        <span class="n">text_depth</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text_depth&quot;</span><span class="p">,</span> <span class="n">text_depth</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--render-mode&quot;</span><span class="p">]):</span>
+        <span class="n">render_mode</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;render_mode&quot;</span><span class="p">,</span> <span class="n">render_mode</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--write-json-outputs&quot;</span><span class="p">,</span> <span class="s2">&quot;--no-write-json-outputs&quot;</span><span class="p">]):</span>
+        <span class="n">write_json_outputs</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;write_json_outputs&quot;</span><span class="p">,</span> <span class="n">write_json_outputs</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--json-output-dir&quot;</span><span class="p">]):</span>
+        <span class="k">if</span> <span class="s2">&quot;json_output_dir&quot;</span> <span class="ow">in</span> <span class="n">cfg_raw</span> <span class="ow">and</span> <span class="n">cfg_raw</span><span class="p">[</span><span class="s2">&quot;json_output_dir&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">json_output_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">cfg_raw</span><span class="p">[</span><span class="s2">&quot;json_output_dir&quot;</span><span class="p">]))</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_argv_has_any</span><span class="p">([</span><span class="s2">&quot;--limit&quot;</span><span class="p">]):</span>
+        <span class="n">limit</span> <span class="o">=</span> <span class="n">cfg_raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;limit&quot;</span><span class="p">,</span> <span class="n">limit</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">input_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">typer</span><span class="o">.</span><span class="n">BadParameter</span><span class="p">(</span><span class="s2">&quot;Missing --input-dir (or set input_dir in --config YAML).&quot;</span><span class="p">)</span>
+
+    <span class="n">pdfs</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">input_dir</span><span class="o">.</span><span class="n">rglob</span><span class="p">(</span><span class="s2">&quot;*.pdf&quot;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">pdfs</span><span class="p">:</span>
+        <span class="n">console</span><span class="o">.</span><span class="n">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[red]No PDFs found[/red] under: </span><span class="si">{</span><span class="n">input_dir</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">typer</span><span class="o">.</span><span class="n">Exit</span><span class="p">(</span><span class="n">code</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">pdfs</span> <span class="o">=</span> <span class="n">pdfs</span><span class="p">[:</span> <span class="nb">int</span><span class="p">(</span><span class="n">limit</span><span class="p">)]</span>
+
+    <span class="n">method</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">method</span> <span class="ow">or</span> <span class="s2">&quot;pdfium&quot;</span><span class="p">)</span>
+
+    <span class="n">extractor_cfg</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;pdfium&quot;</span><span class="p">,</span> <span class="s2">&quot;pdfium_hybrid&quot;</span><span class="p">,</span> <span class="s2">&quot;ocr&quot;</span><span class="p">}:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">yolox_grpc_endpoint</span> <span class="ow">or</span> <span class="n">yolox_http_endpoint</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;YOLOX NIM endpoints not set, using HuggingFace model instead.&quot;</span><span class="p">)</span>
+
+        <span class="n">extractor_cfg</span><span class="p">[</span><span class="s2">&quot;pdfium_config&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;auth_token&quot;</span><span class="p">:</span> <span class="n">auth_token</span><span class="p">,</span>
+            <span class="s2">&quot;yolox_endpoints&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">yolox_grpc_endpoint</span><span class="p">,</span> <span class="n">yolox_http_endpoint</span><span class="p">],</span>
+        <span class="p">}</span>
+    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;nemotron_parse&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">nemotron_parse_grpc_endpoint</span> <span class="ow">or</span> <span class="n">nemotron_parse_http_endpoint</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">typer</span><span class="o">.</span><span class="n">BadParameter</span><span class="p">(</span>
+                <span class="s2">&quot;Nemotron Parse endpoint required for method &#39;nemotron_parse&#39;. &quot;</span>
+                <span class="s2">&quot;Set --nemotron-parse-grpc-endpoint or --nemotron-parse-http-endpoint.&quot;</span>
+            <span class="p">)</span>
+        <span class="n">extractor_cfg</span><span class="p">[</span><span class="s2">&quot;nemotron_parse_config&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;auth_token&quot;</span><span class="p">:</span> <span class="n">auth_token</span><span class="p">,</span>
+            <span class="c1"># Nemotron Parse may still rely on YOLOX for region proposals depending on config.</span>
+            <span class="s2">&quot;yolox_endpoints&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">yolox_grpc_endpoint</span><span class="p">,</span> <span class="n">yolox_http_endpoint</span><span class="p">],</span>
+            <span class="s2">&quot;nemotron_parse_endpoints&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">nemotron_parse_grpc_endpoint</span><span class="p">,</span> <span class="n">nemotron_parse_http_endpoint</span><span class="p">],</span>
+            <span class="s2">&quot;nemotron_parse_model_name&quot;</span><span class="p">:</span> <span class="n">nemotron_parse_model_name</span><span class="p">,</span>
+        <span class="p">}</span>
+
+    <span class="n">extractor_schema</span> <span class="o">=</span> <span class="n">load_pdf_extractor_schema_from_dict</span><span class="p">(</span><span class="n">extractor_cfg</span><span class="p">)</span>
+    <span class="n">task_cfg</span> <span class="o">=</span> <span class="n">make_pdf_task_config</span><span class="p">(</span>
+        <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span>
+        <span class="n">extract_text</span><span class="o">=</span><span class="n">extract_text</span><span class="p">,</span>
+        <span class="n">extract_images</span><span class="o">=</span><span class="n">extract_images</span><span class="p">,</span>
+        <span class="n">extract_tables</span><span class="o">=</span><span class="n">extract_tables</span><span class="p">,</span>
+        <span class="n">extract_charts</span><span class="o">=</span><span class="n">extract_charts</span><span class="p">,</span>
+        <span class="n">extract_infographics</span><span class="o">=</span><span class="n">extract_infographics</span><span class="p">,</span>
+        <span class="n">extract_page_as_image</span><span class="o">=</span><span class="n">extract_page_as_image</span><span class="p">,</span>
+        <span class="n">text_depth</span><span class="o">=</span><span class="n">text_depth</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Progress reporting:</span>
+    <span class="c1"># - PDF progress: updates per completed PDF.</span>
+    <span class="c1"># - Page progress: updates by page-count *after* each PDF completes (best-effort).</span>
+    <span class="n">page_counts</span> <span class="o">=</span> <span class="p">[</span><span class="n">_safe_pdf_page_count</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">pdfs</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Counting pages&quot;</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">&quot;pdf&quot;</span><span class="p">)]</span>
+    <span class="n">total_pages</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">page_counts</span><span class="p">)</span>
+
+    <span class="n">extracted_chunks</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">all_json_outputs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">info_last</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="n">pdf_bar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">pdfs</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;PDFs&quot;</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">&quot;pdf&quot;</span><span class="p">)</span>
+    <span class="n">page_bar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">total_pages</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Pages&quot;</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">&quot;page&quot;</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">pdf_path</span><span class="p">,</span> <span class="n">n_pages</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">pdfs</span><span class="p">,</span> <span class="n">page_counts</span><span class="p">)):</span>
+            <span class="n">pdf_bar</span><span class="o">.</span><span class="n">set_postfix_str</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">)</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+
+            <span class="n">df_ledger</span> <span class="o">=</span> <span class="n">pdf_files_to_ledger_df</span><span class="p">([</span><span class="n">pdf_path</span><span class="p">],</span> <span class="n">start_index</span><span class="o">=</span><span class="n">i</span><span class="p">)</span>
+            <span class="n">df_one</span><span class="p">,</span> <span class="n">info_one</span> <span class="o">=</span> <span class="n">extract_pdf_primitives_from_ledger_df</span><span class="p">(</span>
+                <span class="n">df_ledger</span><span class="p">,</span>
+                <span class="n">task_config</span><span class="o">=</span><span class="n">task_cfg</span><span class="p">,</span>
+                <span class="n">extractor_config</span><span class="o">=</span><span class="n">extractor_schema</span><span class="p">,</span>
+                <span class="n">write_json_outputs</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">write_json_outputs</span><span class="p">),</span>
+                <span class="n">json_output_dir</span><span class="o">=</span><span class="n">json_output_dir</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">info_last</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">info_one</span> <span class="ow">or</span> <span class="p">{})</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">df_one</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                <span class="n">extracted_chunks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">df_one</span><span class="p">)</span>
+
+            <span class="n">wrote</span> <span class="o">=</span> <span class="n">info_last</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;json_outputs&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">wrote</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+                <span class="n">all_json_outputs</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">wrote</span><span class="p">)</span>
+
+            <span class="n">pdf_bar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">page_bar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">n_pages</span><span class="p">))</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">pdf_bar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">page_bar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="n">extracted_df</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">extracted_chunks</span><span class="p">,</span> <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">extracted_chunks</span>
+        <span class="k">else</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">&quot;document_type&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;metadata&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;uuid&quot;</span><span class="p">:</span> <span class="p">[]})</span>
+    <span class="p">)</span>
+    <span class="n">info</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">info_last</span> <span class="ow">or</span> <span class="p">{})</span>
+    <span class="k">if</span> <span class="n">all_json_outputs</span><span class="p">:</span>
+        <span class="n">info</span><span class="p">[</span><span class="s2">&quot;json_outputs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_json_outputs</span>
+
+    <span class="n">wrote</span> <span class="o">=</span> <span class="n">info</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;json_outputs&quot;</span><span class="p">)</span>
+    <span class="n">wrote_n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">wrote</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">wrote</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="k">else</span> <span class="mi">0</span>
+    <span class="n">console</span><span class="o">.</span><span class="n">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[green]Done[/green] pdfs=</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">pdfs</span><span class="p">)</span><span class="si">}</span><span class="s2"> primitives=</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">extracted_df</span><span class="p">)</span><span class="si">}</span><span class="s2"> wrote_json=</span><span class="si">{</span><span class="n">wrote_n</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

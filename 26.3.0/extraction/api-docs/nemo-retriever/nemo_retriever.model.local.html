@@ -1,0 +1,1133 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>nemo_retriever.model.local package &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'nemo-retriever/nemo_retriever.model.local';</script>
+
+    <link rel="icon" href="../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.model.local package</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="nemo-retriever-model-local-package">
+<h1>nemo_retriever.model.local package<a class="headerlink" href="#nemo-retriever-model-local-package" title="Link to this heading">#</a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">#</a></h2>
+</section>
+<section id="module-nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder">
+<span id="nemo-retriever-model-local-llama-nemotron-embed-1b-v2-embedder-module"></span><h2>nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder module<a class="headerlink" href="#module-nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.</span></span><span class="sig-name descname"><span class="pre">LlamaNemotronEmbed1BV2Embedder</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">hf_cache_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">max_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">8192</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/model/local/llama_nemotron_embed_1b_v2_embedder.html#LlamaNemotronEmbed1BV2Embedder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Minimal embedder wrapper for local-only HuggingFace execution.</p>
+<p>This intentionally contains <strong>no remote invocation logic</strong>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.device">
+<span class="sig-name descname"><span class="pre">device</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.device" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.embed">
+<span class="sig-name descname"><span class="pre">embed</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">texts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">64</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/model/local/llama_nemotron_embed_1b_v2_embedder.html#LlamaNemotronEmbed1BV2Embedder.embed"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.embed" title="Link to this definition">#</a></dt>
+<dd><p>Returns a CPU tensor of shape [N, D].</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.hf_cache_dir">
+<span class="sig-name descname"><span class="pre">hf_cache_dir</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.hf_cache_dir" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.is_remote">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">is_remote</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.is_remote" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.max_length">
+<span class="sig-name descname"><span class="pre">max_length</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">8192</span></em><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.max_length" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.model_id">
+<span class="sig-name descname"><span class="pre">model_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.model_id" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.normalize">
+<span class="sig-name descname"><span class="pre">normalize</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.normalize" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="nemo-retriever-model-local-llama-nemotron-embed-1b-v2-hf-embedder-module">
+<h2>nemo_retriever.model.local.llama_nemotron_embed_1b_v2_hf_embedder module<a class="headerlink" href="#nemo-retriever-model-local-llama-nemotron-embed-1b-v2-hf-embedder-module" title="Link to this heading">#</a></h2>
+</section>
+<section id="module-nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder">
+<span id="nemo-retriever-model-local-llama-nemotron-embed-vl-1b-v2-embedder-module"></span><h2>nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder module<a class="headerlink" href="#module-nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.</span></span><span class="sig-name descname"><span class="pre">LlamaNemotronEmbedVL1BV2Embedder</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">hf_cache_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/model/local/llama_nemotron_embed_vl_1b_v2_embedder.html#LlamaNemotronEmbedVL1BV2Embedder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Multimodal embedder wrapper for <code class="docutils literal notranslate"><span class="pre">nvidia/llama-nemotron-embed-vl-1b-v2</span></code>.</p>
+<p>The VL model exposes <code class="docutils literal notranslate"><span class="pre">encode_queries()</span></code> and <code class="docutils literal notranslate"><span class="pre">encode_documents()</span></code>
+instead of the standard tokenizer + forward pass used by the embedqa
+model.  This class supports text, image, and text+image modalities.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.device">
+<span class="sig-name descname"><span class="pre">device</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.device" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.embed">
+<span class="sig-name descname"><span class="pre">embed</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">texts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">64</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/model/local/llama_nemotron_embed_vl_1b_v2_embedder.html#LlamaNemotronEmbedVL1BV2Embedder.embed"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.embed" title="Link to this definition">#</a></dt>
+<dd><p>Embed document texts. Returns CPU tensor <code class="docutils literal notranslate"><span class="pre">[N,</span> <span class="pre">2048]</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.embed_images">
+<span class="sig-name descname"><span class="pre">embed_images</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">images_b64</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">64</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/model/local/llama_nemotron_embed_vl_1b_v2_embedder.html#LlamaNemotronEmbedVL1BV2Embedder.embed_images"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.embed_images" title="Link to this definition">#</a></dt>
+<dd><p>Embed images (base64-encoded). Returns CPU tensor <code class="docutils literal notranslate"><span class="pre">[N,</span> <span class="pre">2048]</span></code>.</p>
+<p>Entries where the image is None/empty are skipped; the returned tensor
+only contains embeddings for valid images.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.embed_queries">
+<span class="sig-name descname"><span class="pre">embed_queries</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">texts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">64</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/model/local/llama_nemotron_embed_vl_1b_v2_embedder.html#LlamaNemotronEmbedVL1BV2Embedder.embed_queries"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.embed_queries" title="Link to this definition">#</a></dt>
+<dd><p>Embed query strings. Returns CPU tensor <code class="docutils literal notranslate"><span class="pre">[N,</span> <span class="pre">2048]</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.embed_text_image">
+<span class="sig-name descname"><span class="pre">embed_text_image</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">texts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">images_b64</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">64</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/model/local/llama_nemotron_embed_vl_1b_v2_embedder.html#LlamaNemotronEmbedVL1BV2Embedder.embed_text_image"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.embed_text_image" title="Link to this definition">#</a></dt>
+<dd><p>Embed paired text+image inputs. Returns CPU tensor <code class="docutils literal notranslate"><span class="pre">[N,</span> <span class="pre">2048]</span></code>.</p>
+<p><em>texts</em> and <em>images_b64</em> must be the same length.  Entries where the
+image is None/empty are skipped; the returned tensor only contains
+embeddings for valid pairs.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.hf_cache_dir">
+<span class="sig-name descname"><span class="pre">hf_cache_dir</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.hf_cache_dir" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.is_remote">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">is_remote</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.is_remote" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.model_id">
+<span class="sig-name descname"><span class="pre">model_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.model_id" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="nemo-retriever-model-local-nemotron-graphic-elements-v1-module">
+<h2>nemo_retriever.model.local.nemotron_graphic_elements_v1 module<a class="headerlink" href="#nemo-retriever-model-local-nemotron-graphic-elements-v1-module" title="Link to this heading">#</a></h2>
+</section>
+<section id="module-nemo_retriever.model.local.nemotron_ocr_v1">
+<span id="nemo-retriever-model-local-nemotron-ocr-v1-module"></span><h2>nemo_retriever.model.local.nemotron_ocr_v1 module<a class="headerlink" href="#module-nemo_retriever.model.local.nemotron_ocr_v1" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.model.local.nemotron_ocr_v1.</span></span><span class="sig-name descname"><span class="pre">NemotronOCRV1</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/model/local/nemotron_ocr_v1.html#NemotronOCRV1"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference internal" href="nemo_retriever.model.html#nemo_retriever.model.model.BaseModel" title="nemo_retriever.model.model.BaseModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></a></p>
+<p>Nemotron OCR v1 model for optical character recognition.</p>
+<p>End-to-end OCR model that integrates:
+- Text detector for region localization
+- Text recognizer for transcription
+- Relational model for layout and reading order analysis</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.input">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">input</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Any</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.input" title="Link to this definition">#</a></dt>
+<dd><p>Input schema for the model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Schema describing RGB image input with variable dimensions</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.input_batch_size">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">input_batch_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.input_batch_size" title="Link to this definition">#</a></dt>
+<dd><p>Maximum or default input batch size.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.invoke">
+<span class="sig-name descname"><span class="pre">invoke</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">input_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bytes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">BytesIO</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">merge_level</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'paragraph'</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/model/local/nemotron_ocr_v1.html#NemotronOCRV1.invoke"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.invoke" title="Link to this definition">#</a></dt>
+<dd><p>Invoke OCR locally.</p>
+<dl class="simple">
+<dt>Supports:</dt><dd><ul class="simple">
+<li><p>file path (str) <strong>only if it exists</strong></p></li>
+<li><p>base64 (str/bytes) (str is treated as base64 unless it is an existing file path)</p></li>
+<li><p>NumPy array (HWC)</p></li>
+<li><p>io.BytesIO</p></li>
+<li><p>torch.Tensor (CHW/BCHW): converted to base64 PNG internally for compatibility</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.model_name">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">model_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.model_name" title="Link to this definition">#</a></dt>
+<dd><p>Human-readable model name.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.model_runmode">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">model_runmode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'local'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'NIM'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'build-endpoint'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.model_runmode" title="Link to this definition">#</a></dt>
+<dd><p>local, NIM, or build-endpoint.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Execution mode</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.model_type">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">model_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.model_type" title="Link to this definition">#</a></dt>
+<dd><p>Model category/type.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.output">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">output</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Any</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.output" title="Link to this definition">#</a></dt>
+<dd><p>Output schema for the model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Schema describing OCR output format</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.preprocess">
+<span class="sig-name descname"><span class="pre">preprocess</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/model/local/nemotron_ocr_v1.html#NemotronOCRV1.preprocess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.preprocess" title="Link to this definition">#</a></dt>
+<dd><p>Preprocess the input tensor.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="nemo-retriever-model-local-nemotron-ocr-v2-module">
+<h2>nemo_retriever.model.local.nemotron_ocr_v2 module<a class="headerlink" href="#nemo-retriever-model-local-nemotron-ocr-v2-module" title="Link to this heading">#</a></h2>
+</section>
+<section id="nemo-retriever-model-local-nemotron-page-elements-v3-module">
+<h2>nemo_retriever.model.local.nemotron_page_elements_v3 module<a class="headerlink" href="#nemo-retriever-model-local-nemotron-page-elements-v3-module" title="Link to this heading">#</a></h2>
+</section>
+<section id="module-nemo_retriever.model.local.nemotron_parse_v1_2">
+<span id="nemo-retriever-model-local-nemotron-parse-v1-2-module"></span><h2>nemo_retriever.model.local.nemotron_parse_v1_2 module<a class="headerlink" href="#module-nemo_retriever.model.local.nemotron_parse_v1_2" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.model.local.nemotron_parse_v1_2.</span></span><span class="sig-name descname"><span class="pre">NemotronParseV12</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">model_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nvidia/NVIDIA-Nemotron-Parse-v1.2'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">hf_cache_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">task_prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'&lt;/s&gt;&lt;s&gt;&lt;predict_bbox&gt;&lt;predict_classes&gt;&lt;output_markdown&gt;&lt;predict_no_text_in_pic&gt;'</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/model/local/nemotron_parse_v1_2.html#NemotronParseV12"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference internal" href="nemo_retriever.model.html#nemo_retriever.model.model.BaseModel" title="nemo_retriever.model.model.BaseModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></a></p>
+<p>NVIDIA Nemotron Parse v1.2 local wrapper.</p>
+<p>This wrapper loads <cite>nvidia/NVIDIA-Nemotron-Parse-v1.2</cite> from Hugging Face and
+runs image-to-structured-text generation for document parsing.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.input">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">input</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Any</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.input" title="Link to this definition">#</a></dt>
+<dd><p>Input schema for the model.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.input_batch_size">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">input_batch_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.input_batch_size" title="Link to this definition">#</a></dt>
+<dd><p>Maximum or default input batch size.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.invoke">
+<span class="sig-name descname"><span class="pre">invoke</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">input_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Image</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Path</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">task_prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/model/local/nemotron_parse_v1_2.html#NemotronParseV12.invoke"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.invoke" title="Link to this definition">#</a></dt>
+<dd><p>Run local Nemotron Parse inference and return decoded model text.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.model_name">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">model_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.model_name" title="Link to this definition">#</a></dt>
+<dd><p>Human-readable model name.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.model_runmode">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">model_runmode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'local'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'NIM'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'build-endpoint'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.model_runmode" title="Link to this definition">#</a></dt>
+<dd><p>local, NIM, or build-endpoint.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Execution mode</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.model_type">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">model_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.model_type" title="Link to this definition">#</a></dt>
+<dd><p>Model category/type.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.output">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">output</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Any</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.output" title="Link to this definition">#</a></dt>
+<dd><p>Output schema for the model.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.preprocess">
+<span class="sig-name descname"><span class="pre">preprocess</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">input_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Image</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Path</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Image</span></span></span><a class="reference internal" href="../_modules/nemo_retriever/model/local/nemotron_parse_v1_2.html#NemotronParseV12.preprocess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.preprocess" title="Link to this definition">#</a></dt>
+<dd><p>Normalize supported input formats to a RGB PIL image.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-nemo_retriever.model.local.nemotron_rerank_v2">
+<span id="nemo-retriever-model-local-nemotron-rerank-v2-module"></span><h2>nemo_retriever.model.local.nemotron_rerank_v2 module<a class="headerlink" href="#module-nemo_retriever.model.local.nemotron_rerank_v2" title="Link to this heading">#</a></h2>
+<p>Local wrapper for nvidia/llama-nemotron-rerank-1b-v2 cross-encoder reranker.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.model.local.nemotron_rerank_v2.</span></span><span class="sig-name descname"><span class="pre">NemotronRerankV2</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'nvidia/llama-nemotron-rerank-1b-v2'</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">hf_cache_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/model/local/nemotron_rerank_v2.html#NemotronRerankV2"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference internal" href="nemo_retriever.model.html#nemo_retriever.model.model.BaseModel" title="nemo_retriever.model.model.BaseModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseModel</span></code></a></p>
+<p>Local cross-encoder reranker wrapping nvidia/llama-nemotron-rerank-1b-v2.</p>
+<p>The model scores (query, document) pairs and returns raw logits; higher
+values indicate greater relevance.  It is fine-tuned from
+meta-llama/Llama-3.2-1B with bi-directional attention and supports 26
+languages with sequences up to 8 192 tokens.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">reranker</span> <span class="o">=</span> <span class="n">NemotronRerankV2</span><span class="p">()</span>
+<span class="n">scores</span> <span class="o">=</span> <span class="n">reranker</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="s2">&quot;What is ML?&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;Machine learning is…&quot;</span><span class="p">,</span> <span class="s2">&quot;Paris is…&quot;</span><span class="p">])</span>
+<span class="c1"># scores -&gt; [20.6, -23.1]  (higher = more relevant)</span>
+</pre></div>
+</div>
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.input">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">input</span></span><a class="headerlink" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.input" title="Link to this definition">#</a></dt>
+<dd><p>Input schema or object.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.input_batch_size">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">input_batch_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.input_batch_size" title="Link to this definition">#</a></dt>
+<dd><p>Maximum or default input batch size.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.model_name">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">model_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.model_name" title="Link to this definition">#</a></dt>
+<dd><p>Human-readable model name.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.model_runmode">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">model_runmode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'local'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'NIM'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'build-endpoint'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.model_runmode" title="Link to this definition">#</a></dt>
+<dd><p>local, NIM, or build-endpoint.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Execution mode</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.model_type">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">model_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.model_type" title="Link to this definition">#</a></dt>
+<dd><p>Model category/type (e.g. llm, vision, embedding).</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.output">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">output</span></span><a class="headerlink" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.output" title="Link to this definition">#</a></dt>
+<dd><p>Output schema or object.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.score">
+<span class="sig-name descname"><span class="pre">score</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">query</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">documents</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">max_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">512</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">32</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/nemo_retriever/model/local/nemotron_rerank_v2.html#NemotronRerankV2.score"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.score" title="Link to this definition">#</a></dt>
+<dd><p>Score relevance of <em>documents</em> to <em>query</em>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>query</strong> – The search query.</p></li>
+<li><p><strong>documents</strong> – Candidate passages/documents to score.</p></li>
+<li><p><strong>max_length</strong> – Tokenizer truncation length (default 512; max supported 8 192).</p></li>
+<li><p><strong>batch_size</strong> – Number of (query, doc) pairs to process per GPU forward pass.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Raw logit scores aligned with <em>documents</em> (higher = more relevant).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[float]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.score_pairs">
+<span class="sig-name descname"><span class="pre">score_pairs</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">pairs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">]</span></span></span></em>,</dd>
+<dd><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">max_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">512</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">32</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/nemo_retriever/model/local/nemotron_rerank_v2.html#NemotronRerankV2.score_pairs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.score_pairs" title="Link to this definition">#</a></dt>
+<dd><p>Score a list of (query, document) pairs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pairs</strong> – Sequence of <code class="docutils literal notranslate"><span class="pre">(query,</span> <span class="pre">document)</span></code> tuples.</p></li>
+<li><p><strong>max_length</strong> – Tokenizer truncation length.</p></li>
+<li><p><strong>batch_size</strong> – GPU forward-pass batch size.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Raw logit scores (higher = more relevant).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[float]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="nemo-retriever-model-local-nemotron-rerank-vl-v2-module">
+<h2>nemo_retriever.model.local.nemotron_rerank_vl_v2 module<a class="headerlink" href="#nemo-retriever-model-local-nemotron-rerank-vl-v2-module" title="Link to this heading">#</a></h2>
+</section>
+<section id="nemo-retriever-model-local-nemotron-rerank-vl-v2-hf-module">
+<h2>nemo_retriever.model.local.nemotron_rerank_vl_v2_hf module<a class="headerlink" href="#nemo-retriever-model-local-nemotron-rerank-vl-v2-hf-module" title="Link to this heading">#</a></h2>
+</section>
+<section id="nemo-retriever-model-local-nemotron-table-structure-v1-module">
+<h2>nemo_retriever.model.local.nemotron_table_structure_v1 module<a class="headerlink" href="#nemo-retriever-model-local-nemotron-table-structure-v1-module" title="Link to this heading">#</a></h2>
+</section>
+<section id="nemo-retriever-model-local-nemotron-vlm-captioner-module">
+<h2>nemo_retriever.model.local.nemotron_vlm_captioner module<a class="headerlink" href="#nemo-retriever-model-local-nemotron-vlm-captioner-module" title="Link to this heading">#</a></h2>
+</section>
+<section id="module-nemo_retriever.model.local.parakeet_ctc_1_1b_asr">
+<span id="nemo-retriever-model-local-parakeet-ctc-1-1b-asr-module"></span><h2>nemo_retriever.model.local.parakeet_ctc_1_1b_asr module<a class="headerlink" href="#module-nemo_retriever.model.local.parakeet_ctc_1_1b_asr" title="Link to this heading">#</a></h2>
+<p>Local ASR using nvidia/parakeet-ctc-1.1b via Hugging Face Transformers.</p>
+<p>Uses AutoModelForCTC + AutoProcessor with batch_decode(skip_special_tokens=True)
+to avoid &lt;pad&gt; tokens in output; falls back to post-processing to strip any remaining.
+Requires transformers&gt;=5. Model expects 16 kHz mono input.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.parakeet_ctc_1_1b_asr.ParakeetCTC1B1ASR">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">nemo_retriever.model.local.parakeet_ctc_1_1b_asr.</span></span><span class="sig-name descname"><span class="pre">ParakeetCTC1B1ASR</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">hf_cache_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+<dd><em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span><a class="reference internal" href="../_modules/nemo_retriever/model/local/parakeet_ctc_1_1b_asr.html#ParakeetCTC1B1ASR"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.parakeet_ctc_1_1b_asr.ParakeetCTC1B1ASR" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Local ASR using nvidia/parakeet-ctc-1.1b via Hugging Face Transformers.</p>
+<p>Uses AutoModelForCTC + AutoProcessor with batch_decode(skip_special_tokens=True)
+and post-processes to remove any remaining &lt;pad&gt; tokens. Requires transformers&gt;=5.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="nemo_retriever.model.local.parakeet_ctc_1_1b_asr.ParakeetCTC1B1ASR.transcribe">
+<span class="sig-name descname"><span class="pre">transcribe</span></span><span class="sig-paren">(</span>
+
+<dl>
+<dd><em class="sig-param"><span class="n"><span class="pre">paths</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>,</dd>
+</dl>
+
+<span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/nemo_retriever/model/local/parakeet_ctc_1_1b_asr.html#ParakeetCTC1B1ASR.transcribe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#nemo_retriever.model.local.parakeet_ctc_1_1b_asr.ParakeetCTC1B1ASR.transcribe" title="Link to this definition">#</a></dt>
+<dd><p>Transcribe one or more audio files to text.</p>
+<p>Each path is loaded and resampled to 16 kHz mono as required by the model.
+Returns one string per path; empty string on load/transcribe failure.
+&lt;pad&gt; tokens are removed via skip_special_tokens and/or post-processing.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-nemo_retriever.model.local">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-nemo_retriever.model.local" title="Link to this heading">#</a></h2>
+<p>Local model implementations for slim-gest.</p>
+<p>This module contains implementations of locally-runnable models that extend
+the BaseModel abstract class. Exports are lazy-loaded so that importing a
+single submodule (e.g. parakeet_ctc_1_1b_asr) does not pull in torch-dependent
+modules, allowing unit tests with minimal deps to run.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#submodules">Submodules</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder">nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder module</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder"><code class="docutils literal notranslate"><span class="pre">LlamaNemotronEmbed1BV2Embedder</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.device"><code class="docutils literal notranslate"><span class="pre">device</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.embed"><code class="docutils literal notranslate"><span class="pre">embed()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.hf_cache_dir"><code class="docutils literal notranslate"><span class="pre">hf_cache_dir</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.is_remote"><code class="docutils literal notranslate"><span class="pre">is_remote</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.max_length"><code class="docutils literal notranslate"><span class="pre">max_length</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.model_id"><code class="docutils literal notranslate"><span class="pre">model_id</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_1b_v2_embedder.LlamaNemotronEmbed1BV2Embedder.normalize"><code class="docutils literal notranslate"><span class="pre">normalize</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo-retriever-model-local-llama-nemotron-embed-1b-v2-hf-embedder-module">nemo_retriever.model.local.llama_nemotron_embed_1b_v2_hf_embedder module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder">nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder module</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder"><code class="docutils literal notranslate"><span class="pre">LlamaNemotronEmbedVL1BV2Embedder</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.device"><code class="docutils literal notranslate"><span class="pre">device</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.embed"><code class="docutils literal notranslate"><span class="pre">embed()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.embed_images"><code class="docutils literal notranslate"><span class="pre">embed_images()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.embed_queries"><code class="docutils literal notranslate"><span class="pre">embed_queries()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.embed_text_image"><code class="docutils literal notranslate"><span class="pre">embed_text_image()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.hf_cache_dir"><code class="docutils literal notranslate"><span class="pre">hf_cache_dir</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.is_remote"><code class="docutils literal notranslate"><span class="pre">is_remote</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.llama_nemotron_embed_vl_1b_v2_embedder.LlamaNemotronEmbedVL1BV2Embedder.model_id"><code class="docutils literal notranslate"><span class="pre">model_id</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo-retriever-model-local-nemotron-graphic-elements-v1-module">nemo_retriever.model.local.nemotron_graphic_elements_v1 module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.model.local.nemotron_ocr_v1">nemo_retriever.model.local.nemotron_ocr_v1 module</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1"><code class="docutils literal notranslate"><span class="pre">NemotronOCRV1</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.input"><code class="docutils literal notranslate"><span class="pre">input</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.input_batch_size"><code class="docutils literal notranslate"><span class="pre">input_batch_size</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.invoke"><code class="docutils literal notranslate"><span class="pre">invoke()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.model_name"><code class="docutils literal notranslate"><span class="pre">model_name</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.model_runmode"><code class="docutils literal notranslate"><span class="pre">model_runmode</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.model_type"><code class="docutils literal notranslate"><span class="pre">model_type</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.output"><code class="docutils literal notranslate"><span class="pre">output</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_ocr_v1.NemotronOCRV1.preprocess"><code class="docutils literal notranslate"><span class="pre">preprocess()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo-retriever-model-local-nemotron-ocr-v2-module">nemo_retriever.model.local.nemotron_ocr_v2 module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo-retriever-model-local-nemotron-page-elements-v3-module">nemo_retriever.model.local.nemotron_page_elements_v3 module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.model.local.nemotron_parse_v1_2">nemo_retriever.model.local.nemotron_parse_v1_2 module</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12"><code class="docutils literal notranslate"><span class="pre">NemotronParseV12</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.input"><code class="docutils literal notranslate"><span class="pre">input</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.input_batch_size"><code class="docutils literal notranslate"><span class="pre">input_batch_size</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.invoke"><code class="docutils literal notranslate"><span class="pre">invoke()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.model_name"><code class="docutils literal notranslate"><span class="pre">model_name</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.model_runmode"><code class="docutils literal notranslate"><span class="pre">model_runmode</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.model_type"><code class="docutils literal notranslate"><span class="pre">model_type</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.output"><code class="docutils literal notranslate"><span class="pre">output</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_parse_v1_2.NemotronParseV12.preprocess"><code class="docutils literal notranslate"><span class="pre">preprocess()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.model.local.nemotron_rerank_v2">nemo_retriever.model.local.nemotron_rerank_v2 module</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2"><code class="docutils literal notranslate"><span class="pre">NemotronRerankV2</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.input"><code class="docutils literal notranslate"><span class="pre">input</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.input_batch_size"><code class="docutils literal notranslate"><span class="pre">input_batch_size</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.model_name"><code class="docutils literal notranslate"><span class="pre">model_name</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.model_runmode"><code class="docutils literal notranslate"><span class="pre">model_runmode</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.model_type"><code class="docutils literal notranslate"><span class="pre">model_type</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.output"><code class="docutils literal notranslate"><span class="pre">output</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.score"><code class="docutils literal notranslate"><span class="pre">score()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.nemotron_rerank_v2.NemotronRerankV2.score_pairs"><code class="docutils literal notranslate"><span class="pre">score_pairs()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo-retriever-model-local-nemotron-rerank-vl-v2-module">nemo_retriever.model.local.nemotron_rerank_vl_v2 module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo-retriever-model-local-nemotron-rerank-vl-v2-hf-module">nemo_retriever.model.local.nemotron_rerank_vl_v2_hf module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo-retriever-model-local-nemotron-table-structure-v1-module">nemo_retriever.model.local.nemotron_table_structure_v1 module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo-retriever-model-local-nemotron-vlm-captioner-module">nemo_retriever.model.local.nemotron_vlm_captioner module</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.model.local.parakeet_ctc_1_1b_asr">nemo_retriever.model.local.parakeet_ctc_1_1b_asr module</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.parakeet_ctc_1_1b_asr.ParakeetCTC1B1ASR"><code class="docutils literal notranslate"><span class="pre">ParakeetCTC1B1ASR</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#nemo_retriever.model.local.parakeet_ctc_1_1b_asr.ParakeetCTC1B1ASR.transcribe"><code class="docutils literal notranslate"><span class="pre">transcribe()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-nemo_retriever.model.local">Module contents</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>
