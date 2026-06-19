@@ -194,36 +194,52 @@ class _RequestIdMiddleware(BaseHTTPMiddleware):
 
 
 class _GatewayBodyCacheMiddleware:
-    """Pure ASGI middleware: buffer POST bodies so the proxy can forward them.
+    """Pure ASGI middleware: cap and buffer POST bodies for proxy forwarding.
 
     FastAPI's dependency injection parses ``UploadFile`` / ``Form`` parameters
     by consuming the ASGI body stream *before* the route handler runs.  When
     the gateway's proxy later calls ``request.body()`` the stream is already
     exhausted and Starlette raises ``RuntimeError: Stream consumed``.
 
-    This middleware reads the entire body once, stores it on the ASGI scope
-    as ``scope["_cached_body"]``, and replays it through a synthetic
-    ``receive`` callable so that form parsing works normally.  The proxy
-    then reads from ``request.scope["_cached_body"]`` directly.
+    This middleware rejects bodies above ``max_body_bytes`` while reading,
+    stores accepted bodies on the ASGI scope as ``scope["_cached_body"]``,
+    and replays them through a synthetic ``receive`` callable so that form
+    parsing works normally.  The proxy then reads from
+    ``request.scope["_cached_body"]`` directly.
 
     Only active for ``POST`` requests; ``GET`` / ``OPTIONS`` etc. pass through
     untouched.
     """
 
-    def __init__(self, app: Any) -> None:
+    def __init__(self, app: Any, max_body_bytes: int | None = None) -> None:
         self.app = app
+        self.max_body_bytes = max_body_bytes
 
     async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
         if scope["type"] != "http" or scope.get("method", "GET") != "POST":
             await self.app(scope, receive, send)
             return
 
+        limit = self.max_body_bytes
+        declared_size = self._content_length(scope)
+        if limit is not None and declared_size is not None and declared_size > limit:
+            await self._payload_too_large(scope, receive, send, limit, declared_size)
+            return
+
         body_parts: list[bytes] = []
+        body_size = 0
         while True:
             message = await receive()
-            body_parts.append(message.get("body", b""))
+            chunk = message.get("body", b"")
+            if chunk:
+                body_size += len(chunk)
+                if limit is not None and body_size > limit:
+                    await self._payload_too_large(scope, receive, send, limit, body_size)
+                    return
+                body_parts.append(chunk)
             if not message.get("more_body", False):
                 break
+
         body = b"".join(body_parts)
         scope["_cached_body"] = body
 
@@ -237,6 +253,33 @@ class _GatewayBodyCacheMiddleware:
             return await receive()
 
         await self.app(scope, replay_receive, send)
+
+    @staticmethod
+    def _content_length(scope: dict) -> int | None:
+        for name, value in scope.get("headers", []):
+            if name.lower() == b"content-length":
+                try:
+                    parsed = int(value)
+                except ValueError:
+                    return None
+                return parsed if parsed >= 0 else None
+        return None
+
+    @staticmethod
+    async def _payload_too_large(
+        scope: dict,
+        receive: Any,
+        send: Any,
+        limit: int,
+        actual_size: int,
+    ) -> None:
+        response = JSONResponse(
+            status_code=413,
+            content={
+                "detail": f"Request body size {actual_size:,} bytes exceeds limit of {limit:,} bytes",
+            },
+        )
+        await response(scope, receive, send)
 
 
 def create_app(config: ServiceConfig) -> FastAPI:
@@ -256,7 +299,7 @@ def create_app(config: ServiceConfig) -> FastAPI:
     app.add_middleware(_RequestIdMiddleware)
 
     if config.mode == "gateway":
-        app.add_middleware(_GatewayBodyCacheMiddleware)
+        app.add_middleware(_GatewayBodyCacheMiddleware, max_body_bytes=config.resources.max_upload_bytes)
         logger.info("Gateway body-cache middleware ENABLED")
 
     if config.auth.api_token:
