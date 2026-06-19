@@ -16,11 +16,11 @@ If you prefer, you can run on Kubernetes by using [our Helm chart](https://githu
 
 a. Git clone the repo:
 
-    `git clone https://github.com/nvidia/nv-ingest`
+    `git clone -b 26.03 https://github.com/NVIDIA/NeMo-Retriever`
 
 b. Change the directory to the cloned repo by running the following code.
    
-    `cd nv-ingest`.
+    `cd NeMo-Retriever`.
 
 c. [Generate API keys](ngc-api-key.md) and authenticate with NGC with the `docker login` command.
 
