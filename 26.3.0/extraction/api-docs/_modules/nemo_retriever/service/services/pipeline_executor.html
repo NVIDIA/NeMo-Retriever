@@ -1,0 +1,1361 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.service.services.pipeline_executor &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/service/services/pipeline_executor';</script>
+
+    <link rel="icon" href="../../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../nemo-retriever/modules.html">nemo_retriever</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.html">nemo_retriever package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.adapters.html">nemo_retriever.adapters package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.adapters.cli.html">nemo_retriever.adapters.cli package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.api.html">nemo_retriever.api package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.application.html">nemo_retriever.application package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.application.pipeline.html">nemo_retriever.application.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.audio.html">nemo_retriever.audio package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.caption.html">nemo_retriever.caption package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.chart.html">nemo_retriever.chart package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.dedup.html">nemo_retriever.dedup package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.evaluation.html">nemo_retriever.evaluation package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.graph.html">nemo_retriever.graph package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.harness.html">nemo_retriever.harness package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.harness.portal.html">nemo_retriever.harness.portal package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.html.html">nemo_retriever.html package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.image.html">nemo_retriever.image package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.infographic.html">nemo_retriever.infographic package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.io.html">nemo_retriever.io package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.llm.html">nemo_retriever.llm package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.llm.clients.html">nemo_retriever.llm.clients package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.local.html">nemo_retriever.local package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.local.stages.html">nemo_retriever.local.stages package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.model.html">nemo_retriever.model package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.model.local.html">nemo_retriever.model.local package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.nim.html">nemo_retriever.nim package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.ocr.html">nemo_retriever.ocr package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.operators.html">nemo_retriever.operators package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.page_elements.html">nemo_retriever.page_elements package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.params.html">nemo_retriever.params package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.parse.html">nemo_retriever.parse package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.pdf.html">nemo_retriever.pdf package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.pipeline.html">nemo_retriever.pipeline package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.recall.html">nemo_retriever.recall package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.rerank.html">nemo_retriever.rerank package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.service.html">nemo_retriever.service package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.service.models.html">nemo_retriever.service.models package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.service.routers.html">nemo_retriever.service.routers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.service.services.html">nemo_retriever.service.services package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.service.utils.html">nemo_retriever.service.utils package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.skill_eval.html">nemo_retriever.skill_eval package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.skill_eval.configs.html">nemo_retriever.skill_eval.configs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.skill_eval.prompts.html">nemo_retriever.skill_eval.prompts package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.table.html">nemo_retriever.table package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.tabular_data.html">nemo_retriever.tabular_data package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.html">nemo_retriever.tabular_data.ingestion package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.tabular_data.neo4j.html">nemo_retriever.tabular_data.neo4j package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.tabular_data.retrieval.html">nemo_retriever.tabular_data.retrieval package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.text_embed.html">nemo_retriever.text_embed package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.txt.html">nemo_retriever.txt package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.utils.html">nemo_retriever.utils package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.utils.benchmark.html">nemo_retriever.utils.benchmark package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.utils.compare.html">nemo_retriever.utils.compare package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.utils.convert.html">nemo_retriever.utils.convert package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.utils.image.html">nemo_retriever.utils.image package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.utils.pipeline.html">nemo_retriever.utils.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.vdb.html">nemo_retriever.vdb package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../nemo-retriever/nemo_retriever.video.html">nemo_retriever.video package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.service.services.pipeline_executor</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.service.services.pipeline_executor</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="sd">&quot;&quot;&quot;Bridge between the service layer and the nemo-retriever pipeline.</span>
+
+<span class="sd">Builds ``ExtractParams`` / ``EmbedParams`` from :class:`ServiceConfig` and</span>
+<span class="sd">returns async work functions suitable for :class:`_Pool` worker loops.</span>
+
+<span class="sd">Each work function:</span>
+
+<span class="sd">1. Constructs a fresh :class:`GraphIngestor` per item (cheap — just sets</span>
+<span class="sd">   Python attributes).</span>
+<span class="sd">2. Feeds the raw bytes via ``.buffers()`` so no temp files are needed.</span>
+<span class="sd">3. Runs the synchronous ``InprocessExecutor`` pipeline in a **child</span>
+<span class="sd">   process** via :class:`concurrent.futures.ProcessPoolExecutor` to</span>
+<span class="sd">   isolate PDFium&#39;s non-thread-safe C library.</span>
+<span class="sd">4. Returns a lightweight summary of the result rows for status polling.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">asyncio</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">multiprocessing</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mp</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProcessPoolExecutor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures.process</span><span class="w"> </span><span class="kn">import</span> <span class="n">BrokenProcessPool</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Awaitable</span><span class="p">,</span> <span class="n">Callable</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.service.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">NimEndpointsConfig</span><span class="p">,</span> <span class="n">ServiceConfig</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.service.services.pipeline_pool</span><span class="w"> </span><span class="kn">import</span> <span class="n">WorkItem</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="n">_MP_CONTEXT</span> <span class="o">=</span> <span class="n">mp</span><span class="o">.</span><span class="n">get_context</span><span class="p">(</span><span class="s2">&quot;forkserver&quot;</span><span class="p">)</span>
+<span class="n">_MAX_TASKS_PER_CHILD</span> <span class="o">=</span> <span class="mi">100</span>
+
+<span class="n">_SENSITIVE_PATTERNS</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;api_key&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;password&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;secret&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;token&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;credential&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_redact_dict</span><span class="p">(</span><span class="n">d</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a shallow copy of *d* with sensitive-looking values masked.&quot;&quot;&quot;</span>
+    <span class="n">out</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">d</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">pat</span> <span class="ow">in</span> <span class="n">k</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">pat</span> <span class="ow">in</span> <span class="n">_SENSITIVE_PATTERNS</span><span class="p">):</span>
+            <span class="n">out</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;***REDACTED***&quot;</span> <span class="k">if</span> <span class="n">v</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">out</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">_redact_dict</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">out</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_params_to_dict</span><span class="p">(</span><span class="n">params</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Serialize a Pydantic params model to a redacted dict.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{}</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="s2">&quot;model_dump&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span>
+    <span class="k">return</span> <span class="n">_redact_dict</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+
+
+<span class="n">_pipeline_configs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+
+
+<div class="viewcode-block" id="get_pipeline_configs">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.service.services.html#nemo_retriever.service.services.pipeline_executor.get_pipeline_configs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_pipeline_configs</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the captured pipeline configurations (populated at startup).&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">_pipeline_configs</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_sanitize_result_data</span><span class="p">(</span><span class="n">df</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a pipeline DataFrame to JSON-safe dicts for the status API.</span>
+
+<span class="sd">    Column layout matches the in-process ``GraphIngestor.ingest()``</span>
+<span class="sd">    frame; cell values are sanitized for transport (see</span>
+<span class="sd">    :mod:`nemo_retriever.ingest_results`).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.ingest_results</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataframe_to_transport_records</span>
+
+    <span class="k">return</span> <span class="n">dataframe_to_transport_records</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+
+
+<span class="c1"># ── Process pool registry ────────────────────────────────────────────</span>
+
+<span class="n">_process_executors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">ProcessPoolExecutor</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+
+<div class="viewcode-block" id="shutdown_process_executors">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.service.services.html#nemo_retriever.service.services.pipeline_executor.shutdown_process_executors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">shutdown_process_executors</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Shut down all process pool executors created by work-function factories.</span>
+
+<span class="sd">    Called during application shutdown (before the asyncio pool is torn down)</span>
+<span class="sd">    so that child processes are reaped cleanly.  Actively kills running</span>
+<span class="sd">    child processes so shutdown is not blocked by long-running pipelines.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">signal</span>
+
+    <span class="k">for</span> <span class="n">executor</span> <span class="ow">in</span> <span class="n">_process_executors</span><span class="p">:</span>
+        <span class="c1"># Kill running child processes immediately so blocked</span>
+        <span class="c1"># run_in_executor() futures unblock.</span>
+        <span class="n">pids</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">executor</span><span class="p">,</span> <span class="s2">&quot;_processes&quot;</span><span class="p">):</span>
+            <span class="n">pids</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">executor</span><span class="o">.</span><span class="n">_processes</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="n">executor</span><span class="o">.</span><span class="n">shutdown</span><span class="p">(</span><span class="n">wait</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">cancel_futures</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">pid</span> <span class="ow">in</span> <span class="n">pids</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">os</span><span class="o">.</span><span class="n">kill</span><span class="p">(</span><span class="n">pid</span><span class="p">,</span> <span class="n">signal</span><span class="o">.</span><span class="n">SIGKILL</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+                <span class="k">pass</span>
+    <span class="n">_process_executors</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;All pipeline process executors shut down&quot;</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_post_rows_to_vectordb</span><span class="p">(</span><span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="n">vectordb_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Fire-and-forget POST of LanceDB rows to the vectordb service.&quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">urllib.request</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">urllib.error</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">rows</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="n">url</span> <span class="o">=</span> <span class="n">vectordb_url</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;/internal/vectordb/write&quot;</span>
+    <span class="n">body</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span><span class="s2">&quot;rows&quot;</span><span class="p">:</span> <span class="n">rows</span><span class="p">})</span><span class="o">.</span><span class="n">encode</span><span class="p">()</span>
+    <span class="n">req</span> <span class="o">=</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">Request</span><span class="p">(</span>
+        <span class="n">url</span><span class="p">,</span>
+        <span class="n">data</span><span class="o">=</span><span class="n">body</span><span class="p">,</span>
+        <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;Content-Type&quot;</span><span class="p">:</span> <span class="s2">&quot;application/json&quot;</span><span class="p">},</span>
+        <span class="n">method</span><span class="o">=</span><span class="s2">&quot;POST&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">req</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span> <span class="k">as</span> <span class="n">resp</span><span class="p">:</span>
+            <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Posted </span><span class="si">%d</span><span class="s2"> rows to vectordb for </span><span class="si">%s</span><span class="s2"> — HTTP </span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">),</span>
+                <span class="n">filename</span><span class="p">,</span>
+                <span class="n">resp</span><span class="o">.</span><span class="n">status</span><span class="p">,</span>
+            <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="s2">&quot;Failed to POST </span><span class="si">%d</span><span class="s2"> rows to vectordb for </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">),</span>
+            <span class="n">filename</span><span class="p">,</span>
+            <span class="n">exc</span><span class="p">,</span>
+        <span class="p">)</span>
+
+
+<span class="n">_TRUST_OWNED_EXTRACT_KEYS</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">&quot;invoke_url&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;api_key&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;page_elements_invoke_url&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;page_elements_api_key&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ocr_invoke_url&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ocr_api_key&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;graphic_elements_invoke_url&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;table_structure_invoke_url&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;nemotron_parse_invoke_url&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">_TRUST_OWNED_EMBED_KEYS</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">&quot;embed_invoke_url&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;embedding_endpoint&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;api_key&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;embed_model_name&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;model_name&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="c1"># Trust-owned caption keys. ``endpoint_url`` / ``api_key`` /</span>
+<span class="c1"># ``model_name`` are all set by the operator via NimEndpointsConfig and</span>
+<span class="c1"># can never be redirected per-request.</span>
+<span class="n">_TRUST_OWNED_CAPTION_KEYS</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">&quot;endpoint_url&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;api_key&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;model_name&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_merge_server_owned</span><span class="p">(</span>
+    <span class="n">base</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">override</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">owned</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Merge *override* on top of *base* while preserving server-owned keys.</span>
+
+<span class="sd">    The denylist enforced by :mod:`nemo_retriever.service.policy` already</span>
+<span class="sd">    rejects requests with these keys, but we apply a belt-and-suspenders</span>
+<span class="sd">    overwrite here so a misconfigured policy can never cause a request</span>
+<span class="sd">    to redirect endpoint URLs or replace API keys.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">merged</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">base</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">override</span><span class="p">:</span>
+        <span class="n">merged</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">override</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">owned</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">base</span><span class="p">:</span>
+            <span class="n">merged</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">base</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">merged</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_sidecar_in_spec</span><span class="p">(</span><span class="n">spec</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolve ``vdb_upload_params.meta_dataframe_id`` to in-band bytes.</span>
+
+<span class="sd">    The pipeline runs in a child process that cannot reach the</span>
+<span class="sd">    ``SidecarStore`` directly, so the parent process consumes the</span>
+<span class="sd">    sidecar (or fails the request) before submitting the work item.</span>
+<span class="sd">    The returned spec stays pickleable: ``meta_dataframe_id`` becomes</span>
+<span class="sd">    ``_meta_dataframe_bytes`` + ``_meta_dataframe_content_type``,</span>
+<span class="sd">    which :func:`_build_graph_ingestor_from_spec` resolves to a</span>
+<span class="sd">    pandas DataFrame inside the worker.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">spec</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">vdb</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;vdb_upload_params&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">vdb</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">spec</span>
+    <span class="n">sidecar_id</span> <span class="o">=</span> <span class="n">vdb</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;meta_dataframe_id&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">sidecar_id</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">spec</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.service.services.sidecar_store</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_sidecar_store</span>
+
+    <span class="n">store</span> <span class="o">=</span> <span class="n">get_sidecar_store</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">store</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+            <span class="s2">&quot;vdb_upload_params.meta_dataframe_id was set but the SidecarStore &quot;</span> <span class="s2">&quot;is not initialised on this pod.&quot;</span>
+        <span class="p">)</span>
+    <span class="n">entry</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">consume</span><span class="p">(</span><span class="n">sidecar_id</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">entry</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Sidecar id </span><span class="si">{</span><span class="n">sidecar_id</span><span class="si">!r}</span><span class="s2"> not found. The sidecar may have &quot;</span>
+            <span class="s2">&quot;expired (default TTL is 1h) or already been consumed. &quot;</span>
+            <span class="s2">&quot;Re-upload via POST /v1/ingest/sidecar.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">resolved</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
+    <span class="n">vdb_copy</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">vdb</span><span class="p">)</span>
+    <span class="n">vdb_copy</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;meta_dataframe_id&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">vdb_copy</span><span class="p">[</span><span class="s2">&quot;_meta_dataframe_bytes&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">payload</span>
+    <span class="n">vdb_copy</span><span class="p">[</span><span class="s2">&quot;_meta_dataframe_content_type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">content_type</span>
+    <span class="n">vdb_copy</span><span class="p">[</span><span class="s2">&quot;_meta_dataframe_filename&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">entry</span><span class="o">.</span><span class="n">filename</span>
+    <span class="n">resolved</span><span class="p">[</span><span class="s2">&quot;vdb_upload_params&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">vdb_copy</span>
+    <span class="k">return</span> <span class="n">resolved</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_service_extraction_mode</span><span class="p">(</span>
+    <span class="n">extraction_mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Pick the worker extraction mode for a single uploaded file.</span>
+
+<span class="sd">    When the client leaves ``extraction_mode`` at ``&quot;auto&quot;`` (the service</span>
+<span class="sd">    default), infer ``&quot;text&quot;`` / ``&quot;html&quot;`` / … from the filename so HTML</span>
+<span class="sd">    and TXT uploads use the typed splitters instead of falling through a</span>
+<span class="sd">    mis-routed graph.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mode</span> <span class="o">=</span> <span class="p">(</span><span class="n">extraction_mode</span> <span class="ow">or</span> <span class="s2">&quot;auto&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">mode</span> <span class="o">!=</span> <span class="s2">&quot;auto&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">mode</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.service.utils.file_type</span><span class="w"> </span><span class="kn">import</span> <span class="n">infer_extraction_mode_from_filename</span>
+
+    <span class="n">inferred</span> <span class="o">=</span> <span class="n">infer_extraction_mode_from_filename</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">inferred</span> <span class="ow">or</span> <span class="s2">&quot;auto&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_request_needs_asr_params</span><span class="p">(</span><span class="n">extraction_mode</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;True iff the request is audio/video and should carry ``_asr_params``.</span>
+
+<span class="sd">    The worker holds a single ``ASRParams`` derived from</span>
+<span class="sd">    ``serviceConfig.nimEndpoints.audioGrpcEndpoint``. Attaching that to</span>
+<span class="sd">    every per-request ingestor is what caused the</span>
+<span class="sd">    ``RuntimeError: MediaChunkActor requires media dependencies; missing:</span>
+<span class="sd">    ffmpeg, ffprobe`` for PDF uploads — the audio-only graph branch then</span>
+<span class="sd">    won the routing decision regardless of file type. We restrict the</span>
+<span class="sd">    attachment to:</span>
+
+<span class="sd">    * ``extraction_mode == &quot;audio&quot;`` or ``&quot;video&quot;`` — explicit caller</span>
+<span class="sd">      intent; the user already opted into media routing.</span>
+<span class="sd">    * ``extraction_mode == &quot;auto&quot;`` plus an audio/video file extension —</span>
+<span class="sd">      ``MultiTypeExtractOperator`` dispatches at row level and only</span>
+<span class="sd">      needs ASR when the row is actually media.</span>
+
+<span class="sd">    Anything else (``&quot;pdf&quot;``, ``&quot;image&quot;``, ``&quot;text&quot;``, ``&quot;html&quot;``, or a</span>
+<span class="sd">    non-media extension under ``&quot;auto&quot;``) must not pin ASR params.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mode</span> <span class="o">=</span> <span class="p">(</span><span class="n">extraction_mode</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;audio&quot;</span><span class="p">,</span> <span class="s2">&quot;video&quot;</span><span class="p">}:</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    <span class="k">if</span> <span class="n">mode</span> <span class="o">!=</span> <span class="s2">&quot;auto&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.service.utils.file_type</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+        <span class="n">FileClassifier</span><span class="p">,</span>
+        <span class="n">category_requires_media_deps</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">dot</span> <span class="o">=</span> <span class="n">filename</span><span class="o">.</span><span class="n">rfind</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)</span>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="n">filename</span><span class="p">[</span><span class="n">dot</span><span class="p">:]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="n">dot</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">entry</span> <span class="o">=</span> <span class="n">FileClassifier</span><span class="o">.</span><span class="n">SUFFIX_MAP</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">suffix</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">entry</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="n">category</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">entry</span>
+    <span class="k">return</span> <span class="n">category_requires_media_deps</span><span class="p">(</span><span class="n">category</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_materialize_sidecar_bytes</span><span class="p">(</span><span class="n">vdb_kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert resolved sidecar bytes into a pandas DataFrame in place.</span>
+
+<span class="sd">    Runs *inside* the child process. ``_meta_dataframe_bytes`` is the</span>
+<span class="sd">    payload uploaded via ``POST /v1/ingest/sidecar``; the content-type</span>
+<span class="sd">    (or filename suffix as fallback) picks the right pandas reader.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">vdb_kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;_meta_dataframe_bytes&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">payload</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">vdb_kwargs</span>
+    <span class="n">content_type</span> <span class="o">=</span> <span class="n">vdb_kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;_meta_dataframe_content_type&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="n">vdb_kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;_meta_dataframe_filename&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
+
+    <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+    <span class="n">ct_lower</span> <span class="o">=</span> <span class="n">content_type</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="n">fname_lower</span> <span class="o">=</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="s2">&quot;parquet&quot;</span> <span class="ow">in</span> <span class="n">ct_lower</span> <span class="ow">or</span> <span class="n">fname_lower</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.parquet&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">fname_lower</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.pq&quot;</span><span class="p">):</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_parquet</span><span class="p">(</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">payload</span><span class="p">))</span>
+    <span class="k">elif</span> <span class="s2">&quot;json&quot;</span> <span class="ow">in</span> <span class="n">ct_lower</span> <span class="ow">or</span> <span class="n">fname_lower</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.json&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">fname_lower</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.jsonl&quot;</span><span class="p">):</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_json</span><span class="p">(</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">payload</span><span class="p">),</span> <span class="n">lines</span><span class="o">=</span><span class="n">fname_lower</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;.jsonl&quot;</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">payload</span><span class="p">))</span>
+    <span class="n">vdb_kwargs</span><span class="p">[</span><span class="s2">&quot;meta_dataframe&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span>
+    <span class="k">return</span> <span class="n">vdb_kwargs</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_graph_ingestor_from_spec</span><span class="p">(</span>
+    <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">payload</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span>
+    <span class="n">base_extract</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+    <span class="n">base_embed</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">spec</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">base_caption</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">base_asr</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;tuple[Any, str, bool]&quot;</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Construct a :class:`GraphIngestor` reflecting the per-request *spec*.</span>
+
+<span class="sd">    Returns ``(ingestor, extraction_mode, has_per_request_vdb)``. The</span>
+<span class="sd">    last value tells the caller to skip the legacy out-of-graph</span>
+<span class="sd">    vectordb fan-out — the in-graph ``IngestVdbOperator`` already</span>
+<span class="sd">    handles persistence when ``vdb_upload_params`` is present.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.graph_ingestor</span><span class="w"> </span><span class="kn">import</span> <span class="n">GraphIngestor</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+        <span class="n">ASRParams</span><span class="p">,</span>
+        <span class="n">CaptionParams</span><span class="p">,</span>
+        <span class="n">DedupParams</span><span class="p">,</span>
+        <span class="n">EmbedParams</span><span class="p">,</span>
+        <span class="n">ExtractParams</span><span class="p">,</span>
+        <span class="n">StoreParams</span><span class="p">,</span>
+        <span class="n">VdbUploadParams</span><span class="p">,</span>
+        <span class="n">WebhookParams</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">spec</span> <span class="o">=</span> <span class="n">spec</span> <span class="ow">or</span> <span class="p">{}</span>
+    <span class="n">extraction_mode</span> <span class="o">=</span> <span class="n">_resolve_service_extraction_mode</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extraction_mode&quot;</span><span class="p">,</span> <span class="s2">&quot;auto&quot;</span><span class="p">),</span> <span class="n">filename</span><span class="p">)</span>
+    <span class="n">split_config</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;split_config&quot;</span><span class="p">)</span>
+
+    <span class="n">extract_kwargs</span> <span class="o">=</span> <span class="n">_merge_server_owned</span><span class="p">(</span><span class="n">base_extract</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;extract_params&quot;</span><span class="p">),</span> <span class="n">_TRUST_OWNED_EXTRACT_KEYS</span><span class="p">)</span>
+    <span class="n">extract_params</span> <span class="o">=</span> <span class="n">ExtractParams</span><span class="p">(</span><span class="o">**</span><span class="n">extract_kwargs</span><span class="p">)</span>
+
+    <span class="n">embed_override</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;embed_params&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">base_embed</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">embed_override</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">embed_params</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">embed_base</span> <span class="o">=</span> <span class="n">base_embed</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="n">embed_kwargs</span> <span class="o">=</span> <span class="n">_merge_server_owned</span><span class="p">(</span><span class="n">embed_base</span><span class="p">,</span> <span class="n">embed_override</span><span class="p">,</span> <span class="n">_TRUST_OWNED_EMBED_KEYS</span><span class="p">)</span>
+        <span class="n">embed_params</span> <span class="o">=</span> <span class="n">EmbedParams</span><span class="p">(</span><span class="o">**</span><span class="n">embed_kwargs</span><span class="p">)</span> <span class="k">if</span> <span class="n">embed_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;embed_invoke_url&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="c1"># Caption baseline + per-request overrides. The base dict carries</span>
+    <span class="c1"># the server-owned endpoint/API key/model name; the override carries</span>
+    <span class="c1"># behavioural knobs (prompt, system_prompt, batch_size, …).</span>
+    <span class="n">caption_override</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;caption_params&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">base_caption</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">caption_override</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">caption_params</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">elif</span> <span class="n">base_caption</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">caption_override</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+            <span class="s2">&quot;caption_params provided but no caption endpoint is configured on &quot;</span>
+            <span class="s2">&quot;this worker. The policy layer should have rejected this earlier.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">caption_kwargs</span> <span class="o">=</span> <span class="n">_merge_server_owned</span><span class="p">(</span><span class="n">base_caption</span> <span class="ow">or</span> <span class="p">{},</span> <span class="n">caption_override</span><span class="p">,</span> <span class="n">_TRUST_OWNED_CAPTION_KEYS</span><span class="p">)</span>
+        <span class="n">caption_params</span> <span class="o">=</span> <span class="n">CaptionParams</span><span class="p">(</span><span class="o">**</span><span class="n">caption_kwargs</span><span class="p">)</span> <span class="k">if</span> <span class="n">caption_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;endpoint_url&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="n">asr_params</span> <span class="o">=</span> <span class="n">ASRParams</span><span class="p">(</span><span class="o">**</span><span class="n">base_asr</span><span class="p">)</span> <span class="k">if</span> <span class="n">base_asr</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="n">ingestor</span> <span class="o">=</span> <span class="n">GraphIngestor</span><span class="p">(</span><span class="n">run_mode</span><span class="o">=</span><span class="s2">&quot;inprocess&quot;</span><span class="p">,</span> <span class="n">show_progress</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">buffers</span><span class="p">([(</span><span class="n">filename</span><span class="p">,</span> <span class="n">BytesIO</span><span class="p">(</span><span class="n">payload</span><span class="p">))])</span>
+
+    <span class="k">if</span> <span class="n">extraction_mode</span> <span class="o">==</span> <span class="s2">&quot;image&quot;</span><span class="p">:</span>
+        <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">extract_image_files</span><span class="p">(</span><span class="n">extract_params</span><span class="p">,</span> <span class="n">split_config</span><span class="o">=</span><span class="n">split_config</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">extraction_mode</span> <span class="o">==</span> <span class="s2">&quot;text&quot;</span> <span class="ow">and</span> <span class="n">split_config</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">extract_txt</span><span class="p">()</span>
+    <span class="k">elif</span> <span class="n">extraction_mode</span> <span class="o">==</span> <span class="s2">&quot;html&quot;</span> <span class="ow">and</span> <span class="n">split_config</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">extract_html</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">extract</span><span class="p">(</span>
+            <span class="n">extract_params</span><span class="p">,</span>
+            <span class="n">split_config</span><span class="o">=</span><span class="n">split_config</span><span class="p">,</span>
+            <span class="n">extraction_mode</span><span class="o">=</span><span class="n">extraction_mode</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="c1"># Only attach the worker-wide ASR params to the per-request ingestor</span>
+        <span class="c1"># when the request is genuinely audio/video. ``asr_params`` is</span>
+        <span class="c1"># auto-derived from the cluster&#39;s ``audio_grpc_endpoint`` and would</span>
+        <span class="c1"># otherwise taint every PDF / image / text / HTML upload with audio</span>
+        <span class="c1"># state — which then mis-routes the request through the audio-only</span>
+        <span class="c1"># graph in :func:`nemo_retriever.graph.ingestor_runtime.build_graph`</span>
+        <span class="c1"># and crashes inside ``MediaChunkActor`` when ffmpeg/ffprobe are</span>
+        <span class="c1"># absent. The graph builder also gates on extraction_mode now, so</span>
+        <span class="c1"># this is defence in depth.</span>
+        <span class="k">if</span> <span class="n">asr_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">_request_needs_asr_params</span><span class="p">(</span><span class="n">extraction_mode</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+            <span class="n">ingestor</span><span class="o">.</span><span class="n">_asr_params</span> <span class="o">=</span> <span class="n">asr_params</span>
+
+    <span class="n">stage_order</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;stage_order&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+    <span class="n">seen_post_extract</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_store_if_requested</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">nonlocal</span> <span class="n">ingestor</span>
+        <span class="n">store_kwargs</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;store_params&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">store_kwargs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">StoreParams</span><span class="p">(</span><span class="o">**</span><span class="n">store_kwargs</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_webhook_if_requested</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">nonlocal</span> <span class="n">ingestor</span>
+        <span class="n">webhook_kwargs</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;webhook_params&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">webhook_kwargs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">webhook</span><span class="p">(</span><span class="n">WebhookParams</span><span class="p">(</span><span class="o">**</span><span class="n">webhook_kwargs</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_caption_if_requested</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">nonlocal</span> <span class="n">ingestor</span>
+        <span class="k">if</span> <span class="n">caption_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">caption</span><span class="p">(</span><span class="n">caption_params</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">stage_name</span> <span class="ow">in</span> <span class="n">stage_order</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">stage_name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;extract&quot;</span><span class="p">,)</span> <span class="ow">or</span> <span class="n">stage_name</span> <span class="ow">in</span> <span class="n">seen_post_extract</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">seen_post_extract</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">stage_name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">stage_name</span> <span class="o">==</span> <span class="s2">&quot;dedup&quot;</span><span class="p">:</span>
+            <span class="n">dedup_kwargs</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;dedup_params&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+            <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">dedup</span><span class="p">(</span><span class="n">DedupParams</span><span class="p">(</span><span class="o">**</span><span class="n">dedup_kwargs</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">stage_name</span> <span class="o">==</span> <span class="s2">&quot;embed&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">embed_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="n">embed_params</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">stage_name</span> <span class="o">==</span> <span class="s2">&quot;filter&quot;</span><span class="p">:</span>
+            <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">filter</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">stage_name</span> <span class="o">==</span> <span class="s2">&quot;store&quot;</span><span class="p">:</span>
+            <span class="n">_apply_store_if_requested</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">stage_name</span> <span class="o">==</span> <span class="s2">&quot;webhook&quot;</span><span class="p">:</span>
+            <span class="n">_apply_webhook_if_requested</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="n">stage_name</span> <span class="o">==</span> <span class="s2">&quot;caption&quot;</span><span class="p">:</span>
+            <span class="n">_apply_caption_if_requested</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">embed_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="s2">&quot;embed&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_post_extract</span><span class="p">:</span>
+        <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">embed</span><span class="p">(</span><span class="n">embed_params</span><span class="p">)</span>
+
+    <span class="c1"># ``store`` / ``webhook`` / ``caption`` may be present in params</span>
+    <span class="c1"># without an explicit stage_order entry (matches the GraphIngestor</span>
+    <span class="c1"># pattern where the params model triggers the stage). Auto-append.</span>
+    <span class="k">if</span> <span class="s2">&quot;caption&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_post_extract</span><span class="p">:</span>
+        <span class="n">_apply_caption_if_requested</span><span class="p">()</span>
+    <span class="k">if</span> <span class="s2">&quot;store&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_post_extract</span><span class="p">:</span>
+        <span class="n">_apply_store_if_requested</span><span class="p">()</span>
+    <span class="k">if</span> <span class="s2">&quot;webhook&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_post_extract</span><span class="p">:</span>
+        <span class="n">_apply_webhook_if_requested</span><span class="p">()</span>
+
+    <span class="c1"># vdb_upload is not a stage_order entry in GraphIngestor either — the</span>
+    <span class="c1"># operator is always appended after embed/store from the params model.</span>
+    <span class="n">has_per_request_vdb</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">vdb_kwargs</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;vdb_upload_params&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">vdb_kwargs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Sidecar metadata (Phase 6): the parent process placed the</span>
+        <span class="c1"># uploaded bytes on the spec; turn them into a DataFrame here.</span>
+        <span class="n">vdb_kwargs</span> <span class="o">=</span> <span class="n">_materialize_sidecar_bytes</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">vdb_kwargs</span><span class="p">))</span>
+        <span class="n">ingestor</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">vdb_upload</span><span class="p">(</span><span class="n">VdbUploadParams</span><span class="p">(</span><span class="o">**</span><span class="n">vdb_kwargs</span><span class="p">))</span>
+        <span class="n">has_per_request_vdb</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">return</span> <span class="n">ingestor</span><span class="p">,</span> <span class="n">extraction_mode</span><span class="p">,</span> <span class="n">has_per_request_vdb</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_run_pipeline_in_process</span><span class="p">(</span>
+    <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">payload</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span>
+    <span class="n">extract_params_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+    <span class="n">embed_params_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">vectordb_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">pipeline_spec</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">caption_params_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">asr_params_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Execute one pipeline run inside a child process.</span>
+
+<span class="sd">    This is a **top-level module function** so it can be pickled by</span>
+<span class="sd">    :class:`ProcessPoolExecutor`.  All heavy imports happen here so</span>
+<span class="sd">    that the parent process stays lightweight.</span>
+
+<span class="sd">    The pipeline shape comes from two layers:</span>
+
+<span class="sd">    * ``extract_params_dict`` / ``embed_params_dict`` — server-owned</span>
+<span class="sd">      defaults derived from :class:`ServiceConfig.nim_endpoints` at</span>
+<span class="sd">      startup. Carry the endpoint URLs and API keys.</span>
+<span class="sd">    * ``pipeline_spec`` — optional per-request override validated by</span>
+<span class="sd">      :func:`nemo_retriever.service.policy.validate_pipeline_spec`.</span>
+<span class="sd">      Carries &quot;shape&quot; knobs (chunk sizes, output flags, stage order, …).</span>
+
+<span class="sd">    When ``pipeline_spec`` is ``None`` (or empty) the behaviour exactly</span>
+<span class="sd">    matches the original closure-baked pipeline.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span>
+
+    <span class="n">ingestor</span><span class="p">,</span> <span class="n">_extraction_mode</span><span class="p">,</span> <span class="n">has_per_request_vdb</span> <span class="o">=</span> <span class="n">_build_graph_ingestor_from_spec</span><span class="p">(</span>
+        <span class="n">filename</span><span class="p">,</span>
+        <span class="n">payload</span><span class="p">,</span>
+        <span class="n">extract_params_dict</span><span class="p">,</span>
+        <span class="n">embed_params_dict</span><span class="p">,</span>
+        <span class="n">pipeline_spec</span><span class="p">,</span>
+        <span class="n">caption_params_dict</span><span class="p">,</span>
+        <span class="n">asr_params_dict</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">result_df</span> <span class="o">=</span> <span class="n">ingestor</span><span class="o">.</span><span class="n">ingest</span><span class="p">()</span>
+    <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span>
+
+    <span class="n">row_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">result_df</span><span class="p">)</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.service.utils.file_type</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_text_like_filename</span>
+
+    <span class="k">if</span> <span class="n">row_count</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">is_text_like_filename</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Extraction produced no rows for </span><span class="si">{</span><span class="n">filename</span><span class="si">!r}</span><span class="s2">. &quot;</span>
+            <span class="s2">&quot;Supported HTML and TXT inputs must yield at least one text chunk. &quot;</span>
+            <span class="s2">&quot;If you need custom chunking, pass split_config for the matching &quot;</span>
+            <span class="s2">&quot;source type (see README: split_config for text/html).&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">vectordb_url</span> <span class="ow">and</span> <span class="n">row_count</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">has_per_request_vdb</span><span class="p">:</span>
+        <span class="c1"># Skip the out-of-graph fan-out when the client already wired</span>
+        <span class="c1"># IngestVdbOperator into the spec — that operator handles</span>
+        <span class="c1"># persistence itself.</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.vdb.lancedb_schema</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_lancedb_rows</span>
+
+        <span class="n">lancedb_rows</span> <span class="o">=</span> <span class="n">build_lancedb_rows</span><span class="p">(</span><span class="n">result_df</span><span class="p">)</span>
+        <span class="n">_post_rows_to_vectordb</span><span class="p">(</span><span class="n">lancedb_rows</span><span class="p">,</span> <span class="n">vectordb_url</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+
+    <span class="n">result_data</span> <span class="o">=</span> <span class="n">_sanitize_result_data</span><span class="p">(</span><span class="n">result_df</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">row_count</span><span class="p">,</span> <span class="n">result_data</span><span class="p">,</span> <span class="n">elapsed</span>
+
+
+<div class="viewcode-block" id="build_extract_params">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.service.services.html#nemo_retriever.service.services.pipeline_executor.build_extract_params">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_extract_params</span><span class="p">(</span><span class="n">nim</span><span class="p">:</span> <span class="n">NimEndpointsConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Derive :class:`ExtractParams` from service NIM endpoint config.</span>
+
+<span class="sd">    The ``ExtractParams`` model validator auto-enables</span>
+<span class="sd">    ``use_graphic_elements`` / ``use_table_structure`` when the</span>
+<span class="sd">    corresponding invoke URLs are provided.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">ExtractParams</span>
+
+    <span class="n">kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="n">nim</span><span class="o">.</span><span class="n">page_elements_invoke_url</span><span class="p">:</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;page_elements_invoke_url&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nim</span><span class="o">.</span><span class="n">page_elements_invoke_url</span>
+    <span class="k">if</span> <span class="n">nim</span><span class="o">.</span><span class="n">ocr_invoke_url</span><span class="p">:</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;ocr_invoke_url&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nim</span><span class="o">.</span><span class="n">ocr_invoke_url</span>
+    <span class="k">if</span> <span class="n">nim</span><span class="o">.</span><span class="n">graphic_elements_invoke_url</span><span class="p">:</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;graphic_elements_invoke_url&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nim</span><span class="o">.</span><span class="n">graphic_elements_invoke_url</span>
+    <span class="k">if</span> <span class="n">nim</span><span class="o">.</span><span class="n">table_structure_invoke_url</span><span class="p">:</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;table_structure_invoke_url&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nim</span><span class="o">.</span><span class="n">table_structure_invoke_url</span>
+    <span class="k">if</span> <span class="n">nim</span><span class="o">.</span><span class="n">api_key</span><span class="p">:</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;api_key&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nim</span><span class="o">.</span><span class="n">api_key</span>
+
+    <span class="k">return</span> <span class="n">ExtractParams</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="build_caption_params">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.service.services.html#nemo_retriever.service.services.pipeline_executor.build_caption_params">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_caption_params</span><span class="p">(</span><span class="n">nim</span><span class="p">:</span> <span class="n">NimEndpointsConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Derive :class:`CaptionParams` from service NIM endpoint config.</span>
+
+<span class="sd">    Returns ``None`` when no caption endpoint is configured — clients</span>
+<span class="sd">    that request the ``caption`` stage will hit the policy&#39;s</span>
+<span class="sd">    ``caption_enabled`` guard before reaching this point.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">CaptionParams</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">nim</span><span class="o">.</span><span class="n">caption_invoke_url</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;endpoint_url&quot;</span><span class="p">:</span> <span class="n">nim</span><span class="o">.</span><span class="n">caption_invoke_url</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">nim</span><span class="o">.</span><span class="n">caption_model_name</span><span class="p">:</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;model_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nim</span><span class="o">.</span><span class="n">caption_model_name</span>
+    <span class="k">if</span> <span class="n">nim</span><span class="o">.</span><span class="n">api_key</span><span class="p">:</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;api_key&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nim</span><span class="o">.</span><span class="n">api_key</span>
+    <span class="k">return</span> <span class="n">CaptionParams</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="build_asr_params">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.service.services.html#nemo_retriever.service.services.pipeline_executor.build_asr_params">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_asr_params</span><span class="p">(</span><span class="n">nim</span><span class="p">:</span> <span class="n">NimEndpointsConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Derive :class:`ASRParams` from service NIM endpoint config.</span>
+
+<span class="sd">    Returns ``None`` when no audio gRPC endpoint is configured, signalling</span>
+<span class="sd">    that the audio pipeline should attempt local Parakeet (requires torch).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">nim</span><span class="o">.</span><span class="n">audio_grpc_endpoint</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">ASRParams</span>
+
+    <span class="k">return</span> <span class="n">ASRParams</span><span class="p">(</span>
+        <span class="n">audio_endpoints</span><span class="o">=</span><span class="p">(</span><span class="n">nim</span><span class="o">.</span><span class="n">audio_grpc_endpoint</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+        <span class="n">audio_infer_protocol</span><span class="o">=</span><span class="s2">&quot;grpc&quot;</span><span class="p">,</span>
+        <span class="n">auth_token</span><span class="o">=</span><span class="n">nim</span><span class="o">.</span><span class="n">api_key</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="build_embed_params">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.service.services.html#nemo_retriever.service.services.pipeline_executor.build_embed_params">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_embed_params</span><span class="p">(</span><span class="n">nim</span><span class="p">:</span> <span class="n">NimEndpointsConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Derive :class:`EmbedParams` from service NIM endpoint config.</span>
+
+<span class="sd">    Returns ``None`` when no embedding endpoint is configured, signalling</span>
+<span class="sd">    that the embed stage should be skipped.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">nim</span><span class="o">.</span><span class="n">embed_invoke_url</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">EmbedParams</span>
+
+    <span class="n">kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;embed_invoke_url&quot;</span><span class="p">:</span> <span class="n">nim</span><span class="o">.</span><span class="n">embed_invoke_url</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">nim</span><span class="o">.</span><span class="n">embed_model_name</span><span class="p">:</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;model_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nim</span><span class="o">.</span><span class="n">embed_model_name</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;embed_model_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nim</span><span class="o">.</span><span class="n">embed_model_name</span>
+    <span class="k">if</span> <span class="n">nim</span><span class="o">.</span><span class="n">api_key</span><span class="p">:</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;api_key&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nim</span><span class="o">.</span><span class="n">api_key</span>
+
+    <span class="k">return</span> <span class="n">EmbedParams</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_make_work_fn</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">ServiceConfig</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">WorkItem</span><span class="p">],</span> <span class="n">Awaitable</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Factory that captures pipeline params once and returns an async worker.</span>
+
+<span class="sd">    Each invocation creates a :class:`ProcessPoolExecutor` so that every</span>
+<span class="sd">    pipeline run is isolated in its own child process — this eliminates</span>
+<span class="sd">    PDFium thread-safety issues (the C library has global mutable state</span>
+<span class="sd">    that corrupts under concurrent thread access).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">extract_params</span> <span class="o">=</span> <span class="n">build_extract_params</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">nim_endpoints</span><span class="p">)</span>
+    <span class="n">embed_params</span> <span class="o">=</span> <span class="n">build_embed_params</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">nim_endpoints</span><span class="p">)</span>
+    <span class="n">caption_params</span> <span class="o">=</span> <span class="n">build_caption_params</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">nim_endpoints</span><span class="p">)</span>
+    <span class="n">asr_params</span> <span class="o">=</span> <span class="n">build_asr_params</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">nim_endpoints</span><span class="p">)</span>
+
+    <span class="n">vectordb_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">vectordb</span><span class="o">.</span><span class="n">enabled</span><span class="p">:</span>
+        <span class="n">vectordb_url</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">vectordb</span><span class="o">.</span><span class="n">vectordb_url</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;VectorDB write enabled for </span><span class="si">%s</span><span class="s2"> workers → </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">vectordb_url</span><span class="p">)</span>
+
+    <span class="n">num_workers</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">pipeline</span><span class="o">.</span><span class="n">realtime_workers</span> <span class="k">if</span> <span class="n">label</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;realtime&quot;</span> <span class="k">else</span> <span class="n">config</span><span class="o">.</span><span class="n">pipeline</span><span class="o">.</span><span class="n">batch_workers</span>
+
+    <span class="n">executor</span> <span class="o">=</span> <span class="n">ProcessPoolExecutor</span><span class="p">(</span>
+        <span class="n">max_workers</span><span class="o">=</span><span class="n">num_workers</span><span class="p">,</span>
+        <span class="n">mp_context</span><span class="o">=</span><span class="n">_MP_CONTEXT</span><span class="p">,</span>
+        <span class="n">max_tasks_per_child</span><span class="o">=</span><span class="n">_MAX_TASKS_PER_CHILD</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">_process_executors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">executor</span><span class="p">)</span>
+
+    <span class="n">extract_params_dict</span> <span class="o">=</span> <span class="n">extract_params</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">)</span>
+    <span class="n">embed_params_dict</span> <span class="o">=</span> <span class="n">embed_params</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">embed_params</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="n">caption_params_dict</span> <span class="o">=</span> <span class="n">caption_params</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">caption_params</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="n">asr_params_dict</span> <span class="o">=</span> <span class="n">asr_params</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">asr_params</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="n">_pipeline_configs</span><span class="p">[</span><span class="n">label</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;label&quot;</span><span class="p">:</span> <span class="n">label</span><span class="p">,</span>
+        <span class="s2">&quot;run_mode&quot;</span><span class="p">:</span> <span class="s2">&quot;inprocess&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;execution&quot;</span><span class="p">:</span> <span class="s2">&quot;process-isolated&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;show_progress&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="s2">&quot;extract_params&quot;</span><span class="p">:</span> <span class="n">_params_to_dict</span><span class="p">(</span><span class="n">extract_params</span><span class="p">),</span>
+        <span class="s2">&quot;embed_params&quot;</span><span class="p">:</span> <span class="n">_params_to_dict</span><span class="p">(</span><span class="n">embed_params</span><span class="p">)</span> <span class="k">if</span> <span class="n">embed_params</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;embed_enabled&quot;</span><span class="p">:</span> <span class="n">embed_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;caption_params&quot;</span><span class="p">:</span> <span class="n">_redact_dict</span><span class="p">(</span><span class="n">_params_to_dict</span><span class="p">(</span><span class="n">caption_params</span><span class="p">))</span> <span class="k">if</span> <span class="n">caption_params</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;caption_enabled&quot;</span><span class="p">:</span> <span class="n">caption_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;asr_params&quot;</span><span class="p">:</span> <span class="n">_redact_dict</span><span class="p">(</span><span class="n">_params_to_dict</span><span class="p">(</span><span class="n">asr_params</span><span class="p">))</span> <span class="k">if</span> <span class="n">asr_params</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;asr_enabled&quot;</span><span class="p">:</span> <span class="n">asr_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;pool&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;workers&quot;</span><span class="p">:</span> <span class="n">num_workers</span><span class="p">,</span>
+            <span class="s2">&quot;queue_size&quot;</span><span class="p">:</span> <span class="p">(</span>
+                <span class="n">config</span><span class="o">.</span><span class="n">pipeline</span><span class="o">.</span><span class="n">realtime_queue_size</span> <span class="k">if</span> <span class="n">label</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;realtime&quot;</span> <span class="k">else</span> <span class="n">config</span><span class="o">.</span><span class="n">pipeline</span><span class="o">.</span><span class="n">batch_queue_size</span>
+            <span class="p">),</span>
+            <span class="s2">&quot;max_tasks_per_child&quot;</span><span class="p">:</span> <span class="n">_MAX_TASKS_PER_CHILD</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;nim_endpoints&quot;</span><span class="p">:</span> <span class="n">_redact_dict</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">nim_endpoints</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;json&quot;</span><span class="p">)),</span>
+    <span class="p">}</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Pipeline work function created (</span><span class="si">%s</span><span class="s2">): extract=</span><span class="si">%s</span><span class="s2">, embed=</span><span class="si">%s</span><span class="s2">, &quot;</span> <span class="s2">&quot;process_pool_workers=</span><span class="si">%d</span><span class="s2">, max_tasks_per_child=</span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">label</span><span class="p">,</span>
+        <span class="nb">type</span><span class="p">(</span><span class="n">extract_params</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+        <span class="nb">type</span><span class="p">(</span><span class="n">embed_params</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span> <span class="k">if</span> <span class="n">embed_params</span> <span class="k">else</span> <span class="s2">&quot;disabled&quot;</span><span class="p">,</span>
+        <span class="n">num_workers</span><span class="p">,</span>
+        <span class="n">_MAX_TASKS_PER_CHILD</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Mutable holder so the BrokenProcessPool handler can replace the</span>
+    <span class="c1"># executor while the closure keeps a stable reference.</span>
+    <span class="n">executor_ref</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">ProcessPoolExecutor</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">executor</span><span class="p">]</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_work</span><span class="p">(</span><span class="n">item</span><span class="p">:</span> <span class="n">WorkItem</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]:</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">filename</span> <span class="ow">or</span> <span class="n">item</span><span class="o">.</span><span class="n">id</span>
+        <span class="n">loop</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">get_running_loop</span><span class="p">()</span>
+
+        <span class="n">resolved_spec</span> <span class="o">=</span> <span class="n">_resolve_sidecar_in_spec</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">pipeline_spec</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">row_count</span><span class="p">,</span> <span class="n">result_data</span><span class="p">,</span> <span class="n">elapsed</span> <span class="o">=</span> <span class="k">await</span> <span class="n">loop</span><span class="o">.</span><span class="n">run_in_executor</span><span class="p">(</span>
+                <span class="n">executor_ref</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+                <span class="n">_run_pipeline_in_process</span><span class="p">,</span>
+                <span class="n">filename</span><span class="p">,</span>
+                <span class="n">item</span><span class="o">.</span><span class="n">payload</span><span class="p">,</span>
+                <span class="n">extract_params_dict</span><span class="p">,</span>
+                <span class="n">embed_params_dict</span><span class="p">,</span>
+                <span class="n">vectordb_url</span><span class="p">,</span>
+                <span class="n">resolved_spec</span><span class="p">,</span>
+                <span class="n">caption_params_dict</span><span class="p">,</span>
+                <span class="n">asr_params_dict</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="n">BrokenProcessPool</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+                <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> process pool broken (worker crash) while processing &quot;</span> <span class="s2">&quot;id=</span><span class="si">%s</span><span class="s2"> file=</span><span class="si">%s</span><span class="s2"> — recreating pool&quot;</span><span class="p">,</span>
+                <span class="n">label</span><span class="p">,</span>
+                <span class="n">item</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+                <span class="n">filename</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">old</span> <span class="o">=</span> <span class="n">executor_ref</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">old</span><span class="o">.</span><span class="n">shutdown</span><span class="p">(</span><span class="n">wait</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">cancel_futures</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">if</span> <span class="n">old</span> <span class="ow">in</span> <span class="n">_process_executors</span><span class="p">:</span>
+                <span class="n">_process_executors</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">old</span><span class="p">)</span>
+            <span class="n">new_executor</span> <span class="o">=</span> <span class="n">ProcessPoolExecutor</span><span class="p">(</span>
+                <span class="n">max_workers</span><span class="o">=</span><span class="n">num_workers</span><span class="p">,</span>
+                <span class="n">mp_context</span><span class="o">=</span><span class="n">_MP_CONTEXT</span><span class="p">,</span>
+                <span class="n">max_tasks_per_child</span><span class="o">=</span><span class="n">_MAX_TASKS_PER_CHILD</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">executor_ref</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_executor</span>
+            <span class="n">_process_executors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_executor</span><span class="p">)</span>
+            <span class="k">raise</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> pipeline completed: id=</span><span class="si">%s</span><span class="s2"> file=</span><span class="si">%s</span><span class="s2"> rows=</span><span class="si">%d</span><span class="s2"> elapsed=</span><span class="si">%.2f</span><span class="s2">s&quot;</span><span class="p">,</span>
+            <span class="n">label</span><span class="p">,</span>
+            <span class="n">item</span><span class="o">.</span><span class="n">id</span><span class="p">,</span>
+            <span class="n">filename</span><span class="p">,</span>
+            <span class="n">row_count</span><span class="p">,</span>
+            <span class="n">elapsed</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">row_count</span><span class="p">,</span> <span class="n">result_data</span>
+
+    <span class="k">return</span> <span class="n">_work</span>
+
+
+<div class="viewcode-block" id="create_realtime_work_fn">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.service.services.html#nemo_retriever.service.services.pipeline_executor.create_realtime_work_fn">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_realtime_work_fn</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">ServiceConfig</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">WorkItem</span><span class="p">],</span> <span class="n">Awaitable</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build the async work function for the **realtime** pool.</span>
+
+<span class="sd">    Processes single pages — the extract operator finds one page and the</span>
+<span class="sd">    pipeline runs with minimal latency.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">_make_work_fn</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;Realtime&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="create_batch_work_fn">
+<a class="viewcode-back" href="../../../../nemo-retriever/nemo_retriever.service.services.html#nemo_retriever.service.services.pipeline_executor.create_batch_work_fn">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_batch_work_fn</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">ServiceConfig</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">WorkItem</span><span class="p">],</span> <span class="n">Awaitable</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build the async work function for the **batch** pool.</span>
+
+<span class="sd">    Processes full documents — the extract operator splits internally</span>
+<span class="sd">    into N pages and processes them in one pass for better throughput.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">_make_work_fn</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;Batch&quot;</span><span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

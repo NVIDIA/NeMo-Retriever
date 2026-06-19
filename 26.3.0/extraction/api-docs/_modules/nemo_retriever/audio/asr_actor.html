@@ -1,0 +1,721 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.audio.asr_actor &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/audio/asr_actor';</script>
+
+    <link rel="icon" href="../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.audio.asr_actor</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.audio.asr_actor</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">ASRActor: Ray Data map_batches callable for speech-to-text.</span>
+
+<span class="sd">Supports remote (Parakeet/Riva gRPC) or local (HuggingFace nvidia/parakeet-ctc-1.1b).</span>
+<span class="sd">When audio_endpoints are both null/empty, uses local model; otherwise uses remote client.</span>
+
+<span class="sd">Consumes chunk rows (path, bytes, source_path, duration, chunk_index, metadata)</span>
+<span class="sd">and produces rows with text (transcript) for downstream embed/VDB.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">ASRParams</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_use_remote</span><span class="p">(</span><span class="n">params</span><span class="p">:</span> <span class="n">ASRParams</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;True if at least one of audio_endpoints is set (use remote gRPC client).&quot;&quot;&quot;</span>
+    <span class="n">grpc</span> <span class="o">=</span> <span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">audio_endpoints</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">http</span> <span class="o">=</span> <span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">audio_endpoints</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">grpc</span> <span class="ow">or</span> <span class="n">http</span><span class="p">)</span>
+
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="c1"># Default NGC/NVCF Parakeet gRPC endpoint when using cloud ASR</span>
+<span class="n">DEFAULT_NGC_ASR_GRPC_ENDPOINT</span> <span class="o">=</span> <span class="s2">&quot;grpc.nvcf.nvidia.com:443&quot;</span>
+<span class="c1"># Default NVCF function ID for Parakeet NIM (same as nv-ingest default_libmode_pipeline_impl)</span>
+<span class="n">DEFAULT_NGC_ASR_FUNCTION_ID</span> <span class="o">=</span> <span class="s2">&quot;1598d209-5e27-4d3c-8079-4751568b1081&quot;</span>
+
+
+<div class="viewcode-block" id="asr_params_from_env">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.audio.html#nemo_retriever.audio.asr_actor.asr_params_from_env">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">asr_params_from_env</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">grpc_endpoint_var</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;AUDIO_GRPC_ENDPOINT&quot;</span><span class="p">,</span>
+    <span class="n">auth_token_var</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;NGC_API_KEY&quot;</span><span class="p">,</span>
+    <span class="n">function_id_var</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;AUDIO_FUNCTION_ID&quot;</span><span class="p">,</span>
+    <span class="n">default_grpc_endpoint</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">DEFAULT_NGC_ASR_GRPC_ENDPOINT</span><span class="p">,</span>
+    <span class="n">default_function_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">DEFAULT_NGC_ASR_FUNCTION_ID</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ASRParams</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Build ASRParams from environment variables for cloud/NGC ASR.</span>
+
+<span class="sd">    - AUDIO_GRPC_ENDPOINT: gRPC endpoint (default: grpc.nvcf.nvidia.com:443 for NGC).</span>
+<span class="sd">    - NGC_API_KEY: Bearer token for NGC/NVCF (required for cloud).</span>
+<span class="sd">    - AUDIO_FUNCTION_ID: NVCF function ID for the Parakeet NIM (default: same as nv-ingest libmode).</span>
+
+<span class="sd">    Returns ASRParams with auth_token and function_id set from env when present.</span>
+<span class="sd">    When NGC_API_KEY is set but AUDIO_FUNCTION_ID is not, uses the nv-ingest default Parakeet NIM function ID.</span>
+<span class="sd">    Local ASR always uses the transformers backend (nvidia/parakeet-ctc-1.1b).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+
+    <span class="n">auth_token</span> <span class="o">=</span> <span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">auth_token_var</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="ow">or</span> <span class="kc">None</span>
+    <span class="n">function_id</span> <span class="o">=</span> <span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">function_id_var</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="ow">or</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">auth_token</span> <span class="ow">and</span> <span class="n">function_id</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">default_function_id</span><span class="p">:</span>
+        <span class="n">function_id</span> <span class="o">=</span> <span class="n">default_function_id</span>
+
+    <span class="c1"># Only use remote (NGC) endpoint when credentials are set; otherwise use local Parakeet.</span>
+    <span class="n">grpc_from_env</span> <span class="o">=</span> <span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">grpc_endpoint_var</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">grpc_from_env</span><span class="p">:</span>
+        <span class="n">grpc_endpoint</span> <span class="o">=</span> <span class="n">grpc_from_env</span>
+    <span class="k">elif</span> <span class="n">auth_token</span> <span class="ow">or</span> <span class="n">function_id</span><span class="p">:</span>
+        <span class="n">grpc_endpoint</span> <span class="o">=</span> <span class="n">default_grpc_endpoint</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">grpc_endpoint</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>  <span class="c1"># Local ASR (nvidia/parakeet-ctc-1.1b via Transformers)</span>
+
+    <span class="k">return</span> <span class="n">ASRParams</span><span class="p">(</span>
+        <span class="n">audio_endpoints</span><span class="o">=</span><span class="p">(</span><span class="n">grpc_endpoint</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+        <span class="n">audio_infer_protocol</span><span class="o">=</span><span class="s2">&quot;grpc&quot;</span><span class="p">,</span>
+        <span class="n">function_id</span><span class="o">=</span><span class="n">function_id</span><span class="p">,</span>
+        <span class="n">auth_token</span><span class="o">=</span><span class="n">auth_token</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">nv_ingest_api.internal.primitives.nim.model_interface.parakeet</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+        <span class="n">create_audio_inference_client</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">_PARAKEET_AVAILABLE</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="n">create_audio_inference_client</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># type: ignore[misc, assignment]</span>
+    <span class="n">_PARAKEET_AVAILABLE</span> <span class="o">=</span> <span class="kc">False</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_client</span><span class="p">(</span><span class="n">params</span><span class="p">:</span> <span class="n">ASRParams</span><span class="p">):</span>  <span class="c1"># noqa: ANN201</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_PARAKEET_AVAILABLE</span> <span class="ow">or</span> <span class="n">create_audio_inference_client</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+            <span class="s2">&quot;ASRActor requires nv-ingest-api (Parakeet client). &quot;</span>
+            <span class="s2">&quot;Install with: pip install nv-ingest-api (or add nv-ingest-api to dependencies).&quot;</span>
+        <span class="p">)</span>
+    <span class="n">grpc_endpoint</span> <span class="o">=</span> <span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">audio_endpoints</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="ow">or</span> <span class="kc">None</span>
+    <span class="n">http_endpoint</span> <span class="o">=</span> <span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">audio_endpoints</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="ow">or</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">grpc_endpoint</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;ASR audio_endpoints[0] (gRPC) must be set for Parakeet (e.g. localhost:50051 or grpc.nvcf.nvidia.com:443).&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">create_audio_inference_client</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">grpc_endpoint</span><span class="p">,</span> <span class="n">http_endpoint</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
+        <span class="n">infer_protocol</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">audio_infer_protocol</span> <span class="ow">or</span> <span class="s2">&quot;grpc&quot;</span><span class="p">,</span>
+        <span class="n">auth_token</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">auth_token</span><span class="p">,</span>
+        <span class="n">function_id</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">function_id</span><span class="p">,</span>
+        <span class="n">use_ssl</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="s2">&quot;nvcf.nvidia.com&quot;</span> <span class="ow">in</span> <span class="n">grpc_endpoint</span> <span class="ow">and</span> <span class="n">params</span><span class="o">.</span><span class="n">function_id</span><span class="p">),</span>
+        <span class="n">ssl_cert</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="ASRActor">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.audio.html#nemo_retriever.audio.asr_actor.ASRActor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ASRActor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Ray Data map_batches callable: chunk rows (path/bytes) -&gt; rows with text (transcript).</span>
+
+<span class="sd">    When audio_endpoints are set, uses Parakeet (Riva ASR) via gRPC. When both are</span>
+<span class="sd">    null/empty, uses local HuggingFace/NeMo Parakeet (nvidia/parakeet-ctc-1.1b).</span>
+<span class="sd">    Output rows have path, text, page_number, metadata for downstream embed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">ASRParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_params</span> <span class="o">=</span> <span class="n">params</span> <span class="ow">or</span> <span class="n">ASRParams</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">_use_remote</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_client</span> <span class="o">=</span> <span class="n">_get_client</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_client</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.model.local</span><span class="w"> </span><span class="kn">import</span> <span class="n">ParakeetCTC1B1ASR</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="n">ParakeetCTC1B1ASR</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">batch_df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="ow">or</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+                <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="s2">&quot;source_path&quot;</span><span class="p">,</span> <span class="s2">&quot;duration&quot;</span><span class="p">,</span> <span class="s2">&quot;chunk_index&quot;</span><span class="p">,</span> <span class="s2">&quot;metadata&quot;</span><span class="p">,</span> <span class="s2">&quot;page_number&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">]</span>
+            <span class="p">)</span>
+
+        <span class="n">out_rows</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">out_row</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transcribe_one</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">out_row</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">out_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">out_row</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;ASR failed for row path=</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;path&quot;</span><span class="p">),</span> <span class="n">e</span><span class="p">)</span>
+                <span class="k">continue</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">out_rows</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+                <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="s2">&quot;source_path&quot;</span><span class="p">,</span> <span class="s2">&quot;duration&quot;</span><span class="p">,</span> <span class="s2">&quot;chunk_index&quot;</span><span class="p">,</span> <span class="s2">&quot;metadata&quot;</span><span class="p">,</span> <span class="s2">&quot;page_number&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">]</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">out_rows</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_transcribe_remote</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Use remote gRPC client to transcribe audio bytes.&quot;&quot;&quot;</span>
+        <span class="n">audio_b64</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">segments</span><span class="p">,</span> <span class="n">transcript</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span><span class="o">.</span><span class="n">infer</span><span class="p">(</span>
+                <span class="n">audio_b64</span><span class="p">,</span>
+                <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;parakeet&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="n">transcript</span> <span class="k">if</span> <span class="n">transcript</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Parakeet infer failed for path=</span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_transcribe_local</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Use local Parakeet model to transcribe; path or temp file with raw bytes.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">path_to_use</span> <span class="o">=</span> <span class="n">path</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">path_to_use</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">Path</span><span class="p">(</span><span class="n">path_to_use</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="c1"># Raw bytes: write to temp file (format detected by loader/ffmpeg)</span>
+            <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.audio&quot;</span><span class="p">,</span> <span class="n">delete</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+                <span class="n">path_to_use</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">transcripts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">transcribe</span><span class="p">([</span><span class="n">path_to_use</span><span class="p">])</span>
+                <span class="k">return</span> <span class="n">transcripts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">transcripts</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+            <span class="k">finally</span><span class="p">:</span>
+                <span class="n">Path</span><span class="p">(</span><span class="n">path_to_use</span><span class="p">)</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">missing_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">transcripts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">transcribe</span><span class="p">([</span><span class="n">path_to_use</span><span class="p">])</span>
+            <span class="k">return</span> <span class="n">transcripts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">transcripts</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_transcribe_one</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+        <span class="n">raw</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;bytes&quot;</span><span class="p">)</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;path&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">path</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                    <span class="n">raw</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Could not read </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+                <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_client</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">transcript</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transcribe_remote</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">transcript</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transcribe_local</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">transcript</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">source_path</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;source_path&quot;</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+        <span class="n">duration</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;duration&quot;</span><span class="p">)</span>
+        <span class="n">chunk_index</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;chunk_index&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">metadata</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metadata&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">metadata</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">metadata</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;source_path&quot;</span><span class="p">:</span> <span class="n">source_path</span><span class="p">,</span> <span class="s2">&quot;chunk_index&quot;</span><span class="p">:</span> <span class="n">chunk_index</span><span class="p">,</span> <span class="s2">&quot;duration&quot;</span><span class="p">:</span> <span class="n">duration</span><span class="p">}</span>
+        <span class="n">page_number</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;page_number&quot;</span><span class="p">,</span> <span class="n">chunk_index</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">path</span><span class="p">,</span>
+            <span class="s2">&quot;source_path&quot;</span><span class="p">:</span> <span class="n">source_path</span><span class="p">,</span>
+            <span class="s2">&quot;duration&quot;</span><span class="p">:</span> <span class="n">duration</span><span class="p">,</span>
+            <span class="s2">&quot;chunk_index&quot;</span><span class="p">:</span> <span class="n">chunk_index</span><span class="p">,</span>
+            <span class="s2">&quot;metadata&quot;</span><span class="p">:</span> <span class="n">metadata</span><span class="p">,</span>
+            <span class="s2">&quot;page_number&quot;</span><span class="p">:</span> <span class="n">page_number</span><span class="p">,</span>
+            <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">transcript</span><span class="p">,</span>
+        <span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="apply_asr_to_df">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.audio.html#nemo_retriever.audio.asr_actor.apply_asr_to_df">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">apply_asr_to_df</span><span class="p">(</span>
+    <span class="n">batch_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">asr_params</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Inprocess helper: apply ASR to a DataFrame of chunk rows; returns DataFrame with text column set.</span>
+
+<span class="sd">    Used by InProcessIngestor when _pipeline_type == &quot;audio&quot;. asr_params can be a dict</span>
+<span class="sd">    to construct ASRParams (e.g. from model_dump()).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="n">ASRParams</span><span class="p">(</span><span class="o">**</span><span class="p">(</span><span class="n">asr_params</span> <span class="ow">or</span> <span class="p">{}))</span>
+    <span class="n">actor</span> <span class="o">=</span> <span class="n">ASRActor</span><span class="p">(</span><span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">actor</span><span class="p">(</span><span class="n">batch_df</span><span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

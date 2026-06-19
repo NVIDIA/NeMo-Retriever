@@ -1,0 +1,1258 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.infographic.infographic_detection &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/infographic/infographic_detection';</script>
+
+    <link rel="icon" href="../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.infographic.infographic_detection</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.infographic.infographic_detection</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Infographic detection (Nemotron Graphic Elements v1).</span>
+
+<span class="sd">This prioritizes `infographics` crops when present and uses</span>
+<span class="sd">infographic-specific output column defaults.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">cast</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">RemoteRetryParams</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.nim.nim</span><span class="w"> </span><span class="kn">import</span> <span class="n">invoke_image_inference_batches</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+    <span class="n">np</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># type: ignore[assignment]</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+    <span class="n">torch</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># type: ignore[assignment]</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">PIL</span><span class="w"> </span><span class="kn">import</span> <span class="n">Image</span>
+<span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+    <span class="n">Image</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># type: ignore[assignment]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_error_payload</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">stage</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">exc</span><span class="p">:</span> <span class="ne">BaseException</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;detections&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;stage&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">stage</span><span class="p">),</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="n">exc</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+            <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">),</span>
+            <span class="s2">&quot;traceback&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">traceback</span><span class="o">.</span><span class="n">format_exception</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">),</span> <span class="n">exc</span><span class="p">,</span> <span class="n">exc</span><span class="o">.</span><span class="n">__traceback__</span><span class="p">)),</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_decode_b64_image_to_chw_tensor</span><span class="p">(</span><span class="n">image_b64</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="s2">&quot;torch.Tensor&quot;</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]:</span>
+    <span class="k">if</span> <span class="n">torch</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">Image</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">np</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+        <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span><span class="s2">&quot;infographic detection requires torch, pillow, and numpy.&quot;</span><span class="p">)</span>
+
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">image_b64</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">Image</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span> <span class="k">as</span> <span class="n">im0</span><span class="p">:</span>
+        <span class="n">im</span> <span class="o">=</span> <span class="n">im0</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="s2">&quot;RGB&quot;</span><span class="p">)</span>
+        <span class="n">w</span><span class="p">,</span> <span class="n">h</span> <span class="o">=</span> <span class="n">im</span><span class="o">.</span><span class="n">size</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">im</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>  <span class="c1"># (H,W,3)</span>
+
+    <span class="n">t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">arr</span><span class="p">)</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>  <span class="c1"># (3,H,W) uint8</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span> <span class="o">/</span> <span class="mf">255.0</span>
+    <span class="k">return</span> <span class="n">t</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">h</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">w</span><span class="p">))</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_crop_b64_image_by_norm_bbox</span><span class="p">(</span>
+    <span class="n">page_image_b64</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">bbox_xyxy_norm</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+    <span class="n">image_format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;png&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Crop a base64-encoded RGB image by a normalized xyxy bbox.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">      - cropped_image_b64 (png) or None</span>
+<span class="sd">      - cropped_shape_hw (H,W) or None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">Image</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+        <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span><span class="s2">&quot;Cropping requires pillow.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">page_image_b64</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">page_image_b64</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">x1n</span><span class="p">,</span> <span class="n">y1n</span><span class="p">,</span> <span class="n">x2n</span><span class="p">,</span> <span class="n">y2n</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">bbox_xyxy_norm</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">raw</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">page_image_b64</span><span class="p">)</span>
+        <span class="k">with</span> <span class="n">Image</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span> <span class="k">as</span> <span class="n">im0</span><span class="p">:</span>
+            <span class="n">im</span> <span class="o">=</span> <span class="n">im0</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="s2">&quot;RGB&quot;</span><span class="p">)</span>
+            <span class="n">w</span><span class="p">,</span> <span class="n">h</span> <span class="o">=</span> <span class="n">im</span><span class="o">.</span><span class="n">size</span>
+            <span class="k">if</span> <span class="n">w</span> <span class="o">&lt;=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">h</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">_clamp_int</span><span class="p">(</span><span class="n">v</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">lo</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hi</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">v</span> <span class="o">!=</span> <span class="n">v</span><span class="p">:</span>  <span class="c1"># NaN</span>
+                    <span class="k">return</span> <span class="n">lo</span>
+                <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">lo</span><span class="p">)),</span> <span class="nb">float</span><span class="p">(</span><span class="n">hi</span><span class="p">)))</span>
+
+            <span class="n">x1</span> <span class="o">=</span> <span class="n">_clamp_int</span><span class="p">(</span><span class="n">x1n</span> <span class="o">*</span> <span class="n">w</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">w</span><span class="p">)</span>
+            <span class="n">x2</span> <span class="o">=</span> <span class="n">_clamp_int</span><span class="p">(</span><span class="n">x2n</span> <span class="o">*</span> <span class="n">w</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">w</span><span class="p">)</span>
+            <span class="n">y1</span> <span class="o">=</span> <span class="n">_clamp_int</span><span class="p">(</span><span class="n">y1n</span> <span class="o">*</span> <span class="n">h</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">h</span><span class="p">)</span>
+            <span class="n">y2</span> <span class="o">=</span> <span class="n">_clamp_int</span><span class="p">(</span><span class="n">y2n</span> <span class="o">*</span> <span class="n">h</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">h</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">x2</span> <span class="o">&lt;=</span> <span class="n">x1</span> <span class="ow">or</span> <span class="n">y2</span> <span class="o">&lt;=</span> <span class="n">y1</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+            <span class="n">crop</span> <span class="o">=</span> <span class="n">im</span><span class="o">.</span><span class="n">crop</span><span class="p">((</span><span class="n">x1</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">x2</span><span class="p">,</span> <span class="n">y2</span><span class="p">))</span>
+            <span class="n">cw</span><span class="p">,</span> <span class="n">ch</span> <span class="o">=</span> <span class="n">crop</span><span class="o">.</span><span class="n">size</span>
+            <span class="k">if</span> <span class="n">cw</span> <span class="o">&lt;=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">ch</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+            <span class="n">buf</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">()</span>
+            <span class="n">fmt</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">image_format</span> <span class="ow">or</span> <span class="s2">&quot;png&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">fmt</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;png&quot;</span><span class="p">}:</span>
+                <span class="n">fmt</span> <span class="o">=</span> <span class="s2">&quot;png&quot;</span>
+            <span class="n">crop</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="n">fmt</span><span class="o">.</span><span class="n">upper</span><span class="p">())</span>
+            <span class="k">return</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">buf</span><span class="o">.</span><span class="n">getvalue</span><span class="p">())</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">),</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">ch</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">cw</span><span class="p">))</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_labels_from_model</span><span class="p">(</span><span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s2">&quot;_model&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s2">&quot;labels&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">labels</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">labels</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">pass</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s2">&quot;output&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">classes</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;classes&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">classes</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">classes</span><span class="p">):</span>
+                <span class="k">return</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">classes</span><span class="p">]</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">pass</span>
+
+    <span class="k">return</span> <span class="p">[]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_prediction_to_detections</span><span class="p">(</span><span class="n">pred</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">label_names</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+    <span class="k">if</span> <span class="n">torch</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+        <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span><span class="s2">&quot;torch required for prediction parsing.&quot;</span><span class="p">)</span>
+
+    <span class="n">boxes</span> <span class="o">=</span> <span class="n">labels</span> <span class="o">=</span> <span class="n">scores</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="c1"># IMPORTANT: do not use `or` chains here. torch.Tensor truthiness is ambiguous and raises.</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">_get_any</span><span class="p">(</span><span class="n">d</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="o">*</span><span class="n">keys</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">d</span><span class="p">:</span>
+                    <span class="n">v</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="k">return</span> <span class="n">v</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="n">boxes</span> <span class="o">=</span> <span class="n">_get_any</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="s2">&quot;boxes&quot;</span><span class="p">,</span> <span class="s2">&quot;bboxes&quot;</span><span class="p">,</span> <span class="s2">&quot;bbox&quot;</span><span class="p">,</span> <span class="s2">&quot;box&quot;</span><span class="p">)</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">_get_any</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="s2">&quot;labels&quot;</span><span class="p">,</span> <span class="s2">&quot;classes&quot;</span><span class="p">,</span> <span class="s2">&quot;class_ids&quot;</span><span class="p">,</span> <span class="s2">&quot;class&quot;</span><span class="p">)</span>
+        <span class="n">scores</span> <span class="o">=</span> <span class="n">_get_any</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="s2">&quot;scores&quot;</span><span class="p">,</span> <span class="s2">&quot;conf&quot;</span><span class="p">,</span> <span class="s2">&quot;confidences&quot;</span><span class="p">,</span> <span class="s2">&quot;score&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">pred</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="n">boxes</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">scores</span> <span class="o">=</span> <span class="n">pred</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">pred</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">pred</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">boxes</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">labels</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_to_tensor</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="s2">&quot;torch.Tensor&quot;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">x</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">as_tensor</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">b</span> <span class="o">=</span> <span class="n">_to_tensor</span><span class="p">(</span><span class="n">boxes</span><span class="p">)</span>
+    <span class="n">l</span> <span class="o">=</span> <span class="n">_to_tensor</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span>  <span class="c1"># noqa: E741</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">_to_tensor</span><span class="p">(</span><span class="n">scores</span><span class="p">)</span> <span class="k">if</span> <span class="n">scores</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">b</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">l</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">if</span> <span class="n">b</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="nb">int</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">!=</span> <span class="mi">4</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">l</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">l</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">l</span> <span class="o">=</span> <span class="n">l</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>  <span class="c1"># noqa: E741</span>
+    <span class="k">if</span> <span class="n">l</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">b</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">l</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+    <span class="n">dets</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">x1</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">x2</span><span class="p">,</span> <span class="n">y2</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">b</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()]</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">label_i</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">label_i</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">l</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="n">label_i</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="n">score_f</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">s</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">s</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;=</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">i</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">score_f</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="n">score_f</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">score_f</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="n">label_name</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">label_i</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">label_i</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">label_names</span><span class="p">):</span>
+            <span class="n">label_name</span> <span class="o">=</span> <span class="n">label_names</span><span class="p">[</span><span class="n">label_i</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">label_name</span><span class="p">:</span>
+            <span class="n">label_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;label_</span><span class="si">{</span><span class="n">label_i</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">label_i</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;unknown&quot;</span>
+
+        <span class="n">dets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;bbox_xyxy_norm&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">x1</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">x2</span><span class="p">,</span> <span class="n">y2</span><span class="p">],</span>
+                <span class="s2">&quot;label&quot;</span><span class="p">:</span> <span class="n">label_i</span><span class="p">,</span>
+                <span class="s2">&quot;label_name&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">label_name</span><span class="p">),</span>
+                <span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="n">score_f</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">dets</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_extract_remote_pred_item</span><span class="p">(</span><span class="n">response_item</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">response_item</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;prediction&quot;</span><span class="p">,</span> <span class="s2">&quot;predictions&quot;</span><span class="p">,</span> <span class="s2">&quot;output&quot;</span><span class="p">,</span> <span class="s2">&quot;outputs&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">):</span>
+            <span class="n">v</span> <span class="o">=</span> <span class="n">response_item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="n">v</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">v</span>
+    <span class="k">return</span> <span class="n">response_item</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_counts_by_label</span><span class="p">(</span><span class="n">detections</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+    <span class="n">out</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">detections</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;label_name&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">name</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;label_</span><span class="si">{</span><span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;label&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="n">out</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<div class="viewcode-block" id="detect_infographic_elements_v1">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.infographic.html#nemo_retriever.infographic.infographic_detection.detect_infographic_elements_v1">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">detect_infographic_elements_v1</span><span class="p">(</span>
+    <span class="n">batch_df</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">model</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">invoke_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">api_key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">request_timeout_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">120.0</span><span class="p">,</span>
+    <span class="n">inference_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">8</span><span class="p">,</span>
+    <span class="n">output_column</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;infographic_elements_v1&quot;</span><span class="p">,</span>
+    <span class="n">num_detections_column</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;infographic_elements_v1_num_detections&quot;</span><span class="p">,</span>
+    <span class="n">counts_by_label_column</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;infographic_elements_v1_counts_by_label&quot;</span><span class="p">,</span>
+    <span class="n">remote_retry</span><span class="p">:</span> <span class="n">RemoteRetryParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+    <span class="n">retry</span> <span class="o">=</span> <span class="n">remote_retry</span> <span class="ow">or</span> <span class="n">RemoteRetryParams</span><span class="p">(</span>
+        <span class="n">remote_max_pool_workers</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;remote_max_pool_workers&quot;</span><span class="p">,</span> <span class="mi">16</span><span class="p">)),</span>
+        <span class="n">remote_max_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;remote_max_retries&quot;</span><span class="p">,</span> <span class="mi">10</span><span class="p">)),</span>
+        <span class="n">remote_max_429_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;remote_max_429_retries&quot;</span><span class="p">,</span> <span class="mi">5</span><span class="p">)),</span>
+    <span class="p">)</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run Nemotron Graphic Elements v1 on an infographic image source.</span>
+
+<span class="sd">    Input:</span>
+<span class="sd">      - pandas.DataFrame in/out</span>
+<span class="sd">      - expects a usable base64 image in one of:</span>
+<span class="sd">        - `image_b64` (direct column)</span>
+<span class="sd">        - `page_image.image_b64` (pdf extraction output)</span>
+<span class="sd">        - `infographics[0].image_b64` (preferred when available)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">batch_df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;detect_infographic_elements_v1 currently only supports pandas.DataFrame input.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">inference_batch_size</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;inference_batch_size must be &gt; 0&quot;</span><span class="p">)</span>
+
+    <span class="n">invoke_url</span> <span class="o">=</span> <span class="p">(</span><span class="n">invoke_url</span> <span class="ow">or</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;infographic_invoke_url&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">use_remote</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">invoke_url</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">use_remote</span> <span class="ow">and</span> <span class="n">model</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;A local `model` is required when `invoke_url` is not provided.&quot;</span><span class="p">)</span>
+
+    <span class="n">label_names</span> <span class="o">=</span> <span class="n">_labels_from_model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span> <span class="k">if</span> <span class="n">model</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">[]</span>
+
+    <span class="n">tensors</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="s2">&quot;torch.Tensor&quot;</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">shapes</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">image_b64_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">payloads</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">b64</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;page_image&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;image_b64&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">b64</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;No usable image_b64 found in row.&quot;</span><span class="p">)</span>
+            <span class="n">image_b64_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">b64</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">use_remote</span><span class="p">:</span>
+                <span class="n">tensors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+                <span class="n">shapes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">t</span><span class="p">,</span> <span class="n">orig_shape</span> <span class="o">=</span> <span class="n">_decode_b64_image_to_chw_tensor</span><span class="p">(</span><span class="n">b64</span><span class="p">)</span>
+                <span class="n">tensors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+                <span class="n">shapes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">orig_shape</span><span class="p">)</span>
+            <span class="n">payloads</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;detections&quot;</span><span class="p">:</span> <span class="p">[]})</span>
+        <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">tensors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">shapes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">image_b64_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+            <span class="n">payloads</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_error_payload</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s2">&quot;decode_image&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">use_remote</span><span class="p">:</span>
+        <span class="n">valid</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">b64</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">image_b64_list</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">b64</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">bool</span><span class="p">(</span><span class="n">b64</span><span class="p">)]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">valid</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tensors</span><span class="p">)</span> <span class="k">if</span> <span class="n">t</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">shapes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">use_remote</span> <span class="ow">and</span> <span class="n">valid</span><span class="p">:</span>
+        <span class="n">valid_b64</span> <span class="o">=</span> <span class="p">[</span><span class="n">image_b64_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">valid</span> <span class="k">if</span> <span class="n">image_b64_list</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+        <span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">response_items</span> <span class="o">=</span> <span class="n">invoke_image_inference_batches</span><span class="p">(</span>
+                <span class="n">invoke_url</span><span class="o">=</span><span class="n">invoke_url</span><span class="p">,</span>
+                <span class="n">image_b64_list</span><span class="o">=</span><span class="n">cast</span><span class="p">(</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">valid_b64</span><span class="p">),</span>
+                <span class="n">api_key</span><span class="o">=</span><span class="n">api_key</span><span class="p">,</span>
+                <span class="n">timeout_s</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">request_timeout_s</span><span class="p">),</span>
+                <span class="n">max_batch_size</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">inference_batch_size</span><span class="p">),</span>
+                <span class="n">max_pool_workers</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">retry</span><span class="o">.</span><span class="n">remote_max_pool_workers</span><span class="p">),</span>
+                <span class="n">max_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">retry</span><span class="o">.</span><span class="n">remote_max_retries</span><span class="p">),</span>
+                <span class="n">max_429_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">retry</span><span class="o">.</span><span class="n">remote_max_429_retries</span><span class="p">),</span>
+            <span class="p">)</span>
+            <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">response_items</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">valid</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Expected </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">valid</span><span class="p">)</span><span class="si">}</span><span class="s2"> remote predictions, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">response_items</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">local_j</span><span class="p">,</span> <span class="n">row_i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">valid</span><span class="p">):</span>
+                <span class="n">pred_item</span> <span class="o">=</span> <span class="n">_extract_remote_pred_item</span><span class="p">(</span><span class="n">response_items</span><span class="p">[</span><span class="n">local_j</span><span class="p">])</span>
+                <span class="n">dets</span> <span class="o">=</span> <span class="n">_prediction_to_detections</span><span class="p">(</span><span class="n">pred_item</span><span class="p">,</span> <span class="n">label_names</span><span class="o">=</span><span class="n">label_names</span><span class="p">)</span>
+                <span class="n">payloads</span><span class="p">[</span><span class="n">row_i</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;detections&quot;</span><span class="p">:</span> <span class="n">dets</span><span class="p">,</span> <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">elapsed</span><span class="p">)},</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
+        <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span>
+            <span class="k">for</span> <span class="n">row_i</span> <span class="ow">in</span> <span class="n">valid</span><span class="p">:</span>
+                <span class="n">payloads</span><span class="p">[</span><span class="n">row_i</span><span class="p">]</span> <span class="o">=</span> <span class="n">_error_payload</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s2">&quot;remote_invoke&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">)</span> <span class="o">|</span> <span class="p">{</span><span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">elapsed</span><span class="p">)}}</span>
+
+    <span class="k">for</span> <span class="n">chunk_start</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">valid</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">inference_batch_size</span><span class="p">)):</span>
+        <span class="k">if</span> <span class="n">use_remote</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="n">idxs</span> <span class="o">=</span> <span class="n">valid</span><span class="p">[</span><span class="n">chunk_start</span> <span class="p">:</span> <span class="n">chunk_start</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">inference_batch_size</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">idxs</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">pre_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="s2">&quot;torch.Tensor&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">orig_shapes</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">idxs</span><span class="p">:</span>
+            <span class="n">t</span> <span class="o">=</span> <span class="n">tensors</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">sh</span> <span class="o">=</span> <span class="n">shapes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">t</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">sh</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">orig_shapes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sh</span><span class="p">)</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># BCHW</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">pre</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="n">pre</span> <span class="o">=</span> <span class="n">x</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pre</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="ow">and</span> <span class="n">pre</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">4</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">pre</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">pre_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pre</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pre</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="ow">and</span> <span class="n">pre</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+                <span class="n">pre_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pre</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">pre_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">pre_list</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">batch</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">pre_list</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">preds</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">invoke</span><span class="p">(</span><span class="n">batch</span><span class="p">,</span> <span class="n">orig_shapes</span><span class="p">)</span>  <span class="c1"># type: ignore[arg-type]</span>
+            <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">preds</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+                <span class="n">preds_list</span> <span class="o">=</span> <span class="n">preds</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">preds_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">preds</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">preds_list</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">idxs</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Batched invoke returned unexpected output shape; falling back to per-image calls.&quot;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">local_j</span><span class="p">,</span> <span class="n">row_i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">idxs</span><span class="p">):</span>
+                <span class="n">dets</span> <span class="o">=</span> <span class="n">_prediction_to_detections</span><span class="p">(</span><span class="n">preds_list</span><span class="p">[</span><span class="n">local_j</span><span class="p">],</span> <span class="n">label_names</span><span class="o">=</span><span class="n">label_names</span><span class="p">)</span>
+                <span class="n">payloads</span><span class="p">[</span><span class="n">row_i</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;detections&quot;</span><span class="p">:</span> <span class="n">dets</span><span class="p">,</span> <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">elapsed</span><span class="p">)},</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
+        <span class="k">except</span> <span class="ne">BaseException</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">local_j</span><span class="p">,</span> <span class="n">row_i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">idxs</span><span class="p">):</span>
+                <span class="n">t</span> <span class="o">=</span> <span class="n">tensors</span><span class="p">[</span><span class="n">row_i</span><span class="p">]</span>
+                <span class="n">sh</span> <span class="o">=</span> <span class="n">shapes</span><span class="p">[</span><span class="n">row_i</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">t</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">sh</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">t1</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">pre</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                        <span class="n">pre</span> <span class="o">=</span> <span class="n">x</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pre</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="ow">and</span> <span class="n">pre</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+                        <span class="n">pre</span> <span class="o">=</span> <span class="n">pre</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                    <span class="n">pred</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">invoke</span><span class="p">(</span><span class="n">pre</span><span class="p">,</span> <span class="n">sh</span><span class="p">)</span>
+                    <span class="n">dets</span> <span class="o">=</span> <span class="n">_prediction_to_detections</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">label_names</span><span class="o">=</span><span class="n">label_names</span><span class="p">)</span>
+                    <span class="n">payloads</span><span class="p">[</span><span class="n">row_i</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="s2">&quot;detections&quot;</span><span class="p">:</span> <span class="n">dets</span><span class="p">,</span>
+                        <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t1</span><span class="p">)},</span>
+                        <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="p">}</span>
+                <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="n">payloads</span><span class="p">[</span><span class="n">row_i</span><span class="p">]</span> <span class="o">=</span> <span class="n">_error_payload</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s2">&quot;invoke&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">)</span> <span class="o">|</span> <span class="p">{</span>
+                        <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t1</span><span class="p">)}</span>
+                    <span class="p">}</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">out</span><span class="p">[</span><span class="n">output_column</span><span class="p">]</span> <span class="o">=</span> <span class="n">payloads</span>
+    <span class="n">out</span><span class="p">[</span><span class="n">num_detections_column</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;detections&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]))</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="mi">0</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">payloads</span><span class="p">]</span>
+    <span class="n">out</span><span class="p">[</span><span class="n">counts_by_label_column</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">_counts_by_label</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;detections&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[])</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="p">{}</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">payloads</span>
+    <span class="p">]</span>
+    <span class="k">return</span> <span class="n">out</span></div>
+
+
+
+<div class="viewcode-block" id="detect_infographic_elements_v1_from_page_elements_v3">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.infographic.html#nemo_retriever.infographic.infographic_detection.detect_infographic_elements_v1_from_page_elements_v3">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">detect_infographic_elements_v1_from_page_elements_v3</span><span class="p">(</span>
+    <span class="n">pages_df</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">model</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">invoke_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">api_key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">request_timeout_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">120.0</span><span class="p">,</span>
+    <span class="n">inference_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">8</span><span class="p">,</span>
+    <span class="n">page_elements_column</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;page_elements_v3&quot;</span><span class="p">,</span>
+    <span class="n">page_elements_counts_by_label_column</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;page_elements_v3_counts_by_label&quot;</span><span class="p">,</span>
+    <span class="n">page_image_column</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;page_image&quot;</span><span class="p">,</span>
+    <span class="n">allowed_page_element_labels</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;infographic&quot;</span><span class="p">,</span> <span class="s2">&quot;title&quot;</span><span class="p">),</span>
+    <span class="n">output_column</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;infographic_elements_v1&quot;</span><span class="p">,</span>
+    <span class="n">num_detections_column</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;infographic_elements_v1_num_detections&quot;</span><span class="p">,</span>
+    <span class="n">counts_by_label_column</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;infographic_elements_v1_counts_by_label&quot;</span><span class="p">,</span>
+    <span class="n">remote_retry</span><span class="p">:</span> <span class="n">RemoteRetryParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+    <span class="n">retry</span> <span class="o">=</span> <span class="n">remote_retry</span> <span class="ow">or</span> <span class="n">RemoteRetryParams</span><span class="p">(</span>
+        <span class="n">remote_max_pool_workers</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;remote_max_pool_workers&quot;</span><span class="p">,</span> <span class="mi">16</span><span class="p">)),</span>
+        <span class="n">remote_max_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;remote_max_retries&quot;</span><span class="p">,</span> <span class="mi">10</span><span class="p">)),</span>
+        <span class="n">remote_max_429_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;remote_max_429_retries&quot;</span><span class="p">,</span> <span class="mi">5</span><span class="p">)),</span>
+    <span class="p">)</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run Nemotron Graphic Elements v1 only on cropped infographic/title regions.</span>
+
+<span class="sd">    Gate per page if any of `allowed_page_element_labels` has count &gt; 0 in</span>
+<span class="sd">    `page_elements_v3_counts_by_label`, then crop `page_image.image_b64` to each</span>
+<span class="sd">    matching detection and run the model on those crops.</span>
+
+<span class="sd">    Output payload shape:</span>
+<span class="sd">      - `output_column`: {&quot;regions&quot;: [...], &quot;timing&quot;: {...}, &quot;error&quot;: ...}</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pages_df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;detect_infographic_elements_v1_from_page_elements_v3 currently only supports pandas.DataFrame input.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">inference_batch_size</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;inference_batch_size must be &gt; 0&quot;</span><span class="p">)</span>
+    <span class="n">invoke_url</span> <span class="o">=</span> <span class="p">(</span><span class="n">invoke_url</span> <span class="ow">or</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;infographic_invoke_url&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">use_remote</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">invoke_url</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">use_remote</span> <span class="ow">and</span> <span class="n">model</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;A local `model` is required when `invoke_url` is not provided.&quot;</span><span class="p">)</span>
+
+    <span class="n">allowed</span> <span class="o">=</span> <span class="p">{</span><span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="p">(</span><span class="n">allowed_page_element_labels</span> <span class="ow">or</span> <span class="p">[])</span> <span class="k">if</span> <span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()}</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">allowed</span><span class="p">:</span>
+        <span class="n">allowed</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;infographic&quot;</span><span class="p">,</span> <span class="s2">&quot;title&quot;</span><span class="p">}</span>
+
+    <span class="n">out_payloads</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">out_total_dets</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">out_counts</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">crop_b64s</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">crop_region_refs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">t0_total</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">pages_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">page_payload</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;regions&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">},</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
+
+        <span class="n">counts</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">page_elements_counts_by_label_column</span><span class="p">)</span>
+        <span class="n">has_any</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">counts</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">allowed</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="nb">int</span><span class="p">(</span><span class="n">counts</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">has_any</span> <span class="o">=</span> <span class="kc">True</span>
+                        <span class="k">break</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="k">continue</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">has_any</span><span class="p">:</span>
+            <span class="n">out_payloads</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">page_payload</span><span class="p">)</span>
+            <span class="n">out_total_dets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">out_counts</span><span class="o">.</span><span class="n">append</span><span class="p">({})</span>
+            <span class="k">continue</span>
+
+        <span class="n">pe</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">page_elements_column</span><span class="p">)</span>
+        <span class="n">dets</span> <span class="o">=</span> <span class="n">pe</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;detections&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pe</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dets</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">dets</span><span class="p">:</span>
+            <span class="n">out_payloads</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">page_payload</span><span class="p">)</span>
+            <span class="n">out_total_dets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">out_counts</span><span class="o">.</span><span class="n">append</span><span class="p">({})</span>
+            <span class="k">continue</span>
+
+        <span class="n">page_image</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">page_image_column</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="n">page_image_b64</span> <span class="o">=</span> <span class="n">page_image</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;image_b64&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">page_image</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">page_image_b64</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">page_image_b64</span><span class="p">:</span>
+            <span class="n">page_payload</span><span class="p">[</span><span class="s2">&quot;error&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;stage&quot;</span><span class="p">:</span> <span class="s2">&quot;crop&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;ValueError&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="s2">&quot;page_image.image_b64 missing; cannot crop infographics for infographic_elements_v1.&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;traceback&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+            <span class="n">out_payloads</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">page_payload</span><span class="p">)</span>
+            <span class="n">out_total_dets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">out_counts</span><span class="o">.</span><span class="n">append</span><span class="p">({})</span>
+            <span class="k">continue</span>
+
+        <span class="n">regions</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">det</span> <span class="ow">in</span> <span class="n">dets</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">det</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="n">det_label</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">det</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;label_name&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">det_label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">bbox</span> <span class="o">=</span> <span class="n">det</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;bbox_xyxy_norm&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bbox</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">bbox</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">4</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="n">crop_b64</span><span class="p">,</span> <span class="n">crop_shape_hw</span> <span class="o">=</span> <span class="n">_crop_b64_image_by_norm_bbox</span><span class="p">(</span>
+                <span class="n">page_image_b64</span><span class="p">,</span> <span class="n">bbox_xyxy_norm</span><span class="o">=</span><span class="n">cast</span><span class="p">(</span><span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">bbox</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">crop_b64</span> <span class="ow">or</span> <span class="n">crop_shape_hw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="n">region_payload</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;label_name&quot;</span><span class="p">:</span> <span class="n">det_label</span><span class="p">,</span>
+                <span class="s2">&quot;bbox_xyxy_norm&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">bbox</span><span class="p">],</span>
+                <span class="s2">&quot;score&quot;</span><span class="p">:</span> <span class="n">det</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;score&quot;</span><span class="p">),</span>
+                <span class="s2">&quot;orig_shape_hw&quot;</span><span class="p">:</span> <span class="n">crop_shape_hw</span><span class="p">,</span>
+                <span class="s2">&quot;detections&quot;</span><span class="p">:</span> <span class="p">[],</span>
+                <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="p">}</span>
+            <span class="n">regions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">region_payload</span><span class="p">)</span>
+            <span class="n">crop_b64s</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">crop_b64</span><span class="p">)</span>
+            <span class="n">crop_region_refs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">region_payload</span><span class="p">)</span>
+
+        <span class="n">page_payload</span><span class="p">[</span><span class="s2">&quot;regions&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regions</span>
+        <span class="n">out_payloads</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">page_payload</span><span class="p">)</span>
+        <span class="n">out_total_dets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">out_counts</span><span class="o">.</span><span class="n">append</span><span class="p">({})</span>
+
+    <span class="k">if</span> <span class="n">crop_b64s</span><span class="p">:</span>
+        <span class="n">label_names</span> <span class="o">=</span> <span class="n">_labels_from_model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span> <span class="k">if</span> <span class="n">model</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">[]</span>
+
+        <span class="n">crop_payloads</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">use_remote</span><span class="p">:</span>
+            <span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">response_items</span> <span class="o">=</span> <span class="n">invoke_image_inference_batches</span><span class="p">(</span>
+                    <span class="n">invoke_url</span><span class="o">=</span><span class="n">invoke_url</span><span class="p">,</span>
+                    <span class="n">image_b64_list</span><span class="o">=</span><span class="n">crop_b64s</span><span class="p">,</span>
+                    <span class="n">api_key</span><span class="o">=</span><span class="n">api_key</span><span class="p">,</span>
+                    <span class="n">timeout_s</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">request_timeout_s</span><span class="p">),</span>
+                    <span class="n">max_batch_size</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">inference_batch_size</span><span class="p">),</span>
+                    <span class="n">max_pool_workers</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">retry</span><span class="o">.</span><span class="n">remote_max_pool_workers</span><span class="p">),</span>
+                    <span class="n">max_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">retry</span><span class="o">.</span><span class="n">remote_max_retries</span><span class="p">),</span>
+                    <span class="n">max_429_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">retry</span><span class="o">.</span><span class="n">remote_max_429_retries</span><span class="p">),</span>
+                <span class="p">)</span>
+                <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">response_items</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">crop_b64s</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Expected </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">crop_b64s</span><span class="p">)</span><span class="si">}</span><span class="s2"> remote predictions, got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">response_items</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">resp</span> <span class="ow">in</span> <span class="n">response_items</span><span class="p">:</span>
+                    <span class="n">pred_item</span> <span class="o">=</span> <span class="n">_extract_remote_pred_item</span><span class="p">(</span><span class="n">resp</span><span class="p">)</span>
+                    <span class="n">dets</span> <span class="o">=</span> <span class="n">_prediction_to_detections</span><span class="p">(</span><span class="n">pred_item</span><span class="p">,</span> <span class="n">label_names</span><span class="o">=</span><span class="n">label_names</span><span class="p">)</span>
+                    <span class="n">crop_payloads</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;detections&quot;</span><span class="p">:</span> <span class="n">dets</span><span class="p">,</span> <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">elapsed</span><span class="p">)},</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">})</span>
+            <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span>
+                <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">crop_b64s</span><span class="p">:</span>
+                    <span class="n">crop_payloads</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="n">_error_payload</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s2">&quot;remote_invoke&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">)</span> <span class="o">|</span> <span class="p">{</span><span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">elapsed</span><span class="p">)}}</span>
+                    <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">tensors</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="s2">&quot;torch.Tensor&quot;</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">shapes</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">b64</span> <span class="ow">in</span> <span class="n">crop_b64s</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">t</span><span class="p">,</span> <span class="n">orig_shape</span> <span class="o">=</span> <span class="n">_decode_b64_image_to_chw_tensor</span><span class="p">(</span><span class="n">b64</span><span class="p">)</span>
+                    <span class="n">tensors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+                    <span class="n">shapes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">orig_shape</span><span class="p">)</span>
+                    <span class="n">crop_payloads</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s2">&quot;detections&quot;</span><span class="p">:</span> <span class="p">[]})</span>
+                <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="n">tensors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+                    <span class="n">shapes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+                    <span class="n">crop_payloads</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_error_payload</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s2">&quot;decode_image&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">))</span>
+
+            <span class="n">valid</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tensors</span><span class="p">)</span> <span class="k">if</span> <span class="n">t</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">shapes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+
+            <span class="k">for</span> <span class="n">chunk_start</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">valid</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">inference_batch_size</span><span class="p">)):</span>
+                <span class="n">idxs</span> <span class="o">=</span> <span class="n">valid</span><span class="p">[</span><span class="n">chunk_start</span> <span class="p">:</span> <span class="n">chunk_start</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">inference_batch_size</span><span class="p">)]</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">idxs</span><span class="p">:</span>
+                    <span class="k">continue</span>
+
+                <span class="n">pre_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="s2">&quot;torch.Tensor&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="n">orig_shapes</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">idxs</span><span class="p">:</span>
+                    <span class="n">t</span> <span class="o">=</span> <span class="n">tensors</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                    <span class="n">sh</span> <span class="o">=</span> <span class="n">shapes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="n">t</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">sh</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="n">orig_shapes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sh</span><span class="p">)</span>
+                    <span class="n">x</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">pre</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                        <span class="n">pre</span> <span class="o">=</span> <span class="n">x</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pre</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="ow">and</span> <span class="n">pre</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">4</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">pre</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                        <span class="n">pre_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pre</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pre</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="ow">and</span> <span class="n">pre</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+                        <span class="n">pre_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pre</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">pre_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">pre_list</span><span class="p">:</span>
+                    <span class="k">continue</span>
+
+                <span class="n">batch</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">pre_list</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">preds</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">invoke</span><span class="p">(</span><span class="n">batch</span><span class="p">,</span> <span class="n">orig_shapes</span><span class="p">)</span>  <span class="c1"># type: ignore[arg-type]</span>
+                    <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0</span>
+                    <span class="n">preds_list</span> <span class="o">=</span> <span class="n">preds</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">preds</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="k">else</span> <span class="p">[</span><span class="n">preds</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">preds_list</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">idxs</span><span class="p">):</span>
+                        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                            <span class="s2">&quot;Batched invoke returned unexpected output shape; falling back to per-image calls.&quot;</span>
+                        <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">local_j</span><span class="p">,</span> <span class="n">crop_i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">idxs</span><span class="p">):</span>
+                        <span class="n">dets</span> <span class="o">=</span> <span class="n">_prediction_to_detections</span><span class="p">(</span><span class="n">preds_list</span><span class="p">[</span><span class="n">local_j</span><span class="p">],</span> <span class="n">label_names</span><span class="o">=</span><span class="n">label_names</span><span class="p">)</span>
+                        <span class="n">crop_payloads</span><span class="p">[</span><span class="n">crop_i</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                            <span class="s2">&quot;detections&quot;</span><span class="p">:</span> <span class="n">dets</span><span class="p">,</span>
+                            <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">elapsed</span><span class="p">)},</span>
+                            <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="p">}</span>
+                <span class="k">except</span> <span class="ne">BaseException</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">crop_i</span> <span class="ow">in</span> <span class="n">idxs</span><span class="p">:</span>
+                        <span class="n">t</span> <span class="o">=</span> <span class="n">tensors</span><span class="p">[</span><span class="n">crop_i</span><span class="p">]</span>
+                        <span class="n">sh</span> <span class="o">=</span> <span class="n">shapes</span><span class="p">[</span><span class="n">crop_i</span><span class="p">]</span>
+                        <span class="k">if</span> <span class="n">t</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">sh</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                            <span class="k">continue</span>
+                        <span class="n">x</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                        <span class="n">t1</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+                        <span class="k">try</span><span class="p">:</span>
+                            <span class="k">try</span><span class="p">:</span>
+                                <span class="n">pre</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                                <span class="n">pre</span> <span class="o">=</span> <span class="n">x</span>
+                            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pre</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="ow">and</span> <span class="n">pre</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+                                <span class="n">pre</span> <span class="o">=</span> <span class="n">pre</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                            <span class="n">pred</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">invoke</span><span class="p">(</span><span class="n">pre</span><span class="p">,</span> <span class="n">sh</span><span class="p">)</span>
+                            <span class="n">dets</span> <span class="o">=</span> <span class="n">_prediction_to_detections</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">label_names</span><span class="o">=</span><span class="n">label_names</span><span class="p">)</span>
+                            <span class="n">crop_payloads</span><span class="p">[</span><span class="n">crop_i</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                                <span class="s2">&quot;detections&quot;</span><span class="p">:</span> <span class="n">dets</span><span class="p">,</span>
+                                <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t1</span><span class="p">)},</span>
+                                <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                            <span class="p">}</span>
+                        <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                            <span class="n">crop_payloads</span><span class="p">[</span><span class="n">crop_i</span><span class="p">]</span> <span class="o">=</span> <span class="n">_error_payload</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s2">&quot;invoke&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">)</span> <span class="o">|</span> <span class="p">{</span>
+                                <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t1</span><span class="p">)}</span>
+                            <span class="p">}</span>
+
+        <span class="k">for</span> <span class="n">crop_i</span><span class="p">,</span> <span class="n">region_ref</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">crop_region_refs</span><span class="p">):</span>
+            <span class="n">payload</span> <span class="o">=</span> <span class="n">crop_payloads</span><span class="p">[</span><span class="n">crop_i</span><span class="p">]</span> <span class="k">if</span> <span class="n">crop_i</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">crop_payloads</span><span class="p">)</span> <span class="k">else</span> <span class="p">{</span><span class="s2">&quot;detections&quot;</span><span class="p">:</span> <span class="p">[]}</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="n">region_ref</span><span class="p">[</span><span class="s2">&quot;detections&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;detections&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+                <span class="n">region_ref</span><span class="p">[</span><span class="s2">&quot;timing&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;timing&quot;</span><span class="p">)</span>
+                <span class="n">region_ref</span><span class="p">[</span><span class="s2">&quot;error&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;error&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">region_ref</span><span class="p">[</span><span class="s2">&quot;detections&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="n">region_ref</span><span class="p">[</span><span class="s2">&quot;timing&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="n">region_ref</span><span class="p">[</span><span class="s2">&quot;error&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s2">&quot;stage&quot;</span><span class="p">:</span> <span class="s2">&quot;invoke&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;TypeError&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="s2">&quot;Unexpected payload type&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;traceback&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+                <span class="p">}</span>
+
+    <span class="c1"># Aggregate counts per page.</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">page_payload</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">out_payloads</span><span class="p">):</span>
+        <span class="n">regions</span> <span class="o">=</span> <span class="n">page_payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;regions&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+        <span class="n">total_dets</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">agg_counts</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">regions</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">regions</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                    <span class="k">continue</span>
+                <span class="n">dets</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;detections&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dets</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+                    <span class="n">total_dets</span> <span class="o">+=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">dets</span><span class="p">))</span>
+                    <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">dets</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                            <span class="k">continue</span>
+                        <span class="n">name</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;label_name&quot;</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">name</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+                            <span class="n">name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;label_</span><span class="si">{</span><span class="n">d</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;label&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+                        <span class="n">k</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+                        <span class="n">agg_counts</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">agg_counts</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">out_total_dets</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">total_dets</span><span class="p">)</span>
+        <span class="n">out_counts</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">agg_counts</span>
+
+    <span class="n">elapsed_total</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0_total</span>
+    <span class="k">for</span> <span class="n">page_payload</span> <span class="ow">in</span> <span class="n">out_payloads</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">page_payload</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">page_payload</span><span class="p">[</span><span class="s2">&quot;timing&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">elapsed_total</span><span class="p">)}</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">pages_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">out</span><span class="p">[</span><span class="n">output_column</span><span class="p">]</span> <span class="o">=</span> <span class="n">out_payloads</span>
+    <span class="n">out</span><span class="p">[</span><span class="n">num_detections_column</span><span class="p">]</span> <span class="o">=</span> <span class="n">out_total_dets</span>
+    <span class="n">out</span><span class="p">[</span><span class="n">counts_by_label_column</span><span class="p">]</span> <span class="o">=</span> <span class="n">out_counts</span>
+    <span class="k">return</span> <span class="n">out</span></div>
+
+
+
+<div class="viewcode-block" id="InfographicDetectionActor">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.infographic.html#nemo_retriever.infographic.infographic_detection.InfographicDetectionActor">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">slots</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">InfographicDetectionActor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Ray-friendly callable that initializes Nemotron Graphic Elements v1 once.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">detect_kwargs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">detect_kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">detect_kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">detect_kwargs</span><span class="p">)</span>
+        <span class="n">invoke_url</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">detect_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;infographic_invoke_url&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">detect_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;invoke_url&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">invoke_url</span> <span class="ow">and</span> <span class="s2">&quot;invoke_url&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">detect_kwargs</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">detect_kwargs</span><span class="p">[</span><span class="s2">&quot;invoke_url&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">invoke_url</span>
+        <span class="k">if</span> <span class="n">invoke_url</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.model.local</span><span class="w"> </span><span class="kn">import</span> <span class="n">NemotronGraphicElementsV1</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="n">NemotronGraphicElementsV1</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch_df</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">override_kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Prefer crop-based execution when page-elements are present.</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">batch_df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span>
+                <span class="s2">&quot;page_elements_v3&quot;</span> <span class="ow">in</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">columns</span> <span class="ow">or</span> <span class="s2">&quot;page_elements_v3_counts_by_label&quot;</span> <span class="ow">in</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">columns</span>
+            <span class="p">):</span>
+                <span class="k">return</span> <span class="n">detect_infographic_elements_v1_from_page_elements_v3</span><span class="p">(</span>
+                    <span class="n">batch_df</span><span class="p">,</span>
+                    <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="p">,</span>
+                    <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">detect_kwargs</span><span class="p">,</span>
+                    <span class="o">**</span><span class="n">override_kwargs</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">return</span> <span class="n">detect_infographic_elements_v1</span><span class="p">(</span><span class="n">batch_df</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">detect_kwargs</span><span class="p">,</span> <span class="o">**</span><span class="n">override_kwargs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">batch_df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+                <span class="n">out</span> <span class="o">=</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">payload</span> <span class="o">=</span> <span class="n">_error_payload</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s2">&quot;actor_call&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">)</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;infographic_elements_v1&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="p">{</span><span class="s2">&quot;regions&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;error&quot;</span><span class="p">)}</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">index</span><span class="p">))</span>
+                <span class="p">]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;infographic_elements_v1_num_detections&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">index</span><span class="p">))]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;infographic_elements_v1_counts_by_label&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[{}</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">index</span><span class="p">))]</span>
+                <span class="k">return</span> <span class="n">out</span>
+            <span class="k">return</span> <span class="p">[{</span><span class="s2">&quot;infographic_elements_v1&quot;</span><span class="p">:</span> <span class="n">_error_payload</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s2">&quot;actor_call&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">)}]</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

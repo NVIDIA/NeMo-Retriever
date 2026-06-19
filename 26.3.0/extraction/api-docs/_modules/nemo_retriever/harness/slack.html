@@ -1,0 +1,859 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.harness.slack &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/harness/slack';</script>
+
+    <link rel="icon" href="../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.harness.slack</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.harness.slack</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.harness.artifacts</span><span class="w"> </span><span class="kn">import</span> <span class="n">now_timestr</span>
+
+<span class="n">DEFAULT_USERNAME</span> <span class="o">=</span> <span class="s2">&quot;nemo_retriever Nightly&quot;</span>
+<span class="n">DEFAULT_ICON_EMOJI</span> <span class="o">=</span> <span class="s2">&quot;:satellite:&quot;</span>
+<span class="n">_BLANK_ROW</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text&quot;</span><span class="p">,</span> <span class="s2">&quot;elements&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text_section&quot;</span><span class="p">,</span> <span class="s2">&quot;elements&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot; &quot;</span><span class="p">}]}]},</span>
+    <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text&quot;</span><span class="p">,</span> <span class="s2">&quot;elements&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text_section&quot;</span><span class="p">,</span> <span class="s2">&quot;elements&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot; &quot;</span><span class="p">}]}]},</span>
+<span class="p">]</span>
+<span class="n">METRIC_LABELS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;pages_per_sec_ingest&quot;</span><span class="p">:</span> <span class="s2">&quot;pages/s&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ingest_secs&quot;</span><span class="p">:</span> <span class="s2">&quot;ingest_s&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;pages&quot;</span><span class="p">:</span> <span class="s2">&quot;pages&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;recall_5&quot;</span><span class="p">:</span> <span class="s2">&quot;recall@5&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<div class="viewcode-block" id="NightlyRunReport">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.slack.NightlyRunReport">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">NightlyRunReport</span><span class="p">:</span>
+    <span class="n">run_name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">dataset</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">preset</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">success</span><span class="p">:</span> <span class="nb">bool</span>
+    <span class="n">return_code</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">failure_reason</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">artifact_dir</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">metrics</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">latest_commit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">run_metadata</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="NightlySessionReport">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.slack.NightlySessionReport">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">NightlySessionReport</span><span class="p">:</span>
+    <span class="n">session_name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">session_dir</span><span class="p">:</span> <span class="n">Path</span>
+    <span class="n">session_type</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">timestamp</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">latest_commit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">all_passed</span><span class="p">:</span> <span class="nb">bool</span>
+    <span class="n">results</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">NightlyRunReport</span><span class="p">]</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_metrics</span><span class="p">(</span><span class="n">raw_metrics</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">raw_metrics</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{}</span>
+
+    <span class="n">normalized</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">raw_metrics</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">metric_key</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">key</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">metric_key</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;recall_recall_&quot;</span><span class="p">):</span>
+            <span class="n">metric_key</span> <span class="o">=</span> <span class="s2">&quot;recall_&quot;</span> <span class="o">+</span> <span class="n">metric_key</span><span class="o">.</span><span class="n">removeprefix</span><span class="p">(</span><span class="s2">&quot;recall_recall_&quot;</span><span class="p">)</span>
+        <span class="n">normalized</span><span class="p">[</span><span class="n">metric_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+    <span class="k">return</span> <span class="n">normalized</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_json_dict</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
+    <span class="k">except</span> <span class="ne">FileNotFoundError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;JSON file not found: </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+    <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid JSON in </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Expected JSON object in </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">data</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_load_results_payload</span><span class="p">(</span><span class="n">artifact_dir</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">artifact_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{}</span>
+    <span class="n">results_path</span> <span class="o">=</span> <span class="n">artifact_dir</span> <span class="o">/</span> <span class="s2">&quot;results.json&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">results_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">return</span> <span class="p">{}</span>
+    <span class="k">return</span> <span class="n">_read_json_dict</span><span class="p">(</span><span class="n">results_path</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_load_preferred_metrics</span><span class="p">(</span><span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">summary_metrics</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;summary_metrics&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">summary_metrics</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="n">summary_metrics</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_normalize_metrics</span><span class="p">(</span><span class="n">summary_metrics</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_normalize_metrics</span><span class="p">(</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metrics&quot;</span><span class="p">,</span> <span class="p">{}))</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_run_report</span><span class="p">(</span><span class="n">summary_entry</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">NightlyRunReport</span><span class="p">:</span>
+    <span class="n">artifact_dir_str</span> <span class="o">=</span> <span class="n">summary_entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;artifact_dir&quot;</span><span class="p">)</span>
+    <span class="n">artifact_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">artifact_dir_str</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span> <span class="k">if</span> <span class="n">artifact_dir_str</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="n">results_payload</span> <span class="o">=</span> <span class="n">_load_results_payload</span><span class="p">(</span><span class="n">artifact_dir</span><span class="p">)</span>
+    <span class="n">test_config</span> <span class="o">=</span> <span class="n">results_payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;test_config&quot;</span><span class="p">,</span> <span class="p">{})</span>
+    <span class="n">run_metadata</span> <span class="o">=</span> <span class="n">results_payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;run_metadata&quot;</span><span class="p">,</span> <span class="p">{})</span>
+
+    <span class="n">metrics</span> <span class="o">=</span> <span class="n">summary_entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metrics&quot;</span><span class="p">,</span> <span class="p">{})</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">metrics</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">metrics</span><span class="p">:</span>
+        <span class="n">metrics</span> <span class="o">=</span> <span class="n">_load_preferred_metrics</span><span class="p">(</span><span class="n">results_payload</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">metrics</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="n">metrics</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">test_config</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="n">test_config</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">run_metadata</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="n">run_metadata</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">return</span> <span class="n">NightlyRunReport</span><span class="p">(</span>
+        <span class="n">run_name</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">summary_entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;run_name&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">artifact_dir</span><span class="o">.</span><span class="n">name</span> <span class="k">if</span> <span class="n">artifact_dir</span> <span class="k">else</span> <span class="s2">&quot;unknown_run&quot;</span><span class="p">)),</span>
+        <span class="n">dataset</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">summary_entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;dataset&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">test_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;dataset_label&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;unknown_dataset&quot;</span><span class="p">),</span>
+        <span class="n">preset</span><span class="o">=</span><span class="p">(</span>
+            <span class="nb">str</span><span class="p">(</span><span class="n">summary_entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;preset&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">test_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;preset&quot;</span><span class="p">))</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">summary_entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;preset&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">test_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;preset&quot;</span><span class="p">))</span>
+            <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">),</span>
+        <span class="n">success</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">summary_entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;success&quot;</span><span class="p">)),</span>
+        <span class="n">return_code</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">summary_entry</span><span class="p">[</span><span class="s2">&quot;return_code&quot;</span><span class="p">])</span> <span class="k">if</span> <span class="n">summary_entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;return_code&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">failure_reason</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">summary_entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;failure_reason&quot;</span><span class="p">))</span> <span class="k">if</span> <span class="n">summary_entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;failure_reason&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">artifact_dir</span><span class="o">=</span><span class="n">artifact_dir</span><span class="p">,</span>
+        <span class="n">metrics</span><span class="o">=</span><span class="n">_normalize_metrics</span><span class="p">(</span><span class="n">metrics</span><span class="p">),</span>
+        <span class="n">latest_commit</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">results_payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;latest_commit&quot;</span><span class="p">))</span> <span class="k">if</span> <span class="n">results_payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;latest_commit&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">run_metadata</span><span class="o">=</span><span class="nb">dict</span><span class="p">(</span><span class="n">run_metadata</span><span class="p">),</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="load_session_report">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.slack.load_session_report">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_session_report</span><span class="p">(</span><span class="n">session_summary_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NightlySessionReport</span><span class="p">:</span>
+    <span class="n">resolved_summary_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">session_summary_path</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">resolved_summary_path</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
+        <span class="n">resolved_summary_path</span> <span class="o">=</span> <span class="n">resolved_summary_path</span> <span class="o">/</span> <span class="s2">&quot;session_summary.json&quot;</span>
+
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">_read_json_dict</span><span class="p">(</span><span class="n">resolved_summary_path</span><span class="p">)</span>
+    <span class="n">raw_results</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;results&quot;</span><span class="p">,</span> <span class="p">[])</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">raw_results</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&#39;results&#39; must be a list in </span><span class="si">{</span><span class="n">resolved_summary_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">NightlySessionReport</span><span class="p">(</span>
+        <span class="n">session_name</span><span class="o">=</span><span class="n">resolved_summary_path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+        <span class="n">session_dir</span><span class="o">=</span><span class="n">resolved_summary_path</span><span class="o">.</span><span class="n">parent</span><span class="p">,</span>
+        <span class="n">session_type</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;session_type&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;nightly&quot;</span><span class="p">),</span>
+        <span class="n">timestamp</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;timestamp&quot;</span><span class="p">))</span> <span class="k">if</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;timestamp&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">latest_commit</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;latest_commit&quot;</span><span class="p">))</span> <span class="k">if</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;latest_commit&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">all_passed</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;all_passed&quot;</span><span class="p">)),</span>
+        <span class="n">results</span><span class="o">=</span><span class="p">[</span><span class="n">_normalize_run_report</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">item</span><span class="p">))</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">raw_results</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)],</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="load_replay_report">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.slack.load_replay_report">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_replay_report</span><span class="p">(</span><span class="n">replay_paths</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">NightlySessionReport</span><span class="p">:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">replay_paths</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;At least one replay path is required&quot;</span><span class="p">)</span>
+
+    <span class="n">resolved_paths</span> <span class="o">=</span> <span class="p">[</span><span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span> <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">replay_paths</span><span class="p">]</span>
+    <span class="n">session_dirs</span> <span class="o">=</span> <span class="p">[</span><span class="n">path</span> <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">resolved_paths</span> <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">is_dir</span><span class="p">()</span> <span class="ow">and</span> <span class="p">(</span><span class="n">path</span> <span class="o">/</span> <span class="s2">&quot;session_summary.json&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">()]</span>
+    <span class="k">if</span> <span class="n">session_dirs</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">resolved_paths</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Replay accepts either one session directory or one or more run directories&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">load_session_report</span><span class="p">(</span><span class="n">session_dirs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="s2">&quot;session_summary.json&quot;</span><span class="p">)</span>
+
+    <span class="n">run_reports</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">NightlyRunReport</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">latest_commit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">resolved_paths</span><span class="p">:</span>
+        <span class="n">results_path</span> <span class="o">=</span> <span class="n">path</span> <span class="o">/</span> <span class="s2">&quot;results.json&quot;</span> <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">is_dir</span><span class="p">()</span> <span class="k">else</span> <span class="n">path</span>
+        <span class="k">if</span> <span class="n">results_path</span><span class="o">.</span><span class="n">name</span> <span class="o">!=</span> <span class="s2">&quot;results.json&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Replay path must be a run directory, session directory, or results.json file: </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">_read_json_dict</span><span class="p">(</span><span class="n">results_path</span><span class="p">)</span>
+        <span class="n">artifact_dir</span> <span class="o">=</span> <span class="n">results_path</span><span class="o">.</span><span class="n">parent</span>
+        <span class="n">test_config</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;test_config&quot;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">test_config</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">test_config</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">run_metadata</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;run_metadata&quot;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">run_metadata</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">run_metadata</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="n">latest_commit</span> <span class="o">=</span> <span class="n">latest_commit</span> <span class="ow">or</span> <span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;latest_commit&quot;</span><span class="p">))</span> <span class="k">if</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;latest_commit&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">run_reports</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="n">NightlyRunReport</span><span class="p">(</span>
+                <span class="n">run_name</span><span class="o">=</span><span class="n">artifact_dir</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                <span class="n">dataset</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">test_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;dataset_label&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">artifact_dir</span><span class="o">.</span><span class="n">name</span><span class="p">),</span>
+                <span class="n">preset</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">test_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;preset&quot;</span><span class="p">))</span> <span class="k">if</span> <span class="n">test_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;preset&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">success</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;success&quot;</span><span class="p">)),</span>
+                <span class="n">return_code</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">payload</span><span class="p">[</span><span class="s2">&quot;return_code&quot;</span><span class="p">])</span> <span class="k">if</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;return_code&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">failure_reason</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;failure_reason&quot;</span><span class="p">))</span> <span class="k">if</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;failure_reason&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">artifact_dir</span><span class="o">=</span><span class="n">artifact_dir</span><span class="p">,</span>
+                <span class="n">metrics</span><span class="o">=</span><span class="n">_load_preferred_metrics</span><span class="p">(</span><span class="n">payload</span><span class="p">),</span>
+                <span class="n">latest_commit</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;latest_commit&quot;</span><span class="p">))</span> <span class="k">if</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;latest_commit&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">run_metadata</span><span class="o">=</span><span class="nb">dict</span><span class="p">(</span><span class="n">run_metadata</span><span class="p">),</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="n">session_dir</span> <span class="o">=</span> <span class="n">resolved_paths</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">parent</span> <span class="k">if</span> <span class="n">resolved_paths</span> <span class="k">else</span> <span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">NightlySessionReport</span><span class="p">(</span>
+        <span class="n">session_name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;replay_</span><span class="si">{</span><span class="n">now_timestr</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">session_dir</span><span class="o">=</span><span class="n">session_dir</span><span class="p">,</span>
+        <span class="n">session_type</span><span class="o">=</span><span class="s2">&quot;nightly_replay&quot;</span><span class="p">,</span>
+        <span class="n">timestamp</span><span class="o">=</span><span class="n">now_timestr</span><span class="p">(),</span>
+        <span class="n">latest_commit</span><span class="o">=</span><span class="n">latest_commit</span><span class="p">,</span>
+        <span class="n">all_passed</span><span class="o">=</span><span class="nb">all</span><span class="p">(</span><span class="n">run</span><span class="o">.</span><span class="n">success</span> <span class="k">for</span> <span class="n">run</span> <span class="ow">in</span> <span class="n">run_reports</span><span class="p">),</span>
+        <span class="n">results</span><span class="o">=</span><span class="n">run_reports</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_format_metric_value</span><span class="p">(</span><span class="n">metric_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;N/A&quot;</span>
+
+    <span class="k">if</span> <span class="n">metric_name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;_secs&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">metric_name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;_time_s&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">metric_name</span> <span class="o">==</span> <span class="s2">&quot;ingest_secs&quot;</span><span class="p">:</span>
+        <span class="n">seconds</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="n">hours</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">seconds</span> <span class="o">//</span> <span class="mi">3600</span><span class="p">)</span>
+        <span class="n">minutes</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="n">seconds</span> <span class="o">%</span> <span class="mi">3600</span><span class="p">)</span> <span class="o">//</span> <span class="mi">60</span><span class="p">)</span>
+        <span class="n">secs</span> <span class="o">=</span> <span class="n">seconds</span> <span class="o">%</span> <span class="mi">60</span>
+        <span class="n">formatted</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">seconds</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">s&quot;</span>
+        <span class="k">if</span> <span class="n">hours</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">minutes</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">formatted</span> <span class="o">+=</span> <span class="s2">&quot; (&quot;</span>
+            <span class="k">if</span> <span class="n">hours</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">formatted</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">hours</span><span class="si">}</span><span class="s2">h : &quot;</span>
+            <span class="n">formatted</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">minutes</span><span class="si">:</span><span class="s2">02</span><span class="si">}</span><span class="s2">m : </span><span class="si">{</span><span class="n">secs</span><span class="si">:</span><span class="s2">05.2f</span><span class="si">}</span><span class="s2">s)&quot;</span>
+        <span class="k">return</span> <span class="n">formatted</span>
+    <span class="k">if</span> <span class="n">metric_name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;_per_sec_ingest&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">if</span> <span class="n">metric_name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;recall_&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">float</span><span class="p">):</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">value</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_format_metric_label</span><span class="p">(</span><span class="n">metric_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">METRIC_LABELS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">metric_name</span><span class="p">,</span> <span class="n">metric_name</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_select_metric_names</span><span class="p">(</span><span class="n">metrics</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">metric_keys</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="n">metric_names</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">metric_keys</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">metrics</span> <span class="ow">and</span> <span class="n">metrics</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">metric_names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+            <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">metric_names</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_two_column_row</span><span class="p">(</span><span class="n">left</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">right</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;elements&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text_section&quot;</span><span class="p">,</span> <span class="s2">&quot;elements&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">left</span><span class="p">}]}],</span>
+        <span class="p">},</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;elements&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text_section&quot;</span><span class="p">,</span> <span class="s2">&quot;elements&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">right</span><span class="p">}]}],</span>
+        <span class="p">},</span>
+    <span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_two_column_row_bold</span><span class="p">(</span><span class="n">left</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">right</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;elements&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text_section&quot;</span><span class="p">,</span> <span class="s2">&quot;elements&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">left</span><span class="p">,</span> <span class="s2">&quot;style&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;bold&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}}]}</span>
+            <span class="p">],</span>
+        <span class="p">},</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;elements&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;rich_text_section&quot;</span><span class="p">,</span> <span class="s2">&quot;elements&quot;</span><span class="p">:</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">right</span><span class="p">}]}],</span>
+        <span class="p">},</span>
+    <span class="p">]</span>
+
+
+<div class="viewcode-block" id="build_slack_payload">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.slack.build_slack_payload">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_slack_payload</span><span class="p">(</span><span class="n">report</span><span class="p">:</span> <span class="n">NightlySessionReport</span><span class="p">,</span> <span class="n">slack_config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">metric_keys</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">slack_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metric_keys&quot;</span><span class="p">,</span> <span class="p">[])]</span>
+    <span class="n">post_artifact_paths</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">slack_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;post_artifact_paths&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">))</span>
+    <span class="n">passed_count</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">run</span> <span class="ow">in</span> <span class="n">report</span><span class="o">.</span><span class="n">results</span> <span class="k">if</span> <span class="n">run</span><span class="o">.</span><span class="n">success</span><span class="p">)</span>
+    <span class="n">total_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">report</span><span class="o">.</span><span class="n">results</span><span class="p">)</span>
+    <span class="n">overall_status</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;PASS (</span><span class="si">{</span><span class="n">passed_count</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">total_count</span><span class="si">}</span><span class="s2">)&quot;</span> <span class="k">if</span> <span class="n">report</span><span class="o">.</span><span class="n">all_passed</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;FAIL (</span><span class="si">{</span><span class="n">passed_count</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">total_count</span><span class="si">}</span><span class="s2"> passed)&quot;</span>
+    <span class="p">)</span>
+    <span class="n">first_metadata</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">run</span><span class="o">.</span><span class="n">run_metadata</span> <span class="k">for</span> <span class="n">run</span> <span class="ow">in</span> <span class="n">report</span><span class="o">.</span><span class="n">results</span> <span class="k">if</span> <span class="n">run</span><span class="o">.</span><span class="n">run_metadata</span><span class="p">),</span> <span class="p">{})</span>
+
+    <span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_two_column_row_bold</span><span class="p">(</span><span class="s2">&quot;OVERALL STATUS&quot;</span><span class="p">,</span> <span class="n">overall_status</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">run</span> <span class="ow">in</span> <span class="n">report</span><span class="o">.</span><span class="n">results</span><span class="p">:</span>
+        <span class="n">run_status</span> <span class="o">=</span> <span class="s2">&quot;PASS&quot;</span> <span class="k">if</span> <span class="n">run</span><span class="o">.</span><span class="n">success</span> <span class="k">else</span> <span class="s2">&quot;FAIL&quot;</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_two_column_row_bold</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;-    </span><span class="si">{</span><span class="n">run</span><span class="o">.</span><span class="n">dataset</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">run_status</span><span class="p">))</span>
+
+    <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_BLANK_ROW</span><span class="p">)</span>
+    <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_two_column_row_bold</span><span class="p">(</span><span class="s2">&quot;ENVIRONMENT&quot;</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="p">))</span>
+    <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_two_column_row</span><span class="p">(</span><span class="s2">&quot;-    session&quot;</span><span class="p">,</span> <span class="n">report</span><span class="o">.</span><span class="n">session_name</span><span class="p">))</span>
+    <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_two_column_row</span><span class="p">(</span><span class="s2">&quot;-    session_dir&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">report</span><span class="o">.</span><span class="n">session_dir</span><span class="p">)))</span>
+    <span class="k">if</span> <span class="n">report</span><span class="o">.</span><span class="n">latest_commit</span><span class="p">:</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_two_column_row</span><span class="p">(</span><span class="s2">&quot;-    git_commit&quot;</span><span class="p">,</span> <span class="n">report</span><span class="o">.</span><span class="n">latest_commit</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;host&quot;</span><span class="p">,</span> <span class="s2">&quot;gpu_count&quot;</span><span class="p">,</span> <span class="s2">&quot;cuda_driver&quot;</span><span class="p">,</span> <span class="s2">&quot;ray_version&quot;</span><span class="p">,</span> <span class="s2">&quot;python_version&quot;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">first_metadata</span> <span class="ow">or</span> <span class="n">first_metadata</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_two_column_row</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;-    </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">_format_metric_value</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">first_metadata</span><span class="p">[</span><span class="n">key</span><span class="p">])))</span>
+
+    <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_BLANK_ROW</span><span class="p">)</span>
+    <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_two_column_row_bold</span><span class="p">(</span><span class="s2">&quot;RESULTS&quot;</span><span class="p">,</span> <span class="s2">&quot; &quot;</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">run</span> <span class="ow">in</span> <span class="n">report</span><span class="o">.</span><span class="n">results</span><span class="p">:</span>
+        <span class="n">run_status</span> <span class="o">=</span> <span class="s2">&quot;PASS&quot;</span> <span class="k">if</span> <span class="n">run</span><span class="o">.</span><span class="n">success</span> <span class="k">else</span> <span class="s2">&quot;FAIL&quot;</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_two_column_row_bold</span><span class="p">(</span><span class="n">run</span><span class="o">.</span><span class="n">dataset</span><span class="p">,</span> <span class="n">run_status</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">run</span><span class="o">.</span><span class="n">success</span> <span class="ow">and</span> <span class="n">run</span><span class="o">.</span><span class="n">return_code</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_two_column_row</span><span class="p">(</span><span class="s2">&quot;-    return_code&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">run</span><span class="o">.</span><span class="n">return_code</span><span class="p">)))</span>
+        <span class="k">for</span> <span class="n">metric_name</span> <span class="ow">in</span> <span class="n">_select_metric_names</span><span class="p">(</span><span class="n">run</span><span class="o">.</span><span class="n">metrics</span><span class="p">,</span> <span class="n">metric_keys</span><span class="p">):</span>
+            <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">_two_column_row</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;-    </span><span class="si">{</span><span class="n">_format_metric_label</span><span class="p">(</span><span class="n">metric_name</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                    <span class="n">_format_metric_value</span><span class="p">(</span><span class="n">metric_name</span><span class="p">,</span> <span class="n">run</span><span class="o">.</span><span class="n">metrics</span><span class="p">[</span><span class="n">metric_name</span><span class="p">]),</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">run</span><span class="o">.</span><span class="n">failure_reason</span><span class="p">:</span>
+            <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_two_column_row</span><span class="p">(</span><span class="s2">&quot;-    failure_reason&quot;</span><span class="p">,</span> <span class="n">run</span><span class="o">.</span><span class="n">failure_reason</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">post_artifact_paths</span> <span class="ow">and</span> <span class="n">run</span><span class="o">.</span><span class="n">artifact_dir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_two_column_row</span><span class="p">(</span><span class="s2">&quot;-    artifact_dir&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">run</span><span class="o">.</span><span class="n">artifact_dir</span><span class="p">)))</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_BLANK_ROW</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">report</span><span class="o">.</span><span class="n">results</span><span class="p">:</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">blocks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;header&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;plain_text&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">slack_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;title&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;nemo_retriever Nightly Harness&quot;</span><span class="p">)},</span>
+        <span class="p">},</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;section&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;mrkdwn&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Session: `</span><span class="si">{</span><span class="n">report</span><span class="o">.</span><span class="n">session_name</span><span class="si">}</span><span class="s2">`&quot;</span><span class="p">},</span>
+        <span class="p">},</span>
+        <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;divider&quot;</span><span class="p">},</span>
+        <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;table&quot;</span><span class="p">,</span> <span class="s2">&quot;rows&quot;</span><span class="p">:</span> <span class="n">rows</span><span class="p">},</span>
+    <span class="p">]</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;username&quot;</span><span class="p">:</span> <span class="n">DEFAULT_USERNAME</span><span class="p">,</span>
+        <span class="s2">&quot;icon_emoji&quot;</span><span class="p">:</span> <span class="n">DEFAULT_ICON_EMOJI</span><span class="p">,</span>
+        <span class="s2">&quot;blocks&quot;</span><span class="p">:</span> <span class="n">blocks</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="post_slack_payload">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.slack.post_slack_payload">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">post_slack_payload</span><span class="p">(</span><span class="n">payload</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">webhook_url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+    <span class="k">except</span> <span class="ne">ModuleNotFoundError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;requests is required for Slack posting&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+
+    <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+        <span class="n">webhook_url</span><span class="p">,</span>
+        <span class="n">json</span><span class="o">=</span><span class="n">payload</span><span class="p">,</span>
+        <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;Content-Type&quot;</span><span class="p">:</span> <span class="s2">&quot;application/json&quot;</span><span class="p">},</span>
+        <span class="n">timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="o">.</span><span class="n">ok</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Slack post failed with status=</span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="post_report_to_slack">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.slack.post_report_to_slack">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">post_report_to_slack</span><span class="p">(</span>
+    <span class="n">report</span><span class="p">:</span> <span class="n">NightlySessionReport</span><span class="p">,</span>
+    <span class="n">slack_config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">webhook_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">effective_webhook</span> <span class="o">=</span> <span class="n">webhook_url</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;SLACK_WEBHOOK_URL&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">effective_webhook</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;SLACK_WEBHOOK_URL is not set&quot;</span><span class="p">)</span>
+
+    <span class="n">payload</span> <span class="o">=</span> <span class="n">build_slack_payload</span><span class="p">(</span><span class="n">report</span><span class="p">,</span> <span class="n">slack_config</span><span class="p">)</span>
+    <span class="n">post_slack_payload</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="n">effective_webhook</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">payload</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

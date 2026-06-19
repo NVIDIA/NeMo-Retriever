@@ -1,0 +1,1225 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.parse.nemotron_parse &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/parse/nemotron_parse';</script>
+
+    <link rel="icon" href="../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nemo-retriever/modules.html">nemo_retriever</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.html">nemo_retriever package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.adapters.html">nemo_retriever.adapters package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.adapters.cli.html">nemo_retriever.adapters.cli package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.api.html">nemo_retriever.api package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.application.html">nemo_retriever.application package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.application.pipeline.html">nemo_retriever.application.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.audio.html">nemo_retriever.audio package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.caption.html">nemo_retriever.caption package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.chart.html">nemo_retriever.chart package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.dedup.html">nemo_retriever.dedup package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.evaluation.html">nemo_retriever.evaluation package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.graph.html">nemo_retriever.graph package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.harness.html">nemo_retriever.harness package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.harness.portal.html">nemo_retriever.harness.portal package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.html.html">nemo_retriever.html package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.image.html">nemo_retriever.image package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.infographic.html">nemo_retriever.infographic package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.io.html">nemo_retriever.io package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.llm.html">nemo_retriever.llm package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.llm.clients.html">nemo_retriever.llm.clients package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.local.html">nemo_retriever.local package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.local.stages.html">nemo_retriever.local.stages package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.model.html">nemo_retriever.model package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.model.local.html">nemo_retriever.model.local package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.nim.html">nemo_retriever.nim package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.ocr.html">nemo_retriever.ocr package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.operators.html">nemo_retriever.operators package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.page_elements.html">nemo_retriever.page_elements package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.params.html">nemo_retriever.params package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.parse.html">nemo_retriever.parse package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.pdf.html">nemo_retriever.pdf package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.pipeline.html">nemo_retriever.pipeline package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.recall.html">nemo_retriever.recall package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.rerank.html">nemo_retriever.rerank package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.html">nemo_retriever.service package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.models.html">nemo_retriever.service.models package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.routers.html">nemo_retriever.service.routers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.services.html">nemo_retriever.service.services package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.utils.html">nemo_retriever.service.utils package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.html">nemo_retriever.skill_eval package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.configs.html">nemo_retriever.skill_eval.configs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.prompts.html">nemo_retriever.skill_eval.prompts package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.table.html">nemo_retriever.table package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.html">nemo_retriever.tabular_data package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.html">nemo_retriever.tabular_data.ingestion package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.neo4j.html">nemo_retriever.tabular_data.neo4j package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.retrieval.html">nemo_retriever.tabular_data.retrieval package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.text_embed.html">nemo_retriever.text_embed package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.txt.html">nemo_retriever.txt package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.html">nemo_retriever.utils package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.benchmark.html">nemo_retriever.utils.benchmark package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.compare.html">nemo_retriever.utils.compare package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.convert.html">nemo_retriever.utils.convert package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.image.html">nemo_retriever.utils.image package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.pipeline.html">nemo_retriever.utils.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.vdb.html">nemo_retriever.vdb package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.video.html">nemo_retriever.video package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.parse.nemotron_parse</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.parse.nemotron_parse</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Nemotron Parse v1.2 pipeline stage.</span>
+
+<span class="sd">Runs the Nemotron Parse model on full page images to extract structured</span>
+<span class="sd">document content (text, tables, charts, infographics) in a single pass,</span>
+<span class="sd">replacing the page-elements → OCR multi-stage pipeline.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.parse.nemotron_parse_postprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">extract_classes_bboxes</span><span class="p">,</span>
+    <span class="n">postprocess_text</span> <span class="k">as</span> <span class="n">_postprocess_element_text</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.graph.abstract_operator</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractOperator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.graph.cpu_operator</span><span class="w"> </span><span class="kn">import</span> <span class="n">CPUOperator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.graph.gpu_operator</span><span class="w"> </span><span class="kn">import</span> <span class="n">GPUOperator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.graph.operator_archetype</span><span class="w"> </span><span class="kn">import</span> <span class="n">ArchetypeOperator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.nim.chat_completions</span><span class="w"> </span><span class="kn">import</span> <span class="n">invoke_chat_completions_images</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.nim.nim</span><span class="w"> </span><span class="kn">import</span> <span class="n">NIMClient</span><span class="p">,</span> <span class="n">invoke_image_inference_batches</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">RemoteRetryParams</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">PIL</span><span class="w"> </span><span class="kn">import</span> <span class="n">Image</span>
+<span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+    <span class="n">Image</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># type: ignore[assignment]</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Constants</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<span class="n">NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL</span> <span class="o">=</span> <span class="s2">&quot;nvidia/nemotron-parse-v1.2&quot;</span>
+<span class="n">NEMOTRON_PARSE_LOCAL_DEFAULT_MODEL</span> <span class="o">=</span> <span class="s2">&quot;nvidia/NVIDIA-Nemotron-Parse-v1.2&quot;</span>
+<span class="n">NEMOTRON_PARSE_DEFAULT_TASK_PROMPT</span> <span class="o">=</span> <span class="s2">&quot;&lt;/s&gt;&lt;s&gt;&lt;predict_bbox&gt;&lt;predict_classes&gt;&lt;output_markdown&gt;&lt;predict_no_text_in_pic&gt;&quot;</span>
+
+<span class="c1"># Map Nemotron Parse class labels to the pipeline content channels.</span>
+<span class="n">_PARSE_CLASS_TO_CHANNEL</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;Table&quot;</span><span class="p">:</span> <span class="s2">&quot;table&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Chart&quot;</span><span class="p">:</span> <span class="s2">&quot;chart&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Picture&quot;</span><span class="p">:</span> <span class="s2">&quot;infographic&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Infographic&quot;</span><span class="p">:</span> <span class="s2">&quot;infographic&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Helpers</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_error_payload</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">stage</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">exc</span><span class="p">:</span> <span class="ne">BaseException</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;stage&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">stage</span><span class="p">),</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="n">exc</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+            <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">),</span>
+            <span class="s2">&quot;traceback&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">traceback</span><span class="o">.</span><span class="n">format_exception</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">),</span> <span class="n">exc</span><span class="p">,</span> <span class="n">exc</span><span class="o">.</span><span class="n">__traceback__</span><span class="p">)),</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_extract_parse_text</span><span class="p">(</span><span class="n">response_item</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract text from a Nemotron Parse NIM response item.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">response_item</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">response_item</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">response_item</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">response_item</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;generated_text&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;output_text&quot;</span><span class="p">,</span> <span class="s2">&quot;prediction&quot;</span><span class="p">,</span> <span class="s2">&quot;output&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">response_item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+                <span class="k">return</span> <span class="n">value</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="n">value</span><span class="p">:</span>
+                <span class="n">first</span> <span class="o">=</span> <span class="n">value</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">first</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+                    <span class="k">return</span> <span class="n">first</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                    <span class="n">inner</span> <span class="o">=</span> <span class="n">_extract_parse_text</span><span class="p">(</span><span class="n">first</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">inner</span><span class="p">:</span>
+                        <span class="k">return</span> <span class="n">inner</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">response_item</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">response_item</span><span class="p">:</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">_extract_parse_text</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">text</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">text</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">response_item</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_route_parsed_elements</span><span class="p">(</span>
+    <span class="n">raw_text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">extract_tables</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">extract_charts</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">extract_infographics</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Split raw Nemotron Parse output by element class into pipeline channels.</span>
+
+<span class="sd">    Returns ``(table_items, chart_items, infographic_items, page_text)``</span>
+<span class="sd">    where each ``*_items`` list contains ``{&quot;bbox_xyxy_norm&quot;: ..., &quot;text&quot;: ...}``</span>
+<span class="sd">    dicts and ``page_text`` is the concatenated text of non-structured elements</span>
+<span class="sd">    (or ``None`` if there are none).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">classes</span><span class="p">,</span> <span class="n">bboxes</span><span class="p">,</span> <span class="n">texts</span> <span class="o">=</span> <span class="n">extract_classes_bboxes</span><span class="p">(</span><span class="n">raw_text</span><span class="p">)</span>
+    <span class="n">table_items</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">chart_items</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">infographic_items</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">text_parts</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="bp">cls</span><span class="p">,</span> <span class="n">bbox</span><span class="p">,</span> <span class="n">text</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">classes</span><span class="p">,</span> <span class="n">bboxes</span><span class="p">,</span> <span class="n">texts</span><span class="p">):</span>
+        <span class="n">bbox_list</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">bbox</span><span class="p">)</span>
+        <span class="n">processed</span> <span class="o">=</span> <span class="n">_postprocess_element_text</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="bp">cls</span><span class="o">=</span><span class="bp">cls</span><span class="p">,</span> <span class="n">table_format</span><span class="o">=</span><span class="s2">&quot;markdown&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">processed</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">channel</span> <span class="o">=</span> <span class="n">_PARSE_CLASS_TO_CHANNEL</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span>
+        <span class="n">entry</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;bbox_xyxy_norm&quot;</span><span class="p">:</span> <span class="n">bbox_list</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">processed</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">channel</span> <span class="o">==</span> <span class="s2">&quot;table&quot;</span> <span class="ow">and</span> <span class="n">extract_tables</span><span class="p">:</span>
+            <span class="n">table_items</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">channel</span> <span class="o">==</span> <span class="s2">&quot;chart&quot;</span> <span class="ow">and</span> <span class="n">extract_charts</span><span class="p">:</span>
+            <span class="n">chart_items</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">channel</span> <span class="o">==</span> <span class="s2">&quot;infographic&quot;</span> <span class="ow">and</span> <span class="n">extract_infographics</span><span class="p">:</span>
+            <span class="n">infographic_items</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Text, Title, Header_footer, Formula, etc. → page text</span>
+            <span class="n">text_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">processed</span><span class="p">)</span>
+
+    <span class="n">page_text</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">text_parts</span><span class="p">)</span> <span class="k">if</span> <span class="n">text_parts</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">table_items</span><span class="p">,</span> <span class="n">chart_items</span><span class="p">,</span> <span class="n">infographic_items</span><span class="p">,</span> <span class="n">page_text</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_is_legacy_nemotron_parse_model</span><span class="p">(</span><span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="n">normalized</span> <span class="o">=</span> <span class="n">model_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;v1[._][01](?!\d)&quot;</span><span class="p">,</span> <span class="n">normalized</span><span class="p">))</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_route_parsed_elements_v1</span><span class="p">(</span>
+    <span class="n">raw_json_text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">extract_tables</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">extract_charts</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">extract_infographics</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Route v1.0/v1.1 tool-call JSON into pipeline content channels.&quot;&quot;&quot;</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">raw_json_text</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[],</span> <span class="kc">None</span>
+
+    <span class="n">elements</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">parsed</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">parsed</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+                <span class="n">elements</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">elem</span> <span class="k">for</span> <span class="n">elem</span> <span class="ow">in</span> <span class="n">item</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">elem</span><span class="p">,</span> <span class="nb">dict</span><span class="p">))</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                <span class="n">elements</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+
+    <span class="n">table_items</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">chart_items</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">infographic_items</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">text_parts</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">elem</span> <span class="ow">in</span> <span class="n">elements</span><span class="p">:</span>
+        <span class="bp">cls</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">elem</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;type&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span>
+        <span class="n">raw_text</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">elem</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">raw_text</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="n">_postprocess_element_text</span><span class="p">(</span><span class="n">raw_text</span><span class="p">,</span> <span class="bp">cls</span><span class="o">=</span><span class="bp">cls</span><span class="p">,</span> <span class="n">table_format</span><span class="o">=</span><span class="s2">&quot;markdown&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">text</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">bbox</span> <span class="o">=</span> <span class="n">elem</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;bbox&quot;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="n">bbox_list</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">bbox</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;xmin&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)),</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">bbox</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ymin&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)),</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">bbox</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;xmax&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)),</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">bbox</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ymax&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)),</span>
+        <span class="p">]</span>
+        <span class="n">channel</span> <span class="o">=</span> <span class="n">_PARSE_CLASS_TO_CHANNEL</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span>
+        <span class="n">entry</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;bbox_xyxy_norm&quot;</span><span class="p">:</span> <span class="n">bbox_list</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">text</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">channel</span> <span class="o">==</span> <span class="s2">&quot;table&quot;</span> <span class="ow">and</span> <span class="n">extract_tables</span><span class="p">:</span>
+            <span class="n">table_items</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">channel</span> <span class="o">==</span> <span class="s2">&quot;chart&quot;</span> <span class="ow">and</span> <span class="n">extract_charts</span><span class="p">:</span>
+            <span class="n">chart_items</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">channel</span> <span class="o">==</span> <span class="s2">&quot;infographic&quot;</span> <span class="ow">and</span> <span class="n">extract_infographics</span><span class="p">:</span>
+            <span class="n">infographic_items</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">text_parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+
+    <span class="n">page_text</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">text_parts</span><span class="p">)</span> <span class="k">if</span> <span class="n">text_parts</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">table_items</span><span class="p">,</span> <span class="n">chart_items</span><span class="p">,</span> <span class="n">infographic_items</span><span class="p">,</span> <span class="n">page_text</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_decode_page_image</span><span class="p">(</span><span class="n">page_image_b64</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Decode a base64 page image to an HWC uint8 numpy array.&quot;&quot;&quot;</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">page_image_b64</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">Image</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span> <span class="k">as</span> <span class="n">im</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">im</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="s2">&quot;RGB&quot;</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Main stage function</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="nemotron_parse_pages">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.parse.html#nemo_retriever.parse.nemotron_parse.nemotron_parse_pages">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">nemotron_parse_pages</span><span class="p">(</span>
+    <span class="n">batch_df</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">model</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">invoke_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">api_key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">request_timeout_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">120.0</span><span class="p">,</span>
+    <span class="n">extract_text</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">extract_tables</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">extract_charts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">extract_infographics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">nemotron_parse_model</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">task_prompt</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">NEMOTRON_PARSE_DEFAULT_TASK_PROMPT</span><span class="p">,</span>
+    <span class="n">remote_retry</span><span class="p">:</span> <span class="n">RemoteRetryParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">nim_client</span><span class="p">:</span> <span class="n">NIMClient</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run Nemotron Parse v1.2 on full page images.</span>
+
+<span class="sd">    Each page is parsed in a single model call.  The structured output is</span>
+<span class="sd">    split by element class (Text, Table, Chart, Picture, …) and routed to</span>
+<span class="sd">    the corresponding pipeline content columns (``table``, ``chart``,</span>
+<span class="sd">    ``infographic``).  Non-structured elements (headings, body text, …) are</span>
+<span class="sd">    concatenated into the ``text`` column, replacing the upstream pdfium</span>
+<span class="sd">    extraction when ``extract_text`` is ``True``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">retry</span> <span class="o">=</span> <span class="n">remote_retry</span> <span class="ow">or</span> <span class="n">RemoteRetryParams</span><span class="p">(</span>
+        <span class="n">remote_max_pool_workers</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;remote_max_pool_workers&quot;</span><span class="p">,</span> <span class="mi">16</span><span class="p">)),</span>
+        <span class="n">remote_max_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;remote_max_retries&quot;</span><span class="p">,</span> <span class="mi">10</span><span class="p">)),</span>
+        <span class="n">remote_max_429_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;remote_max_429_retries&quot;</span><span class="p">,</span> <span class="mi">5</span><span class="p">)),</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">batch_df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;nemotron_parse_pages currently only supports pandas.DataFrame input.&quot;</span><span class="p">)</span>
+
+    <span class="n">invoke_url</span> <span class="o">=</span> <span class="p">(</span><span class="n">invoke_url</span> <span class="ow">or</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;nemotron_parse_invoke_url&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">use_remote</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">invoke_url</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">use_remote</span> <span class="ow">and</span> <span class="n">model</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;A local `model` is required when `invoke_url` is not provided.&quot;</span><span class="p">)</span>
+
+    <span class="n">n_rows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">batch_df</span><span class="p">)</span>
+    <span class="n">all_table</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_rows</span><span class="p">)]</span>
+    <span class="n">all_chart</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_rows</span><span class="p">)]</span>
+    <span class="n">all_infographic</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_rows</span><span class="p">)]</span>
+    <span class="n">all_text</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">n_rows</span>
+    <span class="n">all_meta</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_rows</span><span class="p">)]</span>
+
+    <span class="n">t0_total</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+
+    <span class="c1"># -- Phase 1: collect page images that need inference ----------------</span>
+    <span class="n">batch_indices</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># index into batch_df</span>
+    <span class="n">batch_images</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># numpy arrays (local) or b64 strings (remote)</span>
+
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">batch_df</span><span class="o">.</span><span class="n">itertuples</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)):</span>
+        <span class="n">page_image</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">row</span><span class="p">,</span> <span class="s2">&quot;page_image&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="n">page_image_b64</span> <span class="o">=</span> <span class="n">page_image</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;image_b64&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">page_image</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">page_image_b64</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">page_image_b64</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">use_remote</span><span class="p">:</span>
+                <span class="n">batch_images</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">page_image_b64</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">batch_images</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_decode_page_image</span><span class="p">(</span><span class="n">page_image_b64</span><span class="p">))</span>
+            <span class="n">batch_indices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">all_meta</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;stage&quot;</span><span class="p">:</span> <span class="s2">&quot;nemotron_parse_pages_decode&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="n">e</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                    <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">),</span>
+                    <span class="s2">&quot;traceback&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">traceback</span><span class="o">.</span><span class="n">format_exception</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">),</span> <span class="n">e</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">__traceback__</span><span class="p">)),</span>
+                <span class="p">},</span>
+            <span class="p">}</span>
+
+    <span class="c1"># -- Phase 2: run model inference in a single batch ------------------</span>
+    <span class="n">raw_texts</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">batch_indices</span><span class="p">)</span>
+    <span class="n">used_v1_api</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">batch_images</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">use_remote</span><span class="p">:</span>
+                <span class="k">if</span> <span class="s2">&quot;/v1/chat/completions&quot;</span> <span class="ow">in</span> <span class="n">invoke_url</span><span class="p">:</span>
+                    <span class="n">_model_name</span> <span class="o">=</span> <span class="n">nemotron_parse_model</span> <span class="ow">or</span> <span class="n">NEMOTRON_PARSE_REMOTE_DEFAULT_MODEL</span>
+                    <span class="n">used_v1_api</span> <span class="o">=</span> <span class="n">_is_legacy_nemotron_parse_model</span><span class="p">(</span><span class="n">_model_name</span><span class="p">)</span>
+                    <span class="n">extra_body</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;max_tokens&quot;</span><span class="p">:</span> <span class="mi">8192</span><span class="p">}</span>
+                    <span class="k">if</span> <span class="n">used_v1_api</span><span class="p">:</span>
+                        <span class="n">extra_body</span><span class="p">[</span><span class="s2">&quot;tools&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;function&quot;</span><span class="p">,</span> <span class="s2">&quot;function&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;markdown_bbox&quot;</span><span class="p">}}]</span>
+                    <span class="n">_chat_kw</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+                        <span class="n">invoke_url</span><span class="o">=</span><span class="n">invoke_url</span><span class="p">,</span>
+                        <span class="n">image_b64_list</span><span class="o">=</span><span class="n">batch_images</span><span class="p">,</span>
+                        <span class="n">model</span><span class="o">=</span><span class="n">_model_name</span><span class="p">,</span>
+                        <span class="n">api_key</span><span class="o">=</span><span class="n">api_key</span><span class="p">,</span>
+                        <span class="n">timeout_s</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">request_timeout_s</span><span class="p">),</span>
+                        <span class="n">task_prompt</span><span class="o">=</span><span class="kc">None</span> <span class="k">if</span> <span class="n">used_v1_api</span> <span class="k">else</span> <span class="n">task_prompt</span><span class="p">,</span>
+                        <span class="n">extra_body</span><span class="o">=</span><span class="n">extra_body</span><span class="p">,</span>
+                        <span class="n">max_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">retry</span><span class="o">.</span><span class="n">remote_max_retries</span><span class="p">),</span>
+                        <span class="n">max_429_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">retry</span><span class="o">.</span><span class="n">remote_max_429_retries</span><span class="p">),</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">nim_client</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="n">raw_texts</span> <span class="o">=</span> <span class="n">nim_client</span><span class="o">.</span><span class="n">invoke_chat_completions_images</span><span class="p">(</span><span class="o">**</span><span class="n">_chat_kw</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">raw_texts</span> <span class="o">=</span> <span class="n">invoke_chat_completions_images</span><span class="p">(</span>
+                            <span class="o">**</span><span class="n">_chat_kw</span><span class="p">,</span>
+                            <span class="n">max_pool_workers</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">retry</span><span class="o">.</span><span class="n">remote_max_pool_workers</span><span class="p">),</span>
+                        <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">_img_kw</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+                        <span class="n">invoke_url</span><span class="o">=</span><span class="n">invoke_url</span><span class="p">,</span>
+                        <span class="n">image_b64_list</span><span class="o">=</span><span class="n">batch_images</span><span class="p">,</span>
+                        <span class="n">api_key</span><span class="o">=</span><span class="n">api_key</span><span class="p">,</span>
+                        <span class="n">timeout_s</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">request_timeout_s</span><span class="p">),</span>
+                        <span class="n">max_batch_size</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;inference_batch_size&quot;</span><span class="p">,</span> <span class="mi">8</span><span class="p">)),</span>
+                        <span class="n">max_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">retry</span><span class="o">.</span><span class="n">remote_max_retries</span><span class="p">),</span>
+                        <span class="n">max_429_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">retry</span><span class="o">.</span><span class="n">remote_max_429_retries</span><span class="p">),</span>
+                    <span class="p">)</span>
+                    <span class="k">if</span> <span class="n">nim_client</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="n">response_items</span> <span class="o">=</span> <span class="n">nim_client</span><span class="o">.</span><span class="n">invoke_image_inference_batches</span><span class="p">(</span><span class="o">**</span><span class="n">_img_kw</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">response_items</span> <span class="o">=</span> <span class="n">invoke_image_inference_batches</span><span class="p">(</span>
+                            <span class="o">**</span><span class="n">_img_kw</span><span class="p">,</span>
+                            <span class="n">max_pool_workers</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">retry</span><span class="o">.</span><span class="n">remote_max_pool_workers</span><span class="p">),</span>
+                        <span class="p">)</span>
+                    <span class="n">raw_texts</span> <span class="o">=</span> <span class="p">[</span><span class="n">_extract_parse_text</span><span class="p">(</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">response_items</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Local vLLM model (v1.2): uses task_prompt, returns tagged text.</span>
+                <span class="n">invoke_batch</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s2">&quot;invoke_batch&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">invoke_batch</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">raw_texts</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">t</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">invoke_batch</span><span class="p">(</span><span class="n">batch_images</span><span class="p">,</span> <span class="n">task_prompt</span><span class="o">=</span><span class="n">task_prompt</span><span class="p">)]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">raw_texts</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">invoke</span><span class="p">(</span><span class="n">img</span><span class="p">,</span> <span class="n">task_prompt</span><span class="o">=</span><span class="n">task_prompt</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">img</span> <span class="ow">in</span> <span class="n">batch_images</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Warning: Nemotron Parse batch failed: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">err</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;stage&quot;</span><span class="p">:</span> <span class="s2">&quot;nemotron_parse_pages&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="n">e</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">),</span>
+                <span class="s2">&quot;traceback&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">traceback</span><span class="o">.</span><span class="n">format_exception</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">),</span> <span class="n">e</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">__traceback__</span><span class="p">)),</span>
+            <span class="p">}</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">batch_indices</span><span class="p">:</span>
+                <span class="n">all_meta</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="n">err</span><span class="p">}</span>
+            <span class="n">raw_texts</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="c1"># -- Phase 3: route parsed elements into content channels ------------</span>
+    <span class="n">route_fn</span> <span class="o">=</span> <span class="n">_route_parsed_elements_v1</span> <span class="k">if</span> <span class="n">used_v1_api</span> <span class="k">else</span> <span class="n">_route_parsed_elements</span>
+    <span class="k">for</span> <span class="n">pos</span><span class="p">,</span> <span class="n">raw_text</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">raw_texts</span><span class="p">):</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">batch_indices</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">fp_tables</span><span class="p">,</span> <span class="n">fp_charts</span><span class="p">,</span> <span class="n">fp_infographics</span><span class="p">,</span> <span class="n">fp_text</span> <span class="o">=</span> <span class="n">route_fn</span><span class="p">(</span>
+                <span class="n">raw_text</span><span class="p">,</span>
+                <span class="n">extract_tables</span><span class="o">=</span><span class="n">extract_tables</span><span class="p">,</span>
+                <span class="n">extract_charts</span><span class="o">=</span><span class="n">extract_charts</span><span class="p">,</span>
+                <span class="n">extract_infographics</span><span class="o">=</span><span class="n">extract_infographics</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">all_table</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">fp_tables</span>
+            <span class="n">all_chart</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">fp_charts</span>
+            <span class="n">all_infographic</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">fp_infographics</span>
+            <span class="k">if</span> <span class="n">fp_text</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">all_text</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">fp_text</span>
+        <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">all_meta</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;timing&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;stage&quot;</span><span class="p">:</span> <span class="s2">&quot;nemotron_parse_pages_route&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="n">e</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                    <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">),</span>
+                    <span class="s2">&quot;traceback&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">traceback</span><span class="o">.</span><span class="n">format_exception</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">),</span> <span class="n">e</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">__traceback__</span><span class="p">)),</span>
+                <span class="p">},</span>
+            <span class="p">}</span>
+
+    <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">t0_total</span>
+    <span class="k">for</span> <span class="n">meta</span> <span class="ow">in</span> <span class="n">all_meta</span><span class="p">:</span>
+        <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;timing&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">elapsed</span><span class="p">)}</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">extract_text</span> <span class="ow">and</span> <span class="s2">&quot;text&quot;</span> <span class="ow">in</span> <span class="n">out</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">parse_text</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">all_text</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">parse_text</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">out</span><span class="o">.</span><span class="n">iat</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">out</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">get_loc</span><span class="p">(</span><span class="s2">&quot;text&quot;</span><span class="p">)]</span> <span class="o">=</span> <span class="n">parse_text</span>
+    <span class="k">elif</span> <span class="n">extract_text</span><span class="p">:</span>
+        <span class="n">out</span><span class="p">[</span><span class="s2">&quot;text&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">t</span> <span class="k">if</span> <span class="n">t</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">all_text</span><span class="p">]</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;table&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_table</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;chart&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_chart</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;infographic&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_infographic</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;table_parse&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_table</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;chart_parse&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_chart</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;infographic_parse&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_infographic</span>
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;nemotron_parse_v1_2&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_meta</span>
+    <span class="k">return</span> <span class="n">out</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Ray actor</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="NemotronParseGPUActor">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.parse.html#nemo_retriever.parse.nemotron_parse.NemotronParseGPUActor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NemotronParseGPUActor</span><span class="p">(</span><span class="n">AbstractOperator</span><span class="p">,</span> <span class="n">GPUOperator</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Ray-friendly callable that initialises Nemotron Parse v1.2 once per actor.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">extract_text</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">extract_tables</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">extract_charts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">extract_infographics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">nemotron_parse_invoke_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">nemotron_parse_model</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">invoke_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">api_key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">request_timeout_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">120.0</span><span class="p">,</span>
+        <span class="n">task_prompt</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">NEMOTRON_PARSE_DEFAULT_TASK_PROMPT</span><span class="p">,</span>
+        <span class="n">remote_max_pool_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="n">remote_max_retries</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+        <span class="n">remote_max_429_retries</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_invoke_url</span> <span class="o">=</span> <span class="p">(</span><span class="n">nemotron_parse_invoke_url</span> <span class="ow">or</span> <span class="n">invoke_url</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_nemotron_parse_model</span> <span class="o">=</span> <span class="n">nemotron_parse_model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_api_key</span> <span class="o">=</span> <span class="n">api_key</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_request_timeout_s</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">request_timeout_s</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_task_prompt</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">task_prompt</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_remote_retry</span> <span class="o">=</span> <span class="n">RemoteRetryParams</span><span class="p">(</span>
+            <span class="n">remote_max_pool_workers</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">remote_max_pool_workers</span><span class="p">),</span>
+            <span class="n">remote_max_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">remote_max_retries</span><span class="p">),</span>
+            <span class="n">remote_max_429_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">remote_max_429_retries</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_invoke_url</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_nim_client</span> <span class="o">=</span> <span class="n">NIMClient</span><span class="p">(</span><span class="n">max_pool_workers</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">remote_max_pool_workers</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_nim_client</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_extract_text</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">extract_text</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_extract_tables</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">extract_tables</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_extract_charts</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">extract_charts</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_extract_infographics</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">extract_infographics</span><span class="p">)</span>
+
+<div class="viewcode-block" id="NemotronParseGPUActor.preprocess">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.parse.html#nemo_retriever.parse.nemotron_parse.NemotronParseGPUActor.preprocess">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">preprocess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">data</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_model</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Load the local vLLM model on first use (i.e. on the worker, not the driver).&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_invoke_url</span><span class="p">:</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.model.local</span><span class="w"> </span><span class="kn">import</span> <span class="n">NemotronParseV12</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="n">NemotronParseV12</span><span class="p">(</span><span class="n">task_prompt</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_task_prompt</span><span class="p">)</span>
+
+<div class="viewcode-block" id="NemotronParseGPUActor.process">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.parse.html#nemo_retriever.parse.nemotron_parse.NemotronParseGPUActor.process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_model</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">nemotron_parse_pages</span><span class="p">(</span>
+            <span class="n">data</span><span class="p">,</span>
+            <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="p">,</span>
+            <span class="n">invoke_url</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_invoke_url</span><span class="p">,</span>
+            <span class="n">nemotron_parse_model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_nemotron_parse_model</span><span class="p">,</span>
+            <span class="n">api_key</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_api_key</span><span class="p">,</span>
+            <span class="n">request_timeout_s</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_request_timeout_s</span><span class="p">,</span>
+            <span class="n">task_prompt</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_task_prompt</span><span class="p">,</span>
+            <span class="n">extract_text</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_extract_text</span><span class="p">,</span>
+            <span class="n">extract_tables</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_extract_tables</span><span class="p">,</span>
+            <span class="n">extract_charts</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_extract_charts</span><span class="p">,</span>
+            <span class="n">extract_infographics</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_extract_infographics</span><span class="p">,</span>
+            <span class="n">remote_retry</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_remote_retry</span><span class="p">,</span>
+            <span class="n">nim_client</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_nim_client</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NemotronParseGPUActor.postprocess">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.parse.html#nemo_retriever.parse.nemotron_parse.NemotronParseGPUActor.postprocess">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">postprocess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">data</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch_df</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">override_kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">batch_df</span><span class="p">,</span> <span class="o">**</span><span class="n">override_kwargs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">batch_df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+                <span class="n">out</span> <span class="o">=</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">payload</span> <span class="o">=</span> <span class="n">_error_payload</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s2">&quot;nemotron_parse_actor_call&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">)</span>
+                <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;table&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;chart&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;infographic&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;table_parse&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;chart_parse&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;infographic_parse&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;nemotron_parse_v1_2&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">payload</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="k">return</span> <span class="n">out</span>
+            <span class="k">return</span> <span class="p">[{</span><span class="s2">&quot;nemotron_parse_v1_2&quot;</span><span class="p">:</span> <span class="n">_error_payload</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s2">&quot;nemotron_parse_actor_call&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">)}]</span></div>
+
+
+
+<div class="viewcode-block" id="NemotronParseCPUActor">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.parse.html#nemo_retriever.parse.nemotron_parse.NemotronParseCPUActor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NemotronParseCPUActor</span><span class="p">(</span><span class="n">AbstractOperator</span><span class="p">,</span> <span class="n">CPUOperator</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;CPU-only variant that delegates to a remote Nemotron Parse endpoint.</span>
+
+<span class="sd">    Defaults to the build.nvidia.com chat completions endpoint.</span>
+<span class="sd">    No local GPU model is loaded.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">DEFAULT_INVOKE_URL</span> <span class="o">=</span> <span class="s2">&quot;https://integrate.api.nvidia.com/v1/chat/completions&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">extract_text</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">extract_tables</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">extract_charts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">extract_infographics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">nemotron_parse_invoke_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">nemotron_parse_model</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">invoke_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">api_key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">request_timeout_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">120.0</span><span class="p">,</span>
+        <span class="n">task_prompt</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">NEMOTRON_PARSE_DEFAULT_TASK_PROMPT</span><span class="p">,</span>
+        <span class="n">remote_max_pool_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="n">remote_max_retries</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+        <span class="n">remote_max_429_retries</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_invoke_url</span> <span class="o">=</span> <span class="p">(</span><span class="n">nemotron_parse_invoke_url</span> <span class="ow">or</span> <span class="n">invoke_url</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">DEFAULT_INVOKE_URL</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_nemotron_parse_model</span> <span class="o">=</span> <span class="n">nemotron_parse_model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_api_key</span> <span class="o">=</span> <span class="n">api_key</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_request_timeout_s</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">request_timeout_s</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_task_prompt</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">task_prompt</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_remote_retry</span> <span class="o">=</span> <span class="n">RemoteRetryParams</span><span class="p">(</span>
+            <span class="n">remote_max_pool_workers</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">remote_max_pool_workers</span><span class="p">),</span>
+            <span class="n">remote_max_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">remote_max_retries</span><span class="p">),</span>
+            <span class="n">remote_max_429_retries</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">remote_max_429_retries</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_model</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_nim_client</span> <span class="o">=</span> <span class="n">NIMClient</span><span class="p">(</span><span class="n">max_pool_workers</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">remote_max_pool_workers</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_extract_text</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">extract_text</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_extract_tables</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">extract_tables</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_extract_charts</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">extract_charts</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_extract_infographics</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">extract_infographics</span><span class="p">)</span>
+
+<div class="viewcode-block" id="NemotronParseCPUActor.preprocess">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.parse.html#nemo_retriever.parse.nemotron_parse.NemotronParseCPUActor.preprocess">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">preprocess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">data</span></div>
+
+
+<div class="viewcode-block" id="NemotronParseCPUActor.process">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.parse.html#nemo_retriever.parse.nemotron_parse.NemotronParseCPUActor.process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">nemotron_parse_pages</span><span class="p">(</span>
+            <span class="n">data</span><span class="p">,</span>
+            <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="p">,</span>
+            <span class="n">invoke_url</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_invoke_url</span><span class="p">,</span>
+            <span class="n">nemotron_parse_model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_nemotron_parse_model</span><span class="p">,</span>
+            <span class="n">api_key</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_api_key</span><span class="p">,</span>
+            <span class="n">request_timeout_s</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_request_timeout_s</span><span class="p">,</span>
+            <span class="n">task_prompt</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_task_prompt</span><span class="p">,</span>
+            <span class="n">extract_text</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_extract_text</span><span class="p">,</span>
+            <span class="n">extract_tables</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_extract_tables</span><span class="p">,</span>
+            <span class="n">extract_charts</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_extract_charts</span><span class="p">,</span>
+            <span class="n">extract_infographics</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_extract_infographics</span><span class="p">,</span>
+            <span class="n">remote_retry</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_remote_retry</span><span class="p">,</span>
+            <span class="n">nim_client</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_nim_client</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NemotronParseCPUActor.postprocess">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.parse.html#nemo_retriever.parse.nemotron_parse.NemotronParseCPUActor.postprocess">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">postprocess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">data</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch_df</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">override_kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">batch_df</span><span class="p">,</span> <span class="o">**</span><span class="n">override_kwargs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">batch_df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+                <span class="n">out</span> <span class="o">=</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">payload</span> <span class="o">=</span> <span class="n">_error_payload</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s2">&quot;nemotron_parse_actor_call&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">)</span>
+                <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;table&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;chart&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;infographic&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;table_parse&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;chart_parse&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;infographic_parse&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="n">out</span><span class="p">[</span><span class="s2">&quot;nemotron_parse_v1_2&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">payload</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+                <span class="k">return</span> <span class="n">out</span>
+            <span class="k">return</span> <span class="p">[{</span><span class="s2">&quot;nemotron_parse_v1_2&quot;</span><span class="p">:</span> <span class="n">_error_payload</span><span class="p">(</span><span class="n">stage</span><span class="o">=</span><span class="s2">&quot;nemotron_parse_actor_call&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">)}]</span></div>
+
+
+
+<div class="viewcode-block" id="NemotronParseActor">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.parse.html#nemo_retriever.parse.nemotron_parse.NemotronParseActor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NemotronParseActor</span><span class="p">(</span><span class="n">ArchetypeOperator</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Graph-facing Nemotron Parse archetype.&quot;&quot;&quot;</span>
+
+    <span class="n">_cpu_variant_class</span> <span class="o">=</span> <span class="n">NemotronParseCPUActor</span>
+    <span class="n">_gpu_variant_class</span> <span class="o">=</span> <span class="n">NemotronParseGPUActor</span>
+
+<div class="viewcode-block" id="NemotronParseActor.prefers_cpu_variant">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.parse.html#nemo_retriever.parse.nemotron_parse.NemotronParseActor.prefers_cpu_variant">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">prefers_cpu_variant</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">operator_kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+        <span class="n">kwargs</span> <span class="o">=</span> <span class="n">operator_kwargs</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;nemotron_parse_invoke_url&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;invoke_url&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">extract_text</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">extract_tables</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">extract_charts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">extract_infographics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">nemotron_parse_invoke_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">nemotron_parse_model</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">invoke_url</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">api_key</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">request_timeout_s</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">120.0</span><span class="p">,</span>
+        <span class="n">task_prompt</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">NEMOTRON_PARSE_DEFAULT_TASK_PROMPT</span><span class="p">,</span>
+        <span class="n">remote_max_pool_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="n">remote_max_retries</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+        <span class="n">remote_max_429_retries</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">extract_text</span><span class="o">=</span><span class="n">extract_text</span><span class="p">,</span>
+            <span class="n">extract_tables</span><span class="o">=</span><span class="n">extract_tables</span><span class="p">,</span>
+            <span class="n">extract_charts</span><span class="o">=</span><span class="n">extract_charts</span><span class="p">,</span>
+            <span class="n">extract_infographics</span><span class="o">=</span><span class="n">extract_infographics</span><span class="p">,</span>
+            <span class="n">nemotron_parse_invoke_url</span><span class="o">=</span><span class="n">nemotron_parse_invoke_url</span><span class="p">,</span>
+            <span class="n">nemotron_parse_model</span><span class="o">=</span><span class="n">nemotron_parse_model</span><span class="p">,</span>
+            <span class="n">invoke_url</span><span class="o">=</span><span class="n">invoke_url</span><span class="p">,</span>
+            <span class="n">api_key</span><span class="o">=</span><span class="n">api_key</span><span class="p">,</span>
+            <span class="n">request_timeout_s</span><span class="o">=</span><span class="n">request_timeout_s</span><span class="p">,</span>
+            <span class="n">task_prompt</span><span class="o">=</span><span class="n">task_prompt</span><span class="p">,</span>
+            <span class="n">remote_max_pool_workers</span><span class="o">=</span><span class="n">remote_max_pool_workers</span><span class="p">,</span>
+            <span class="n">remote_max_retries</span><span class="o">=</span><span class="n">remote_max_retries</span><span class="p">,</span>
+            <span class="n">remote_max_429_retries</span><span class="o">=</span><span class="n">remote_max_429_retries</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

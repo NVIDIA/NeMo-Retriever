@@ -1,0 +1,873 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.harness.config &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/harness/config';</script>
+
+    <link rel="icon" href="../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.harness.config</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.harness.config</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>
+
+<span class="n">NEMO_RETRIEVER_ROOT</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span><span class="o">.</span><span class="n">parents</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+<span class="n">REPO_ROOT</span> <span class="o">=</span> <span class="n">NEMO_RETRIEVER_ROOT</span><span class="o">.</span><span class="n">parent</span>
+<span class="n">DEFAULT_TEST_CONFIG_PATH</span> <span class="o">=</span> <span class="n">NEMO_RETRIEVER_ROOT</span> <span class="o">/</span> <span class="s2">&quot;harness&quot;</span> <span class="o">/</span> <span class="s2">&quot;test_configs.yaml&quot;</span>
+<span class="n">DEFAULT_NIGHTLY_CONFIG_PATH</span> <span class="o">=</span> <span class="n">NEMO_RETRIEVER_ROOT</span> <span class="o">/</span> <span class="s2">&quot;harness&quot;</span> <span class="o">/</span> <span class="s2">&quot;nightly_config.yaml&quot;</span>
+<span class="n">VALID_RECALL_ADAPTERS</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;none&quot;</span><span class="p">,</span> <span class="s2">&quot;page_plus_one&quot;</span><span class="p">,</span> <span class="s2">&quot;financebench_json&quot;</span><span class="p">}</span>
+<span class="n">DEFAULT_NIGHTLY_SLACK_METRIC_KEYS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;pages&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ingest_secs&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;pages_per_sec_ingest&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;recall_5&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+<span class="n">TUNING_FIELDS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;pdf_extract_workers&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;pdf_extract_num_cpus&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;pdf_extract_batch_size&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;pdf_split_batch_size&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;page_elements_batch_size&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;page_elements_workers&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ocr_workers&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ocr_batch_size&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;embed_workers&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;embed_batch_size&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;page_elements_cpus_per_actor&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ocr_cpus_per_actor&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;embed_cpus_per_actor&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;gpu_page_elements&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;gpu_ocr&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;gpu_embed&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<div class="viewcode-block" id="HarnessConfig">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.config.HarnessConfig">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">HarnessConfig</span><span class="p">:</span>
+    <span class="n">dataset_dir</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">dataset_label</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">preset</span><span class="p">:</span> <span class="nb">str</span>
+
+    <span class="n">query_csv</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">input_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;pdf&quot;</span>
+    <span class="n">recall_required</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">recall_match_mode</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;pdf_page&quot;</span>
+    <span class="n">recall_adapter</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;none&quot;</span>
+
+    <span class="n">artifacts_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">ray_address</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">lancedb_uri</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;lancedb&quot;</span>
+    <span class="n">hybrid</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">embed_model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;nvidia/llama-nemotron-embed-1b-v2&quot;</span>
+    <span class="n">write_detection_file</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="n">pdf_extract_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">8</span>
+    <span class="n">pdf_extract_num_cpus</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">2.0</span>
+    <span class="n">pdf_extract_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">4</span>
+    <span class="n">pdf_split_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">page_elements_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">4</span>
+    <span class="n">page_elements_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span>
+    <span class="n">ocr_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span>
+    <span class="n">ocr_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span>
+    <span class="n">embed_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span>
+    <span class="n">embed_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">256</span>
+    <span class="n">page_elements_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">ocr_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">embed_cpus_per_actor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">gpu_page_elements</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.1</span>
+    <span class="n">gpu_ocr</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.1</span>
+    <span class="n">gpu_embed</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.25</span>
+
+<div class="viewcode-block" id="HarnessConfig.validate">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.config.HarnessConfig.validate">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+        <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">dataset_dir</span><span class="p">:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;dataset_dir is required&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">Path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dataset_dir</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;dataset_dir does not exist: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">dataset_dir</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">query_csv</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">Path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">query_csv</span><span class="p">)</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;query_csv does not exist: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">query_csv</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">recall_required</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">query_csv</span><span class="p">:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;recall_required=true requires query_csv&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;pdf&quot;</span><span class="p">,</span> <span class="s2">&quot;txt&quot;</span><span class="p">,</span> <span class="s2">&quot;html&quot;</span><span class="p">,</span> <span class="s2">&quot;doc&quot;</span><span class="p">}:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;input_type must be one of pdf/txt/html/doc, got &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">input_type</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">recall_match_mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;pdf_page&quot;</span><span class="p">,</span> <span class="s2">&quot;pdf_only&quot;</span><span class="p">}:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;recall_match_mode must be one of pdf_page/pdf_only&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">recall_adapter</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">VALID_RECALL_ADAPTERS</span><span class="p">:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;recall_adapter must be one of </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">VALID_RECALL_ADAPTERS</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">TUNING_FIELDS</span><span class="p">:</span>
+            <span class="n">val</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;gpu_&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">float</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.0</span><span class="p">:</span>
+                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> must be &gt;= 0.0&quot;</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;_workers&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> must be &gt;= 1&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">errors</span></div>
+</div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_parse_bool</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;1&quot;</span><span class="p">,</span> <span class="s2">&quot;true&quot;</span><span class="p">,</span> <span class="s2">&quot;yes&quot;</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">,</span> <span class="s2">&quot;on&quot;</span><span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_parse_number</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="k">if</span> <span class="s2">&quot;.&quot;</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_config_path</span><span class="p">(</span><span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">default_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">config_file</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">default_path</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">config_file</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">p</span><span class="o">.</span><span class="n">is_absolute</span><span class="p">():</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="p">(</span><span class="n">Path</span><span class="o">.</span><span class="n">cwd</span><span class="p">()</span> <span class="o">/</span> <span class="n">p</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">p</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_yaml_mapping</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Config file not found: </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;YAML config must be a mapping/object at top-level: </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">data</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_path_like</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">base_path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">=</span> <span class="n">REPO_ROOT</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">p</span><span class="o">.</span><span class="n">is_absolute</span><span class="p">():</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="p">(</span><span class="n">base_path</span> <span class="o">/</span> <span class="n">p</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_dataset_dir_path</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">p</span><span class="o">.</span><span class="n">is_absolute</span><span class="p">():</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">((</span><span class="n">REPO_ROOT</span> <span class="o">/</span> <span class="n">p</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">())</span>
+
+    <span class="n">resolved</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">resolved</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">resolved</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">relative</span> <span class="o">=</span> <span class="n">resolved</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/datasets/nv-ingest&quot;</span><span class="p">))</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">resolved</span><span class="p">)</span>
+
+    <span class="n">user</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;USER&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">user</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">resolved</span><span class="p">)</span>
+
+    <span class="n">alternate</span> <span class="o">=</span> <span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;/raid&quot;</span><span class="p">)</span> <span class="o">/</span> <span class="n">user</span> <span class="o">/</span> <span class="n">relative</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">alternate</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">alternate</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">resolved</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_query_csv_path</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">config_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="n">p</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">is_absolute</span><span class="p">():</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">resolve</span><span class="p">())</span>
+
+    <span class="n">resolved_candidates</span> <span class="o">=</span> <span class="p">[(</span><span class="n">base</span> <span class="o">/</span> <span class="n">p</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span> <span class="k">for</span> <span class="n">base</span> <span class="ow">in</span> <span class="p">(</span><span class="n">config_path</span><span class="o">.</span><span class="n">parent</span><span class="p">,</span> <span class="n">REPO_ROOT</span><span class="p">)]</span>
+    <span class="k">for</span> <span class="n">candidate</span> <span class="ow">in</span> <span class="n">resolved_candidates</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">candidate</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">candidate</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">resolved_candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_apply_env_overrides</span><span class="p">(</span><span class="n">config_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">env_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;HARNESS_DATASET&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;dataset&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_DATASET_DIR&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;dataset_dir&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_PRESET&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;preset&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_QUERY_CSV&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;query_csv&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_INPUT_TYPE&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;input_type&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_RECALL_REQUIRED&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;recall_required&quot;</span><span class="p">,</span> <span class="n">_parse_bool</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_RECALL_MATCH_MODE&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;recall_match_mode&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_RECALL_ADAPTER&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;recall_adapter&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_ARTIFACTS_DIR&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;artifacts_dir&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_RAY_ADDRESS&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;ray_address&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_LANCEDB_URI&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;lancedb_uri&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_HYBRID&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;hybrid&quot;</span><span class="p">,</span> <span class="n">_parse_bool</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_EMBED_MODEL_NAME&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;embed_model_name&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span>
+        <span class="s2">&quot;HARNESS_WRITE_DETECTION_FILE&quot;</span><span class="p">:</span> <span class="p">(</span><span class="s2">&quot;write_detection_file&quot;</span><span class="p">,</span> <span class="n">_parse_bool</span><span class="p">),</span>
+    <span class="p">}</span>
+
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">TUNING_FIELDS</span><span class="p">:</span>
+        <span class="n">env_map</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;HARNESS_</span><span class="si">{</span><span class="n">key</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">_parse_number</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">env_key</span><span class="p">,</span> <span class="p">(</span><span class="n">cfg_key</span><span class="p">,</span> <span class="n">parser</span><span class="p">)</span> <span class="ow">in</span> <span class="n">env_map</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">raw</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="n">env_key</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">raw</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">raw</span> <span class="o">==</span> <span class="s2">&quot;&quot;</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">config_dict</span><span class="p">[</span><span class="n">cfg_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">parser</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_parse_cli_overrides</span><span class="p">(</span><span class="n">overrides</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">parsed</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">overrides</span> <span class="ow">or</span> <span class="p">[]:</span>
+        <span class="k">if</span> <span class="s2">&quot;=&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">item</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Override must be KEY=VALUE, got: </span><span class="si">{</span><span class="n">item</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">key</span><span class="p">,</span> <span class="n">raw_val</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;=&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="n">raw_val</span> <span class="o">=</span> <span class="n">raw_val</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">key</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid override key in: </span><span class="si">{</span><span class="n">item</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">low</span> <span class="o">=</span> <span class="n">raw_val</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">low</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;true&quot;</span><span class="p">,</span> <span class="s2">&quot;false&quot;</span><span class="p">}:</span>
+            <span class="n">parsed</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">_parse_bool</span><span class="p">(</span><span class="n">raw_val</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">parsed</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">_parse_number</span><span class="p">(</span><span class="n">raw_val</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                <span class="n">parsed</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">raw_val</span>
+    <span class="k">return</span> <span class="n">parsed</span>
+
+
+<div class="viewcode-block" id="load_harness_config">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.config.load_harness_config">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_harness_config</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">dataset</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">preset</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">sweep_overrides</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">cli_overrides</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">cli_recall_required</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">HarnessConfig</span><span class="p">:</span>
+    <span class="n">config_path</span> <span class="o">=</span> <span class="n">_resolve_config_path</span><span class="p">(</span><span class="n">config_file</span><span class="p">,</span> <span class="n">DEFAULT_TEST_CONFIG_PATH</span><span class="p">)</span>
+    <span class="n">yaml_cfg</span> <span class="o">=</span> <span class="n">_read_yaml_mapping</span><span class="p">(</span><span class="n">config_path</span><span class="p">)</span>
+
+    <span class="n">active</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">yaml_cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;active&quot;</span><span class="p">,</span> <span class="p">{}))</span>
+    <span class="n">datasets</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">yaml_cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;datasets&quot;</span><span class="p">,</span> <span class="p">{}))</span>
+    <span class="n">presets</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">yaml_cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;presets&quot;</span><span class="p">,</span> <span class="p">{}))</span>
+
+    <span class="n">sweep_data</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">sweep_overrides</span> <span class="ow">or</span> <span class="p">{})</span>
+    <span class="n">cli_override_map</span> <span class="o">=</span> <span class="n">_parse_cli_overrides</span><span class="p">(</span><span class="n">cli_overrides</span><span class="p">)</span>
+
+    <span class="n">dataset_ref</span> <span class="o">=</span> <span class="n">active</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;dataset&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s2">&quot;dataset&quot;</span> <span class="ow">in</span> <span class="n">sweep_data</span><span class="p">:</span>
+        <span class="n">dataset_ref</span> <span class="o">=</span> <span class="n">sweep_data</span><span class="p">[</span><span class="s2">&quot;dataset&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">dataset</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">dataset_ref</span> <span class="o">=</span> <span class="n">dataset</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;HARNESS_DATASET&quot;</span><span class="p">):</span>
+        <span class="n">dataset_ref</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;HARNESS_DATASET&quot;</span><span class="p">]</span>
+
+    <span class="n">preset_ref</span> <span class="o">=</span> <span class="n">active</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;preset&quot;</span><span class="p">,</span> <span class="s2">&quot;single_gpu&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s2">&quot;preset&quot;</span> <span class="ow">in</span> <span class="n">sweep_data</span><span class="p">:</span>
+        <span class="n">preset_ref</span> <span class="o">=</span> <span class="n">sweep_data</span><span class="p">[</span><span class="s2">&quot;preset&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">preset</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">preset_ref</span> <span class="o">=</span> <span class="n">preset</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;HARNESS_PRESET&quot;</span><span class="p">):</span>
+        <span class="n">preset_ref</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;HARNESS_PRESET&quot;</span><span class="p">]</span>
+
+    <span class="n">merged</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">active</span><span class="p">)</span>
+    <span class="n">merged</span><span class="p">[</span><span class="s2">&quot;preset&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">preset_ref</span>
+
+    <span class="n">dataset_label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">dataset_ref</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">dataset_ref</span> <span class="ow">in</span> <span class="n">datasets</span><span class="p">:</span>
+            <span class="n">dataset_label</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">dataset_ref</span><span class="p">)</span>
+            <span class="n">dataset_cfg</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">datasets</span><span class="p">[</span><span class="n">dataset_ref</span><span class="p">])</span>
+            <span class="n">path_val</span> <span class="o">=</span> <span class="n">dataset_cfg</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;path&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">path_val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">merged</span><span class="p">[</span><span class="s2">&quot;dataset_dir&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path_val</span><span class="p">)</span>
+            <span class="n">merged</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">dataset_cfg</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">dataset_label</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">dataset_ref</span><span class="p">))</span><span class="o">.</span><span class="n">name</span>
+            <span class="n">merged</span><span class="p">[</span><span class="s2">&quot;dataset_dir&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">dataset_ref</span><span class="p">)</span>
+
+    <span class="n">preset_values</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">presets</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">preset_ref</span><span class="p">),</span> <span class="p">{}))</span>
+    <span class="n">merged</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">preset_values</span><span class="p">)</span>
+    <span class="n">merged</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">sweep_data</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;dataset&quot;</span><span class="p">,</span> <span class="s2">&quot;preset&quot;</span><span class="p">}})</span>
+    <span class="n">merged</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">cli_override_map</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">cli_recall_required</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">merged</span><span class="p">[</span><span class="s2">&quot;recall_required&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cli_recall_required</span>
+    <span class="n">_apply_env_overrides</span><span class="p">(</span><span class="n">merged</span><span class="p">)</span>
+
+    <span class="n">dataset_dir</span> <span class="o">=</span> <span class="n">merged</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;dataset_dir&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">dataset_dir</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;dataset is required via active.dataset, --dataset, or sweep run&quot;</span><span class="p">)</span>
+    <span class="n">merged</span><span class="p">[</span><span class="s2">&quot;dataset_dir&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_resolve_dataset_dir_path</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">dataset_dir</span><span class="p">))</span>
+    <span class="n">merged</span><span class="p">[</span><span class="s2">&quot;query_csv&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_resolve_query_csv_path</span><span class="p">(</span><span class="n">merged</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;query_csv&quot;</span><span class="p">),</span> <span class="n">config_path</span><span class="o">=</span><span class="n">config_path</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">merged</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;artifacts_dir&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">merged</span><span class="p">[</span><span class="s2">&quot;artifacts_dir&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_resolve_path_like</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">merged</span><span class="p">[</span><span class="s2">&quot;artifacts_dir&quot;</span><span class="p">]),</span> <span class="n">REPO_ROOT</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">merged</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;lancedb_uri&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">merged</span><span class="p">[</span><span class="s2">&quot;lancedb_uri&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;lancedb&quot;</span>
+
+    <span class="n">merged</span><span class="p">[</span><span class="s2">&quot;dataset_label&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">dataset_label</span> <span class="ow">or</span> <span class="n">Path</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">merged</span><span class="p">[</span><span class="s2">&quot;dataset_dir&quot;</span><span class="p">]))</span><span class="o">.</span><span class="n">name</span>
+    <span class="n">merged</span><span class="p">[</span><span class="s2">&quot;preset&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">merged</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;preset&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;single_gpu&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="s2">&quot;query_csv&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">merged</span><span class="p">:</span>
+        <span class="n">merged</span><span class="p">[</span><span class="s2">&quot;query_csv&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">cfg</span> <span class="o">=</span> <span class="n">HarnessConfig</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">merged</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">HarnessConfig</span><span class="o">.</span><span class="n">__dataclass_fields__</span><span class="p">})</span>
+    <span class="n">errors</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">validate</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Configuration validation failed:</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  - </span><span class="si">{</span><span class="n">err</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">err</span> <span class="ow">in</span> <span class="n">errors</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">cfg</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_load_nightly_runs_from_mapping</span><span class="p">(</span><span class="n">yaml_cfg</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">config_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+    <span class="n">runs</span> <span class="o">=</span> <span class="n">yaml_cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;runs&quot;</span><span class="p">,</span> <span class="p">[])</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">runs</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&#39;runs&#39; must be a list in </span><span class="si">{</span><span class="n">config_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">normalized</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">run</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">runs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">run</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Run entry at index </span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2"> must be a mapping&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;dataset&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">run</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Run entry at index </span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2"> missing required key: dataset&quot;</span><span class="p">)</span>
+        <span class="n">normalized</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">run</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">normalized</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_nightly_slack_config</span><span class="p">(</span><span class="n">raw_cfg</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">config_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">raw_cfg</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">raw_cfg</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">raw_cfg</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&#39;slack&#39; must be a mapping in </span><span class="si">{</span><span class="n">config_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">metric_keys</span> <span class="o">=</span> <span class="n">raw_cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metric_keys&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">metric_keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">normalized_metric_keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">DEFAULT_NIGHTLY_SLACK_METRIC_KEYS</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">metric_keys</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">any</span><span class="p">(</span>
+            <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">item</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">metric_keys</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&#39;slack.metric_keys&#39; must be a list of non-empty strings in </span><span class="si">{</span><span class="n">config_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">normalized_metric_keys</span> <span class="o">=</span> <span class="p">[</span><span class="n">item</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">metric_keys</span><span class="p">]</span>
+
+    <span class="n">title</span> <span class="o">=</span> <span class="n">raw_cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;title&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">title</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">normalized_title</span> <span class="o">=</span> <span class="s2">&quot;nemo_retriever Nightly Harness&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">normalized_title</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">title</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">normalized_title</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&#39;slack.title&#39; must be a non-empty string in </span><span class="si">{</span><span class="n">config_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;enabled&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">raw_cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;enabled&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)),</span>
+        <span class="s2">&quot;title&quot;</span><span class="p">:</span> <span class="n">normalized_title</span><span class="p">,</span>
+        <span class="s2">&quot;post_artifact_paths&quot;</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">raw_cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;post_artifact_paths&quot;</span><span class="p">,</span> <span class="kc">True</span><span class="p">)),</span>
+        <span class="s2">&quot;metric_keys&quot;</span><span class="p">:</span> <span class="n">normalized_metric_keys</span><span class="p">,</span>
+    <span class="p">}</span>
+
+
+<div class="viewcode-block" id="load_nightly_config">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.config.load_nightly_config">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_nightly_config</span><span class="p">(</span><span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">config_path</span> <span class="o">=</span> <span class="n">_resolve_config_path</span><span class="p">(</span><span class="n">config_file</span><span class="p">,</span> <span class="n">DEFAULT_NIGHTLY_CONFIG_PATH</span><span class="p">)</span>
+    <span class="n">yaml_cfg</span> <span class="o">=</span> <span class="n">_read_yaml_mapping</span><span class="p">(</span><span class="n">config_path</span><span class="p">)</span>
+    <span class="n">preset</span> <span class="o">=</span> <span class="n">yaml_cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;preset&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">preset</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">preset</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">preset</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">preset</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&#39;preset&#39; must be a non-empty string in </span><span class="si">{</span><span class="n">config_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;config_path&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">config_path</span><span class="o">.</span><span class="n">resolve</span><span class="p">()),</span>
+        <span class="s2">&quot;preset&quot;</span><span class="p">:</span> <span class="n">preset</span><span class="p">,</span>
+        <span class="s2">&quot;runs&quot;</span><span class="p">:</span> <span class="n">_load_nightly_runs_from_mapping</span><span class="p">(</span><span class="n">yaml_cfg</span><span class="p">,</span> <span class="n">config_path</span><span class="p">),</span>
+        <span class="s2">&quot;slack&quot;</span><span class="p">:</span> <span class="n">_normalize_nightly_slack_config</span><span class="p">(</span><span class="n">yaml_cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;slack&quot;</span><span class="p">,</span> <span class="p">{}),</span> <span class="n">config_path</span><span class="p">),</span>
+    <span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="load_runs_config">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.harness.html#nemo_retriever.harness.config.load_runs_config">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_runs_config</span><span class="p">(</span><span class="n">config_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+    <span class="k">return</span> <span class="n">load_nightly_config</span><span class="p">(</span><span class="n">config_file</span><span class="p">)[</span><span class="s2">&quot;runs&quot;</span><span class="p">]</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

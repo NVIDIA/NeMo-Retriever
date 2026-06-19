@@ -1,0 +1,21 @@
+nemo\_retriever.tabular\_data.neo4j package
+===========================================
+
+Submodules
+----------
+
+nemo\_retriever.tabular\_data.neo4j.neo4j\_connection module
+------------------------------------------------------------
+
+.. automodule:: nemo_retriever.tabular_data.neo4j.neo4j_connection
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.tabular_data.neo4j
+   :members:
+   :show-inheritance:
+   :undoc-members:

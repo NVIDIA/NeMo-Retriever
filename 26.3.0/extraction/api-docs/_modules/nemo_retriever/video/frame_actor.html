@@ -1,0 +1,876 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.video.frame_actor &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/video/frame_actor';</script>
+
+    <link rel="icon" href="../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nemo-retriever/modules.html">nemo_retriever</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.html">nemo_retriever package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.adapters.html">nemo_retriever.adapters package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.adapters.cli.html">nemo_retriever.adapters.cli package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.api.html">nemo_retriever.api package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.application.html">nemo_retriever.application package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.application.pipeline.html">nemo_retriever.application.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.audio.html">nemo_retriever.audio package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.caption.html">nemo_retriever.caption package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.chart.html">nemo_retriever.chart package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.dedup.html">nemo_retriever.dedup package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.evaluation.html">nemo_retriever.evaluation package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.graph.html">nemo_retriever.graph package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.harness.html">nemo_retriever.harness package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.harness.portal.html">nemo_retriever.harness.portal package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.html.html">nemo_retriever.html package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.image.html">nemo_retriever.image package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.infographic.html">nemo_retriever.infographic package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.io.html">nemo_retriever.io package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.llm.html">nemo_retriever.llm package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.llm.clients.html">nemo_retriever.llm.clients package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.local.html">nemo_retriever.local package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.local.stages.html">nemo_retriever.local.stages package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.model.html">nemo_retriever.model package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.model.local.html">nemo_retriever.model.local package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.nim.html">nemo_retriever.nim package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.ocr.html">nemo_retriever.ocr package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.operators.html">nemo_retriever.operators package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.page_elements.html">nemo_retriever.page_elements package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.params.html">nemo_retriever.params package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.parse.html">nemo_retriever.parse package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.pdf.html">nemo_retriever.pdf package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.pipeline.html">nemo_retriever.pipeline package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.recall.html">nemo_retriever.recall package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.rerank.html">nemo_retriever.rerank package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.html">nemo_retriever.service package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.models.html">nemo_retriever.service.models package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.routers.html">nemo_retriever.service.routers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.services.html">nemo_retriever.service.services package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.service.utils.html">nemo_retriever.service.utils package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.html">nemo_retriever.skill_eval package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.configs.html">nemo_retriever.skill_eval.configs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.skill_eval.prompts.html">nemo_retriever.skill_eval.prompts package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.table.html">nemo_retriever.table package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.html">nemo_retriever.tabular_data package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.html">nemo_retriever.tabular_data.ingestion package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.neo4j.html">nemo_retriever.tabular_data.neo4j package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.tabular_data.retrieval.html">nemo_retriever.tabular_data.retrieval package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.text_embed.html">nemo_retriever.text_embed package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.txt.html">nemo_retriever.txt package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.html">nemo_retriever.utils package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.benchmark.html">nemo_retriever.utils.benchmark package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.compare.html">nemo_retriever.utils.compare package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.convert.html">nemo_retriever.utils.convert package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.image.html">nemo_retriever.utils.image package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.utils.pipeline.html">nemo_retriever.utils.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.vdb.html">nemo_retriever.vdb package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nemo-retriever/nemo_retriever.video.html">nemo_retriever.video package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.video.frame_actor</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.video.frame_actor</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">VideoFrameActor: Ray Data map_batches callable for video frame extraction.</span>
+
+<span class="sd">Consumes rows from rd.read_binary_files (path, bytes) and produces one row</span>
+<span class="sd">per frame with path, source_path, image_b64, bytes, page_number, metadata.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.audio.media_interface</span><span class="w"> </span><span class="kn">import</span> <span class="n">FFMPEG_DEPENDENCIES</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.audio.media_interface</span><span class="w"> </span><span class="kn">import</span> <span class="n">MediaInterface</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.audio.media_interface</span><span class="w"> </span><span class="kn">import</span> <span class="n">ensure_media_on_disk</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.audio.media_interface</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_ffmpeg_available</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.audio.media_interface</span><span class="w"> </span><span class="kn">import</span> <span class="n">media_dependency_error_message</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.graph.abstract_operator</span><span class="w"> </span><span class="kn">import</span> <span class="n">AbstractOperator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.graph.cpu_operator</span><span class="w"> </span><span class="kn">import</span> <span class="n">CPUOperator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.graph.designer</span><span class="w"> </span><span class="kn">import</span> <span class="n">designer_component</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">VideoFrameParams</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.video</span><span class="w"> </span><span class="kn">import</span> <span class="n">_content_types</span> <span class="k">as</span> <span class="n">_CT</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="c1"># Output columns for downstream (OCR, embed, VDB).</span>
+<span class="n">FRAME_COLUMNS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;path&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;source_path&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;image_b64&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;page_number&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;metadata&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;bytes&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;_content_type&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+
+<div class="viewcode-block" id="VideoFrameActor">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.video.html#nemo_retriever.video.frame_actor.VideoFrameActor">[docs]</a>
+<span class="nd">@designer_component</span><span class="p">(</span>
+    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;Video Frame Extractor&quot;</span><span class="p">,</span>
+    <span class="n">category</span><span class="o">=</span><span class="s2">&quot;Video&quot;</span><span class="p">,</span>
+    <span class="n">compute</span><span class="o">=</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span>
+    <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Extracts video frames at a fixed fps via ffmpeg&quot;</span><span class="p">,</span>
+    <span class="n">category_color</span><span class="o">=</span><span class="s2">&quot;#ff6b6b&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">VideoFrameActor</span><span class="p">(</span><span class="n">AbstractOperator</span><span class="p">,</span> <span class="n">CPUOperator</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Ray Data map_batches callable: DataFrame with path -&gt; DataFrame of frame rows.</span>
+
+<span class="sd">    Each output row has:</span>
+<span class="sd">      - ``path``: original video path (frames are not persisted on disk;</span>
+<span class="sd">        ``image_b64`` / ``bytes`` carry the pixels)</span>
+<span class="sd">      - ``source_path``: original video path</span>
+<span class="sd">      - ``image_b64``: base64-encoded frame image, JPEG by default</span>
+<span class="sd">      - ``bytes``: encoded frame image bytes, JPEG by default</span>
+<span class="sd">      - ``page_number``: frame index (0, 1, 2, ...)</span>
+<span class="sd">      - ``metadata``: dict with ``frame_timestamp_seconds``, ``segment_start_seconds``,</span>
+<span class="sd">        ``segment_end_seconds``, ``fps``, ``source_path``, ``modality=&quot;video_frame&quot;``,</span>
+<span class="sd">        ``_content_type=&quot;video_frame&quot;``.</span>
+
+<span class="sd">    Frames are streamed to disk to avoid OOM on long videos.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">VideoFrameParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_ffmpeg_available</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">media_dependency_error_message</span><span class="p">(</span><span class="s2">&quot;VideoFrameActor&quot;</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="n">FFMPEG_DEPENDENCIES</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_params</span> <span class="o">=</span> <span class="n">params</span> <span class="ow">or</span> <span class="n">VideoFrameParams</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_interface</span> <span class="o">=</span> <span class="n">MediaInterface</span><span class="p">()</span>
+
+<div class="viewcode-block" id="VideoFrameActor.preprocess">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.video.html#nemo_retriever.video.frame_actor.VideoFrameActor.preprocess">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">preprocess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">data</span></div>
+
+
+<div class="viewcode-block" id="VideoFrameActor.process">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.video.html#nemo_retriever.video.frame_actor.VideoFrameActor.process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">batch_df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="ow">or</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">FRAME_COLUMNS</span><span class="p">)</span>
+
+        <span class="n">out_rows</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;path&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">path_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">path_str</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+                <span class="k">continue</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">raw_bytes</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;bytes&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">Path</span><span class="p">(</span><span class="n">path_str</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">()</span> <span class="k">else</span> <span class="kc">None</span>
+                <span class="k">with</span> <span class="n">ensure_media_on_disk</span><span class="p">(</span><span class="n">path_str</span><span class="p">,</span> <span class="n">raw_bytes</span><span class="p">)</span> <span class="k">as</span> <span class="n">real_path</span><span class="p">:</span>
+                    <span class="n">frame_rows</span> <span class="o">=</span> <span class="n">_extract_one</span><span class="p">(</span><span class="n">real_path</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_params</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_interface</span><span class="p">,</span> <span class="n">source_path_override</span><span class="o">=</span><span class="n">path_str</span><span class="p">)</span>
+                    <span class="n">out_rows</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">frame_rows</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;Error extracting frames from </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">path_str</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+                <span class="k">continue</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">out_rows</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">FRAME_COLUMNS</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">out_rows</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="VideoFrameActor.postprocess">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.video.html#nemo_retriever.video.frame_actor.VideoFrameActor.postprocess">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">postprocess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">data</span></div>
+</div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_extract_one</span><span class="p">(</span>
+    <span class="n">source_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">params</span><span class="p">:</span> <span class="n">VideoFrameParams</span><span class="p">,</span>
+    <span class="n">interface</span><span class="p">:</span> <span class="n">MediaInterface</span><span class="p">,</span>
+    <span class="n">source_path_override</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract frames from one video file and return a list of row dicts.</span>
+
+<span class="sd">    *source_path* is the on-disk path ffmpeg reads.</span>
+<span class="sd">    *source_path_override* is the original user-facing filename stamped</span>
+<span class="sd">    into output columns when the on-disk path is a temporary spill file.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">display_path</span> <span class="o">=</span> <span class="n">source_path_override</span> <span class="ow">or</span> <span class="n">source_path</span>
+    <span class="n">fps</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">fps</span><span class="p">)</span>
+    <span class="n">half_window</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">/</span> <span class="n">fps</span>
+    <span class="k">with</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">TemporaryDirectory</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;retriever_video_frames_&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">tmpdir</span><span class="p">:</span>
+        <span class="n">frames</span> <span class="o">=</span> <span class="n">interface</span><span class="o">.</span><span class="n">extract_frames</span><span class="p">(</span>
+            <span class="n">source_path</span><span class="p">,</span>
+            <span class="n">tmpdir</span><span class="p">,</span>
+            <span class="n">fps</span><span class="o">=</span><span class="n">fps</span><span class="p">,</span>
+            <span class="n">max_frames</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">max_frames</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">frames</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;No frames extracted from </span><span class="si">%s</span><span class="s2"> (ffmpeg returned 0 files)&quot;</span><span class="p">,</span> <span class="n">display_path</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="n">rows</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="p">(</span><span class="n">frame_path</span><span class="p">,</span> <span class="n">timestamp</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">frames</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">frame_path</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                    <span class="n">frame_bytes</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Could not read frame </span><span class="si">%s</span><span class="s2">: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">frame_path</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+                <span class="k">continue</span>
+            <span class="n">image_b64</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">frame_bytes</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">)</span>
+            <span class="n">metadata</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;source_path&quot;</span><span class="p">:</span> <span class="n">display_path</span><span class="p">,</span>
+                <span class="s2">&quot;frame_index&quot;</span><span class="p">:</span> <span class="n">idx</span><span class="p">,</span>
+                <span class="s2">&quot;fps&quot;</span><span class="p">:</span> <span class="n">fps</span><span class="p">,</span>
+                <span class="s2">&quot;frame_timestamp_seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">timestamp</span><span class="p">),</span>
+                <span class="s2">&quot;segment_start_seconds&quot;</span><span class="p">:</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">timestamp</span><span class="p">)</span> <span class="o">-</span> <span class="n">half_window</span><span class="p">),</span>
+                <span class="s2">&quot;segment_end_seconds&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">timestamp</span><span class="p">)</span> <span class="o">+</span> <span class="n">half_window</span><span class="p">,</span>
+                <span class="s2">&quot;modality&quot;</span><span class="p">:</span> <span class="n">_CT</span><span class="o">.</span><span class="n">VIDEO_FRAME</span><span class="p">,</span>
+                <span class="s2">&quot;_content_type&quot;</span><span class="p">:</span> <span class="n">_CT</span><span class="o">.</span><span class="n">VIDEO_FRAME</span><span class="p">,</span>
+            <span class="p">}</span>
+            <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">display_path</span><span class="p">,</span>
+                    <span class="s2">&quot;source_path&quot;</span><span class="p">:</span> <span class="n">display_path</span><span class="p">,</span>
+                    <span class="s2">&quot;image_b64&quot;</span><span class="p">:</span> <span class="n">image_b64</span><span class="p">,</span>
+                    <span class="s2">&quot;page_number&quot;</span><span class="p">:</span> <span class="n">idx</span><span class="p">,</span>
+                    <span class="s2">&quot;metadata&quot;</span><span class="p">:</span> <span class="n">metadata</span><span class="p">,</span>
+                    <span class="s2">&quot;bytes&quot;</span><span class="p">:</span> <span class="n">frame_bytes</span><span class="p">,</span>
+                    <span class="s2">&quot;_content_type&quot;</span><span class="p">:</span> <span class="n">_CT</span><span class="o">.</span><span class="n">VIDEO_FRAME</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">rows</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_dhash</span><span class="p">(</span><span class="n">image_b64</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">hash_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">8</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Difference-hash of a base64-encoded frame image, packed into a 64-bit integer.</span>
+
+<span class="sd">    Resize to ``(hash_size+1) x hash_size`` grayscale, compare each pixel to</span>
+<span class="sd">    its right neighbour, pack the results as bits. Two frames with similar</span>
+<span class="sd">    overall brightness layout end up close in Hamming distance, even if</span>
+<span class="sd">    individual pixel values differ from encoder noise. Returns ``None`` if</span>
+<span class="sd">    decoding fails so the caller can fall back to keeping the row.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">PIL</span><span class="w"> </span><span class="kn">import</span> <span class="n">Image</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">raw</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">image_b64</span><span class="p">)</span>
+        <span class="n">img</span> <span class="o">=</span> <span class="n">Image</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="s2">&quot;L&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">resize</span><span class="p">((</span><span class="n">hash_size</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">hash_size</span><span class="p">),</span> <span class="n">Image</span><span class="o">.</span><span class="n">LANCZOS</span><span class="p">)</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">img</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">diff</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[:,</span> <span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">arr</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:]</span>  <span class="c1"># (hash_size, hash_size) bool</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="o">.</span><span class="n">from_bytes</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">packbits</span><span class="p">(</span><span class="n">diff</span><span class="p">)</span><span class="o">.</span><span class="n">tobytes</span><span class="p">(),</span> <span class="s2">&quot;big&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_hamming</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">a</span> <span class="o">^</span> <span class="n">b</span><span class="p">)</span><span class="o">.</span><span class="n">bit_count</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_seg_field</span><span class="p">(</span><span class="n">md</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">md</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">md</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="ow">or</span> <span class="n">default</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">default</span>
+    <span class="k">return</span> <span class="n">default</span>
+
+
+<div class="viewcode-block" id="dedup_video_frames">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.video.html#nemo_retriever.video.frame_actor.dedup_video_frames">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">dedup_video_frames</span><span class="p">(</span>
+    <span class="n">batch_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">max_hamming_distance</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+    <span class="n">max_dropped_frames</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Collapse runs of perceptually-similar adjacent frames into one row each.</span>
+
+<span class="sd">    Per ``source_path``, frames are sorted by ``segment_start_seconds`` and</span>
+<span class="sd">    walked in order. A frame joins the current run when:</span>
+<span class="sd">      - its dhash is within ``max_hamming_distance`` bits of the run&#39;s hash, AND</span>
+<span class="sd">      - the gap to the run&#39;s current end is at most</span>
+<span class="sd">        ``max_dropped_frames / fps`` seconds (so a small number of dropped</span>
+<span class="sd">        frames in the middle is tolerated, but a long disappearance closes the run).</span>
+<span class="sd">    The run&#39;s first frame is kept; its ``segment_end_seconds`` (and</span>
+<span class="sd">    ``frame_timestamp_seconds`` midpoint) is extended to span the whole run.</span>
+<span class="sd">    Other frames in the run are dropped.</span>
+
+<span class="sd">    Without the time-window extension the kept row would say a slide was</span>
+<span class="sd">    visible only for its first frame (e.g. [2.0, 4.0]) even when it stayed</span>
+<span class="sd">    on screen for minutes — utterances during that span would miss the</span>
+<span class="sd">    midpoint-overlap recall match. This function fixes that.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">batch_df</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="ow">or</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">batch_df</span>
+    <span class="k">if</span> <span class="s2">&quot;image_b64&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">batch_df</span>
+
+    <span class="n">threshold</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">max_hamming_distance</span><span class="p">))</span>
+    <span class="n">max_drop</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">max_dropped_frames</span><span class="p">))</span>
+
+    <span class="n">work</span> <span class="o">=</span> <span class="n">batch_df</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">work</span><span class="p">[</span><span class="s2">&quot;__seg_start&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">work</span><span class="p">[</span><span class="s2">&quot;metadata&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">m</span><span class="p">:</span> <span class="n">_seg_field</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="s2">&quot;segment_start_seconds&quot;</span><span class="p">))</span>
+
+    <span class="n">output_rows</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">_source</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">work</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">&quot;source_path&quot;</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">group</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;__seg_start&quot;</span><span class="p">)</span>
+        <span class="n">active_hash</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">active_idx</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># index in output_rows</span>
+        <span class="n">active_end</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">group</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+            <span class="n">md</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metadata&quot;</span><span class="p">)</span>
+            <span class="n">row_start</span> <span class="o">=</span> <span class="n">_seg_field</span><span class="p">(</span><span class="n">md</span><span class="p">,</span> <span class="s2">&quot;segment_start_seconds&quot;</span><span class="p">)</span>
+            <span class="n">row_end</span> <span class="o">=</span> <span class="n">_seg_field</span><span class="p">(</span><span class="n">md</span><span class="p">,</span> <span class="s2">&quot;segment_end_seconds&quot;</span><span class="p">)</span>
+            <span class="n">fps</span> <span class="o">=</span> <span class="n">_seg_field</span><span class="p">(</span><span class="n">md</span><span class="p">,</span> <span class="s2">&quot;fps&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">1.0</span>
+            <span class="n">b64</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;image_b64&quot;</span><span class="p">)</span>
+
+            <span class="n">row_dict</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+            <span class="n">row_dict</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;__seg_start&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+            <span class="n">h</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">b64</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">b64</span><span class="p">:</span>
+                <span class="n">h</span> <span class="o">=</span> <span class="n">_dhash</span><span class="p">(</span><span class="n">b64</span><span class="p">)</span>
+
+            <span class="n">max_gap</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">max_drop</span><span class="p">)</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">fps</span><span class="p">,</span> <span class="mf">0.001</span><span class="p">)</span>
+            <span class="n">can_merge</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">active_hash</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                <span class="ow">and</span> <span class="n">h</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                <span class="ow">and</span> <span class="n">active_end</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                <span class="ow">and</span> <span class="n">_hamming</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">active_hash</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">threshold</span>
+                <span class="ow">and</span> <span class="p">(</span><span class="n">row_start</span> <span class="o">-</span> <span class="n">active_end</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">max_gap</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">can_merge</span><span class="p">:</span>
+                <span class="c1"># Extend the kept run&#39;s window through this frame; mutate</span>
+                <span class="c1"># the kept metadata in place rather than copying it each merge.</span>
+                <span class="n">kept_md</span> <span class="o">=</span> <span class="n">output_rows</span><span class="p">[</span><span class="n">active_idx</span><span class="p">][</span><span class="s2">&quot;metadata&quot;</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">row_end</span> <span class="o">&gt;</span> <span class="nb">float</span><span class="p">(</span><span class="n">kept_md</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;segment_end_seconds&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">):</span>
+                    <span class="n">kept_md</span><span class="p">[</span><span class="s2">&quot;segment_end_seconds&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">row_end</span>
+                    <span class="n">start</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">kept_md</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;segment_start_seconds&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="mf">0.0</span><span class="p">)</span>
+                    <span class="n">kept_md</span><span class="p">[</span><span class="s2">&quot;frame_timestamp_seconds&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="n">row_end</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.0</span>
+                <span class="n">kept_md</span><span class="p">[</span><span class="s2">&quot;dedup_merged_count&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">kept_md</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;dedup_merged_count&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span> <span class="o">+</span> <span class="mi">1</span>
+                <span class="n">active_end</span> <span class="o">=</span> <span class="n">row_end</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Detach metadata into a fresh dict so subsequent in-place mutations</span>
+                <span class="c1"># don&#39;t leak back into the source DataFrame&#39;s row.</span>
+                <span class="n">md</span> <span class="o">=</span> <span class="n">row_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metadata&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">md</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+                    <span class="n">row_dict</span><span class="p">[</span><span class="s2">&quot;metadata&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">md</span><span class="p">)</span>
+                <span class="n">output_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row_dict</span><span class="p">)</span>
+                <span class="n">active_idx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">output_rows</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+                <span class="n">active_end</span> <span class="o">=</span> <span class="n">row_end</span>
+                <span class="n">active_hash</span> <span class="o">=</span> <span class="n">h</span>  <span class="c1"># may be None for unhashable frames; that breaks the run</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">output_rows</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">output_rows</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="video_path_to_frames_df">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.video.html#nemo_retriever.video.frame_actor.video_path_to_frames_df">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">video_path_to_frames_df</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">VideoFrameParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Synchronous loader: one video file path -&gt; DataFrame of frame rows.</span>
+
+<span class="sd">    Columns match :data:`FRAME_COLUMNS`. Used by inprocess ingest() when</span>
+<span class="sd">    ``_pipeline_type == &quot;video&quot;``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_ffmpeg_available</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">media_dependency_error_message</span><span class="p">(</span><span class="s2">&quot;video_path_to_frames_df&quot;</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="n">FFMPEG_DEPENDENCIES</span><span class="p">))</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="n">params</span> <span class="ow">or</span> <span class="n">VideoFrameParams</span><span class="p">()</span>
+    <span class="n">interface</span> <span class="o">=</span> <span class="n">MediaInterface</span><span class="p">()</span>
+    <span class="n">rows</span> <span class="o">=</span> <span class="n">_extract_one</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">interface</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">rows</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">FRAME_COLUMNS</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

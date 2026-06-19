@@ -1,0 +1,29 @@
+nemo\_retriever.txt package
+===========================
+
+Submodules
+----------
+
+nemo\_retriever.txt.ray\_data module
+------------------------------------
+
+.. automodule:: nemo_retriever.txt.ray_data
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.txt.split module
+--------------------------------
+
+.. automodule:: nemo_retriever.txt.split
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.txt
+   :members:
+   :show-inheritance:
+   :undoc-members:

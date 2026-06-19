@@ -1,0 +1,761 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.ingestor &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/ingestor';</script>
+
+    <link rel="icon" href="../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.ingestor</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.ingestor</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">System-facing ingestion interface.</span>
+
+<span class="sd">This module defines the public API surface for building and executing ingestion.</span>
+<span class="sd">Concrete implementations are provided by runmodes:</span>
+
+<span class="sd">- inprocess: local Python process, no framework assumptions</span>
+<span class="sd">- batch: large-scale batch execution</span>
+<span class="sd">- fused: low-latency single-actor GPU model fusion</span>
+<span class="sd">- online: low-latency, multi-request serving</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.application.modes.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_runmode_ingestor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">EmbedParams</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">ExtractParams</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">TextChunkParams</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">IngestExecuteParams</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">IngestorCreateParams</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunMode</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">nemo_retriever.params</span><span class="w"> </span><span class="kn">import</span> <span class="n">VdbUploadParams</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_merge_params</span><span class="p">[</span><span class="n">T</span><span class="p">](</span><span class="n">params</span><span class="p">:</span> <span class="n">T</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">T</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">kwargs</span>  <span class="c1"># type: ignore[return-value]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">kwargs</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">params</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="s2">&quot;model_copy&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">params</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="n">kwargs</span><span class="p">)</span>  <span class="c1"># type: ignore[return-value]</span>
+    <span class="k">return</span> <span class="n">params</span>
+
+
+<div class="viewcode-block" id="create_ingestor">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.api.html#nemo_retriever.ingestor.create_ingestor">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_ingestor</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">run_mode</span><span class="p">:</span> <span class="n">RunMode</span> <span class="o">=</span> <span class="s2">&quot;inprocess&quot;</span><span class="p">,</span>
+    <span class="n">params</span><span class="p">:</span> <span class="n">IngestorCreateParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Ingestor&quot;</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Factory for selecting an ingestion runmode implementation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">merged</span> <span class="o">=</span> <span class="n">_merge_params</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">merged</span><span class="p">,</span> <span class="n">IngestorCreateParams</span><span class="p">):</span>
+        <span class="n">parsed</span> <span class="o">=</span> <span class="n">merged</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">parsed</span> <span class="o">=</span> <span class="n">IngestorCreateParams</span><span class="p">(</span><span class="o">**</span><span class="n">merged</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">create_runmode_ingestor</span><span class="p">(</span><span class="n">run_mode</span><span class="o">=</span><span class="n">run_mode</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">parsed</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="ingestor">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ingestor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Interface base class. All methods intentionally raise NotImplementedError.</span>
+
+<span class="sd">    Each runmode should subclass this and eventually provide working behavior.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">RUN_MODE</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;interface&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">documents</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_documents</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">documents</span> <span class="ow">or</span> <span class="p">[])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_buffers</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">BytesIO</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_not_implemented</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;None&quot;</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">method_name</span><span class="si">}</span><span class="s2">() is not implemented yet &quot;</span> <span class="sa">f</span><span class="s2">&quot;(run_mode=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">RUN_MODE</span><span class="si">}</span><span class="s2">).&quot;</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="ingestor.files">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.files">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">files</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">documents</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Add document paths/URIs for processing.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;files&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.buffers">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.buffers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">buffers</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">buffers</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">BytesIO</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">BytesIO</span><span class="p">]]])</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Add in-memory buffers for processing.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;buffers&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.load">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.load">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Placeholder for remote fetch/localization.</span>
+
+<span class="sd">        The client-side Ingestor supports downloading remote URIs locally.</span>
+<span class="sd">        In this system, each runmode may handle remote inputs differently.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;load&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.ingest">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.ingest">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ingest</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">params</span><span class="p">:</span> <span class="n">IngestExecuteParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="o">...</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute the configured ingestion pipeline (placeholder).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">_</span> <span class="o">=</span> <span class="n">_merge_params</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;ingest&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.ingest_async">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.ingest_async">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ingest_async</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">return_failures</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">return_traces</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Asynchronously execute ingestion (placeholder).&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;ingest_async&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.all_tasks">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.all_tasks">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">all_tasks</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record the default task chain (placeholder).&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;all_tasks&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.dedup">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.dedup">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">dedup</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record a dedup task configuration.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;dedup&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.embed">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.embed">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">embed</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">EmbedParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record an embedding task configuration.&quot;&quot;&quot;</span>
+        <span class="n">_</span> <span class="o">=</span> <span class="n">_merge_params</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;embed&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.extract">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.extract">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">extract</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">ExtractParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record an extract task configuration.&quot;&quot;&quot;</span>
+        <span class="n">_</span> <span class="o">=</span> <span class="n">_merge_params</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;extract&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.extract_image_files">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.extract_image_files">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">extract_image_files</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">ExtractParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record an extract-image-files task configuration.&quot;&quot;&quot;</span>
+        <span class="n">_</span> <span class="o">=</span> <span class="n">_merge_params</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;extract_image_files&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.filter">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.filter">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">filter</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record a filter task configuration.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;filter&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.split">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.split">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">split</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">TextChunkParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record a split task configuration.&quot;&quot;&quot;</span>
+        <span class="n">_</span> <span class="o">=</span> <span class="n">_merge_params</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;split&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.store">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.store">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">store</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record a store task configuration.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;store&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.store_embed">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.store_embed">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">store_embed</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record a store-embed task configuration.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;store_embed&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.udf">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.udf">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">udf</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">udf_function</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">udf_function_name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">phase</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">target_stage</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">run_before</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">run_after</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record a UDF task configuration.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;udf&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.vdb_upload">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.vdb_upload">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">vdb_upload</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="n">VdbUploadParams</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record a vector DB upload configuration (execution TBD).&quot;&quot;&quot;</span>
+        <span class="n">_</span> <span class="o">=</span> <span class="n">_merge_params</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;vdb_upload&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.save_intermediate_results">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.save_intermediate_results">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_intermediate_results</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record intermediate results persistence configuration.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;save_intermediate_results&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.save_to_disk">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.save_to_disk">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_to_disk</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">output_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">cleanup</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="n">compression</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;gzip&quot;</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record result persistence configuration (execution TBD).&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;save_to_disk&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.caption">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.caption">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">caption</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record a caption task configuration.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;caption&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.pdf_split_config">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.pdf_split_config">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">pdf_split_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pages_per_chunk</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">32</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ingestor&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record PDF split configuration (execution TBD).&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;pdf_split_config&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.completed_jobs">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.completed_jobs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">completed_jobs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return completed job count (placeholder until backend populates job state).&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;completed_jobs&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.failed_jobs">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.failed_jobs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">failed_jobs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return failed job count (placeholder until backend populates job state).&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;failed_jobs&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.cancelled_jobs">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.cancelled_jobs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cancelled_jobs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return cancelled job count (placeholder until backend populates job state).&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;cancelled_jobs&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.remaining_jobs">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.remaining_jobs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remaining_jobs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return remaining job count (placeholder until backend populates job state).&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;remaining_jobs&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ingestor.get_status">
+<a class="viewcode-back" href="../../nemo-retriever/nemo_retriever.html#nemo_retriever.ingestor.ingestor.get_status">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_status</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return per-document status mapping (placeholder).</span>
+
+<span class="sd">        Once Ray execution is wired, this should reflect actual job/task state.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_not_implemented</span><span class="p">(</span><span class="s2">&quot;get_status&quot;</span><span class="p">)</span></div>
+</div>
+
+
+
+<span class="c1"># Backward compatibility alias.</span>
+<span class="n">Ingestor</span> <span class="o">=</span> <span class="n">ingestor</span>
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>
