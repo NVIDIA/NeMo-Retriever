@@ -1,0 +1,53 @@
+nemo\_retriever.page\_elements package
+======================================
+
+Submodules
+----------
+
+nemo\_retriever.page\_elements.cpu\_actor module
+------------------------------------------------
+
+.. automodule:: nemo_retriever.page_elements.cpu_actor
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.page\_elements.gpu\_actor module
+------------------------------------------------
+
+.. automodule:: nemo_retriever.page_elements.gpu_actor
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.page\_elements.local module
+-------------------------------------------
+
+.. automodule:: nemo_retriever.page_elements.local
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.page\_elements.page\_elements module
+----------------------------------------------------
+
+.. automodule:: nemo_retriever.page_elements.page_elements
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.page\_elements.shared module
+--------------------------------------------
+
+.. automodule:: nemo_retriever.page_elements.shared
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.page_elements
+   :members:
+   :show-inheritance:
+   :undoc-members:

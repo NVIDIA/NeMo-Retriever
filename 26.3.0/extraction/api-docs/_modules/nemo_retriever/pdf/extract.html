@@ -1,0 +1,857 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.pdf.extract &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/pdf/extract';</script>
+
+    <link rel="icon" href="../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.pdf.extract</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.pdf.extract</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">BytesIO</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">traceback</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">nv_ingest_api.util.pdf.pdfium</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">convert_bitmap_to_corrected_numpy</span><span class="p">,</span>
+    <span class="n">is_scanned_page</span> <span class="k">as</span> <span class="n">_is_scanned_page</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">pypdfium2</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pdfium</span>
+<span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+    <span class="n">pdfium</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># type: ignore[assignment]</span>
+    <span class="n">_PDFIUM_IMPORT_ERROR</span> <span class="o">=</span> <span class="n">e</span>
+<span class="k">else</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+    <span class="n">_PDFIUM_IMPORT_ERROR</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+    <span class="n">np</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># type: ignore[assignment]</span>
+
+<span class="c1"># Default model input size used by nv-ingest for page-element detection.</span>
+<span class="n">_MODEL_INPUT_SIZE</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1024</span><span class="p">,</span> <span class="mi">1024</span><span class="p">)</span>
+
+<span class="c1"># Allowed render-mode values.</span>
+<span class="n">RenderMode</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;full_dpi&quot;</span><span class="p">,</span> <span class="s2">&quot;fit_to_model&quot;</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_compute_fit_to_model_scale</span><span class="p">(</span>
+    <span class="n">page</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="n">target_wh</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">_MODEL_INPUT_SIZE</span><span class="p">,</span>
+    <span class="n">max_dpi</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">300</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute a pdfium render scale that fits the page within *target_wh* pixels.</span>
+
+<span class="sd">    This mirrors the logic in ``nv_ingest_api.util.pdf.pdfium._compute_render_scale_to_fit``</span>
+<span class="sd">    combined with the ``min(base_scale, fit_scale)`` cap applied in</span>
+<span class="sd">    ``pdfium_pages_to_numpy`` when ``scale_tuple`` is provided.</span>
+
+<span class="sd">    For a US-Letter page (612×792 pt) fitting into 1024×1024 the result is</span>
+<span class="sd">    ``min(300/72, min(1024/612, 1024/792)) ≈ 1.293`` → ~93 effective DPI.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">target_w</span><span class="p">,</span> <span class="n">target_h</span> <span class="o">=</span> <span class="n">target_wh</span>
+    <span class="n">page_w</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">page</span><span class="o">.</span><span class="n">get_width</span><span class="p">())</span>
+    <span class="n">page_h</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">page</span><span class="o">.</span><span class="n">get_height</span><span class="p">())</span>
+    <span class="k">if</span> <span class="n">page_w</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">page_h</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">target_w</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">target_h</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">max_dpi</span><span class="p">)</span> <span class="o">/</span> <span class="mf">72.0</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">)</span>
+
+    <span class="n">fit_scale</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">target_w</span> <span class="o">/</span> <span class="n">page_w</span><span class="p">,</span> <span class="n">target_h</span> <span class="o">/</span> <span class="n">page_h</span><span class="p">),</span> <span class="mf">1e-3</span><span class="p">)</span>
+    <span class="n">base_scale</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">max_dpi</span><span class="p">)</span> <span class="o">/</span> <span class="mf">72.0</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="n">base_scale</span><span class="p">,</span> <span class="n">fit_scale</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_render_page_to_base64</span><span class="p">(</span>
+    <span class="n">page</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">dpi</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span>
+    <span class="n">image_format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;jpeg&quot;</span><span class="p">,</span>
+    <span class="n">jpeg_quality</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+    <span class="n">render_mode</span><span class="p">:</span> <span class="n">RenderMode</span> <span class="o">=</span> <span class="s2">&quot;fit_to_model&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Render a page and encode as JPEG or PNG.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    render_mode:</span>
+<span class="sd">        ``&quot;full_dpi&quot;`` – render at *dpi* (default 300 → 2550×3300 for US Letter).</span>
+<span class="sd">        ``&quot;fit_to_model&quot;`` – render at the nv-ingest fit-to-1024 scale (~93 DPI</span>
+<span class="sd">        for US Letter) so the raster is already close to the model&#39;s input size,</span>
+<span class="sd">        avoiding a large bilinear down-scale in ``resize_pad``.</span>
+
+<span class="sd">    Returns dict with:</span>
+<span class="sd">    - image_b64: str</span>
+<span class="sd">    - encoding: str (&quot;jpeg&quot; or &quot;png&quot;)</span>
+<span class="sd">    - orig_shape_hw: tuple[int,int] (H,W) of the rendered raster</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">render_mode</span> <span class="o">==</span> <span class="s2">&quot;fit_to_model&quot;</span><span class="p">:</span>
+        <span class="n">render_scale</span> <span class="o">=</span> <span class="n">_compute_fit_to_model_scale</span><span class="p">(</span><span class="n">page</span><span class="p">,</span> <span class="n">_MODEL_INPUT_SIZE</span><span class="p">,</span> <span class="n">max_dpi</span><span class="o">=</span><span class="n">dpi</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">render_scale</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">dpi</span><span class="p">)</span> <span class="o">/</span> <span class="mf">72.0</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">)</span>
+    <span class="n">bitmap</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="n">scale</span><span class="o">=</span><span class="n">render_scale</span><span class="p">)</span>
+
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">convert_bitmap_to_corrected_numpy</span><span class="p">(</span><span class="n">bitmap</span><span class="p">)</span>
+
+    <span class="n">orig_h</span><span class="p">,</span> <span class="n">orig_w</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+    <span class="c1"># Strip alpha channel (RGBA→RGB) for JPEG compatibility.</span>
+    <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span> <span class="ow">and</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[:,</span> <span class="p">:,</span> <span class="p">:</span><span class="mi">3</span><span class="p">]</span>
+
+    <span class="c1"># Encode.</span>
+    <span class="n">fmt</span> <span class="o">=</span> <span class="n">image_format</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">fmt</span> <span class="o">==</span> <span class="s2">&quot;jpeg&quot;</span><span class="p">:</span>
+        <span class="c1"># convert_bitmap_to_corrected_numpy returns RGB; OpenCV needs BGR.</span>
+        <span class="n">bgr</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">cvtColor</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">COLOR_RGB2BGR</span><span class="p">)</span>
+        <span class="n">ok</span><span class="p">,</span> <span class="n">buf</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">imencode</span><span class="p">(</span><span class="s2">&quot;.jpg&quot;</span><span class="p">,</span> <span class="n">bgr</span><span class="p">,</span> <span class="p">[</span><span class="n">cv2</span><span class="o">.</span><span class="n">IMWRITE_JPEG_QUALITY</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">jpeg_quality</span><span class="p">)])</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ok</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;cv2.imencode failed for JPEG&quot;</span><span class="p">)</span>
+        <span class="n">encoded_bytes</span> <span class="o">=</span> <span class="n">buf</span><span class="o">.</span><span class="n">tobytes</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># PNG with fast compression.</span>
+        <span class="n">bgr</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">cvtColor</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">cv2</span><span class="o">.</span><span class="n">COLOR_RGB2BGR</span><span class="p">)</span>
+        <span class="n">ok</span><span class="p">,</span> <span class="n">buf</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">imencode</span><span class="p">(</span><span class="s2">&quot;.png&quot;</span><span class="p">,</span> <span class="n">bgr</span><span class="p">,</span> <span class="p">[</span><span class="n">cv2</span><span class="o">.</span><span class="n">IMWRITE_PNG_COMPRESSION</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ok</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;cv2.imencode failed for PNG&quot;</span><span class="p">)</span>
+        <span class="n">encoded_bytes</span> <span class="o">=</span> <span class="n">buf</span><span class="o">.</span><span class="n">tobytes</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;image_b64&quot;</span><span class="p">:</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">encoded_bytes</span><span class="p">)</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;ascii&quot;</span><span class="p">),</span>
+        <span class="s2">&quot;encoding&quot;</span><span class="p">:</span> <span class="n">fmt</span><span class="p">,</span>
+        <span class="s2">&quot;orig_shape_hw&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">orig_h</span><span class="p">,</span> <span class="n">orig_w</span><span class="p">),</span>
+    <span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_error_record</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">source_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">stage</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">exc</span><span class="p">:</span> <span class="ne">BaseException</span><span class="p">,</span>
+    <span class="n">page_number</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="n">dpi</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return a single output record with the same shape as a normal page record,</span>
+<span class="sd">    but with error details in metadata.</span>
+
+<span class="sd">    This is used to prevent one PDF/page failure from aborting an entire Ray job.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">source_path</span><span class="p">,</span>
+        <span class="s2">&quot;page_number&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">page_number</span><span class="p">),</span>
+        <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;page_image&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="s2">&quot;images&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;tables&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;charts&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;infographics&quot;</span><span class="p">:</span> <span class="p">[],</span>
+        <span class="s2">&quot;metadata&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;has_text&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;needs_ocr&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;dpi&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">dpi</span><span class="p">),</span>
+            <span class="s2">&quot;source_path&quot;</span><span class="p">:</span> <span class="n">source_path</span><span class="p">,</span>
+            <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;stage&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">stage</span><span class="p">),</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="n">exc</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span>
+                <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">),</span>
+                <span class="c1"># Keep traceback as a string for debugging; consumers can drop it.</span>
+                <span class="s2">&quot;traceback&quot;</span><span class="p">:</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">traceback</span><span class="o">.</span><span class="n">format_exception</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">),</span> <span class="n">exc</span><span class="p">,</span> <span class="n">exc</span><span class="o">.</span><span class="n">__traceback__</span><span class="p">)),</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_extract_page_text</span><span class="p">(</span><span class="n">page</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Always extract text from the given page and return it as a raw string.</span>
+<span class="sd">    The caller decides whether to use per-page or doc-level logic.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">textpage</span> <span class="o">=</span> <span class="n">page</span><span class="o">.</span><span class="n">get_textpage</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">textpage</span><span class="o">.</span><span class="n">get_text_bounded</span><span class="p">()</span>
+
+
+<div class="viewcode-block" id="pdf_extraction">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.pdf.html#nemo_retriever.pdf.extract.pdf_extraction">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">pdf_extraction</span><span class="p">(</span>
+    <span class="n">pdf_binary</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="n">extract_text</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">extract_images</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">extract_tables</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">extract_charts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">extract_infographics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">dpi</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span>
+    <span class="n">image_format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;jpeg&quot;</span><span class="p">,</span>
+    <span class="n">jpeg_quality</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+    <span class="n">text_extraction_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;pdfium_hybrid&quot;</span><span class="p">,</span>
+    <span class="n">text_depth</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;page&quot;</span><span class="p">,</span>
+    <span class="n">render_mode</span><span class="p">:</span> <span class="n">RenderMode</span> <span class="o">=</span> <span class="s2">&quot;fit_to_model&quot;</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Here are the steps for pdf extraction that should be implemented:</span>
+<span class="sd">    1. Load the pdf from the binary data using pypdfium2</span>
+<span class="sd">    2. Iterate through each page of the pdf using pypdfium2</span>
+<span class="sd">    3. Extract the text from each page and save each page&#39;s text to a list of strings if extract_text is True</span>
+<span class="sd">    4. If extract_images, extract_tables, extract_charts, or extract_infographics are True, convert the page to a numpy array using pypdfium2 and convert it to a base64 string and save it to a list of strings.  # noqa: E501, W505</span>
+<span class="sd">    5. IF extract_text is True but pypdfium2 does not detect text on the page also convert the page to a numpy array using pypdfium2 so that it can later be passed to a OCR model and indicate this in the metadata.  # noqa: E501, W505</span>
+<span class="sd">    6. Return a list of dictionaries containing the text, images, tables, charts, infographics, and page numbers.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Allow callers to pass `method=` (the ExtractParams field name) as an</span>
+    <span class="c1"># alias for `text_extraction_method`.</span>
+    <span class="n">text_extraction_method</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;method&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="n">text_extraction_method</span>
+
+    <span class="c1"># Assumption: PDF splitting ran earlier and produced a dataset where each row</span>
+    <span class="c1"># contains a *single-page* PDF in the `&quot;bytes&quot;` column. We therefore open the</span>
+    <span class="c1"># document and only process page 0 for each row.</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pdf_binary</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">pdfium</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+            <span class="c1"># Best-effort: return error records for the whole batch rather than raising.</span>
+            <span class="n">outputs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">pdf_binary</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+                <span class="n">pdf_path</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="s2">&quot;path&quot;</span> <span class="ow">in</span> <span class="n">pdf_binary</span><span class="o">.</span><span class="n">columns</span> <span class="k">else</span> <span class="kc">None</span>
+                <span class="n">outputs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="n">_error_record</span><span class="p">(</span>
+                        <span class="n">source_path</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">)</span> <span class="k">if</span> <span class="n">pdf_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="n">stage</span><span class="o">=</span><span class="s2">&quot;import_pypdfium2&quot;</span><span class="p">,</span>
+                        <span class="n">exc</span><span class="o">=</span><span class="p">(</span>
+                            <span class="n">_PDFIUM_IMPORT_ERROR</span>
+                            <span class="k">if</span> <span class="n">_PDFIUM_IMPORT_ERROR</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                            <span class="k">else</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;pypdfium2 unavailable&quot;</span><span class="p">)</span>
+                        <span class="p">),</span>
+                        <span class="n">page_number</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                        <span class="n">dpi</span><span class="o">=</span><span class="n">dpi</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">return</span> <span class="n">outputs</span>
+
+        <span class="n">outputs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">pdf_binary</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+            <span class="n">pdf_bytes</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;bytes&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="s2">&quot;bytes&quot;</span> <span class="ow">in</span> <span class="n">pdf_binary</span><span class="o">.</span><span class="n">columns</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="n">pdf_path</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="s2">&quot;path&quot;</span> <span class="ow">in</span> <span class="n">pdf_binary</span><span class="o">.</span><span class="n">columns</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="n">page_number</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;page_number&quot;</span><span class="p">])</span> <span class="k">if</span> <span class="s2">&quot;page_number&quot;</span> <span class="ow">in</span> <span class="n">pdf_binary</span><span class="o">.</span><span class="n">columns</span> <span class="k">else</span> <span class="mi">1</span>
+            <span class="n">source_id</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;source_id&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="s2">&quot;source_id&quot;</span> <span class="ow">in</span> <span class="n">pdf_binary</span><span class="o">.</span><span class="n">columns</span> <span class="k">else</span> <span class="kc">None</span>
+
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pdf_bytes</span><span class="p">,</span> <span class="p">(</span><span class="nb">bytes</span><span class="p">,</span> <span class="nb">bytearray</span><span class="p">,</span> <span class="nb">memoryview</span><span class="p">)):</span>
+                    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported bytes payload type: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">pdf_bytes</span><span class="p">)</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+                <span class="c1"># Step 1: load the *single-page* PDF bytes.</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">doc</span> <span class="o">=</span> <span class="n">pdfium</span><span class="o">.</span><span class="n">PdfDocument</span><span class="p">(</span><span class="n">pdf_bytes</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="n">doc</span> <span class="o">=</span> <span class="n">pdfium</span><span class="o">.</span><span class="n">PdfDocument</span><span class="p">(</span><span class="n">BytesIO</span><span class="p">(</span><span class="nb">bytes</span><span class="p">(</span><span class="n">pdf_bytes</span><span class="p">)))</span>
+
+                <span class="c1"># TODO: Extend to support more image formats</span>
+                <span class="k">if</span> <span class="n">image_format</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;png&quot;</span><span class="p">,</span> <span class="s2">&quot;jpeg&quot;</span><span class="p">}:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported image_format: </span><span class="si">{</span><span class="n">image_format</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+                <span class="c1"># Step 2: process only the first page (single-page doc).</span>
+                <span class="n">page</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="c1"># we can safely assume page[0] only because pre-splitting has already occurred.</span>
+                    <span class="n">page</span> <span class="o">=</span> <span class="n">doc</span><span class="o">.</span><span class="n">get_page</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                    <span class="n">is_scanned_page</span> <span class="o">=</span> <span class="n">_is_scanned_page</span><span class="p">(</span><span class="n">page</span><span class="p">)</span>
+
+                    <span class="n">ocr_extraction_needed_for_text</span> <span class="o">=</span> <span class="n">extract_text</span> <span class="ow">and</span> <span class="p">(</span>
+                        <span class="p">(</span><span class="n">text_extraction_method</span> <span class="o">==</span> <span class="s2">&quot;pdfium_hybrid&quot;</span> <span class="ow">and</span> <span class="n">is_scanned_page</span><span class="p">)</span>
+                        <span class="ow">or</span> <span class="n">text_extraction_method</span> <span class="o">==</span> <span class="s2">&quot;ocr&quot;</span>
+                    <span class="p">)</span>
+
+                    <span class="c1"># extraction_needed_for_structured = (</span>
+                    <span class="c1">#     extract_tables or extract_charts or extract_infographics</span>
+                    <span class="c1"># )  # noqa: F841</span>
+
+                    <span class="c1"># Default to empty so scanned/OCR pages don&#39;t hit a NameError below.</span>
+                    <span class="n">text</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+                    <span class="c1"># Text extraction</span>
+                    <span class="k">if</span> <span class="n">extract_text</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">ocr_extraction_needed_for_text</span><span class="p">:</span>
+                        <span class="n">page_text</span> <span class="o">=</span> <span class="n">_extract_page_text</span><span class="p">(</span><span class="n">page</span><span class="p">)</span>
+                        <span class="c1"># TODO: Tiddy up logic here for document depth option</span>
+                        <span class="k">if</span> <span class="n">text_depth</span> <span class="o">==</span> <span class="s2">&quot;page&quot;</span><span class="p">:</span>
+                            <span class="n">text</span> <span class="o">=</span> <span class="n">page_text</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="n">text</span> <span class="o">=</span> <span class="n">page_text</span>
+
+                    <span class="n">has_text</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span> <span class="k">if</span> <span class="n">extract_text</span> <span class="k">else</span> <span class="kc">False</span>
+
+                    <span class="n">want_any_raster</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span>
+                        <span class="n">extract_images</span>
+                        <span class="ow">or</span> <span class="n">extract_tables</span>
+                        <span class="ow">or</span> <span class="n">extract_charts</span>
+                        <span class="ow">or</span> <span class="n">extract_infographics</span>
+                        <span class="ow">or</span> <span class="n">ocr_extraction_needed_for_text</span>
+                    <span class="p">)</span>
+                    <span class="n">render_info</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+                    <span class="k">if</span> <span class="n">want_any_raster</span><span class="p">:</span>
+                        <span class="n">render_info</span> <span class="o">=</span> <span class="n">_render_page_to_base64</span><span class="p">(</span>
+                            <span class="n">page</span><span class="p">,</span>
+                            <span class="n">dpi</span><span class="o">=</span><span class="n">dpi</span><span class="p">,</span>
+                            <span class="n">image_format</span><span class="o">=</span><span class="n">image_format</span><span class="p">,</span>
+                            <span class="n">jpeg_quality</span><span class="o">=</span><span class="n">jpeg_quality</span><span class="p">,</span>
+                            <span class="n">render_mode</span><span class="o">=</span><span class="n">render_mode</span><span class="p">,</span>
+                        <span class="p">)</span>
+
+                    <span class="n">page_record</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                        <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">pdf_path</span><span class="p">,</span>
+                        <span class="s2">&quot;page_number&quot;</span><span class="p">:</span> <span class="n">page_number</span><span class="p">,</span>
+                        <span class="s2">&quot;source_id&quot;</span><span class="p">:</span> <span class="n">source_id</span><span class="p">,</span>
+                        <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">text</span> <span class="k">if</span> <span class="n">extract_text</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;page_image&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="s2">&quot;images&quot;</span><span class="p">:</span> <span class="p">[],</span>
+                        <span class="s2">&quot;tables&quot;</span><span class="p">:</span> <span class="p">[],</span>
+                        <span class="s2">&quot;charts&quot;</span><span class="p">:</span> <span class="p">[],</span>
+                        <span class="s2">&quot;infographics&quot;</span><span class="p">:</span> <span class="p">[],</span>
+                        <span class="s2">&quot;metadata&quot;</span><span class="p">:</span> <span class="p">{</span>
+                            <span class="s2">&quot;has_text&quot;</span><span class="p">:</span> <span class="n">has_text</span><span class="p">,</span>
+                            <span class="s2">&quot;needs_ocr_for_text&quot;</span><span class="p">:</span> <span class="n">ocr_extraction_needed_for_text</span><span class="p">,</span>
+                            <span class="s2">&quot;dpi&quot;</span><span class="p">:</span> <span class="n">dpi</span><span class="p">,</span>
+                            <span class="s2">&quot;source_path&quot;</span><span class="p">:</span> <span class="n">pdf_path</span><span class="p">,</span>
+                            <span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="p">},</span>
+                    <span class="p">}</span>
+
+                    <span class="k">if</span> <span class="n">want_any_raster</span> <span class="ow">and</span> <span class="n">render_info</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="c1"># Store the rendered page raster only here; leave the other</span>
+                        <span class="c1"># fields empty so downstream stages have a single canonical</span>
+                        <span class="c1"># place to find the page image.</span>
+                        <span class="n">page_record</span><span class="p">[</span><span class="s2">&quot;page_image&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">render_info</span>
+
+                    <span class="n">outputs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">page_record</span><span class="p">)</span>
+                <span class="k">finally</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">page</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">page</span><span class="p">,</span> <span class="s2">&quot;close&quot;</span><span class="p">):</span>
+                            <span class="n">page</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                        <span class="k">pass</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">doc</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                        <span class="k">pass</span>
+            <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">outputs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="n">_error_record</span><span class="p">(</span>
+                        <span class="n">source_path</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">pdf_path</span><span class="p">)</span> <span class="k">if</span> <span class="n">pdf_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="n">stage</span><span class="o">=</span><span class="s2">&quot;page_processing&quot;</span><span class="p">,</span>
+                        <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">,</span>
+                        <span class="n">page_number</span><span class="o">=</span><span class="n">page_number</span><span class="p">,</span>
+                        <span class="n">dpi</span><span class="o">=</span><span class="n">dpi</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+
+        <span class="c1"># Return a batch-shaped dataframe so Ray Data produces one output row per input page.</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">outputs</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;pdf_extraction currently only supports pandas.DataFrame input.&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="PDFExtractionActor">
+<a class="viewcode-back" href="../../../nemo-retriever/nemo_retriever.pdf.html#nemo_retriever.pdf.extract.PDFExtractionActor">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">slots</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">PDFExtractionActor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Skeleton PDF extraction callable.</span>
+
+<span class="sd">    `__call__` uses `pdf_extract_config_from_kwargs()` to normalize configuration</span>
+<span class="sd">    before running the (not yet implemented) extraction logic.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">extract_kwargs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">extract_kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">extract_kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">extract_kwargs</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pdf</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">override_kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Any</span><span class="p">]:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">pdf_extraction</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">extract_kwargs</span><span class="p">,</span> <span class="o">**</span><span class="n">override_kwargs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">BaseException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># As a last line of defense, never let the Ray UDF raise.</span>
+            <span class="n">source_path</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="ow">and</span> <span class="s2">&quot;path&quot;</span> <span class="ow">in</span> <span class="n">pdf</span><span class="o">.</span><span class="n">columns</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">pdf</span><span class="o">.</span><span class="n">index</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">source_path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">pdf</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;path&quot;</span><span class="p">])</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="n">source_path</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">return</span> <span class="p">[</span>
+                <span class="n">_error_record</span><span class="p">(</span>
+                    <span class="n">source_path</span><span class="o">=</span><span class="n">source_path</span><span class="p">,</span>
+                    <span class="n">stage</span><span class="o">=</span><span class="s2">&quot;actor_call&quot;</span><span class="p">,</span>
+                    <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">,</span>
+                    <span class="n">page_number</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">]</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>

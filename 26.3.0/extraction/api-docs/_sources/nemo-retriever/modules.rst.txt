@@ -1,0 +1,7 @@
+nemo_retriever
+==============
+
+.. toctree::
+   :maxdepth: 4
+
+   nemo_retriever

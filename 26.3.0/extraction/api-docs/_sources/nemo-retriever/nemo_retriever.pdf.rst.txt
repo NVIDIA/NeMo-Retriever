@@ -1,0 +1,53 @@
+nemo\_retriever.pdf package
+===========================
+
+Submodules
+----------
+
+nemo\_retriever.pdf.config module
+---------------------------------
+
+.. automodule:: nemo_retriever.pdf.config
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.pdf.extract module
+----------------------------------
+
+.. automodule:: nemo_retriever.pdf.extract
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.pdf.io module
+-----------------------------
+
+.. automodule:: nemo_retriever.pdf.io
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.pdf.split module
+--------------------------------
+
+.. automodule:: nemo_retriever.pdf.split
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+nemo\_retriever.pdf.stage module
+--------------------------------
+
+.. automodule:: nemo_retriever.pdf.stage
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: nemo_retriever.pdf
+   :members:
+   :show-inheritance:
+   :undoc-members:

@@ -1,0 +1,1244 @@
+
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor &#8212; nv-ingest</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../../../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/styles/nvidia-sphinx-theme.css?v=933278ad" />
+    <link rel="stylesheet" type="text/css" href="../../../../../_static/autodoc_pydantic.css?v=a0a71c94" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../../../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+
+
+    <script src="../../../../../_static/documentation_options.js?v=be04dab6"></script>
+    <script src="../../../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/nemo_retriever/tabular_data/ingestion/parsers/sqlglot_extractor';</script>
+
+    <link rel="icon" href="../../../../../_static/favicon.png"/>
+
+    <link rel="index" title="Index" href="../../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../../search.html" />
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+
+
+  </head>
+
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../../../_static/nvidia-logo-horiz-rgb-blk-for-screen.svg" class="logo__image only-light" alt="nv-ingest - Home"/>
+    <img src="../../../../../_static/nvidia-logo-horiz-rgb-wht-for-screen.svg" class="logo__image only-dark pst-js-only" alt="nv-ingest - Home"/>
+  
+  
+    <p class="title logo__title">nv-ingest</p>
+  
+</a>
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Table of Contents">
+  <p class="bd-links__title" role="heading" aria-level="1">Table of Contents</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">NV-Ingest Packages</span></p>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../../nv-ingest-api/modules.html">nv_ingest_api</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.html">nv_ingest_api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.interface.html">nv_ingest_api.interface package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.internal.html">nv_ingest_api.internal package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.internal.enums.html">nv_ingest_api.internal.enums package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.internal.extract.html">nv_ingest_api.internal.extract package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.internal.meta.html">nv_ingest_api.internal.meta package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.internal.mutate.html">nv_ingest_api.internal.mutate package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.internal.primitives.html">nv_ingest_api.internal.primitives package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.internal.schemas.html">nv_ingest_api.internal.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.internal.store.html">nv_ingest_api.internal.store package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.internal.transform.html">nv_ingest_api.internal.transform package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.html">nv_ingest_api.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.control_message.html">nv_ingest_api.util.control_message package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.converters.html">nv_ingest_api.util.converters package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.dataloader.html">nv_ingest_api.util.dataloader package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.detectors.html">nv_ingest_api.util.detectors package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.exception_handlers.html">nv_ingest_api.util.exception_handlers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.image_processing.html">nv_ingest_api.util.image_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.imports.html">nv_ingest_api.util.imports package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.introspection.html">nv_ingest_api.util.introspection package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.logging.html">nv_ingest_api.util.logging package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.message_brokers.html">nv_ingest_api.util.message_brokers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.metadata.html">nv_ingest_api.util.metadata package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.multi_processing.html">nv_ingest_api.util.multi_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.nim.html">nv_ingest_api.util.nim package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.pdf.html">nv_ingest_api.util.pdf package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.schema.html">nv_ingest_api.util.schema package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.service_clients.html">nv_ingest_api.util.service_clients package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.string_processing.html">nv_ingest_api.util.string_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-api/nv_ingest_api.util.system.html">nv_ingest_api.util.system package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../../nv-ingest-client/modules.html">nv_ingest_client</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../../nv-ingest-client/nv_ingest_client.html">nv_ingest_client package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nv-ingest-client/nv_ingest_client.cli.html">nv_ingest_client.cli package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-client/nv_ingest_client.cli.util.html">nv_ingest_client.cli.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nv-ingest-client/nv_ingest_client.client.html">nv_ingest_client.client package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nv-ingest-client/nv_ingest_client.primitives.html">nv_ingest_client.primitives package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-client/nv_ingest_client.primitives.jobs.html">nv_ingest_client.primitives.jobs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-client/nv_ingest_client.primitives.tasks.html">nv_ingest_client.primitives.tasks package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nv-ingest-client/nv_ingest_client.util.html">nv_ingest_client.util package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-client/nv_ingest_client.util.file_processing.html">nv_ingest_client.util.file_processing package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest-client/nv_ingest_client.util.vdb.html">nv_ingest_client.util.vdb package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../../nv-ingest/modules.html">nv_ingest</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../../nv-ingest/nv_ingest.html">nv_ingest package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nv-ingest/nv_ingest.api.html">nv_ingest.api package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest/nv_ingest.api.v1.html">nv_ingest.api.v1 package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest/nv_ingest.api.v2.html">nv_ingest.api.v2 package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nv-ingest/nv_ingest.framework.html">nv_ingest.framework package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest/nv_ingest.framework.orchestration.html">nv_ingest.framework.orchestration package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest/nv_ingest.framework.schemas.html">nv_ingest.framework.schemas package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest/nv_ingest.framework.util.html">nv_ingest.framework.util package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nv-ingest/nv_ingest.pipeline.html">nv_ingest.pipeline package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nv-ingest/nv_ingest.pipeline.config.html">nv_ingest.pipeline.config package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../../../nemo-retriever/modules.html">nemo_retriever</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.html">nemo_retriever package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.adapters.html">nemo_retriever.adapters package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.adapters.cli.html">nemo_retriever.adapters.cli package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.api.html">nemo_retriever.api package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.application.html">nemo_retriever.application package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.application.pipeline.html">nemo_retriever.application.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.audio.html">nemo_retriever.audio package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.caption.html">nemo_retriever.caption package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.chart.html">nemo_retriever.chart package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.dedup.html">nemo_retriever.dedup package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.evaluation.html">nemo_retriever.evaluation package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.graph.html">nemo_retriever.graph package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.harness.html">nemo_retriever.harness package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.harness.portal.html">nemo_retriever.harness.portal package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.html.html">nemo_retriever.html package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.image.html">nemo_retriever.image package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.infographic.html">nemo_retriever.infographic package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.io.html">nemo_retriever.io package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.llm.html">nemo_retriever.llm package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.llm.clients.html">nemo_retriever.llm.clients package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.local.html">nemo_retriever.local package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.local.stages.html">nemo_retriever.local.stages package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.model.html">nemo_retriever.model package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.model.local.html">nemo_retriever.model.local package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.nim.html">nemo_retriever.nim package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.ocr.html">nemo_retriever.ocr package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.operators.html">nemo_retriever.operators package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.page_elements.html">nemo_retriever.page_elements package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.params.html">nemo_retriever.params package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.parse.html">nemo_retriever.parse package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.pdf.html">nemo_retriever.pdf package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.pipeline.html">nemo_retriever.pipeline package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.recall.html">nemo_retriever.recall package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.rerank.html">nemo_retriever.rerank package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.service.html">nemo_retriever.service package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.service.models.html">nemo_retriever.service.models package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.service.routers.html">nemo_retriever.service.routers package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.service.services.html">nemo_retriever.service.services package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.service.utils.html">nemo_retriever.service.utils package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.skill_eval.html">nemo_retriever.skill_eval package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.skill_eval.configs.html">nemo_retriever.skill_eval.configs package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.skill_eval.prompts.html">nemo_retriever.skill_eval.prompts package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.table.html">nemo_retriever.table package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.tabular_data.html">nemo_retriever.tabular_data package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.html">nemo_retriever.tabular_data.ingestion package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.tabular_data.neo4j.html">nemo_retriever.tabular_data.neo4j package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.tabular_data.retrieval.html">nemo_retriever.tabular_data.retrieval package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.text_embed.html">nemo_retriever.text_embed package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.txt.html">nemo_retriever.txt package</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.utils.html">nemo_retriever.utils package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.utils.benchmark.html">nemo_retriever.utils.benchmark package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.utils.compare.html">nemo_retriever.utils.compare package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.utils.convert.html">nemo_retriever.utils.convert package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.utils.image.html">nemo_retriever.utils.image package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.utils.pipeline.html">nemo_retriever.utils.pipeline package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.vdb.html">nemo_retriever.vdb package</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../../../nemo-retriever/nemo_retriever.video.html">nemo_retriever.video package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor</h1><div class="highlight"><pre>
+<span></span><span class="c1"># SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION &amp; AFFILIATES.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1"># SPDX-License-Identifier: Apache-2.0</span>
+
+<span class="sd">&quot;&quot;&quot;Extract tables and columns referenced in a SQL query.</span>
+
+<span class="sd">Strategy</span>
+<span class="sd">--------</span>
+<span class="sd">sqlglot parses the full query into an AST, then the ``qualify`` optimizer</span>
+<span class="sd">pass annotates every ``Column`` node with its resolved source table by</span>
+<span class="sd">propagating schema information through CTEs and subquery scopes.</span>
+
+<span class="sd">A pre-pass builds an alias→table map so that table aliases</span>
+<span class="sd">(``SELECT o.id FROM orders AS o``) are transparently resolved when reading</span>
+<span class="sd">``col.table`` from the qualified AST.</span>
+
+<span class="sd">Columns that remain unresolved after qualification are looked up in</span>
+<span class="sd">``all_schemas`` (Neo4j metadata) and attributed when the match is</span>
+<span class="sd">unambiguous within the query&#39;s source tables.</span>
+
+<span class="sd">Pass ``all_schemas={}`` (the default) to skip schema-assisted resolution</span>
+<span class="sd">and rely solely on ``qualify()``.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">sqlglot</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sqlglot</span><span class="w"> </span><span class="kn">import</span> <span class="n">exp</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sqlglot.optimizer.qualify</span><span class="w"> </span><span class="kn">import</span> <span class="n">qualify</span>
+
+
+<div class="viewcode-block" id="TableMatch">
+<a class="viewcode-back" href="../../../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.parsers.html#nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor.TableMatch">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">TableMatch</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extraction result for a single source table.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    columns:</span>
+<span class="sd">        Set of column names referenced in the SQL for this table.</span>
+<span class="sd">    schema_name:</span>
+<span class="sd">        The ``all_schemas`` key (Neo4j schema name) that owns this table,</span>
+<span class="sd">        or ``None`` when the owning schema could not be determined.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">columns</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">set</span><span class="p">)</span>
+    <span class="n">schema_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="JoinPair">
+<a class="viewcode-back" href="../../../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.parsers.html#nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor.JoinPair">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">JoinPair</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A single join condition between two resolved columns.</span>
+
+<span class="sd">    Both table references are resolved through the alias map to their</span>
+<span class="sd">    real (non-CTE, non-alias) qualified table names.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">left_table</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">left_column</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">right_table</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">right_column</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">operator</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;=&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="UnionPair">
+<a class="viewcode-back" href="../../../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.parsers.html#nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor.UnionPair">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">UnionPair</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Two columns aligned at the same position in a UNION/UNION ALL.</span>
+
+<span class="sd">    Represents the semantic equivalence implied by positional alignment</span>
+<span class="sd">    in set operations (UNION, UNION ALL, INTERSECT, EXCEPT).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">left_table</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">left_column</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">right_table</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">right_column</span><span class="p">:</span> <span class="nb">str</span></div>
+
+
+
+<div class="viewcode-block" id="ExtractionResult">
+<a class="viewcode-back" href="../../../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.parsers.html#nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor.ExtractionResult">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ExtractionResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Container for the full output of :func:`extract_tables_and_columns`.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    tables:</span>
+<span class="sd">        ``{table_key: TableMatch}`` mapping.</span>
+<span class="sd">    ast_node_count:</span>
+<span class="sd">        Total number of nodes in the sqlglot AST.  Cheap structural</span>
+<span class="sd">        fingerprint used to pre-filter duplicate candidates.</span>
+<span class="sd">    joins:</span>
+<span class="sd">        Equi-join column pairs extracted from explicit ``JOIN … ON``</span>
+<span class="sd">        and ``JOIN … USING`` clauses, with aliases fully resolved.</span>
+<span class="sd">    unions:</span>
+<span class="sd">        Column pairs aligned at the same position in UNION/UNION ALL</span>
+<span class="sd">        set operations, with aliases fully resolved.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">tables</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">TableMatch</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">ast_node_count</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">joins</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">JoinPair</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+    <span class="n">unions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">UnionPair</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Helpers</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_qualified_table_name</span><span class="p">(</span><span class="n">table</span><span class="p">:</span> <span class="n">exp</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the fully-qualified table name as ``schema.table`` when a schema is</span>
+<span class="sd">    present in the AST, or just ``table`` otherwise.&quot;&quot;&quot;</span>
+    <span class="n">parts</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="p">[</span><span class="n">table</span><span class="o">.</span><span class="n">db</span><span class="p">,</span> <span class="n">table</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="k">if</span> <span class="n">p</span><span class="p">]</span>
+    <span class="k">return</span> <span class="s2">&quot;.&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_alias_to_table_map</span><span class="p">(</span><span class="n">statement</span><span class="p">:</span> <span class="n">exp</span><span class="o">.</span><span class="n">Expression</span><span class="p">,</span> <span class="n">cte_names</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return ``{alias_or_bare_name: qualified_table_name}`` for every real table.</span>
+
+<span class="sd">    Qualified names are ``schema.table`` when the SQL references a schema prefix,</span>
+<span class="sd">    or plain ``table`` otherwise.  Both the alias *and* the bare table name are</span>
+<span class="sd">    registered so that ``col.table`` from the qualified AST always resolves,</span>
+<span class="sd">    regardless of whether an alias was used.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mapping</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">statement</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Table</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">table</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">cte_names</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">qualified</span> <span class="o">=</span> <span class="n">_qualified_table_name</span><span class="p">(</span><span class="n">table</span><span class="p">)</span>
+        <span class="n">alias</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">alias</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="n">table</span><span class="o">.</span><span class="n">alias</span> <span class="k">else</span> <span class="n">table</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="n">mapping</span><span class="p">[</span><span class="n">alias</span><span class="p">]</span> <span class="o">=</span> <span class="n">qualified</span>
+        <span class="n">mapping</span><span class="p">[</span><span class="n">table</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span> <span class="o">=</span> <span class="n">qualified</span>  <span class="c1"># fallback for unaliased bare references</span>
+    <span class="k">return</span> <span class="n">mapping</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_schema_dict</span><span class="p">(</span><span class="n">all_schemas</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a flat ``{table: {col: &quot;TEXT&quot;}}`` dict for sqlglot&#39;s qualify pass.</span>
+
+<span class="sd">    qualify() resolves bare column references using this flat mapping.  A flat</span>
+<span class="sd">    dict works for both unqualified SQL (``FROM orders``) and schema-qualified</span>
+<span class="sd">    SQL (``FROM schema_a.orders AS a``): in the latter case qualify() resolves</span>
+<span class="sd">    columns through the alias, so the schema prefix is not needed here.</span>
+<span class="sd">    Multi-schema disambiguation is handled separately via ``alias_map`` and</span>
+<span class="sd">    ``source_table_names`` (which use fully-qualified keys).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">schema</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">all_schemas</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">columns_df</span>
+        <span class="k">if</span> <span class="n">df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+            <span class="n">tbl</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;table_name&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+            <span class="n">col</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;column_name&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+            <span class="n">schema</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">tbl</span><span class="p">,</span> <span class="p">{})[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;TEXT&quot;</span>
+    <span class="k">return</span> <span class="n">schema</span>
+
+
+<span class="n">_BINARY_CMP</span> <span class="o">=</span> <span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">EQ</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">GT</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">GTE</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">LT</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">LTE</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">NEQ</span><span class="p">)</span>
+
+<span class="n">_OP_SYMBOL</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">type</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">exp</span><span class="o">.</span><span class="n">EQ</span><span class="p">:</span> <span class="s2">&quot;=&quot;</span><span class="p">,</span>
+    <span class="n">exp</span><span class="o">.</span><span class="n">GT</span><span class="p">:</span> <span class="s2">&quot;&gt;&quot;</span><span class="p">,</span>
+    <span class="n">exp</span><span class="o">.</span><span class="n">GTE</span><span class="p">:</span> <span class="s2">&quot;&gt;=&quot;</span><span class="p">,</span>
+    <span class="n">exp</span><span class="o">.</span><span class="n">LT</span><span class="p">:</span> <span class="s2">&quot;&lt;&quot;</span><span class="p">,</span>
+    <span class="n">exp</span><span class="o">.</span><span class="n">LTE</span><span class="p">:</span> <span class="s2">&quot;&lt;=&quot;</span><span class="p">,</span>
+    <span class="n">exp</span><span class="o">.</span><span class="n">NEQ</span><span class="p">:</span> <span class="s2">&quot;!=&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_unwrap_column</span><span class="p">(</span><span class="n">node</span><span class="p">:</span> <span class="n">exp</span><span class="o">.</span><span class="n">Expression</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">exp</span><span class="o">.</span><span class="n">Column</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the single ``Column`` inside *node*, unwrapping functions/casts.</span>
+
+<span class="sd">    When *node* contains zero or more than one ``Column`` the reference is</span>
+<span class="sd">    ambiguous (e.g. ``col_a + col_b``), so ``None`` is returned.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Column</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">node</span>
+    <span class="n">cols</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Column</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">cols</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">cols</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="k">else</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_derived_col_map</span><span class="p">(</span>
+    <span class="n">qualified</span><span class="p">:</span> <span class="n">exp</span><span class="o">.</span><span class="n">Expression</span><span class="p">,</span>
+    <span class="n">alias_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+    <span class="n">source_table_names</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">cte_names</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Map derived-table/CTE aliases to their output columns&#39; real source.</span>
+
+<span class="sd">    For ``(SELECT order_items.order_id, ... FROM order_items) AS d``, produces:</span>
+<span class="sd">    ``{&quot;d&quot;: {&quot;order_id&quot;: (&quot;order_items&quot;, &quot;order_id&quot;), ...}}``</span>
+
+<span class="sd">    Also handles CTEs:</span>
+<span class="sd">    ``WITH stats AS (SELECT customer_id FROM orders) ... JOIN stats s``</span>
+<span class="sd">    produces ``{&quot;stats&quot;: {&quot;customer_id&quot;: (&quot;orders&quot;, &quot;customer_id&quot;)}}``</span>
+<span class="sd">    and registers any outer-query aliases (``&quot;s&quot;``) pointing to the same map.</span>
+
+<span class="sd">    Only maps columns that are direct references (not wrapped in functions</span>
+<span class="sd">    or aggregations).  Computed columns like ``SUM(price) AS total`` are</span>
+<span class="sd">    excluded — they don&#39;t represent real table columns.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">derived</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_map_select</span><span class="p">(</span><span class="n">inner_select</span><span class="p">:</span> <span class="n">exp</span><span class="o">.</span><span class="n">Select</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Extract pass-through column mappings from a SELECT list.&quot;&quot;&quot;</span>
+        <span class="n">col_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">expr</span> <span class="ow">in</span> <span class="n">inner_select</span><span class="o">.</span><span class="n">expressions</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expr</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Alias</span><span class="p">):</span>
+                <span class="n">output_name</span> <span class="o">=</span> <span class="n">expr</span><span class="o">.</span><span class="n">alias</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+                <span class="n">source_expr</span> <span class="o">=</span> <span class="n">expr</span><span class="o">.</span><span class="n">this</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">source_expr</span> <span class="o">=</span> <span class="n">expr</span>
+                <span class="n">output_name</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="c1"># Only bare column references pass; functions/aggregations</span>
+            <span class="c1"># (SUM, COUNT, CONCAT, etc.) are excluded — they don&#39;t</span>
+            <span class="c1"># represent real table columns.</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source_expr</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Column</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">output_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">output_name</span> <span class="o">=</span> <span class="n">source_expr</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="n">source_expr</span><span class="o">.</span><span class="n">name</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">output_name</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="c1"># Resolve through alias_map to get the real table name</span>
+            <span class="n">tbl_ref</span> <span class="o">=</span> <span class="n">source_expr</span><span class="o">.</span><span class="n">table</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="n">source_expr</span><span class="o">.</span><span class="n">table</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="n">real_table</span> <span class="o">=</span> <span class="n">alias_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">tbl_ref</span><span class="p">)</span> <span class="k">if</span> <span class="n">tbl_ref</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="n">real_table</span> <span class="ow">and</span> <span class="n">real_table</span> <span class="ow">in</span> <span class="n">source_table_names</span><span class="p">:</span>
+                <span class="n">col_map</span><span class="p">[</span><span class="n">output_name</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">real_table</span><span class="p">,</span> <span class="n">source_expr</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">col_map</span>
+
+    <span class="c1"># Inline derived tables: (SELECT ...) AS d</span>
+    <span class="k">for</span> <span class="n">subq</span> <span class="ow">in</span> <span class="n">qualified</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Subquery</span><span class="p">):</span>
+        <span class="n">alias</span> <span class="o">=</span> <span class="n">subq</span><span class="o">.</span><span class="n">alias</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="n">subq</span><span class="o">.</span><span class="n">alias</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">alias</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">inner_select</span> <span class="o">=</span> <span class="n">subq</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Select</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">inner_select</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">col_map</span> <span class="o">=</span> <span class="n">_map_select</span><span class="p">(</span><span class="n">inner_select</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">col_map</span><span class="p">:</span>
+            <span class="n">derived</span><span class="p">[</span><span class="n">alias</span><span class="p">]</span> <span class="o">=</span> <span class="n">col_map</span>
+
+    <span class="c1"># CTEs: WITH cte_name AS (SELECT ...)</span>
+    <span class="k">for</span> <span class="n">cte</span> <span class="ow">in</span> <span class="n">qualified</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">CTE</span><span class="p">):</span>
+        <span class="n">cte_name</span> <span class="o">=</span> <span class="n">cte</span><span class="o">.</span><span class="n">alias</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="n">cte</span><span class="o">.</span><span class="n">alias</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">cte_name</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">inner_select</span> <span class="o">=</span> <span class="n">cte</span><span class="o">.</span><span class="n">this</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cte</span><span class="o">.</span><span class="n">this</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Select</span><span class="p">)</span> <span class="k">else</span> <span class="n">cte</span><span class="o">.</span><span class="n">this</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Select</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">inner_select</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">col_map</span> <span class="o">=</span> <span class="n">_map_select</span><span class="p">(</span><span class="n">inner_select</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">col_map</span><span class="p">:</span>
+            <span class="n">derived</span><span class="p">[</span><span class="n">cte_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">col_map</span>
+
+    <span class="c1"># Register outer-query aliases that reference CTEs (e.g. JOIN stats AS s → &quot;s&quot;)</span>
+    <span class="k">for</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">qualified</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Table</span><span class="p">):</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">cte_names</span> <span class="ow">and</span> <span class="n">table</span><span class="o">.</span><span class="n">alias</span><span class="p">:</span>
+            <span class="n">tbl_alias</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">alias</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">derived</span> <span class="ow">and</span> <span class="n">tbl_alias</span> <span class="o">!=</span> <span class="n">name</span><span class="p">:</span>
+                <span class="n">derived</span><span class="p">[</span><span class="n">tbl_alias</span><span class="p">]</span> <span class="o">=</span> <span class="n">derived</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">derived</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_extract_join_pairs</span><span class="p">(</span>
+    <span class="n">qualified</span><span class="p">:</span> <span class="n">exp</span><span class="o">.</span><span class="n">Expression</span><span class="p">,</span>
+    <span class="n">alias_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+    <span class="n">source_table_names</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">cte_names</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">JoinPair</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract join column pairs from the (post-qualify) AST.</span>
+
+<span class="sd">    After ``qualify()``, ``USING`` clauses are rewritten into ``ON``, so</span>
+<span class="sd">    walking ``JOIN … ON`` covers both syntaxes.  Falls back to raw</span>
+<span class="sd">    ``USING`` args when ``ON`` is absent (``qualify()`` failed or the</span>
+<span class="sd">    dialect preserved ``USING``).</span>
+
+<span class="sd">    Handled condition types:</span>
+
+<span class="sd">    * Binary comparisons (``=``, ``&gt;``, ``&gt;=``, ``&lt;``, ``&lt;=``, ``!=``)</span>
+<span class="sd">    * ``BETWEEN … AND …``</span>
+<span class="sd">    * Function-wrapped / cast-wrapped columns (e.g. ``LOWER(t.col)``)</span>
+<span class="sd">    * Columns referencing derived tables / CTEs (traced back to source real table)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">derived_map</span> <span class="o">=</span> <span class="n">_build_derived_col_map</span><span class="p">(</span><span class="n">qualified</span><span class="p">,</span> <span class="n">alias_map</span><span class="p">,</span> <span class="n">source_table_names</span><span class="p">,</span> <span class="n">cte_names</span><span class="p">)</span>
+    <span class="n">pairs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">JoinPair</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_resolve_col</span><span class="p">(</span><span class="n">col</span><span class="p">:</span> <span class="n">exp</span><span class="o">.</span><span class="n">Column</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resolve a column to (real_table, col_name), using derived_map as fallback.&quot;&quot;&quot;</span>
+        <span class="n">col_name</span> <span class="o">=</span> <span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="n">tbl_ref</span> <span class="o">=</span> <span class="n">col</span><span class="o">.</span><span class="n">table</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="n">col</span><span class="o">.</span><span class="n">table</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="n">real_table</span> <span class="o">=</span> <span class="n">alias_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">tbl_ref</span><span class="p">)</span> <span class="k">if</span> <span class="n">tbl_ref</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">real_table</span> <span class="ow">and</span> <span class="n">real_table</span> <span class="ow">in</span> <span class="n">source_table_names</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">real_table</span><span class="p">,</span> <span class="n">col_name</span>
+        <span class="k">if</span> <span class="n">tbl_ref</span> <span class="ow">and</span> <span class="n">tbl_ref</span> <span class="ow">in</span> <span class="n">derived_map</span><span class="p">:</span>
+            <span class="n">entry</span> <span class="o">=</span> <span class="n">derived_map</span><span class="p">[</span><span class="n">tbl_ref</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">col_name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">entry</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">entry</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="n">col_name</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_try_add</span><span class="p">(</span><span class="n">lc</span><span class="p">:</span> <span class="n">exp</span><span class="o">.</span><span class="n">Column</span><span class="p">,</span> <span class="n">rc</span><span class="p">:</span> <span class="n">exp</span><span class="o">.</span><span class="n">Column</span><span class="p">,</span> <span class="n">op</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;=&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resolve aliases and append a canonically-ordered, deduplicated ``JoinPair``.&quot;&quot;&quot;</span>
+        <span class="n">lt</span><span class="p">,</span> <span class="n">l_col</span> <span class="o">=</span> <span class="n">_resolve_col</span><span class="p">(</span><span class="n">lc</span><span class="p">)</span>
+        <span class="n">rt</span><span class="p">,</span> <span class="n">r_col</span> <span class="o">=</span> <span class="n">_resolve_col</span><span class="p">(</span><span class="n">rc</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">lt</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">rt</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="n">lt</span> <span class="o">==</span> <span class="n">rt</span> <span class="ow">and</span> <span class="n">l_col</span> <span class="o">==</span> <span class="n">r_col</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">lt</span><span class="p">,</span> <span class="n">l_col</span><span class="p">)</span> <span class="o">&gt;</span> <span class="p">(</span><span class="n">rt</span><span class="p">,</span> <span class="n">r_col</span><span class="p">):</span>
+            <span class="n">lt</span><span class="p">,</span> <span class="n">l_col</span><span class="p">,</span> <span class="n">rt</span><span class="p">,</span> <span class="n">r_col</span> <span class="o">=</span> <span class="n">rt</span><span class="p">,</span> <span class="n">r_col</span><span class="p">,</span> <span class="n">lt</span><span class="p">,</span> <span class="n">l_col</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">lt</span><span class="p">,</span> <span class="n">l_col</span><span class="p">,</span> <span class="n">rt</span><span class="p">,</span> <span class="n">r_col</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+            <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+            <span class="n">pairs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">JoinPair</span><span class="p">(</span>
+                    <span class="n">left_table</span><span class="o">=</span><span class="n">lt</span><span class="p">,</span>
+                    <span class="n">left_column</span><span class="o">=</span><span class="n">l_col</span><span class="p">,</span>
+                    <span class="n">right_table</span><span class="o">=</span><span class="n">rt</span><span class="p">,</span>
+                    <span class="n">right_column</span><span class="o">=</span><span class="n">r_col</span><span class="p">,</span>
+                    <span class="n">operator</span><span class="o">=</span><span class="n">op</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">select_node</span> <span class="ow">in</span> <span class="n">qualified</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Select</span><span class="p">):</span>
+        <span class="n">from_clause</span> <span class="o">=</span> <span class="n">select_node</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;from_&quot;</span><span class="p">)</span>
+        <span class="n">join_nodes</span> <span class="o">=</span> <span class="n">select_node</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;joins&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">join_nodes</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">chain</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">from_clause</span><span class="p">:</span>
+            <span class="n">ft</span> <span class="o">=</span> <span class="n">from_clause</span><span class="o">.</span><span class="n">this</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ft</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Table</span><span class="p">):</span>
+                <span class="n">resolved</span> <span class="o">=</span> <span class="n">alias_map</span><span class="o">.</span><span class="n">get</span><span class="p">((</span><span class="n">ft</span><span class="o">.</span><span class="n">alias</span> <span class="ow">or</span> <span class="n">ft</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+                <span class="k">if</span> <span class="n">resolved</span><span class="p">:</span>
+                    <span class="n">chain</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">resolved</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">join_node</span> <span class="ow">in</span> <span class="n">join_nodes</span><span class="p">:</span>
+            <span class="n">right_ast</span> <span class="o">=</span> <span class="n">join_node</span><span class="o">.</span><span class="n">this</span>
+            <span class="n">right_resolved</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">right_ast</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Table</span><span class="p">):</span>
+                <span class="n">right_resolved</span> <span class="o">=</span> <span class="n">alias_map</span><span class="o">.</span><span class="n">get</span><span class="p">((</span><span class="n">right_ast</span><span class="o">.</span><span class="n">alias</span> <span class="ow">or</span> <span class="n">right_ast</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+
+            <span class="n">on_expr</span> <span class="o">=</span> <span class="n">join_node</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;on&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">on_expr</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">cmp</span> <span class="ow">in</span> <span class="n">on_expr</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="o">*</span><span class="n">_BINARY_CMP</span><span class="p">):</span>
+                    <span class="n">lc</span> <span class="o">=</span> <span class="n">_unwrap_column</span><span class="p">(</span><span class="n">cmp</span><span class="o">.</span><span class="n">left</span><span class="p">)</span>
+                    <span class="n">rc</span> <span class="o">=</span> <span class="n">_unwrap_column</span><span class="p">(</span><span class="n">cmp</span><span class="o">.</span><span class="n">right</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">lc</span> <span class="ow">and</span> <span class="n">rc</span><span class="p">:</span>
+                        <span class="n">_try_add</span><span class="p">(</span><span class="n">lc</span><span class="p">,</span> <span class="n">rc</span><span class="p">,</span> <span class="n">_OP_SYMBOL</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">cmp</span><span class="p">),</span> <span class="s2">&quot;=&quot;</span><span class="p">))</span>
+
+                <span class="k">for</span> <span class="n">between</span> <span class="ow">in</span> <span class="n">on_expr</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Between</span><span class="p">):</span>
+                    <span class="n">main_c</span> <span class="o">=</span> <span class="n">_unwrap_column</span><span class="p">(</span><span class="n">between</span><span class="o">.</span><span class="n">this</span><span class="p">)</span>
+                    <span class="n">low_arg</span> <span class="o">=</span> <span class="n">between</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;low&quot;</span><span class="p">)</span>
+                    <span class="n">high_arg</span> <span class="o">=</span> <span class="n">between</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;high&quot;</span><span class="p">)</span>
+                    <span class="n">low_c</span> <span class="o">=</span> <span class="n">_unwrap_column</span><span class="p">(</span><span class="n">low_arg</span><span class="p">)</span> <span class="k">if</span> <span class="n">low_arg</span> <span class="k">else</span> <span class="kc">None</span>
+                    <span class="n">high_c</span> <span class="o">=</span> <span class="n">_unwrap_column</span><span class="p">(</span><span class="n">high_arg</span><span class="p">)</span> <span class="k">if</span> <span class="n">high_arg</span> <span class="k">else</span> <span class="kc">None</span>
+                    <span class="k">if</span> <span class="n">main_c</span> <span class="ow">and</span> <span class="n">low_c</span><span class="p">:</span>
+                        <span class="n">_try_add</span><span class="p">(</span><span class="n">main_c</span><span class="p">,</span> <span class="n">low_c</span><span class="p">,</span> <span class="s2">&quot;BETWEEN&quot;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">main_c</span> <span class="ow">and</span> <span class="n">high_c</span><span class="p">:</span>
+                        <span class="n">_try_add</span><span class="p">(</span><span class="n">main_c</span><span class="p">,</span> <span class="n">high_c</span><span class="p">,</span> <span class="s2">&quot;BETWEEN&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">using_cols</span> <span class="o">=</span> <span class="n">join_node</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;using&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+                <span class="k">if</span> <span class="n">using_cols</span> <span class="ow">and</span> <span class="n">chain</span> <span class="ow">and</span> <span class="n">right_resolved</span><span class="p">:</span>
+                    <span class="n">left_table</span> <span class="o">=</span> <span class="n">chain</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="k">for</span> <span class="n">col_ident</span> <span class="ow">in</span> <span class="n">using_cols</span><span class="p">:</span>
+                        <span class="n">col_name</span> <span class="o">=</span> <span class="n">col_ident</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+                        <span class="k">if</span> <span class="n">left_table</span> <span class="ow">in</span> <span class="n">source_table_names</span> <span class="ow">and</span> <span class="n">right_resolved</span> <span class="ow">in</span> <span class="n">source_table_names</span><span class="p">:</span>
+                            <span class="n">lt</span><span class="p">,</span> <span class="n">lc</span><span class="p">,</span> <span class="n">rt</span><span class="p">,</span> <span class="n">rc</span> <span class="o">=</span> <span class="n">left_table</span><span class="p">,</span> <span class="n">col_name</span><span class="p">,</span> <span class="n">right_resolved</span><span class="p">,</span> <span class="n">col_name</span>
+                            <span class="k">if</span> <span class="p">(</span><span class="n">lt</span><span class="p">,</span> <span class="n">lc</span><span class="p">)</span> <span class="o">&gt;</span> <span class="p">(</span><span class="n">rt</span><span class="p">,</span> <span class="n">rc</span><span class="p">):</span>
+                                <span class="n">lt</span><span class="p">,</span> <span class="n">lc</span><span class="p">,</span> <span class="n">rt</span><span class="p">,</span> <span class="n">rc</span> <span class="o">=</span> <span class="n">rt</span><span class="p">,</span> <span class="n">rc</span><span class="p">,</span> <span class="n">lt</span><span class="p">,</span> <span class="n">lc</span>
+                            <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">lt</span><span class="p">,</span> <span class="n">lc</span><span class="p">,</span> <span class="n">rt</span><span class="p">,</span> <span class="n">rc</span><span class="p">)</span>
+                            <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+                                <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+                                <span class="n">pairs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                                    <span class="n">JoinPair</span><span class="p">(</span>
+                                        <span class="n">left_table</span><span class="o">=</span><span class="n">lt</span><span class="p">,</span>
+                                        <span class="n">left_column</span><span class="o">=</span><span class="n">lc</span><span class="p">,</span>
+                                        <span class="n">right_table</span><span class="o">=</span><span class="n">rt</span><span class="p">,</span>
+                                        <span class="n">right_column</span><span class="o">=</span><span class="n">rc</span><span class="p">,</span>
+                                    <span class="p">)</span>
+                                <span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">right_resolved</span><span class="p">:</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">right_resolved</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">pairs</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_extract_union_pairs</span><span class="p">(</span>
+    <span class="n">qualified</span><span class="p">:</span> <span class="n">exp</span><span class="o">.</span><span class="n">Expression</span><span class="p">,</span>
+    <span class="n">alias_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+    <span class="n">source_table_names</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">UnionPair</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract positionally-aligned column pairs from UNION/UNION ALL/INTERSECT/EXCEPT.</span>
+
+<span class="sd">    For each set operation, columns at the same SELECT-list position across</span>
+<span class="sd">    all branches are paired.  Only direct column references are included;</span>
+<span class="sd">    computed expressions (functions, aggregations) are skipped.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_flatten_union</span><span class="p">(</span><span class="n">node</span><span class="p">:</span> <span class="n">exp</span><span class="o">.</span><span class="n">Expression</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">exp</span><span class="o">.</span><span class="n">Select</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Recursively collect all SELECT branches from nested set operations.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Select</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">node</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">node</span><span class="p">,</span> <span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Union</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Intersect</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Except</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">_flatten_union</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">left</span><span class="p">)</span> <span class="o">+</span> <span class="n">_flatten_union</span><span class="p">(</span><span class="n">node</span><span class="o">.</span><span class="n">right</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_resolve_select_col</span><span class="p">(</span>
+        <span class="n">expr</span><span class="p">:</span> <span class="n">exp</span><span class="o">.</span><span class="n">Expression</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resolve a SELECT-list expression to (real_table, col_name) or (None, None).&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">expr</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Alias</span><span class="p">):</span>
+            <span class="n">source_expr</span> <span class="o">=</span> <span class="n">expr</span><span class="o">.</span><span class="n">this</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">source_expr</span> <span class="o">=</span> <span class="n">expr</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">source_expr</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Column</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+        <span class="n">col_name</span> <span class="o">=</span> <span class="n">source_expr</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="n">tbl_ref</span> <span class="o">=</span> <span class="n">source_expr</span><span class="o">.</span><span class="n">table</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="n">source_expr</span><span class="o">.</span><span class="n">table</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="n">real_table</span> <span class="o">=</span> <span class="n">alias_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">tbl_ref</span><span class="p">)</span> <span class="k">if</span> <span class="n">tbl_ref</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">real_table</span> <span class="ow">and</span> <span class="n">real_table</span> <span class="ow">in</span> <span class="n">source_table_names</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">real_table</span><span class="p">,</span> <span class="n">col_name</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+    <span class="n">pairs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">UnionPair</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">seen</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+    <span class="k">for</span> <span class="n">union_node</span> <span class="ow">in</span> <span class="n">qualified</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Union</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Intersect</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Except</span><span class="p">):</span>
+        <span class="c1"># Only process from the top-level set-op to avoid double-counting</span>
+        <span class="c1"># nested unions (the flatten call handles recursion).</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">union_node</span><span class="o">.</span><span class="n">parent</span><span class="p">,</span> <span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Union</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Intersect</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Except</span><span class="p">)):</span>
+            <span class="k">continue</span>
+
+        <span class="n">branches</span> <span class="o">=</span> <span class="n">_flatten_union</span><span class="p">(</span><span class="n">union_node</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">branches</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Resolve each branch&#39;s SELECT list to (table, col) tuples</span>
+        <span class="n">resolved_branches</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">branch</span> <span class="ow">in</span> <span class="n">branches</span><span class="p">:</span>
+            <span class="n">resolved_branches</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">_resolve_select_col</span><span class="p">(</span><span class="n">expr</span><span class="p">)</span> <span class="k">for</span> <span class="n">expr</span> <span class="ow">in</span> <span class="n">branch</span><span class="o">.</span><span class="n">expressions</span><span class="p">])</span>
+
+        <span class="c1"># Pair columns across branches at each position</span>
+        <span class="n">n_cols</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">b</span><span class="p">)</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">resolved_branches</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">pos</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_cols</span><span class="p">):</span>
+            <span class="n">resolved_at_pos</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="p">(</span><span class="n">tbl</span><span class="p">,</span> <span class="n">col</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">resolved_branches</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">tbl</span> <span class="o">:=</span> <span class="n">b</span><span class="p">[</span><span class="n">pos</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span><span class="n">col</span> <span class="o">:=</span> <span class="n">b</span><span class="p">[</span><span class="n">pos</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="p">]</span>
+            <span class="c1"># Create pairs between all distinct resolved columns at this position</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">resolved_at_pos</span><span class="p">)):</span>
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">resolved_at_pos</span><span class="p">)):</span>
+                    <span class="n">lt</span><span class="p">,</span> <span class="n">lc</span> <span class="o">=</span> <span class="n">resolved_at_pos</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                    <span class="n">rt</span><span class="p">,</span> <span class="n">rc</span> <span class="o">=</span> <span class="n">resolved_at_pos</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="n">lt</span> <span class="o">==</span> <span class="n">rt</span> <span class="ow">and</span> <span class="n">lc</span> <span class="o">==</span> <span class="n">rc</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="c1"># Canonical order</span>
+                    <span class="k">if</span> <span class="p">(</span><span class="n">lt</span><span class="p">,</span> <span class="n">lc</span><span class="p">)</span> <span class="o">&gt;</span> <span class="p">(</span><span class="n">rt</span><span class="p">,</span> <span class="n">rc</span><span class="p">):</span>
+                        <span class="n">lt</span><span class="p">,</span> <span class="n">lc</span><span class="p">,</span> <span class="n">rt</span><span class="p">,</span> <span class="n">rc</span> <span class="o">=</span> <span class="n">rt</span><span class="p">,</span> <span class="n">rc</span><span class="p">,</span> <span class="n">lt</span><span class="p">,</span> <span class="n">lc</span>
+                    <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">lt</span><span class="p">,</span> <span class="n">lc</span><span class="p">,</span> <span class="n">rt</span><span class="p">,</span> <span class="n">rc</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+                        <span class="n">seen</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+                        <span class="n">pairs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">UnionPair</span><span class="p">(</span><span class="n">left_table</span><span class="o">=</span><span class="n">lt</span><span class="p">,</span> <span class="n">left_column</span><span class="o">=</span><span class="n">lc</span><span class="p">,</span> <span class="n">right_table</span><span class="o">=</span><span class="n">rt</span><span class="p">,</span> <span class="n">right_column</span><span class="o">=</span><span class="n">rc</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">pairs</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Main extraction function</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="extract_tables_and_columns">
+<a class="viewcode-back" href="../../../../../nemo-retriever/nemo_retriever.tabular_data.ingestion.parsers.html#nemo_retriever.tabular_data.ingestion.parsers.sqlglot_extractor.extract_tables_and_columns">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_tables_and_columns</span><span class="p">(</span>
+    <span class="n">sql</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">dialect</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;sqlite&quot;</span><span class="p">,</span>
+    <span class="n">all_schemas</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{},</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ExtractionResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return an :class:`ExtractionResult` for all real source tables in *sql*.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    sql:</span>
+<span class="sd">        Raw SQL string.</span>
+<span class="sd">    dialect:</span>
+<span class="sd">        sqlglot dialect (e.g. ``&quot;sqlite&quot;``, ``&quot;duckdb&quot;``, ``&quot;snowflake&quot;``).</span>
+<span class="sd">        Defaults to ``&quot;sqlite&quot;``.</span>
+<span class="sd">    all_schemas:</span>
+<span class="sd">        ``{schema_name: Schema}`` dict from Neo4j.  Pass ``{}`` (default) to</span>
+<span class="sd">        skip schema-assisted resolution and rely solely on ``qualify()``.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ExtractionResult</span>
+<span class="sd">        ``.tables`` — ``{table_key: TableMatch}`` where *table_key* is</span>
+<span class="sd">        ``&quot;schema.table&quot;`` when the SQL uses a schema prefix, or bare</span>
+<span class="sd">        ``&quot;table&quot;`` otherwise.  Each ``TableMatch.schema_name`` carries</span>
+<span class="sd">        the *all_schemas* key that owns the table (``None`` when</span>
+<span class="sd">        undetermined).</span>
+
+<span class="sd">        ``.ast_node_count`` — total number of sqlglot AST nodes; used as</span>
+<span class="sd">        a cheap structural fingerprint to pre-filter duplicate candidates.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">statement</span> <span class="o">=</span> <span class="n">sqlglot</span><span class="o">.</span><span class="n">parse_one</span><span class="p">(</span><span class="n">sql</span><span class="p">,</span> <span class="n">dialect</span><span class="o">=</span><span class="n">dialect</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">ExtractionResult</span><span class="p">()</span>
+
+    <span class="n">ast_node_count</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">statement</span><span class="o">.</span><span class="n">walk</span><span class="p">())</span>
+
+    <span class="c1"># CTE names are virtual — not real source tables.</span>
+    <span class="n">cte_names</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="n">cte</span><span class="o">.</span><span class="n">alias</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">cte</span> <span class="ow">in</span> <span class="n">statement</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">CTE</span><span class="p">)}</span>
+
+    <span class="c1"># Real (non-CTE) table names referenced anywhere in the query.</span>
+    <span class="c1"># Uses qualified names (``schema.table``) when the SQL includes a schema prefix,</span>
+    <span class="c1"># so that same-named tables from different schemas are kept distinct.</span>
+    <span class="n">source_table_names</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">_qualified_table_name</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">statement</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">cte_names</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">source_table_names</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">ExtractionResult</span><span class="p">(</span><span class="n">ast_node_count</span><span class="o">=</span><span class="n">ast_node_count</span><span class="p">)</span>
+
+    <span class="c1"># alias → real table name (e.g. &quot;o&quot; → &quot;orders&quot;)</span>
+    <span class="n">alias_map</span> <span class="o">=</span> <span class="n">_alias_to_table_map</span><span class="p">(</span><span class="n">statement</span><span class="p">,</span> <span class="n">cte_names</span><span class="p">)</span>
+
+    <span class="c1"># Pre-build table_key → schema_key so every TableMatch knows its owner.</span>
+    <span class="c1">#</span>
+    <span class="c1"># Two-pass strategy to avoid scanning every table in every schema:</span>
+    <span class="c1">#   1. Schema-qualified keys (&quot;schema_a.orders&quot;) — the schema name is</span>
+    <span class="c1">#      already embedded; resolve directly against all_schemas keys.</span>
+    <span class="c1">#   2. Bare keys (&quot;orders&quot;) — only look up the tables we actually need,</span>
+    <span class="c1">#      stopping as soon as all are resolved.</span>
+    <span class="n">table_to_schema</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">bare_tables</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="n">schema_keys_lower</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">all_schemas</span><span class="p">}</span>
+
+    <span class="k">for</span> <span class="n">tbl_key</span> <span class="ow">in</span> <span class="n">source_table_names</span><span class="p">:</span>
+        <span class="k">if</span> <span class="s2">&quot;.&quot;</span> <span class="ow">in</span> <span class="n">tbl_key</span><span class="p">:</span>
+            <span class="n">schema_part</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">tbl_key</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">schema_part</span> <span class="ow">in</span> <span class="n">schema_keys_lower</span><span class="p">:</span>
+                <span class="n">table_to_schema</span><span class="p">[</span><span class="n">tbl_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">schema_part</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">bare_tables</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">tbl_key</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">schema_key</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">all_schemas</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">bare_tables</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="n">skey</span> <span class="o">=</span> <span class="n">schema_key</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">tbl</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">bare_tables</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">table_exists</span><span class="p">(</span><span class="n">tbl</span><span class="p">):</span>
+                <span class="n">table_to_schema</span><span class="p">[</span><span class="n">tbl</span><span class="p">]</span> <span class="o">=</span> <span class="n">skey</span>
+                <span class="n">bare_tables</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">tbl</span><span class="p">)</span>
+
+    <span class="n">result</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">TableMatch</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span><span class="p">:</span> <span class="n">TableMatch</span><span class="p">(</span><span class="n">schema_name</span><span class="o">=</span><span class="n">table_to_schema</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">))</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">source_table_names</span><span class="p">}</span>
+    <span class="n">unresolved</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+    <span class="c1"># qualify() mutates the AST in-place, rewriting USING into ON — extract</span>
+    <span class="c1"># join keys now, before qualify destroys them.</span>
+    <span class="c1"># Maps each USING column to the set of real tables joined on that column,</span>
+    <span class="c1"># derived from the ordered FROM + JOIN chain of each SELECT scope.</span>
+    <span class="n">join_keys</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">select</span> <span class="ow">in</span> <span class="n">statement</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Select</span><span class="p">):</span>
+        <span class="n">from_clause</span> <span class="o">=</span> <span class="n">select</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;from_&quot;</span><span class="p">)</span>  <span class="c1"># sqlglot uses &quot;from_&quot; — &quot;from&quot; is a Python keyword</span>
+        <span class="n">joins</span> <span class="o">=</span> <span class="n">select</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;joins&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">from_clause</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">joins</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="c1"># Build the ordered list of real tables for this SELECT&#39;s join chain.</span>
+        <span class="n">chain</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">ft</span> <span class="o">=</span> <span class="n">from_clause</span><span class="o">.</span><span class="n">this</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ft</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Table</span><span class="p">):</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="n">alias_map</span><span class="o">.</span><span class="n">get</span><span class="p">((</span><span class="n">ft</span><span class="o">.</span><span class="n">alias</span> <span class="ow">or</span> <span class="n">ft</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+            <span class="k">if</span> <span class="n">n</span><span class="p">:</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">join</span> <span class="ow">in</span> <span class="n">joins</span><span class="p">:</span>
+            <span class="n">right</span> <span class="o">=</span> <span class="n">join</span><span class="o">.</span><span class="n">this</span>
+            <span class="n">right_name</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">right</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Table</span><span class="p">):</span>
+                <span class="n">right_name</span> <span class="o">=</span> <span class="n">alias_map</span><span class="o">.</span><span class="n">get</span><span class="p">((</span><span class="n">right</span><span class="o">.</span><span class="n">alias</span> <span class="ow">or</span> <span class="n">right</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+
+            <span class="c1"># Collect join-key column names from USING or equivalent ON conditions.</span>
+            <span class="c1"># Some dialects (or sqlglot itself) convert USING to ON during parsing,</span>
+            <span class="c1"># so we check both: USING args first, then ON equalities where both sides</span>
+            <span class="c1"># share the same column name (t1.col = t2.col ≡ USING (col)).</span>
+            <span class="n">key_cols</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="p">(</span><span class="n">join</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;using&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[])]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">key_cols</span><span class="p">:</span>
+                <span class="n">on_expr</span> <span class="o">=</span> <span class="n">join</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;on&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">on_expr</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">eq</span> <span class="ow">in</span> <span class="n">on_expr</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">EQ</span><span class="p">):</span>
+                        <span class="n">lc</span><span class="p">,</span> <span class="n">rc</span> <span class="o">=</span> <span class="n">eq</span><span class="o">.</span><span class="n">left</span><span class="p">,</span> <span class="n">eq</span><span class="o">.</span><span class="n">right</span>
+                        <span class="k">if</span> <span class="p">(</span>
+                            <span class="nb">isinstance</span><span class="p">(</span><span class="n">lc</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Column</span><span class="p">)</span>
+                            <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rc</span><span class="p">,</span> <span class="n">exp</span><span class="o">.</span><span class="n">Column</span><span class="p">)</span>
+                            <span class="ow">and</span> <span class="n">lc</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="n">rc</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+                        <span class="p">):</span>
+                            <span class="n">key_cols</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">lc</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+
+            <span class="k">for</span> <span class="n">col_name</span> <span class="ow">in</span> <span class="n">key_cols</span><span class="p">:</span>
+                <span class="n">participants</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">chain</span> <span class="k">if</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">source_table_names</span><span class="p">}</span>
+                <span class="k">if</span> <span class="n">right_name</span> <span class="ow">and</span> <span class="n">right_name</span> <span class="ow">in</span> <span class="n">source_table_names</span><span class="p">:</span>
+                    <span class="n">participants</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">right_name</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">participants</span><span class="p">:</span>
+                    <span class="n">join_keys</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">col_name</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">participants</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">right_name</span><span class="p">:</span>
+                <span class="n">chain</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">right_name</span><span class="p">)</span>
+
+    <span class="c1"># qualify() annotates every Column node with its resolved source table.</span>
+    <span class="n">schema_dict</span> <span class="o">=</span> <span class="n">_build_schema_dict</span><span class="p">(</span><span class="n">all_schemas</span><span class="p">)</span> <span class="k">if</span> <span class="n">all_schemas</span> <span class="k">else</span> <span class="p">{}</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">qualified</span> <span class="o">=</span> <span class="n">qualify</span><span class="p">(</span>
+            <span class="n">statement</span><span class="p">,</span>
+            <span class="n">dialect</span><span class="o">=</span><span class="n">dialect</span><span class="p">,</span>
+            <span class="n">schema</span><span class="o">=</span><span class="n">schema_dict</span><span class="p">,</span>
+            <span class="n">qualify_columns</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">validate_qualify_columns</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">expand_stars</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">schema_dict</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="n">qualified</span> <span class="o">=</span> <span class="n">statement</span>  <span class="c1"># fall back to unqualified AST if optimizer fails</span>
+
+    <span class="c1"># Walk every Column node; after qualify, col.table names the resolved table/alias.</span>
+    <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="n">qualified</span><span class="o">.</span><span class="n">find_all</span><span class="p">(</span><span class="n">exp</span><span class="o">.</span><span class="n">Column</span><span class="p">):</span>
+        <span class="n">col_name</span> <span class="o">=</span> <span class="n">col</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="n">col</span><span class="o">.</span><span class="n">name</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">col_name</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">table_ref</span> <span class="o">=</span> <span class="n">col</span><span class="o">.</span><span class="n">table</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="n">col</span><span class="o">.</span><span class="n">table</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="n">real_table</span> <span class="o">=</span> <span class="n">alias_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">table_ref</span><span class="p">)</span> <span class="k">if</span> <span class="n">table_ref</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">real_table</span> <span class="ow">and</span> <span class="n">real_table</span> <span class="ow">in</span> <span class="n">source_table_names</span><span class="p">:</span>
+            <span class="n">result</span><span class="p">[</span><span class="n">real_table</span><span class="p">]</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">col_name</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">table_ref</span> <span class="ow">or</span> <span class="n">table_ref</span> <span class="ow">in</span> <span class="n">cte_names</span><span class="p">:</span>
+            <span class="c1"># Bare / CTE-referencing column — candidate for schema-assisted lookup.</span>
+            <span class="n">unresolved</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">col_name</span><span class="p">)</span>
+        <span class="c1"># else: alias or subquery reference that doesn&#39;t map to a real table — skip.</span>
+
+    <span class="c1"># Schema-assisted resolution for columns not attributed by qualify.</span>
+    <span class="k">if</span> <span class="n">unresolved</span> <span class="ow">and</span> <span class="n">all_schemas</span><span class="p">:</span>
+        <span class="n">col_to_tables</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">schema_name</span><span class="p">,</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">all_schemas</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">df</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">columns_df</span>
+            <span class="k">if</span> <span class="n">df</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">skey</span> <span class="o">=</span> <span class="n">schema_name</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+                <span class="n">col_n</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;column_name&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+                <span class="n">tbl_n</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;table_name&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+                <span class="c1"># Try the qualified name first (schema.table); fall back to bare</span>
+                <span class="c1"># table name for SQL that doesn&#39;t prefix tables with a schema.</span>
+                <span class="n">qualified_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">skey</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">tbl_n</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="n">matched</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">qualified_name</span>
+                    <span class="k">if</span> <span class="n">qualified_name</span> <span class="ow">in</span> <span class="n">source_table_names</span>
+                    <span class="k">else</span> <span class="p">(</span><span class="n">tbl_n</span> <span class="k">if</span> <span class="n">tbl_n</span> <span class="ow">in</span> <span class="n">source_table_names</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">matched</span> <span class="ow">and</span> <span class="n">matched</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">col_to_tables</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">col_n</span><span class="p">,</span> <span class="p">[]):</span>
+                    <span class="n">col_to_tables</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">col_n</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">matched</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">col_name</span> <span class="ow">in</span> <span class="n">unresolved</span><span class="p">:</span>
+            <span class="n">candidates</span> <span class="o">=</span> <span class="n">col_to_tables</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">col_name</span><span class="p">,</span> <span class="p">[])</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">result</span><span class="p">[</span><span class="n">candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">col_name</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">col_name</span> <span class="ow">in</span> <span class="n">join_keys</span><span class="p">:</span>
+                <span class="n">matched</span> <span class="o">=</span> <span class="p">[</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">candidates</span> <span class="k">if</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">join_keys</span><span class="p">[</span><span class="n">col_name</span><span class="p">]]</span>
+                <span class="k">for</span> <span class="n">tbl</span> <span class="ow">in</span> <span class="n">matched</span> <span class="ow">or</span> <span class="n">candidates</span><span class="p">:</span>
+                    <span class="n">result</span><span class="p">[</span><span class="n">tbl</span><span class="p">]</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">col_name</span><span class="p">)</span>
+            <span class="c1"># else: ambiguous — omit rather than guess.</span>
+
+    <span class="n">join_pairs</span> <span class="o">=</span> <span class="n">_extract_join_pairs</span><span class="p">(</span><span class="n">qualified</span><span class="p">,</span> <span class="n">alias_map</span><span class="p">,</span> <span class="n">source_table_names</span><span class="p">,</span> <span class="n">cte_names</span><span class="p">)</span>
+    <span class="n">union_pairs</span> <span class="o">=</span> <span class="n">_extract_union_pairs</span><span class="p">(</span><span class="n">qualified</span><span class="p">,</span> <span class="n">alias_map</span><span class="p">,</span> <span class="n">source_table_names</span><span class="p">)</span>
+
+    <span class="c1"># Drop real-table entries that ended up with no columns attributed.</span>
+    <span class="k">return</span> <span class="n">ExtractionResult</span><span class="p">(</span>
+        <span class="n">tables</span><span class="o">=</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span><span class="o">.</span><span class="n">columns</span><span class="p">},</span>
+        <span class="n">ast_node_count</span><span class="o">=</span><span class="n">ast_node_count</span><span class="p">,</span>
+        <span class="n">joins</span><span class="o">=</span><span class="n">join_pairs</span><span class="p">,</span>
+        <span class="n">unions</span><span class="o">=</span><span class="n">union_pairs</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+
+<div class="bd-sidebar-secondary"></div>
+
+
+              
+            
+
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../../../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+<a class="footer-brand logo" href="https://www.nvidia.com">
+  <img src="../../../../../_static/nvidia-logo-horiz-rgb-1c-blk-for-screen.svg" class="logo__image only-light" alt="NVIDIA"/>
+  <img src="../../../../../_static/nvidia-logo-horiz-rgb-1c-wht-for-screen.svg" class="logo__image only-dark" alt="NVIDIA"/>
+</a></div>
+      
+        <div class="footer-item">
+
+<div class="footer-links">
+  
+  
+  
+  
+  
+</div>
+</div>
+      
+        <div class="footer-item">
+
+
+
+
+  <p class="copyright">
+    
+      Copyright © 2025, Nvidia.
+      <br/>
+    
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+  </body>
+</html>
