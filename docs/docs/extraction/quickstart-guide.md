@@ -400,7 +400,7 @@ multimodal_test.pdf.metadata.json
 
 For the full metadata definitions, refer to [Content Metadata](content-metadata.md). 
 
-We also provide a script for inspecting [extracted images](https://github.com/NVIDIA/nv-ingest/blob/main/src/util/image_viewer.py).
+We also provide a script for inspecting [extracted images](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/src/util/image_viewer.py).
 
 First, install `tkinter` by running the following code. Choose the code for your OS.
 
