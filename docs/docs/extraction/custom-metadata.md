@@ -4,7 +4,7 @@ You can upload custom metadata for documents during ingestion.
 By uploading custom metadata you can attach additional information to documents, 
 and use it for filtering results during retrieval operations. 
 For example, you can add author metadata to your documents, and filter by author when you retrieve results. 
-To create filters at query time, use predicates supported by [LanceDB SQL](https://lancedb.github.io/lancedb/sql/) against your table schema (custom fields are serialized into the `metadata` column with your ingested chunks). For a worked example, see the repository notebook linked at the end of this page.
+To create filters at query time, use predicates supported by [LanceDB SQL](https://docs.lancedb.com/search/sql) against your table schema (custom fields are serialized into the `metadata` column with your ingested chunks). For a worked example, see the repository notebook linked at the end of this page.
 
 Use this documentation to use custom metadata to filter search results when you work with [NeMo Retriever Library](overview.md).
 
@@ -177,4 +177,4 @@ print(f"{q_results}")
 ## Related Content
 
 - For a notebook that uses the CLI to add custom metadata and filter query results, see [metadata_and_filtered_search.ipynb
-](https://github.com/NVIDIA/nv-ingest/blob/main/examples/metadata_and_filtered_search.ipynb).
+](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/examples/metadata_and_filtered_search.ipynb).

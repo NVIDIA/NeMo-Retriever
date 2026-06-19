@@ -5,7 +5,7 @@ This guide helps you get started using [NeMo Retriever Library](overview.md) in 
 
 ## Step 1: Start Containers
 
-Use the provided [docker-compose.yaml](https://github.com/NVIDIA/nv-ingest/blob/main/docker-compose.yaml) to start all needed services with a few commands.
+Use the provided [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/docker-compose.yaml) to start all needed services with a few commands.
 
 !!! warning
 
@@ -58,7 +58,7 @@ f. Start core services. By default, the pipeline uses **LanceDB** as the vector 
 
     !!! tip
 
-        By default, we have [configured log levels to be verbose](https://github.com/NVIDIA/nv-ingest/blob/main/docker-compose.yaml). It's possible to observe service startup proceeding. You will notice a lot of log messages. Disable verbose logging by configuring `NIM_TRITON_LOG_VERBOSE=0` for each NIM in [docker-compose.yaml](https://github.com/NVIDIA/nv-ingest/blob/main/docker-compose.yaml).
+        By default, we have [configured log levels to be verbose](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/docker-compose.yaml). It's possible to observe service startup proceeding. You will notice a lot of log messages. Disable verbose logging by configuring `NIM_TRITON_LOG_VERBOSE=0` for each NIM in [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/docker-compose.yaml).
 
     !!! tip
 
@@ -474,7 +474,7 @@ Ensure the same image tags and `docker-compose.yaml` version are used in both en
 
 ## Docker Compose override files
 
-The default [docker-compose.yaml](https://github.com/NVIDIA/nv-ingest/blob/main/docker-compose.yaml) might exceed VRAM on a single GPU for some hardware. Override files reduce per-service memory, batch sizes, or concurrency so the full pipeline can run on the available GPU. To use an override, pass a second `-f` file after the base compose file; Docker Compose merges them and the override takes precedence.
+The default [docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/docker-compose.yaml) might exceed VRAM on a single GPU for some hardware. Override files reduce per-service memory, batch sizes, or concurrency so the full pipeline can run on the available GPU. To use an override, pass a second `-f` file after the base compose file; Docker Compose merges them and the override takes precedence.
 
 | Override file | GPU target |
 |---------------|------------|

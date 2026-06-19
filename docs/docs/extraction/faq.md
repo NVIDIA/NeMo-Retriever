@@ -61,7 +61,7 @@ For production environments, you should use the provided Helm charts. For [libra
 
 For advanced scenarios, you might want to use library mode with self-hosted NIM instances. 
 You can set custom endpoints for each NIM. 
-For examples of `*_ENDPOINT` variables, refer to [nv-ingest/docker-compose.yaml](https://github.com/NVIDIA/nv-ingest/blob/main/docker-compose.yaml).
+For examples of `*_ENDPOINT` variables, refer to [nv-ingest/docker-compose.yaml](https://github.com/NVIDIA/NeMo-Retriever/blob/26.03/docker-compose.yaml).
 
 
 
