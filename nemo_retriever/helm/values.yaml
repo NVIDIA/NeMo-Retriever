@@ -180,7 +180,7 @@ service:
 
   # OpenTelemetry env defaults for the retriever service container.
   otel:
-    enabled: false
+    enabled: true
     serviceName: nemo-retriever-service
     env: {}
 
@@ -847,7 +847,7 @@ nimOperator:
 
   # OpenTelemetry defaults applied to NIMService env blocks.
   otel:
-    enabled: false
+    enabled: true
     endpoint: ""
     tritonPath: "/v1/traces"
     env:

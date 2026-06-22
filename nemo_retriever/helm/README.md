@@ -942,7 +942,8 @@ sanity check before opening Grafana.
 Helm installs the chart-owned OpenTelemetry Collector and Zipkin backend on by
 default. This is intentional: the legacy 26.1.2 Helm chart shipped with a
 managed Zipkin deployment enabled, so the new chart keeps a default trace
-backend available for functional parity. Pod trace export is still opt-in:
+backend available for functional parity. Pod trace export is also enabled by
+default for retriever service pods and chart-managed NIMs:
 
 ```yaml
 topology:
@@ -953,11 +954,11 @@ topology:
 
 service:
   otel:
-    enabled: false
+    enabled: true
 
 nimOperator:
   otel:
-    enabled: false
+    enabled: true
 ```
 
 Because Zipkin is chart-owned by default, an upgrade with default values can
@@ -965,11 +966,11 @@ create a Zipkin Deployment and Service. Set `topology.zipkin.enabled=false`
 before upgrading if your deployment uses an external backend or should not run
 chart-owned Zipkin.
 
-Set `service.otel.enabled=true` and `nimOperator.otel.enabled=true` to have
-retriever service pods and chart-managed NIMs emit OTLP to the chart's
-OpenTelemetry Collector. Once pod trace export is enabled, the collector exports
-traces to the chart-owned Zipkin service. Open a job and read the Zipkin lookup
-key from either the JSON body or the `x-trace-id` response header:
+With default values, retriever service pods and chart-managed NIMs emit OTLP to
+the chart's OpenTelemetry Collector, which exports traces to the chart-owned
+Zipkin service. Set `service.otel.enabled=false` or
+`nimOperator.otel.enabled=false` to opt out by surface. Open a job and read the
+Zipkin lookup key from either the JSON body or the `x-trace-id` response header:
 
 ```bash
 kubectl port-forward svc/tracing-smoke-nemo-retriever 7670:80
@@ -1002,11 +1003,11 @@ topology:
 
 service:
   otel:
-    enabled: true                  # inject service pod instrumentation env
+    enabled: false                 # do not inject service pod instrumentation env
 
 nimOperator:
   otel:
-    enabled: true                  # inject inherited NIM OTLP env
+    enabled: false                 # do not inject inherited NIM OTLP env
   page_elements:
     otel:
       enabled: false               # per-NIM opt-out

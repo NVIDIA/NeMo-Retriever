@@ -256,28 +256,36 @@ def test_default_renders_zipkin_deployment_and_service() -> None:
     assert service["spec"]["ports"] == [{"name": "http", "protocol": "TCP", "port": 9411, "targetPort": "http"}]
 
 
-def test_default_omits_managed_service_and_nim_otel_env() -> None:
+def test_default_injects_managed_service_and_nim_otel_env() -> None:
     docs = _helm_template()
-    service_values = _env_values(_deployment_env(_find(docs, "Deployment", FULLNAME)))
-    service_managed_names = {
-        "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "OTEL_SERVICE_NAME",
-        "OTEL_TRACES_EXPORTER",
-        "OTEL_METRICS_EXPORTER",
-        "OTEL_LOGS_EXPORTER",
-        "OTEL_PROPAGATORS",
-        "OTEL_RESOURCE_ATTRIBUTES",
-        "OTEL_PYTHON_EXCLUDED_URLS",
-    }
-    nim_managed_names = {
-        "NIM_ENABLE_OTEL",
-        "NIM_OTEL_EXPORTER_OTLP_ENDPOINT",
-        "TRITON_OTEL_URL",
-    }
+    service_env = _deployment_env(_find(docs, "Deployment", FULLNAME))
+    service_values = _env_values(service_env)
 
-    assert service_managed_names.isdisjoint(service_values)
-    for doc in [doc for doc in docs if doc.get("kind") == "NIMService"]:
-        assert nim_managed_names.isdisjoint(_env_values(_nim_env(doc)))
+    _assert_unique_env_names(service_env)
+    assert service_values["OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4317"
+    assert service_values["OTEL_SERVICE_NAME"] == "nemo-retriever-service"
+    assert service_values["OTEL_TRACES_EXPORTER"] == "otlp"
+    assert service_values["OTEL_METRICS_EXPORTER"] == "otlp"
+    assert service_values["OTEL_LOGS_EXPORTER"] == "none"
+    assert service_values["OTEL_PROPAGATORS"] == "tracecontext,baggage"
+    assert service_values["OTEL_RESOURCE_ATTRIBUTES"] == "service.namespace=nemo-retriever,service.role=standalone"
+    assert service_values["OTEL_PYTHON_EXCLUDED_URLS"] == "health"
+
+    nimservices = [doc for doc in docs if doc.get("kind") == "NIMService"]
+    assert {doc["metadata"]["name"] for doc in nimservices} == NIMSERVICE_NAMES
+    for doc in nimservices:
+        name = doc["metadata"]["name"]
+        env = _nim_env(doc)
+        values = _env_values(env)
+
+        _assert_unique_env_names(env)
+        assert values["NIM_ENABLE_OTEL"] == "true"
+        assert values["NIM_OTEL_SERVICE_NAME"] == name
+        assert values["NIM_OTEL_TRACES_EXPORTER"] == "otlp"
+        assert values["NIM_OTEL_METRICS_EXPORTER"] == "console"
+        assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
+        assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
+        assert values["TRITON_OTEL_RATE"] == "1"
 
 
 def test_tracing_pods_include_image_pull_secrets() -> None:
@@ -663,6 +671,25 @@ def test_all_enabled_nimservices_inherit_otel_env() -> None:
         assert values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
         assert values["TRITON_OTEL_URL"] == f"http://{OTEL_NAME}:4318/v1/traces"
         assert values["TRITON_OTEL_RATE"] == "1"
+
+
+def test_service_otel_disable_omits_managed_env() -> None:
+    docs = _helm_template(["service.otel.enabled=false"])
+    env = _deployment_env(_find(docs, "Deployment", FULLNAME))
+    values = _env_values(env)
+    chart_managed_names = {
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+        "OTEL_SERVICE_NAME",
+        "OTEL_TRACES_EXPORTER",
+        "OTEL_METRICS_EXPORTER",
+        "OTEL_LOGS_EXPORTER",
+        "OTEL_PROPAGATORS",
+        "OTEL_RESOURCE_ATTRIBUTES",
+        "OTEL_PYTHON_EXCLUDED_URLS",
+    }
+
+    _assert_unique_env_names(env)
+    assert chart_managed_names.isdisjoint(values)
 
 
 def test_chart_wide_nim_otel_disable_omits_managed_env() -> None:
