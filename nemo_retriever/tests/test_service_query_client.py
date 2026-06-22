@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 import nemo_retriever.service.client as service_client_module
+from nemo_retriever.query.options import QueryFilterOptions
 from nemo_retriever.service.client import RetrieverServiceClient
 
 
@@ -58,6 +59,39 @@ def test_service_client_query_posts_to_v1_query_with_auth(monkeypatch) -> None:
     assert calls[1] == {
         "url": "http://svc:7670/v1/query",
         "json": {"query": "deployment?", "top_k": 2},
+    }
+
+
+def test_service_client_query_posts_filters_to_v1_query(monkeypatch) -> None:
+    calls: list[dict[str, Any]] = []
+    _install_query_response(
+        monkeypatch,
+        {"results": [{"hits": [{"text": "passage", "source": "doc.pdf"}]}]},
+        calls,
+    )
+
+    client = RetrieverServiceClient(base_url="http://svc:7670", api_token="secret")
+
+    assert client.query(
+        "deployment?",
+        top_k=2,
+        filters=QueryFilterOptions(
+            source_id="docs/a.pdf",
+            source="a.pdf",
+            page_number=3,
+            where="text != ''",
+        ),
+    ) == [[{"text": "passage", "source": "doc.pdf"}]]
+    assert calls[1] == {
+        "url": "http://svc:7670/v1/query",
+        "json": {
+            "query": "deployment?",
+            "top_k": 2,
+            "source_id": "docs/a.pdf",
+            "source": "a.pdf",
+            "page_number": 3,
+            "where": "text != ''",
+        },
     }
 
 

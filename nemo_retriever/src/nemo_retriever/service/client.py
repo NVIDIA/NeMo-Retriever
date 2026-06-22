@@ -50,6 +50,8 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from nemo_retriever.query.filters import query_filter_payload
+from nemo_retriever.query.options import QueryFilterOptions
 from nemo_retriever.service.query_schema import QueryResponse
 
 logger = logging.getLogger(__name__)
@@ -216,11 +218,19 @@ class RetrieverServiceClient:
     # Query
     # ------------------------------------------------------------------
 
-    def query(self, query: str | list[str], *, top_k: int) -> list[list[dict[str, Any]]]:
+    def query(
+        self,
+        query: str | list[str],
+        *,
+        top_k: int,
+        filters: QueryFilterOptions | None = None,
+    ) -> list[list[dict[str, Any]]]:
         """Search ingested documents through ``POST /v1/query``."""
         url = f"{self._base_url}/v1/query"
         expected_results = len(query) if isinstance(query, list) else 1
         payload: dict[str, Any] = {"query": query, "top_k": int(top_k)}
+        if filters is not None:
+            payload.update(query_filter_payload(filters))
         try:
             with httpx.Client(
                 timeout=httpx.Timeout(300.0, connect=30.0),

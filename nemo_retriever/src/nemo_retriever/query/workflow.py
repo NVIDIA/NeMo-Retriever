@@ -13,6 +13,7 @@ from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
 from nemo_retriever.common.vdb.records import RetrievalHit
 from nemo_retriever.graph.retriever import Retriever
 from nemo_retriever.models import VL_RERANK_MODEL
+from nemo_retriever.query.filters import build_query_where_clause
 from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
 
 _LOCAL_VL_RERANK_MODEL = VL_RERANK_MODEL
@@ -62,6 +63,7 @@ class ResolvedQueryPlan:
     candidate_k: int | None
     page_dedup: bool
     content_types: str | None
+    where: str | None
     lancedb_uri: str
     table_name: str
     retrieval_mode: str
@@ -93,11 +95,14 @@ class ResolvedQueryPlan:
         return Retriever(**self.retriever_kwargs())
 
     def query_kwargs(self) -> dict[str, Any]:
-        return {
+        kwargs: dict[str, Any] = {
             "candidate_k": self.candidate_k,
             "page_dedup": self.page_dedup,
             "content_types": self.content_types,
         }
+        if self.where is not None:
+            kwargs["vdb_kwargs"] = {"where": self.where}
+        return kwargs
 
 
 def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
@@ -112,6 +117,7 @@ def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
         candidate_k=request.retrieval.candidate_k,
         page_dedup=bool(request.retrieval.page_dedup),
         content_types=content_types,
+        where=build_query_where_clause(request.filters),
         lancedb_uri=str(request.storage.lancedb_uri),
         table_name=str(request.storage.table_name),
         retrieval_mode=str(request.retrieval.retrieval_mode),

@@ -25,6 +25,7 @@ from nemo_retriever.common.vdb.records import RetrievalHit
 from nemo_retriever.query.options import (
     QueryAgenticOptions,
     QueryEmbedOptions,
+    QueryFilterOptions,
     QueryRerankOptions,
     QueryRequest,
     QueryRetrievalOptions,
@@ -155,6 +156,21 @@ def _retrieval_options(
     )
 
 
+def _filter_options(
+    *,
+    source_id: str | None,
+    source: str | None,
+    page_number: int | None,
+    where: str | None,
+) -> QueryFilterOptions:
+    return QueryFilterOptions(
+        source_id=source_id,
+        source=source,
+        page_number=page_number,
+        where=where,
+    )
+
+
 @app.command(
     "_local",
     hidden=True,
@@ -170,6 +186,10 @@ def _local_command(
     candidate_k: opts.CandidateKOption = None,
     page_dedup: opts.PageDedupOption = False,
     content_types: opts.ContentTypesOption = None,
+    source_id: opts.SourceIdOption = None,
+    source: opts.SourceOption = None,
+    page_number: opts.PageNumberOption = None,
+    where: opts.WhereOption = None,
     lancedb_uri: opts.LanceDbUriOption = "lancedb",
     table_name: opts.TableNameOption = "nemo-retriever",
     embed_invoke_url: opts.EmbedInvokeUrlOption = None,
@@ -258,6 +278,12 @@ def _local_command(
                     content_types=content_types,
                     retrieval_mode=effective_retrieval_mode,
                 ),
+                filters=_filter_options(
+                    source_id=source_id,
+                    source=source,
+                    page_number=page_number,
+                    where=where,
+                ),
                 embed=QueryEmbedOptions(
                     embed_invoke_url=embed_invoke_url,
                     embed_model_name=embed_model_name,
@@ -295,6 +321,10 @@ def _service_command(
     candidate_k: opts.CandidateKOption = None,
     page_dedup: opts.PageDedupOption = False,
     content_types: opts.ContentTypesOption = None,
+    source_id: opts.SourceIdOption = None,
+    source: opts.SourceOption = None,
+    page_number: opts.PageNumberOption = None,
+    where: opts.WhereOption = None,
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
 ) -> None:
@@ -310,6 +340,12 @@ def _service_command(
                         candidate_k=candidate_k,
                         page_dedup=page_dedup,
                         content_types=content_types,
+                    ),
+                    filters=_filter_options(
+                        source_id=source_id,
+                        source=source,
+                        page_number=page_number,
+                        where=where,
                     ),
                     service=QueryServiceOptions(
                         service_url=service_url,
