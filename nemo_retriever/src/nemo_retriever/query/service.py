@@ -27,7 +27,7 @@ def query_documents(request: ServiceQueryRequest) -> list[RetrievalHit]:
         base_url=request.service.service_url,
         api_token=request.service.service_api_token,
     )
-    raw_result_sets = client.query(request.query, top_k=retrieval_top_k)
+    raw_result_sets = client.query(request.query, top_k=retrieval_top_k, filters=request.filters)
     raw_hits = raw_result_sets[0]
     return shape_query_hits(
         raw_hits,

@@ -42,6 +42,35 @@ ContentTypesOption = Annotated[
         ),
     ),
 ]
+SourceIdOption = Annotated[
+    str | None,
+    typer.Option(
+        "--source-id",
+        help="Only search chunks from this source identifier.",
+    ),
+]
+SourceOption = Annotated[
+    str | None,
+    typer.Option(
+        "--source",
+        help="Only search chunks from this source name or identifier.",
+    ),
+]
+PageNumberOption = Annotated[
+    int | None,
+    typer.Option(
+        "--page-number",
+        min=0,
+        help="Only search chunks from this page number.",
+    ),
+]
+WhereOption = Annotated[
+    str | None,
+    typer.Option(
+        "--where",
+        help="Advanced: raw LanceDB SQL predicate appended to structured query filters.",
+    ),
+]
 LanceDbUriOption = Annotated[
     str,
     typer.Option(

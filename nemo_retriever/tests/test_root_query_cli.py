@@ -11,6 +11,8 @@ from typing import Any
 from typer.testing import CliRunner
 
 import nemo_retriever.query.workflow as query_core
+from nemo_retriever.query.filters import build_query_where_clause
+from nemo_retriever.query.options import QueryFilterOptions
 
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.cli.main")
@@ -109,6 +111,66 @@ def test_root_query_passes_candidate_dedup_and_content_filters(monkeypatch) -> N
     assert query_kwargs == [{"candidate_k": 3, "page_dedup": True, "content_types": "text,table"}]
     assert json.loads(result.output) == [
         {"page_number": 1, "source": "doc.pdf", "text": "text row", "modality": "text", "score": None},
+    ]
+
+
+def test_root_query_passes_source_page_filters_without_changing_output_shape(monkeypatch) -> None:
+    query_kwargs: list[dict[str, Any]] = []
+
+    class FakeRetriever:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def query(self, query: str, **kwargs: Any) -> list[dict[str, Any]]:
+            query_kwargs.append(kwargs)
+            return [
+                {
+                    "text": "text row",
+                    "metadata": {"type": "text"},
+                    "page_number": 3,
+                    "source": "docs/a.pdf",
+                    "_distance": 0.2,
+                },
+            ]
+
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "deployment?",
+            "--source-id",
+            "docs/a.pdf",
+            "--page-number",
+            "3",
+            "--where",
+            "text != ''",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.output) == [
+        {
+            "modality": "text",
+            "page_number": 3,
+            "score": 0.2,
+            "source": "docs/a.pdf",
+            "text": "text row",
+        },
+    ]
+    assert set(json.loads(result.output)[0]) == {"modality", "page_number", "score", "source", "text"}
+    assert query_kwargs == [
+        {
+            "candidate_k": None,
+            "page_dedup": False,
+            "content_types": None,
+            "vdb_kwargs": {
+                "where": build_query_where_clause(
+                    QueryFilterOptions(source_id="docs/a.pdf", page_number=3, where="text != ''")
+                )
+            },
+        }
     ]
 
 
@@ -576,6 +638,10 @@ def test_root_query_service_help_hides_local_only_options() -> None:
     assert "--top-k" in result.output
     assert "--candidate-k" in result.output
     assert "--content-types" in result.output
+    assert "--source-id" in result.output
+    assert "--source" in result.output
+    assert "--page-number" in result.output
+    assert "--where" in result.output
     assert "--format" in result.output
     assert "--max-text-chars" in result.output
     assert "--run-mode" not in result.output
@@ -619,6 +685,12 @@ def test_root_query_service_mode_uses_service_options_and_prints_json(monkeypatc
             "--page-dedup",
             "--content-types",
             "text",
+            "--source-id",
+            "docs/a.pdf",
+            "--page-number",
+            "3",
+            "--where",
+            "text != ''",
         ],
     )
 
@@ -631,6 +703,7 @@ def test_root_query_service_mode_uses_service_options_and_prints_json(monkeypatc
     assert request.retrieval.candidate_k == 5
     assert request.retrieval.page_dedup is True
     assert request.retrieval.content_types == "text"
+    assert request.filters == QueryFilterOptions(source_id="docs/a.pdf", page_number=3, where="text != ''")
     assert json.loads(result.output) == [
         {"modality": "text", "page_number": 3, "score": 0.2, "source": "doc.pdf", "text": "service passage"},
     ]

@@ -12,6 +12,10 @@ from pydantic import BaseModel, Field
 class QueryRequest(BaseModel):
     query: str | list[str]
     top_k: int = Field(default=10, ge=1, le=1000)
+    source_id: str | None = None
+    source: str | None = None
+    page_number: int | None = Field(default=None, ge=0)
+    where: str | None = None
 
 
 class QueryResult(BaseModel):

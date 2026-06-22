@@ -9,6 +9,7 @@ from typing import Any
 
 from nemo_retriever.common.params import build_embed_option_kwargs
 from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
+from nemo_retriever.query.filters import build_query_where_clause
 from nemo_retriever.graph.retriever import Retriever
 from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
@@ -80,12 +81,15 @@ def query_documents_with_metadata(request: QueryRequest) -> QueryDocumentsResult
         lancedb_mode = resolve_mode(None)
         if lancedb_mode is not None:
             mode = lancedb_mode[0]
-    hits = retriever.query(
-        request.query,
-        candidate_k=request.retrieval.candidate_k,
-        page_dedup=request.retrieval.page_dedup,
-        content_types=request.retrieval.content_types,
-    )
+    query_kwargs: dict[str, Any] = {
+        "candidate_k": request.retrieval.candidate_k,
+        "page_dedup": request.retrieval.page_dedup,
+        "content_types": request.retrieval.content_types,
+    }
+    where_clause = build_query_where_clause(request.filters)
+    if where_clause is not None:
+        query_kwargs["vdb_kwargs"] = {"where": where_clause}
+    hits = retriever.query(request.query, **query_kwargs)
     return QueryDocumentsResult(hits=hits, strategies=_strategies_for_retrieval_mode(mode))
 
 
