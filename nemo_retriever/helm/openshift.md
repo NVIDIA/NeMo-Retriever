@@ -77,7 +77,7 @@ The Helm chart supports `service.installFfmpeg=true`, which installs `ffmpeg`/`f
 For audio and video extraction on OpenShift, **do not** set `service.installFfmpeg=true`. Instead, extend the service image on a connected build host and point the chart at that tag (same pattern as [air-gapped custom service images](./README.md#1-service-image)):
 
 ```dockerfile
-FROM nvcr.io/nvstaging/nim/nrl-service:<BASE_TAG>
+FROM nvcr.io/nvidia/nemo-microservices/nrl-service:<BASE_TAG>
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
@@ -189,8 +189,8 @@ helm install retriever ./nemo_retriever/helm -n nemo-retriever \
   --set nims.enabled=false \
   --set persistence.enabled=false \
   --set retrieverResults.enabled=false \
-  --set service.image.repository=nvcr.io/nvstaging/nim/nrl-service \
-  --set service.image.tag=<TAG>
+  --set service.image.repository=nvcr.io/nvidia/nemo-microservices/nrl-service \
+  --set service.image.tag=26.5.0
 ```
 
 Verify pods:
@@ -211,8 +211,8 @@ helm install retriever ./nemo_retriever/helm -n nemo-retriever \
   -f openshift-restricted.yaml \
   --set ngcImagePullSecret.create=false \
   --set ngcApiSecret.create=false \
-  --set service.image.repository=nvcr.io/nvstaging/nim/nrl-service \
-  --set service.image.tag=<TAG>
+  --set service.image.repository=nvcr.io/nvidia/nemo-microservices/nrl-service \
+  --set service.image.tag=26.5.0
 ```
 
 After install, confirm workloads reach Ready before you run ingest:

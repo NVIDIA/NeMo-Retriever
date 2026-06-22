@@ -81,13 +81,13 @@ nemo_retriever/helm/
 
 ### 1. Service image { #1-service-image }
 
-The chart defaults to the staging image published to NGC:
+The chart defaults to the GA image published to NGC:
 
 ```
-nvcr.io/nvstaging/nim/nemo-retriever-service:043020205-001
+nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0
 ```
 
-Pulling from `nvcr.io/nvstaging` requires an NGC pull secret — either set
+Pulling from `nvcr.io` requires an NGC pull secret — either set
 `ngcImagePullSecret.create=true` (see below) or pre-create one in the
 namespace named `ngc-secret`.
 
@@ -287,8 +287,8 @@ short list of knobs you'll touch first.
 
 | Path                          | Default                            | Notes |
 |-------------------------------|------------------------------------|-------|
-| `service.image.repository`    | `localhost:32000/nemo-retriever-service` | Override to a published image. |
-| `service.image.tag`           | `latest`                           |       |
+| `service.image.repository`    | `nvcr.io/nvidia/nemo-microservices/nrl-service` | GA NGC image; override to pin a different build or use a local registry. |
+| `service.image.tag`           | `26.5.0`                           |       |
 | `service.replicas`            | `1`                                | Hard cap = 1 while SQLite is the backend. |
 | `service.installFfmpeg`       | `false`                            | Install `ffmpeg`/`ffprobe` at container startup by setting `INSTALL_FFMPEG=true`. Requires network egress, writable root filesystem, and sudo/setuid allowed. Not for air-gapped clusters — use a custom image instead. |
 | `service.resources.requests`  | `16 / 16Gi`                        | Tune in tandem with `serviceConfig.pipeline.*Workers`. |
