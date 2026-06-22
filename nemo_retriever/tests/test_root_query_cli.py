@@ -15,6 +15,7 @@ import nemo_retriever.query.workflow as query_core
 
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.cli.main")
+query_cli_app = importlib.import_module("nemo_retriever.cli.query.app")
 
 
 def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
@@ -326,7 +327,7 @@ def test_root_query_reports_os_errors(monkeypatch) -> None:
     def fail_query_documents(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
         raise OSError("database unavailable")
 
-    monkeypatch.setattr(cli_main, "query_documents", fail_query_documents)
+    monkeypatch.setattr(query_cli_app, "query_local_documents", fail_query_documents)
 
     result = RUNNER.invoke(cli_main.app, ["query", "hello"])
 
@@ -373,7 +374,7 @@ def test_root_query_max_text_chars_truncates_and_omits(monkeypatch) -> None:
     assert snip.exit_code == 0
     snip_hit = json.loads(snip.output)[0]
     assert snip_hit["text"] == "abcde…"
-    assert snip_hit["modality"] == "text"  # non-text fields intact
+    assert snip_hit["modality"] == "text"
     assert snip_hit["source"] == "d.pdf"
 
     meta = RUNNER.invoke(cli_main.app, ["query", "q", "--max-text-chars", "0"])
@@ -381,3 +382,120 @@ def test_root_query_max_text_chars_truncates_and_omits(monkeypatch) -> None:
     assert meta_hit["text"] == ""
     assert meta_hit["source"] == "d.pdf"
     assert meta_hit["page_number"] == 1
+
+
+def test_root_query_help_lists_service_subcommand() -> None:
+    result = RUNNER.invoke(cli_main.app, ["query", "--help"])
+
+    assert result.exit_code == 0
+    assert "service" in result.output
+    assert "--run-mode" not in result.output
+    assert "--lancedb-uri" not in result.output
+
+
+def test_root_query_service_help_hides_local_only_options() -> None:
+    result = RUNNER.invoke(cli_main.app, ["query", "service", "--help"])
+
+    assert result.exit_code == 0
+    assert "--service-url" in result.output
+    assert "--top-k" in result.output
+    assert "--candidate-k" in result.output
+    assert "--content-types" in result.output
+    assert "--format" in result.output
+    assert "--max-text-chars" in result.output
+    assert "--run-mode" not in result.output
+    assert "--lancedb-uri" not in result.output
+    assert "--table-name" not in result.output
+    assert "--embed-invoke" not in result.output
+    assert "--reranker" not in result.output
+
+
+def test_root_query_service_mode_uses_service_options_and_prints_json(monkeypatch) -> None:
+    requests: list[Any] = []
+
+    def fake_query_documents(request: Any) -> list[dict[str, Any]]:
+        requests.append(request)
+        return [
+            {
+                "text": "service passage",
+                "source": "doc.pdf",
+                "page_number": 3,
+                "metadata": {"type": "text"},
+                "_distance": 0.2,
+            }
+        ]
+
+    monkeypatch.setattr(query_cli_app, "query_service_documents", fake_query_documents)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "service",
+            "Which passages mention deployment?",
+            "--service-url",
+            "http://svc:7670",
+            "--service-api-token",
+            "secret",
+            "--top-k",
+            "2",
+            "--candidate-k",
+            "5",
+            "--page-dedup",
+            "--content-types",
+            "text",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.service.service_url == "http://svc:7670"
+    assert request.service.service_api_token == "secret"
+    assert request.retrieval.top_k == 2
+    assert request.retrieval.candidate_k == 5
+    assert request.retrieval.page_dedup is True
+    assert request.retrieval.content_types == "text"
+    assert json.loads(result.output) == [
+        {"modality": "text", "page_number": 3, "score": 0.2, "source": "doc.pdf", "text": "service passage"},
+    ]
+
+
+def test_root_query_service_mode_rejects_local_storage_flags() -> None:
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "service",
+            "deployment?",
+            "--lancedb-uri",
+            "/tmp/lancedb",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "No such option" in result.output
+    assert "--lancedb-uri" in result.output
+
+
+def test_root_query_service_evidence_format(monkeypatch) -> None:
+    def fake_query_documents(request: Any) -> list[dict[str, Any]]:
+        return [
+            {
+                "text": "service passage",
+                "source": "doc.pdf",
+                "page_number": 3,
+                "metadata": {"type": "text"},
+                "_distance": 0.2,
+            }
+        ]
+
+    monkeypatch.setattr(query_cli_app, "query_service_documents", fake_query_documents)
+
+    result = RUNNER.invoke(cli_main.app, ["query", "service", "deployment?", "--format", "evidence"])
+
+    assert result.exit_code == 0
+    body = json.loads(result.output)
+    assert body["coverage"]["strategies_used"] == ["semantic"]
+    assert body["evidence"][0]["text"] == "service passage"
+    assert body["evidence"][0]["citation"] == "doc p.3"

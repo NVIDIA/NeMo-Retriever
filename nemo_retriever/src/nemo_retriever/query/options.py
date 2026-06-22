@@ -41,9 +41,22 @@ class QueryStorageOptions:
 
 
 @dataclass(frozen=True)
+class QueryServiceOptions:
+    service_url: str = "http://localhost:7670"
+    service_api_token: str | None = None
+
+
+@dataclass(frozen=True)
 class QueryRequest:
     query: str
     retrieval: QueryRetrievalOptions = field(default_factory=QueryRetrievalOptions)
     embed: QueryEmbedOptions = field(default_factory=QueryEmbedOptions)
     rerank: QueryRerankOptions = field(default_factory=QueryRerankOptions)
     storage: QueryStorageOptions = field(default_factory=QueryStorageOptions)
+
+
+@dataclass(frozen=True)
+class ServiceQueryRequest:
+    query: str
+    retrieval: QueryRetrievalOptions = field(default_factory=QueryRetrievalOptions)
+    service: QueryServiceOptions = field(default_factory=QueryServiceOptions)
