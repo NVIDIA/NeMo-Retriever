@@ -18,13 +18,15 @@ These tests pin the chart-side fix:
 
 * ``values.yaml`` carries a chart-wide ``nimOperator.modelProfile``
   default plus a per-NIM ``nimOperator.<key>.modelProfile`` override
-  for every NIMCache the chart provisions.  Both default to ``{}`` so
-  existing releases keep their pre-fix behaviour.
+  for every NIMCache the chart provisions. Existing extraction NIMs
+  default their per-NIM override to ``{}``; ``answer_llm`` is the
+  intentional exception because its Super-49B default pins the bundled
+  two-GPU profile by default.
 * A ``helm template`` with **no overrides** renders no ``model:``
-  block on any NIMCache (preserves operator default).
+  block on default-empty-profile NIMCaches (preserves operator default).
 * ``--set nimOperator.modelProfile.gpus[0]...`` renders an identical
-  ``model:`` block on every NIMCache reconciled by the chart, with the
-  expected ``gpus`` / ``ids`` / ``product`` shape.
+  ``model:`` block on every rendered default-empty-profile NIMCache,
+  with the expected ``gpus`` / ``ids`` / ``product`` shape.
 * ``--set nimOperator.<key>.modelProfile.profiles[0]=...`` renders
   ``model.profiles`` ONLY on that NIM's NIMCache; the other NIMs
   inherit the global default (or render no block when no global is
@@ -54,11 +56,11 @@ _VALUES_YAML = _REPO_ROOT / "nemo_retriever/helm/values.yaml"
 _README_MD = _REPO_ROOT / "nemo_retriever/helm/README.md"
 _CHART_DIR = _REPO_ROOT / "nemo_retriever/helm"
 
-# The eight per-NIM keys that drive the NIMCache templates. The chart
-# carries one ``templates/nims/<file>.yaml`` per key, each of which
-# wires `nemo-retriever.nimcache.modelBlock` under
-# ``spec.source.ngc``.
-_NIM_KEYS: tuple[str, ...] = (
+# Per-NIM keys whose NIMCache modelProfile values intentionally default
+# to ``{}``, preserving pre-fix operator behaviour unless an operator
+# opts into GPU/profile filtering. answer_llm is tracked separately because
+# its Super-49B default ships with a pinned profile for the bundled two-GPU NIM.
+_EMPTY_MODEL_PROFILE_NIM_KEYS: tuple[str, ...] = (
     "page_elements",
     "table_structure",
     "ocr",
@@ -68,6 +70,9 @@ _NIM_KEYS: tuple[str, ...] = (
     "nemotron_3_nano_omni_30b_a3b_reasoning",
     "audio",
 )
+_ANSWER_LLM_NIM_KEY = "answer_llm"
+_SUPER49B_DEFAULT_PROFILE = "1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"
+_ALL_NIM_KEYS: tuple[str, ...] = _EMPTY_MODEL_PROFILE_NIM_KEYS + (_ANSWER_LLM_NIM_KEY,)
 
 
 def _read_required_file(path: Path) -> str:
@@ -77,7 +82,7 @@ def _read_required_file(path: Path) -> str:
 
 
 def _helm_template(extra_args: Sequence[str] = ()) -> subprocess.CompletedProcess[str]:
-    """Render the chart with every NIM opted in so all 8 NIMCaches appear."""
+    """Render the chart with each default-empty-profile NIM opted in."""
     helm = shutil.which("helm")
     if helm is None:
         raise SkipTest("`helm` binary not available in this environment.")
@@ -92,8 +97,9 @@ def _helm_template(extra_args: Sequence[str] = ()) -> subprocess.CompletedProces
         "ngcImagePullSecret.create=false",
         "--set",
         "ngcApiSecret.create=false",
-        # Opt every NIM in so the test exercises all 8 NIMCaches in
-        # one render.  Defaults are covered separately.
+        # Opt every default-empty-profile NIM in so this suite exercises
+        # their shared modelProfile contract in one render. Defaults are
+        # covered separately.
         "--set",
         "nimOperator.rerankqa.enabled=true",
         "--set",
@@ -154,10 +160,10 @@ class NimCacheModelProfileTests(TestCase):
         )
 
     def test_values_exposes_per_nim_override_for_every_nim(self) -> None:
-        """Each ``nimOperator.<key>`` block must carry its own ``modelProfile: {}``."""
+        """Each ``nimOperator.<key>`` block must carry a modelProfile override."""
         values = _read_required_file(_VALUES_YAML)
         loaded = yaml.safe_load(values)
-        for key in _NIM_KEYS:
+        for key in _ALL_NIM_KEYS:
             with self.subTest(nim=key):
                 cfg = loaded["nimOperator"].get(key)
                 self.assertIsNotNone(
@@ -171,13 +177,23 @@ class NimCacheModelProfileTests(TestCase):
                     "override key — anything else removes the documented "
                     "per-NIM tuning surface.",
                 )
-                self.assertEqual(
-                    cfg["modelProfile"],
-                    {},
-                    f"nimOperator.{key}.modelProfile must default to `{{}}` "
-                    "so the chart's behaviour is unchanged unless the "
-                    "operator opts in.",
-                )
+                if key in _EMPTY_MODEL_PROFILE_NIM_KEYS:
+                    self.assertEqual(
+                        cfg["modelProfile"],
+                        {},
+                        f"nimOperator.{key}.modelProfile must default to `{{}}` "
+                        "so the chart's behaviour is unchanged unless the "
+                        "operator opts in.",
+                    )
+
+    def test_answer_llm_exposes_intentional_default_super49b_model_profile(self) -> None:
+        """Super-49B pins its bundled two-GPU NIM profile by default."""
+        values = _read_required_file(_VALUES_YAML)
+        loaded = yaml.safe_load(values)
+        self.assertEqual(
+            loaded["nimOperator"][_ANSWER_LLM_NIM_KEY]["modelProfile"],
+            {"profiles": [_SUPER49B_DEFAULT_PROFILE]},
+        )
 
     # ------------------------------------------------------------------
     # README — operator-facing documentation
@@ -221,8 +237,9 @@ class NimCacheModelProfileTests(TestCase):
         docs = _iter_nimcache_docs(proc.stdout)
         self.assertEqual(
             len(docs),
-            len(_NIM_KEYS),
-            f"Expected one NIMCache per opted-in NIM (={len(_NIM_KEYS)}); " f"got {len(docs)}.",
+            len(_EMPTY_MODEL_PROFILE_NIM_KEYS),
+            f"Expected one NIMCache per opted-in default-empty-profile NIM (={len(_EMPTY_MODEL_PROFILE_NIM_KEYS)}); "
+            f"got {len(docs)}.",
         )
         for doc in docs:
             name = doc.get("metadata", {}).get("name", "<unknown>")
@@ -235,11 +252,13 @@ class NimCacheModelProfileTests(TestCase):
                 "— that breaks pre-fix release behaviour.",
             )
 
-    def test_chart_wide_modelprofile_applies_to_every_nimcache(self) -> None:
-        """``--set nimOperator.modelProfile.gpus[0]...`` must render on every NIMCache.
+    def test_chart_wide_modelprofile_applies_to_default_empty_nimcaches(self) -> None:
+        """``--set nimOperator.modelProfile.gpus[0]...`` renders on default-empty NIMCaches.
 
-        This is the exact customer ask: one --set flag, every NIMCache
-        downloads only the H100 profile.
+        This is the exact customer ask for the existing extraction NIMs:
+        one --set flag makes each rendered cache download only the H100
+        profile. Super-49B is covered separately because it intentionally
+        pins its bundled default profile.
         """
         proc = _helm_template(
             extra_args=(
@@ -251,7 +270,7 @@ class NimCacheModelProfileTests(TestCase):
         )
         _assert_helm_ok(self, proc)
         docs = _iter_nimcache_docs(proc.stdout)
-        self.assertEqual(len(docs), len(_NIM_KEYS))
+        self.assertEqual(len(docs), len(_EMPTY_MODEL_PROFILE_NIM_KEYS))
         for doc in docs:
             name = doc.get("metadata", {}).get("name", "<unknown>")
             with self.subTest(nimcache=name):
@@ -296,7 +315,7 @@ class NimCacheModelProfileTests(TestCase):
             "Per-NIM override must REPLACE the chart-wide default — the "
             "page-elements NIMCache must NOT carry the inherited gpus list.",
         )
-        # Every other NIMCache should still carry the chart-wide gpus
+        # Every other rendered NIMCache should still carry the chart-wide gpus
         # filter.  Spot-check one — the others are covered by the
         # previous test.
         ocr = docs["nemotron-ocr-v1"]
@@ -380,7 +399,7 @@ class NimCacheModelProfileTests(TestCase):
         _assert_helm_ok(self, proc)
         # If any document failed to parse, safe_load_all would raise.
         docs = _iter_nimcache_docs(proc.stdout)
-        self.assertEqual(len(docs), len(_NIM_KEYS))
+        self.assertEqual(len(docs), len(_EMPTY_MODEL_PROFILE_NIM_KEYS))
         for doc in docs:
             name = doc["metadata"]["name"]
             ngc = doc["spec"]["source"]["ngc"]
@@ -412,12 +431,16 @@ class NimCacheModelProfileTests(TestCase):
         # value is treated as truthy, the helper will render the block.
         proc = _helm_template(extra_args=())
         _assert_helm_ok(self, proc)
-        self.assertNotIn(
-            "      model:",
-            proc.stdout,
-            "Default render (no overrides) must not contain a `model:` "
-            "block at the NIMCache spec.source.ngc indentation level.",
-        )
+        docs = _iter_nimcache_docs(proc.stdout)
+        self.assertEqual(len(docs), len(_EMPTY_MODEL_PROFILE_NIM_KEYS))
+        for doc in docs:
+            name = doc["metadata"]["name"]
+            ngc = doc["spec"]["source"]["ngc"]
+            self.assertNotIn(
+                "model",
+                ngc,
+                f"Default render must not contain a NIMCache model block for `{name}`.",
+            )
 
 
 if __name__ == "__main__":
