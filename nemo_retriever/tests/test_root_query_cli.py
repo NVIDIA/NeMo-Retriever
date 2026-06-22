@@ -37,8 +37,8 @@ def test_root_query_passes_query_options_and_prints_json(monkeypatch) -> None:
         },
     ]
     expected_output = [
-        {"source": "doc.pdf", "page_number": 1, "text": "passage"},
-        {"source": "other.pdf", "page_number": 2, "text": "other"},
+        {"source": "doc.pdf", "page_number": 1, "text": "passage", "modality": "text", "score": 0.2},
+        {"source": "other.pdf", "page_number": 2, "text": "other", "modality": "table", "score": 0.4},
     ]
 
     class FakeRetriever:
@@ -108,7 +108,7 @@ def test_root_query_passes_candidate_dedup_and_content_filters(monkeypatch) -> N
     assert result.exit_code == 0
     assert query_kwargs == [{"candidate_k": 3, "page_dedup": True, "content_types": "text,table"}]
     assert json.loads(result.output) == [
-        {"page_number": 1, "source": "doc.pdf", "text": "text row"},
+        {"page_number": 1, "source": "doc.pdf", "text": "text row", "modality": "text", "score": None},
     ]
 
 
@@ -197,6 +197,61 @@ def test_root_query_passes_reranker_url(monkeypatch) -> None:
     assert json.loads(result.output) == []
 
 
+def test_root_query_passes_reranker_api_key_env(monkeypatch) -> None:
+    retriever_calls: list[dict[str, Any]] = []
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+    monkeypatch.setenv("NGC_INFERENCE_API_KEY", "inference-secret")
+
+    class FakeRetriever:
+        def __init__(self, **kwargs: Any) -> None:
+            retriever_calls.append(kwargs)
+
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "Which passages mention deployment?",
+            "--reranker-invoke-url",
+            "https://inference-api.nvidia.com/v1/rerank",
+            "--reranker-model-name",
+            "nvidia/nvidia/llama-3.2-nv-rerankqa-1b-v2",
+            "--reranker-api-key-env",
+            "NGC_INFERENCE_API_KEY",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert retriever_calls[0]["rerank_kwargs"] == {
+        "rerank_invoke_url": "https://inference-api.nvidia.com/v1/rerank",
+        "model_name": "nvidia/nvidia/llama-3.2-nv-rerankqa-1b-v2",
+        "api_key": "inference-secret",
+    }
+
+
+def test_root_query_reports_missing_reranker_api_key_env() -> None:
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "Which passages mention deployment?",
+            "--reranker-invoke-url",
+            "https://inference-api.nvidia.com/v1/rerank",
+            "--reranker-api-key-env",
+            "NGC_INFERENCE_API_KEY",
+        ],
+        env={"NVIDIA_API_KEY": "", "NGC_API_KEY": "", "NGC_INFERENCE_API_KEY": ""},
+    )
+
+    assert result.exit_code == 1
+    assert "Error: NGC_INFERENCE_API_KEY is not set or is empty." in result.output
+
+
 def test_root_query_rerank_flag_enables_local_rerank(monkeypatch) -> None:
     """``--rerank`` alone enables rerank with the local VL default model."""
     retriever_calls: list[dict[str, Any]] = []
@@ -277,3 +332,52 @@ def test_root_query_reports_os_errors(monkeypatch) -> None:
 
     assert result.exit_code == 1
     assert "Error: database unavailable" in result.output
+
+
+def test_root_query_passes_hybrid_into_vdb_kwargs(monkeypatch) -> None:
+    retriever_calls: list[dict[str, Any]] = []
+
+    class FakeRetriever:
+        def __init__(self, **kwargs: Any) -> None:
+            retriever_calls.append(kwargs)
+
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["query", "q", "--top-k", "5", "--lancedb-uri", "/tmp/lancedb", "--table-name", "docs", "--hybrid"],
+    )
+
+    assert result.exit_code == 0
+    assert retriever_calls == [
+        {"top_k": 5, "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "docs", "hybrid": True}}
+    ]
+
+
+def test_root_query_max_text_chars_truncates_and_omits(monkeypatch) -> None:
+    hits = [{"text": "abcdefghij", "source": "d.pdf", "page_number": 1, "metadata": {"type": "text"}, "_distance": 0.1}]
+
+    class FakeRetriever:
+        def __init__(self, **_: Any) -> None:
+            pass
+
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+            return hits
+
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
+
+    snip = RUNNER.invoke(cli_main.app, ["query", "q", "--max-text-chars", "5"])
+    assert snip.exit_code == 0
+    snip_hit = json.loads(snip.output)[0]
+    assert snip_hit["text"] == "abcde…"
+    assert snip_hit["modality"] == "text"  # non-text fields intact
+    assert snip_hit["source"] == "d.pdf"
+
+    meta = RUNNER.invoke(cli_main.app, ["query", "q", "--max-text-chars", "0"])
+    meta_hit = json.loads(meta.output)[0]
+    assert meta_hit["text"] == ""
+    assert meta_hit["source"] == "d.pdf"
+    assert meta_hit["page_number"] == 1

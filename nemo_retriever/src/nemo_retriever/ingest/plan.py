@@ -2,6 +2,8 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+"""CLI-facing graph ingest planning built on top of the lower-level ingestor execution plan."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -201,6 +203,8 @@ class IngestStorageOptions:
     lancedb_uri: str = "lancedb"
     table_name: str = "nemo-retriever"
     overwrite: bool = True
+    # Also build the LanceDB FTS/BM25 index so `query --hybrid` can fuse lexical + vector.
+    hybrid: bool = False
 
 
 @dataclass(frozen=True)
@@ -223,13 +227,13 @@ def _validate_run_mode(run_mode: str) -> IngestRunModeValue:
     return cast(IngestRunModeValue, run_mode)
 
 
-def _validate_input_type(input_type: str) -> IngestInputTypeValue:
+def validate_ingest_input_type(input_type: str) -> IngestInputTypeValue:
     if input_type not in _SUPPORTED_INPUT_TYPES:
         raise ValueError(f"input_type must be one of {', '.join(_SUPPORTED_INPUT_TYPES)}, got {input_type!r}.")
     return cast(IngestInputTypeValue, input_type)
 
 
-def _validate_profile(profile: str) -> IngestProfileValue:
+def validate_ingest_profile(profile: str) -> IngestProfileValue:
     if profile not in _SUPPORTED_PROFILES:
         raise ValueError(f"profile must be one of {', '.join(_SUPPORTED_PROFILES)}, got {profile!r}.")
     return cast(IngestProfileValue, profile)
@@ -245,7 +249,7 @@ def _validate_audio_split_type(split_type: str) -> AudioSplitTypeValue:
 
 # The ingest command accepts bare dataset directories; expand those to supported
 # files before passing file/glob inputs through the shared input normalizer.
-def _validate_ingest_document_types(documents: Sequence[str], *, input_type: IngestInputTypeValue) -> None:
+def validate_ingest_document_types(documents: Sequence[str], *, input_type: IngestInputTypeValue) -> None:
     allowed_extensions = AUTO_INPUT_EXTENSIONS if input_type == "auto" else INPUT_TYPE_EXTENSIONS[input_type]
     unsupported = [
         document
@@ -257,7 +261,7 @@ def _validate_ingest_document_types(documents: Sequence[str], *, input_type: Ing
         raise ValueError(f"Unsupported input file type(s) for retriever ingest: {examples}")
 
 
-def _expand_ingest_documents(documents: Sequence[str], *, input_type: IngestInputTypeValue = "auto") -> list[str]:
+def expand_ingest_documents(documents: Sequence[str], *, input_type: IngestInputTypeValue = "auto") -> list[str]:
     inputs: list[str] = []
     for document in documents:
         raw_document = str(document)
@@ -271,7 +275,7 @@ def _expand_ingest_documents(documents: Sequence[str], *, input_type: IngestInpu
             inputs.append(raw_document)
 
     document_list = expand_input_file_patterns(inputs)
-    _validate_ingest_document_types(document_list, input_type=input_type)
+    validate_ingest_document_types(document_list, input_type=input_type)
     return document_list
 
 
@@ -340,7 +344,7 @@ def _validate_profile_manifest(profile: IngestProfileValue, branches: Sequence[E
         _require_branch_families(profile=profile, branches=branches, allowed={"pdf"}, description="PDF/document")
 
 
-def _profile_extract_defaults(profile: IngestProfileValue) -> dict[str, Any]:
+def profile_extract_defaults(profile: IngestProfileValue) -> dict[str, Any]:
     if profile == "fast-text":
         return {
             "method": "pdfium",
@@ -416,63 +420,76 @@ def _resolve_media_params(
     return audio_chunk_params, asr_params, video_frame_params, video_text_dedup_params, av_fuse_params
 
 
-def _build_caption_params(caption: IngestCaptionOptions) -> CaptionParams | None:
+def build_caption_params(
+    *,
+    enabled: bool,
+    caption_invoke_url: str | None = None,
+    caption_api_key: str | None = None,
+    caption_model_name: str | None = None,
+    caption_device: str | None = None,
+    caption_context_text_max_chars: int | None = None,
+    caption_gpu_memory_utilization: float | None = None,
+    caption_temperature: float | None = None,
+    caption_top_p: float | None = None,
+    caption_max_tokens: int | None = None,
+    caption_infographics: bool | None = None,
+) -> CaptionParams | None:
     overrides = {
-        "caption_invoke_url": caption.caption_invoke_url,
-        "caption_model_name": caption.caption_model_name,
-        "caption_device": caption.caption_device,
-        "caption_context_text_max_chars": caption.caption_context_text_max_chars,
-        "caption_gpu_memory_utilization": caption.caption_gpu_memory_utilization,
-        "caption_temperature": caption.caption_temperature,
-        "caption_top_p": caption.caption_top_p,
-        "caption_max_tokens": caption.caption_max_tokens,
-        "caption_infographics": caption.caption_infographics,
+        "caption_invoke_url": caption_invoke_url,
+        "caption_model_name": caption_model_name,
+        "caption_device": caption_device,
+        "caption_context_text_max_chars": caption_context_text_max_chars,
+        "caption_gpu_memory_utilization": caption_gpu_memory_utilization,
+        "caption_temperature": caption_temperature,
+        "caption_top_p": caption_top_p,
+        "caption_max_tokens": caption_max_tokens,
+        "caption_infographics": caption_infographics,
     }
-    if not caption.enabled:
+    if not enabled:
         provided = [name for name, value in overrides.items() if value is not None]
         if provided:
             raise ValueError(f"Caption options require --caption: {', '.join(provided)}.")
         return None
-    if caption.caption_context_text_max_chars is not None and caption.caption_context_text_max_chars < 0:
+    if caption_context_text_max_chars is not None and caption_context_text_max_chars < 0:
         raise ValueError("caption_context_text_max_chars must be >= 0.")
 
     caption_kwargs = {
         key: value
         for key, value in {
-            "endpoint_url": caption.caption_invoke_url,
-            "api_key": caption.caption_api_key,
-            "model_name": caption.caption_model_name,
-            "device": caption.caption_device,
-            "context_text_max_chars": caption.caption_context_text_max_chars,
-            "gpu_memory_utilization": caption.caption_gpu_memory_utilization,
-            "temperature": caption.caption_temperature,
-            "top_p": caption.caption_top_p,
-            "max_tokens": caption.caption_max_tokens,
-            "caption_infographics": caption.caption_infographics,
+            "endpoint_url": caption_invoke_url,
+            "api_key": caption_api_key,
+            "model_name": caption_model_name,
+            "device": caption_device,
+            "context_text_max_chars": caption_context_text_max_chars,
+            "gpu_memory_utilization": caption_gpu_memory_utilization,
+            "temperature": caption_temperature,
+            "top_p": caption_top_p,
+            "max_tokens": caption_max_tokens,
+            "caption_infographics": caption_infographics,
         }.items()
         if value is not None
     }
     return CaptionParams(**caption_kwargs)
 
 
-def _build_dedup_params(dedup: IngestDedupOptions) -> DedupParams | None:
-    if not dedup.enabled:
-        if dedup.iou_threshold is not None:
+def build_dedup_params(*, enabled: bool, iou_threshold: float | None = None) -> DedupParams | None:
+    if not enabled:
+        if iou_threshold is not None:
             raise ValueError("Dedup options require --dedup: dedup_iou_threshold.")
         return None
     dedup_kwargs = {}
-    if dedup.iou_threshold is not None:
-        dedup_kwargs["iou_threshold"] = dedup.iou_threshold
+    if iou_threshold is not None:
+        dedup_kwargs["iou_threshold"] = iou_threshold
     return DedupParams(**dedup_kwargs)
 
 
-def _build_store_params(image_store: IngestImageStoreOptions) -> StoreParams | None:
-    if image_store.images_uri is None:
+def build_store_params(*, images_uri: str | None, workers: int | None = None) -> StoreParams | None:
+    if images_uri is None:
         return None
 
-    store_kwargs: dict[str, Any] = {"storage_uri": image_store.images_uri}
-    if image_store.workers:
-        store_kwargs["batch_tuning"] = BatchTuningParams(store_workers=image_store.workers)
+    store_kwargs: dict[str, Any] = {"storage_uri": images_uri}
+    if workers:
+        store_kwargs["batch_tuning"] = BatchTuningParams(store_workers=workers)
     return StoreParams(**store_kwargs)
 
 
@@ -506,21 +523,22 @@ def _build_extract_batch_tuning(batch: IngestExtractBatchOptions) -> BatchTuning
     return BatchTuningParams(**tuning_kwargs) if tuning_kwargs else None
 
 
-def _build_text_chunk_kwargs(chunk: IngestChunkOptions) -> tuple[bool, dict[str, int]]:
-    enabled = (
-        bool(chunk.enabled) or chunk.text_chunk_max_tokens is not None or chunk.text_chunk_overlap_tokens is not None
-    )
-    if not enabled:
+def build_text_chunk_kwargs(
+    *,
+    enabled: bool,
+    text_chunk_max_tokens: int | None = None,
+    text_chunk_overlap_tokens: int | None = None,
+) -> tuple[bool, dict[str, int]]:
+    resolved_enabled = bool(enabled) or text_chunk_max_tokens is not None or text_chunk_overlap_tokens is not None
+    if not resolved_enabled:
         return False, {}
     return True, {
         "max_tokens": (
-            int(chunk.text_chunk_max_tokens)
-            if chunk.text_chunk_max_tokens is not None
-            else _DEFAULT_TEXT_CHUNK_MAX_TOKENS
+            int(text_chunk_max_tokens) if text_chunk_max_tokens is not None else _DEFAULT_TEXT_CHUNK_MAX_TOKENS
         ),
         "overlap_tokens": (
-            int(chunk.text_chunk_overlap_tokens)
-            if chunk.text_chunk_overlap_tokens is not None
+            int(text_chunk_overlap_tokens)
+            if text_chunk_overlap_tokens is not None
             else _DEFAULT_TEXT_CHUNK_OVERLAP_TOKENS
         ),
     }
@@ -567,14 +585,14 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     storage = request.storage
 
     validated_run_mode = _validate_run_mode(runtime.run_mode)
-    validated_profile = _validate_profile(source.profile)
-    validated_input_type = _validate_input_type(source.input_type)
+    validated_profile = validate_ingest_profile(source.profile)
+    validated_input_type = validate_ingest_input_type(source.input_type)
     validated_audio_split_type = _validate_audio_split_type(media.audio_split_type)
-    document_list = _expand_ingest_documents(source.documents, input_type=validated_input_type)
+    document_list = expand_ingest_documents(source.documents, input_type=validated_input_type)
     branches = plan_extraction_branches(build_input_manifest(document_list))
     _validate_profile_manifest(validated_profile, branches)
 
-    extract_kwargs = _profile_extract_defaults(validated_profile)
+    extract_kwargs = profile_extract_defaults(validated_profile)
     extract_kwargs.update(
         {
             key: value
@@ -625,19 +643,37 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     )
     extract_params = ExtractParams(**extract_kwargs)
     embed_params = EmbedParams(**embed_kwargs) if embed_kwargs else None
-    vdb_params = VdbUploadParams(
-        vdb_kwargs={
-            "uri": storage.lancedb_uri,
-            "table_name": storage.table_name,
-            "overwrite": bool(storage.overwrite),
-        }
+    vdb_upload_kwargs = {
+        "uri": storage.lancedb_uri,
+        "table_name": storage.table_name,
+        "overwrite": bool(storage.overwrite),
+    }
+    # Keep vector-only ingest kwargs unchanged unless hybrid indexing is explicitly requested.
+    if storage.hybrid:
+        vdb_upload_kwargs["hybrid"] = True
+    vdb_params = VdbUploadParams(vdb_kwargs=vdb_upload_kwargs)
+    caption_params = build_caption_params(
+        enabled=request.caption.enabled,
+        caption_invoke_url=request.caption.caption_invoke_url,
+        caption_api_key=request.caption.caption_api_key,
+        caption_model_name=request.caption.caption_model_name,
+        caption_device=request.caption.caption_device,
+        caption_context_text_max_chars=request.caption.caption_context_text_max_chars,
+        caption_gpu_memory_utilization=request.caption.caption_gpu_memory_utilization,
+        caption_temperature=request.caption.caption_temperature,
+        caption_top_p=request.caption.caption_top_p,
+        caption_max_tokens=request.caption.caption_max_tokens,
+        caption_infographics=request.caption.caption_infographics,
     )
-    caption_params = _build_caption_params(request.caption)
-    dedup_params = _build_dedup_params(request.dedup)
-    store_params = _build_store_params(request.image_store)
+    dedup_params = build_dedup_params(enabled=request.dedup.enabled, iou_threshold=request.dedup.iou_threshold)
+    store_params = build_store_params(images_uri=request.image_store.images_uri, workers=request.image_store.workers)
 
     families = _branch_families(branches)
-    text_chunk_enabled, text_chunk_kwargs = _build_text_chunk_kwargs(chunk)
+    text_chunk_enabled, text_chunk_kwargs = build_text_chunk_kwargs(
+        enabled=chunk.enabled,
+        text_chunk_max_tokens=chunk.text_chunk_max_tokens,
+        text_chunk_overlap_tokens=chunk.text_chunk_overlap_tokens,
+    )
     text_params = (
         (TextChunkParams(**text_chunk_kwargs) if text_chunk_enabled else TextChunkParams())
         if "txt" in families

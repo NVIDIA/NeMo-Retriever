@@ -50,9 +50,11 @@ retriever harness nightly --runs-config nemo_retriever/harness/nightly_config.ya
 
 ### Image storage
 
-Image persistence is configured on `retriever pipeline run`, not on the harness.
-Use `--store-images-uri <uri>` (local path or fsspec URI). Stored assets follow
-`--embed-granularity` (page vs element images).
+For normal ingest, configure image persistence on `retriever ingest` with
+`--store-images-uri <uri>` (local path or fsspec URI). The harness does not
+configure store directly; `retriever pipeline run --store-images-uri <uri>`
+remains available for pipeline-specific compatibility workflows. Stored assets
+follow `--embed-granularity` (page vs element images).
 
 ## Per-stage micro-benchmarks
 
