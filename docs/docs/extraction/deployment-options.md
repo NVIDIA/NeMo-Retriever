@@ -22,7 +22,7 @@ Build and run the NeMo Retriever service image with the [Docker service image gu
 3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in the [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) — use alongside the NeMo Retriever chart README for your release
 4. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
 
-**Core NIMs for the default extraction pipeline** (26.05): `page_elements`, `table_structure`, `ocr`, and `vlm_embed` (`llama-nemotron-embed-vl-1b-v2:1.12.0`). These four are auto-wired into the retriever service. **Nemotron Parse**, **Nemotron 3 Nano Omni**, the **VL reranker**, and **Parakeet ASR** are optional and not auto-wired. For a minimal GPU footprint, disable optional keys you do not need (see [Recommended minimal install (26.05)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#recommended-minimal-install-2605)). See [Pre-Requisites & Support Matrix — Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims).
+**Core NIMs for the default extraction pipeline** (26.05): `page_elements`, `table_structure`, `ocr`, and `vlm_embed` (`llama-nemotron-embed-vl-1b-v2:1.12.0`). These four are auto-wired into the retriever service. **Nemotron Parse**, **Nemotron 3 Nano Omni**, the **VL reranker**, and **Parakeet ASR** are optional and not auto-wired. For a minimal GPU footprint, disable optional keys you do not need (refer to [Recommended minimal install (26.05)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#recommended-minimal-install-2605)). Refer to [Pre-Requisites & Support Matrix — Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims).
 
 
 For audio and video extraction in Kubernetes, set `service.installFfmpeg=true`
@@ -49,7 +49,7 @@ environments), use a custom service image that already contains `ffmpeg` and
 2. [Throughput is dataset-dependent](multimodal-extraction.md#extraction-limitations-and-quality)
 3. [Evaluate on your data](evaluate-on-your-data.md)
 
-## When to use NVIDIA-hosted NIMs
+## When to use NVIDIA-hosted NIMs { #when-to-use-nvidia-hosted-nims }
 
 [NVIDIA-hosted NIMs](https://build.nvidia.com/) run inference on NVIDIA-managed infrastructure. You call models with API keys (refer to [Get your API key](api-keys.md)) without operating GPU nodes yourself.
 
@@ -61,7 +61,7 @@ Consider hosted NIMs when:
 
 **Also refer to:** [NVIDIA NIM catalog](https://build.nvidia.com/)
 
-## When to self-host NIMs
+## When to self-host NIMs { #when-to-self-host-nims }
 
 Self-hosted NIMs run on your GPUs or air-gapped hardware, typically with Kubernetes and the [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html).
 
