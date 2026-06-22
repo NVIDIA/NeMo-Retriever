@@ -22,16 +22,9 @@ Build and run the NeMo Retriever service image with the [Docker service image gu
 3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in the [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) — use alongside the NeMo Retriever chart README for your release
 4. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
 
-**Core NIMs for the default extraction pipeline** (26.05): `page_elements`, `table_structure`, `ocr`, and `vlm_embed` (`llama-nemotron-embed-vl-1b-v2:1.12.0`). These four are auto-wired into the retriever service. **Nemotron Parse**, **Nemotron 3 Nano Omni**, the **VL reranker**, and **Parakeet ASR** are optional and not auto-wired. For a minimal GPU footprint, disable optional keys you do not need (see [Recommended minimal install (26.05)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#recommended-minimal-install-2605)). See [Pre-Requisites & Support Matrix — Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims).
+**Core NIMs for the default extraction pipeline** (26.05): `page_elements`, `table_structure`, `ocr`, and `vlm_embed` (`llama-nemotron-embed-vl-1b-v2:1.12.0`). These four are auto-wired into the retriever service. **Nemotron Parse**, **Nemotron 3 Nano Omni**, the **VL reranker**, and **Parakeet ASR** are optional and not auto-wired. For a minimal GPU footprint, disable optional keys you do not need (refer to [Recommended minimal install (26.05)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#recommended-minimal-install-2605)). Refer to [Pre-Requisites & Support Matrix — Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims).
 
-
-For audio and video extraction in Kubernetes, set `service.installFfmpeg=true`
-so the service container installs `ffmpeg` and `ffprobe` at startup. This
-runtime install requires package-repository network egress, a writable root
-filesystem, and security policy that allows the image's scoped sudo use. If
-your cluster blocks startup package installation (for example air-gapped
-environments), use a custom service image that already contains `ffmpeg` and
-`ffprobe`, then set `service.image.repository` and `service.image.tag`.
+For audio and video dependencies and OpenShift-specific Helm configuration, refer to [Audio and video (Parakeet ASR)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#audio-video-parakeet) and [OpenShift deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/openshift.md) in the Helm chart directory.
 
 ### I want examples and notebooks
 

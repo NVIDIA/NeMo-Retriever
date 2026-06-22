@@ -461,93 +461,44 @@ class Retriever:
         judge: Optional["AnswerJudge"] = None,
         reference: Optional[str] = None,
         top_k: Optional[int] = None,
+        reasoning_enabled: Optional[bool] = None,
         vdb_kwargs: Optional[dict[str, Any]] = None,
         embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> "AnswerResult":
-        from nemo_retriever.models.llm.types import AnswerResult
+        from nemo_retriever.models.llm.types import (
+            AnswerRequest,
+            build_answer_result,
+        )
 
         if judge is not None and reference is None:
             raise ValueError("judge requires reference")
 
-        retrieved = self.retrieve(query, top_k=top_k, vdb_kwargs=vdb_kwargs, embed_kwargs=embed_kwargs)
-
-        gen = llm.generate(query, retrieved.chunks)
-
-        result = AnswerResult(
+        answer_req = AnswerRequest(
             query=query,
-            answer=gen.answer,
-            chunks=retrieved.chunks,
-            metadata=retrieved.metadata,
-            model=gen.model,
-            latency_s=gen.latency_s,
-            error=gen.error,
-        )
-
-        if gen.error is not None:
-            return result
-
-        if reference is None and judge is None:
-            return result
-
-        self._populate_scores(
-            result,
-            query=query,
+            top_k=int(top_k) if top_k is not None else int(self.top_k),
+            reasoning_enabled=reasoning_enabled,
             reference=reference,
-            judge=judge,
-            gen_error=gen.error,
+            judge_enabled=judge is not None,
         )
-        return result
-
-    def _populate_scores(
-        self,
-        result: "AnswerResult",
-        *,
-        query: str,
-        reference: Optional[str],
-        judge: Optional["AnswerJudge"],
-        gen_error: Optional[str],
-    ) -> None:
-        from concurrent.futures import ThreadPoolExecutor
-
-        from nemo_retriever.tools.evaluation.scoring import (
-            answer_in_context,
-            classify_failure,
-            token_f1,
+        retrieved = self.retrieve(
+            answer_req.query,
+            top_k=answer_req.top_k,
+            vdb_kwargs=vdb_kwargs,
+            embed_kwargs=embed_kwargs,
         )
 
-        def _scoring() -> tuple[Optional[bool], Optional[float], Optional[bool]]:
-            if reference is None:
-                return None, None, None
-            aic = answer_in_context(reference, result.chunks)
-            f1 = token_f1(reference, result.answer)
-            return aic, float(f1.get("f1", 0.0)), bool(f1.get("exact_match", False))
+        generate_kwargs: dict[str, Any] = {}
+        if answer_req.reasoning_enabled is not None:
+            generate_kwargs["reasoning_enabled"] = answer_req.reasoning_enabled
+        gen = llm.generate(answer_req.query, retrieved.chunks, **generate_kwargs)
 
-        def _judging() -> tuple[Optional[float], Optional[str], Optional[str]]:
-            if judge is None or reference is None:
-                return None, None, None
-            jr = judge.judge(query, reference, result.answer)
-            return jr.score, jr.reasoning, jr.error
-
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            scoring_future = pool.submit(_scoring)
-            judge_future = pool.submit(_judging)
-            aic, f1, em = scoring_future.result()
-            judge_score, judge_reasoning, judge_error = judge_future.result()
-
-        result.answer_in_context = aic
-        result.token_f1 = f1
-        result.exact_match = em
-        result.judge_score = judge_score
-        result.judge_reasoning = judge_reasoning
-        result.judge_error = judge_error
-
-        if reference is not None and aic is not None:
-            result.failure_mode = classify_failure(
-                ref_in_chunks=aic,
-                judge_score=judge_score,
-                gen_error=gen_error,
-                candidate=result.answer,
-            )
+        return build_answer_result(
+            query=answer_req.query,
+            retrieval=retrieved,
+            generation=gen,
+            reference=answer_req.reference,
+            judge=judge if answer_req.judge_enabled else None,
+        )
 
     def pipeline(self, *, top_k: Optional[int] = None) -> "RetrieverPipelineBuilder":
         effective_top_k = int(top_k) if top_k is not None else int(self.top_k)
@@ -623,6 +574,9 @@ class RetrieverPipelineBuilder:
                 extra_params=dict(transport.extra_params) if transport.extra_params else None,
                 num_retries=transport.num_retries,
                 timeout=transport.timeout,
+                rag_system_prompt=transport.rag_system_prompt,
+                rag_system_prompt_prefix=transport.rag_system_prompt_prefix,
+                reasoning_enabled=getattr(transport, "reasoning_enabled", True),
             )
         else:
             operator = QAGenerationOperator(model=model, **kwargs)

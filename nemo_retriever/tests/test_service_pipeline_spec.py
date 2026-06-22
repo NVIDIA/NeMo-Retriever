@@ -35,6 +35,18 @@ from nemo_retriever.service.utils.file_type import infer_extraction_mode_from_fi
 from nemo_retriever.service.service_ingestor import ServiceIngestor
 
 
+class _TinyTokenizer:
+    def __init__(self) -> None:
+        self._text = ""
+
+    def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+        self._text = text
+        return list(range(len(text)))
+
+    def decode(self, ids: list[int], *, skip_special_tokens: bool = True) -> str:
+        return "".join(self._text[i] for i in ids)
+
+
 @pytest.fixture(autouse=True)
 def _no_remote_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     # _ParamsModel auto-resolves unset *api_key fields from these env vars,
@@ -359,7 +371,6 @@ def test_build_graph_ingestor_does_not_attach_asr_params_for_pdf_upload() -> Non
     base_extract: dict[str, object] = {}
     base_asr = {"audio_endpoints": ["audio:50051", None]}
     spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
-
     ingestor, mode, _ = _build_graph_ingestor_from_spec(
         "report.pdf",
         b"%PDF-1.4 stub",
@@ -478,8 +489,12 @@ def test_run_pipeline_in_process_rejects_empty_text_like_output() -> None:
         _run_pipeline_in_process("empty.txt", b"", {}, None, None, spec)
 
 
-def test_run_pipeline_in_process_html_txt_produce_rows() -> None:
+def test_run_pipeline_in_process_html_txt_produce_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
+    monkeypatch.setattr(
+        "nemo_retriever.common.modality.html.convert._get_txt_tokenizer", lambda *_, **__: _TinyTokenizer()
+    )
+    monkeypatch.setattr("nemo_retriever.common.modality.txt.split._get_tokenizer", lambda *_, **__: _TinyTokenizer())
     html_rows, _, _ = _run_pipeline_in_process(
         "page.html",
         b"<html><body><h1>Title</h1><p>body</p></body></html>",
