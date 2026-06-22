@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 from PIL import Image
@@ -14,6 +16,7 @@ from nemo_retriever.common.params import (
     EmbedParams,
     ExtractParams,
     HtmlChunkParams,
+    IngestExecuteParams,
     RemoteRetryParams,
     TextChunkParams,
 )
@@ -47,6 +50,23 @@ def _effective_graph_node_names(ingestor: GraphIngestor) -> list[str]:
         split_config=ingestor._split_config,
     )
     return _graph_node_names(graph)
+
+
+def _run_graph_ingest_with_result(ingestor: GraphIngestor, result, monkeypatch, **ingest_kwargs):
+    monkeypatch.setattr(ingestor, "_plan_default_extraction_branches", lambda: None)
+    monkeypatch.setattr(
+        ingestor,
+        "_resolve_effective_extraction_inputs",
+        lambda: SimpleNamespace(extraction_mode="pdf"),
+    )
+
+    def _execute_single_graph(effective_extraction, *, post_extract_order):
+        assert effective_extraction.extraction_mode == "pdf"
+        assert isinstance(post_extract_order, tuple)
+        return result
+
+    monkeypatch.setattr(ingestor, "_execute_single_graph", _execute_single_graph)
+    return ingestor.ingest(**ingest_kwargs)
 
 
 def test_merge_params_none_returns_kwargs() -> None:
@@ -265,6 +285,150 @@ def test_typed_shortcuts_preserve_legacy_no_default_chunking() -> None:
     txt_ingestor = GraphIngestor(run_mode="inprocess").extract_txt(custom)
     assert txt_ingestor._split_config["text"] is None
     assert txt_ingestor._text_params is custom
+
+
+def test_graph_ingestor_return_failures_returns_structured_records(monkeypatch) -> None:
+    result = pd.DataFrame(
+        {
+            "page_elements_v3": [
+                {
+                    "timing": None,
+                    "error": {
+                        "stage": "remote_inference",
+                        "type": "ConnectionError",
+                        "message": "connection refused",
+                    },
+                }
+            ],
+            "metadata": [
+                {
+                    "error": {
+                        "stage": "local_postprocess",
+                        "message": "ignored because diagnostics narrow the scan",
+                    }
+                }
+            ],
+        }
+    )
+    ingestor = GraphIngestor(run_mode="inprocess").extract(
+        page_elements_invoke_url="http://remote.example/v1/page-elements",
+        extract_text=False,
+        extract_images=True,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
+    )
+
+    returned, failures = _run_graph_ingest_with_result(
+        ingestor,
+        result,
+        monkeypatch,
+        return_failures=True,
+    )
+
+    assert returned is result
+    assert len(failures) == 1
+    assert failures[0]["row_index"] == 0
+    assert failures[0]["column"] == "page_elements_v3"
+    assert failures[0]["path"] == "error"
+    assert failures[0]["error"]["type"] == "ConnectionError"
+
+
+def test_graph_ingestor_return_failures_params_model(monkeypatch) -> None:
+    result = pd.DataFrame(
+        {
+            "metadata": [
+                {
+                    "error": {
+                        "stage": "local_postprocess",
+                        "message": "boom",
+                    }
+                }
+            ],
+        }
+    )
+    ingestor = GraphIngestor(run_mode="inprocess")
+
+    returned, failures = _run_graph_ingest_with_result(
+        ingestor,
+        result,
+        monkeypatch,
+        params=IngestExecuteParams(return_failures=True),
+    )
+
+    assert returned is result
+    assert len(failures) == 1
+    assert failures[0]["column"] == "metadata"
+    assert failures[0]["error"]["message"] == "boom"
+
+
+def test_graph_ingestor_return_failures_kwargs_override_params(monkeypatch) -> None:
+    result = pd.DataFrame({"text": ["ok"]})
+    ingestor = GraphIngestor(run_mode="inprocess")
+
+    returned = _run_graph_ingest_with_result(
+        ingestor,
+        result,
+        monkeypatch,
+        params=IngestExecuteParams(return_failures=True),
+        return_failures=False,
+    )
+
+    assert returned is result
+    assert not isinstance(returned, tuple)
+
+
+def test_graph_ingestor_return_failures_empty_when_no_row_errors(monkeypatch) -> None:
+    result = pd.DataFrame({"page_elements_v3": [{"detections": [], "error": None}], "text": ["ok"]})
+    ingestor = GraphIngestor(run_mode="inprocess").extract(
+        page_elements_invoke_url="http://remote.example/v1/page-elements",
+        extract_text=False,
+        extract_images=True,
+        extract_tables=False,
+        extract_charts=False,
+        extract_infographics=False,
+    )
+
+    returned, failures = _run_graph_ingest_with_result(
+        ingestor,
+        result,
+        monkeypatch,
+        return_failures=True,
+    )
+
+    assert returned is result
+    assert failures == []
+
+
+def test_graph_ingestor_return_failures_batch_mode(monkeypatch) -> None:
+    result = pd.DataFrame(
+        {
+            "metadata": [
+                {
+                    "errors": [
+                        {
+                            "stage": "batch_stage",
+                            "message": "row failed",
+                        }
+                    ]
+                }
+            ],
+        }
+    )
+    ingestor = GraphIngestor(run_mode="batch")
+
+    returned, failures = _run_graph_ingest_with_result(
+        ingestor,
+        result,
+        monkeypatch,
+        params={"return_failures": True},
+    )
+
+    assert returned is result
+    assert len(failures) == 1
+    assert failures[0]["column"] == "metadata"
+    assert failures[0]["path"] == "errors"
+    assert failures[0]["error"][0]["message"] == "row failed"
 
 
 @pytest.mark.integration

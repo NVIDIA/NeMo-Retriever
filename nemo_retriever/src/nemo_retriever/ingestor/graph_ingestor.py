@@ -54,6 +54,7 @@ from nemo_retriever.common.params import (
     EmbedParams,
     ExtractParams,
     HtmlChunkParams,
+    IngestExecuteParams,
     StoreParams,
     TextChunkParams,
     VideoFrameParams,
@@ -708,7 +709,11 @@ class GraphIngestor(ingestor):
             A materialized ``ray.data.Dataset``.
         ``run_mode='inprocess'``
             A ``pandas.DataFrame``.
+        ``return_failures=True``
+            ``(result, failures)`` where ``failures`` is a list of
+            structured row-level stage error records.
         """
+        return_failures = self._resolve_return_failures(params, kwargs)
         default_branches = self._plan_default_extraction_branches()
         if default_branches is None:
             single_effective = self._resolve_effective_extraction_inputs()
@@ -739,8 +744,7 @@ class GraphIngestor(ingestor):
                 raise RuntimeError("Internal error: extraction inputs were not resolved.")
             result = self._execute_single_graph(single_effective, post_extract_order=post_extract_order)
 
-        self._raise_for_stage_errors(result)
-        return result
+        return self._finalize_ingest_result(result, return_failures=return_failures)
 
     def _execute_single_graph(
         self,
@@ -1185,6 +1189,27 @@ class GraphIngestor(ingestor):
         records = self._stage_error_records(result, columns=set(diagnostics.keys()))
         if records:
             raise GraphIngestionError(records, stage_diagnostics=diagnostics)
+
+    @staticmethod
+    def _resolve_return_failures(params: Any, kwargs: dict[str, Any]) -> bool:
+        if "return_failures" in kwargs:
+            return bool(kwargs["return_failures"])
+        if isinstance(params, IngestExecuteParams):
+            return bool(params.return_failures)
+        if isinstance(params, dict) and "return_failures" in params:
+            return bool(params["return_failures"])
+        return False
+
+    def _collect_failure_records(self, result: Any) -> list[dict[str, Any]]:
+        diagnostics = self._remote_stage_diagnostics()
+        columns = set(diagnostics.keys()) if diagnostics else None
+        return self._stage_error_records(result, columns=columns)
+
+    def _finalize_ingest_result(self, result: Any, *, return_failures: bool) -> Any:
+        if return_failures:
+            return result, self._collect_failure_records(result)
+        self._raise_for_stage_errors(result)
+        return result
 
     @staticmethod
     def extract_error_rows(batch: Any) -> Any:
