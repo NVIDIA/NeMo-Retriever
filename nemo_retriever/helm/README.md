@@ -50,6 +50,7 @@ nemo_retriever/helm/
 ├── Chart.yaml
 ├── values.yaml
 ├── README.md            <-- this file
+├── openshift.md         <-- OpenShift restricted-v2 install guide
 ├── .helmignore
 └── templates/
     ├── _helpers.tpl
@@ -296,7 +297,7 @@ short list of knobs you'll touch first.
 
 For audio and video extraction, set `service.installFfmpeg=true` when your
 cluster allows runtime package installation. **OpenShift restricted-v2** blocks
-that path — use a prebuilt service image instead; refer to [Audio and video on restricted OpenShift](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/openshift.md#audio-and-video-ffmpeg-on-restricted-openshift).
+that path — use a prebuilt service image instead; refer to [Audio and video on restricted OpenShift](./openshift.md#audio-and-video-ffmpeg-on-restricted-openshift).
 For air-gapped clusters, refer to [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment).
 
 ### Audio and video (Parakeet ASR) { #audio-video-parakeet }
@@ -306,7 +307,7 @@ To run self-hosted Parakeet for [audio and video extraction](https://github.com/
 1. Set `nimOperator.audio.enabled=true` (it is on by default; disable other optional NIMs you do not need per [Recommended minimal install (26.05)](#recommended-minimal-install-2605)).
 2. Pin the ASR `NIMService` to a **dedicated GPU** with `nimOperator.audio.resources`, `nodeSelector`, or `tolerations` (refer to [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html)).
 3. Confirm the GPU SKU in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) (footnote ⁴ lists Blackwell limitations).
-4. Set `service.installFfmpeg=true` when the retriever service will process audio or video on clusters that allow runtime package install (refer to `service.installFfmpeg` above). On **OpenShift restricted-v2**, use a [prebuilt service image](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/openshift.md#audio-and-video-ffmpeg-on-restricted-openshift) instead.
+4. Set `service.installFfmpeg=true` when the retriever service will process audio or video on clusters that allow runtime package install (refer to `service.installFfmpeg` above). On **OpenShift restricted-v2**, use a [prebuilt service image](./openshift.md#audio-and-video-ffmpeg-on-restricted-openshift) instead.
 
 The retriever service picks up the in-cluster ASR endpoint when `nimOperator.audio` is enabled; refer to [NIM Operator sub-stack](#nim-operator-sub-stack).
 
@@ -940,9 +941,7 @@ sanity check before opening Grafana.
 
 ## OpenShift deployment { #openshift-deployment }
 
-OpenShift install procedures, **restricted-v2** / PSA **restricted** value overrides, prebuilt `ffmpeg` images, internal registry pull secrets, optional NIM `LD_LIBRARY_PATH` tuning, and install examples are in **[OpenShift deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/openshift.md)** (published extraction docs).
-
-This README keeps chart values, NIM wiring, and generic Kubernetes guidance. Pass `-f openshift-restricted.yaml` from that guide when you install on OpenShift.
+OpenShift install procedures, **restricted-v2** / PSA **restricted** value overrides, prebuilt `ffmpeg` images, internal registry pull secrets, optional NIM `LD_LIBRARY_PATH` tuning, and install examples are in **[OpenShift deployment](./openshift.md)**. Pass `-f openshift-restricted.yaml` from that guide when you install on OpenShift.
 
 ---
 

@@ -1,8 +1,8 @@
 # OpenShift deployment
 
-Use this page when you install the [NeMo Retriever Helm chart](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) on **OpenShift 4.x** with the default **restricted-v2** Security Context Constraint (SCC) and **Pod Security Admission (PSA) `restricted`** profile.
+Use this guide when you install the [NeMo Retriever Helm chart](./README.md) on **OpenShift 4.x** with the default **restricted-v2** Security Context Constraint (SCC) and **Pod Security Admission (PSA) `restricted`** profile.
 
-For general Kubernetes and Helm deployment choices, refer to [Deployment options](deployment-options.md). For chart values and NIM wiring, refer to the [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md).
+For general Kubernetes and Helm deployment choices, refer to [Deployment options](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/). For chart values and NIM wiring, refer to the [Helm chart README](./README.md).
 
 ## Overview { #openshift-deployment }
 
@@ -35,7 +35,7 @@ On clusters with **PSA `enforce=restricted`**, missing container `securityContex
 
 ### Recommended value overrides
 
-Save the block below as a local values file (for example `openshift-restricted.yaml`) and pass `-f openshift-restricted.yaml` on every `helm install` / `helm upgrade`. Use this profile for **restricted-v2** / PSA **restricted** namespaces with the NIM Operator, a prebuilt `ffmpeg` service image when you need [audio and video](audio-video.md), and optional NIM env overrides from later sections.
+Save the block below as a local values file (for example `openshift-restricted.yaml`) and pass `-f openshift-restricted.yaml` on every `helm install` / `helm upgrade`. Use this profile for **restricted-v2** / PSA **restricted** namespaces with the NIM Operator, a prebuilt `ffmpeg` service image when you need [audio and video](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md), and optional NIM env overrides from later sections.
 
 ```yaml
 # OpenShift overrides for nemo-retriever Helm chart (restricted-v2 / PSA restricted).
@@ -74,7 +74,7 @@ When **`persistence.enabled=true`**, you can keep the default log path under `pe
 
 The Helm chart supports `service.installFfmpeg=true`, which installs `ffmpeg`/`ffprobe` at container startup through passwordless `sudo`. On OpenShift **restricted-v2** SCC, that path is blocked: PSA restricted sets `allowPrivilegeEscalation: false` and the SCC enforces **no-new-privileges**, so the entrypoint cannot elevate to install packages.
 
-For audio and video extraction on OpenShift, **do not** set `service.installFfmpeg=true`. Instead, extend the service image on a connected build host and point the chart at that tag (same pattern as [air-gapped custom service images](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#1-service-image)):
+For audio and video extraction on OpenShift, **do not** set `service.installFfmpeg=true`. Instead, extend the service image on a connected build host and point the chart at that tag (same pattern as [air-gapped custom service images](./README.md#1-service-image)):
 
 ```dockerfile
 FROM nvcr.io/nvstaging/nim/nrl-service:<BASE_TAG>
@@ -165,7 +165,7 @@ The retriever service caption profile already sends `chat_template_kwargs.enable
 }
 ```
 
-For pipeline scope (PDF chart regions are not captioned), refer to [Image captioning (support matrix)](prerequisites-support-matrix.md#image-captioning-2605) and [Image captioning (pipeline scope)](multimodal-extraction.md#image-captioning) in the extraction docs.
+For pipeline scope (PDF chart regions are not captioned), refer to [Image captioning (support matrix)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#image-captioning-2605) and [Image captioning (pipeline scope)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/multimodal-extraction.md#image-captioning) in the extraction docs.
 
 ### Example install (service only, no in-cluster NIMs)
 
@@ -222,7 +222,7 @@ oc get pods -n nemo-retriever
 oc get nimservice -n nemo-retriever
 ```
 
-When you enable optional NIMs, wait for Parakeet ASR and Omni caption pods to become Ready before you run [audio and video](audio-video.md) or caption extraction. If ASR or Omni pods crash with missing `.so` errors, apply the [LD_LIBRARY_PATH overrides](#optional-nim-runtime-environment) above and upgrade the release.
+When you enable optional NIMs, wait for Parakeet ASR and Omni caption pods to become Ready before you run [audio and video](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md) or caption extraction. If ASR or Omni pods crash with missing `.so` errors, apply the [LD_LIBRARY_PATH overrides](#optional-nim-runtime-environment) above and upgrade the release.
 
 ### Enabling the vectordb Deployment on OpenShift
 
@@ -255,7 +255,7 @@ Do **not** bind the namespace to **anyuid** SCC or set PSA `enforce=privileged` 
 
 ## Related topics
 
-- [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
-- [Deployment options](deployment-options.md)
-- [Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
-- [Audio and video](audio-video.md)
+- [Pre-Requisites & Support Matrix](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md)
+- [Deployment options](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/)
+- [Helm chart README](./README.md)
+- [Audio and video](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md)
