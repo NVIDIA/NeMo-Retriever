@@ -105,6 +105,7 @@ function JobsView({ onOpenJob }) {
               status: ev.status,
               expected_documents: ev.expected_documents,
               counts: ev.counts || {},
+              trace_id: ev.trace_id != null ? ev.trace_id : (idx >= 0 ? prev[idx].trace_id : null),
               elapsed_s: ev.elapsed_s,
               started_at: ev.started_at,
               finalized_at: ev.finalized_at,
@@ -266,7 +267,7 @@ function JobsView({ onOpenJob }) {
             React.createElement('table', null,
               React.createElement('thead', null,
                 React.createElement('tr', null,
-                  ['Job ID', 'Status', 'Label', 'Progress', 'Docs', 'Created', 'Elapsed'].map(h =>
+                  ['Job ID', 'Trace ID', 'Status', 'Label', 'Progress', 'Docs', 'Created', 'Elapsed'].map(h =>
                     React.createElement('th', { key: h }, h)
                   )
                 )
@@ -295,6 +296,11 @@ function JobsView({ onOpenJob }) {
                         style: { color: 'var(--nv-green)', textDecoration: 'none' },
                       }, (j.job_id || '').substring(0, 12) + '…')
                     ),
+                    React.createElement('td', {
+                      className: 'mono',
+                      style: { fontSize: 11, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+                      title: j.trace_id || '',
+                    }, j.trace_id ? j.trace_id.substring(0, 16) + '…' : '—'),
                     React.createElement('td', null, statusBadge(j.status)),
                     React.createElement('td', {
                       style: { maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },

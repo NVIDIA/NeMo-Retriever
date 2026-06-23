@@ -33,7 +33,12 @@ from nemo_retriever.service.service_ingestor import ServiceIngestor, ServiceInge
 
 def _stub_event_sequence() -> list[dict[str, Any]]:
     return [
-        {"event": "job_created", "job_id": "JOB-1", "expected_documents": 2},
+        {
+            "event": "job_created",
+            "job_id": "JOB-1",
+            "expected_documents": 2,
+            "trace_id": "trace-123",
+        },
         {"event": "upload_complete", "filename": "a.pdf", "document_id": "doc-a"},
         {"event": "upload_complete", "filename": "b.pdf", "document_id": "doc-b"},
         {
@@ -113,6 +118,12 @@ def test_ingest_default_returns_service_ingest_result(stub_ingestor: ServiceInge
     assert result.dataframe.iloc[0]["text"] == "content-doc-a"
 
 
+def test_ingest_default_exposes_trace_id_from_job_created(stub_ingestor: ServiceIngestor) -> None:
+    result = stub_ingestor.ingest()
+    assert isinstance(result, ServiceIngestResult)
+    assert result.trace_id == "trace-123"
+
+
 def test_ingest_return_failures_returns_tuple(stub_ingestor: ServiceIngestor) -> None:
     result, failures = stub_ingestor.ingest(return_failures=True)
     assert isinstance(result, ServiceIngestResult)
@@ -126,6 +137,7 @@ def test_ingest_return_traces_returns_tuple_with_all_events(stub_ingestor: Servi
     assert isinstance(result, ServiceIngestResult)
     assert isinstance(traces, list)
     assert traces == _stub_event_sequence()
+    assert traces[0]["trace_id"] == "trace-123"
 
 
 def test_ingest_both_flags_returns_three_tuple(stub_ingestor: ServiceIngestor) -> None:
