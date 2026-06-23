@@ -21,11 +21,11 @@ For more information, refer to [Vector databases](vdbs.md).
 For images that `nemoretriever-page-elements-v3` does not classify as tables, charts, or infographics,
 you can use our VLM caption task to create a dense caption of the detected image. 
 That caption is then embedded along with the rest of your content. 
-For chart-labeled PDF regions and other caption scope limits, see [Are PDF chart or figure regions captioned when Omni is enabled?](#are-pdf-chart-or-figure-regions-captioned-when-omni-is-enabled). For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
+For chart-labeled PDF regions and other caption scope limits, refer to [Are PDF chart or figure regions captioned when Omni is enabled?](#are-pdf-chart-or-figure-regions-captioned-when-omni-is-enabled). For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
 ## Are PDF chart or figure regions captioned when Omni is enabled?
 
-No. Chart-labeled PDF regions are not routed through Omni captioning. See [Charts and infographics](multimodal-extraction.md#charts-and-infographics) and [Image captioning](multimodal-extraction.md#image-captioning) for scope, validation, and what the caption stage covers.
+No. Chart-labeled PDF regions are not routed through Omni captioning. Refer to [Charts and infographics](multimodal-extraction.md#charts-and-infographics) and [Image captioning](multimodal-extraction.md#image-captioning) for scope, validation, and what the caption stage covers.
 
 ## When should I consider advanced visual parsing?
 
@@ -40,7 +40,7 @@ For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/
 For [self-hosted deployments](deployment-options.md#when-to-self-host-nims), you should set the environment variables `NGC_API_KEY` and `NIM_NGC_API_KEY`.
 For more information, refer to [Authentication and API keys](api-keys.md).
 
-For advanced scenarios, you might want to set environment variables for NIM container paths, tags, and batch sizes on the ingestion runtime. Configure them in your Helm values, Kubernetes `Secret`/`ConfigMap`, or follow [Environment variables](environment-config.md). If you use **Docker Compose** locally for experiments only, see the unsupported developer page [docker.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) — **not** a supported deployment substitute for Helm.
+For advanced scenarios, you might want to set environment variables for NIM container paths, tags, and batch sizes on the ingestion runtime. Configure them in your Helm values, Kubernetes `Secret`/`ConfigMap`, or follow [Environment variables](environment-config.md). If you use **Docker Compose** locally for experiments only, refer to the unsupported developer page [docker.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md) — **not** a supported deployment substitute for Helm.
 
 ### Library Mode
 

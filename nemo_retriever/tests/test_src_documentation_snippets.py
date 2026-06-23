@@ -52,6 +52,7 @@ def _iter_markdown_python_blocks() -> list[tuple[str, str]]:
 _MD_BLOCKS = _iter_markdown_python_blocks()
 _PUBLIC_RETRIEVER_DOCS = (
     "README.md",
+    "docs/docs/extraction/vdbs.md",
     "examples/nemo_retriever_retriever_query_metadata_filter.ipynb",
     "nemo_retriever/README.md",
     "nemo_retriever/docs/cli/README.md",
