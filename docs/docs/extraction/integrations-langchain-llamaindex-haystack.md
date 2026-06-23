@@ -19,4 +19,4 @@ Haystack-related extraction modes may appear in API tables as **deprecated** in 
 
 - [Use the Python API](nemo-retriever-api-reference.md)
 - [Use the CLI](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli)
-- [Chunking](concepts.md#chunking), [Upload data](vdbs.md), [Filter search](vdbs.md#metadata-and-filtering)
+- [Chunking](concepts.md#chunking), [Upload data](vdbs.md), [Metadata and filtering](vdbs.md#metadata-and-filtering)
