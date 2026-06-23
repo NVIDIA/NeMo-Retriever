@@ -27,6 +27,7 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, Field, model_validator
 from starlette.responses import StreamingResponse
 
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
@@ -43,6 +44,12 @@ from nemo_retriever.common.schemas.responses import (
     SidecarUploadResponse,
 )
 from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
+from nemo_retriever.models.llm.types import (
+    AnswerRequest as CoreAnswerRequest,
+    AnswerResult,
+    RetrievalResult,
+    build_answer_result,
+)
 from nemo_retriever.service.services.event_bus import get_event_bus
 from nemo_retriever.service.services.job_tracker import MarkOutcome, get_job_tracker
 from nemo_retriever.service.services.metrics import get_metrics
@@ -78,6 +85,23 @@ _PAGE_THRESHOLD_FOR_BATCH = 5
 # they don't have to wait the production 30 s before the generator
 # re-checks ``request.is_disconnected()`` and exits cleanly.
 SSE_KEEPALIVE_TIMEOUT_S = 30.0
+
+
+class ServiceAnswerRequest(BaseModel):
+    query: str
+    top_k: int = Field(default=5, ge=1, le=1000)
+    include_chunks: bool = False
+    include_metadata: bool = False
+    reasoning_enabled: bool | None = None
+    reference: str | None = None
+    judge: bool = False
+
+    @model_validator(mode="after")
+    def _validate_judge_reference(self) -> "ServiceAnswerRequest":
+        if self.judge and self.reference is None:
+            raise ValueError("judge requires reference")
+        return self
+
 
 logger = logging.getLogger(__name__)
 
@@ -1336,6 +1360,157 @@ async def pipeline_config(request: Request):
             "pipelines": get_pipeline_configs(),
             "pool_stats": pool_stats,
             "allowed_overrides": policy.describe(),
+        }
+    )
+
+
+# ------------------------------------------------------------------
+# POST /v1/answer  -- vector search + configured LLM generation
+# ------------------------------------------------------------------
+
+
+def _text_from_hit(hit: dict[str, Any]) -> str:
+    for key in ("text", "content", "chunk", "page_content"):
+        value = hit.get(key)
+        if value is not None:
+            return str(value)
+    return ""
+
+
+def _metadata_from_hit(hit: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in hit.items() if k not in {"text", "content", "chunk", "page_content", "vector"}}
+
+
+@router.post(
+    "/answer",
+    response_model=AnswerResult,
+    summary="Search ingested documents and generate an answer",
+)
+async def answer(req: ServiceAnswerRequest, request: Request) -> Response | AnswerResult:
+    """Retrieve context from VectorDB and answer with the configured LLM."""
+    import httpx
+
+    config = request.app.state.config
+
+    if not config.vectordb.enabled:
+        raise HTTPException(
+            status_code=404,
+            detail="VectorDB is not enabled in the service configuration.",
+        )
+
+    if not config.llm.enabled:
+        raise HTTPException(
+            status_code=404,
+            detail="LLM answer generation is not enabled in the service configuration.",
+        )
+
+    mode = _mode(request)
+    if mode in ("realtime", "batch"):
+        raise HTTPException(
+            status_code=404,
+            detail="Answer endpoint is not available on worker pods. Use the gateway.",
+        )
+
+    answer_req = CoreAnswerRequest(
+        query=req.query,
+        top_k=req.top_k,
+        reasoning_enabled=req.reasoning_enabled,
+        reference=req.reference,
+        judge_enabled=req.judge,
+    )
+
+    vectordb_url = config.vectordb.vectordb_url.rstrip("/")
+    target = f"{vectordb_url}/v1/query"
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(target, json={"query": answer_req.query, "top_k": answer_req.top_k})
+    except Exception as exc:
+        logger.exception("Failed to query vectordb at %s for answer generation", target)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to reach VectorDB service: {type(exc).__name__}: {exc}",
+        )
+
+    if resp.status_code != 200:
+        return Response(
+            content=resp.content,
+            status_code=resp.status_code,
+            media_type=resp.headers.get("content-type", "application/json"),
+        )
+
+    payload = resp.json()
+    result_sets = payload.get("results") or []
+    hits = result_sets[0].get("hits", []) if result_sets else []
+    retrieval = RetrievalResult(
+        chunks=[_text_from_hit(hit) for hit in hits],
+        metadata=[_metadata_from_hit(hit) for hit in hits],
+    )
+
+    from nemo_retriever.models.llm.clients import LLMJudge, LiteLLMClient
+
+    llm_cfg = config.llm
+    llm = getattr(request.app.state, "answer_llm_client", None)
+    if llm is None:
+        llm = LiteLLMClient.from_kwargs(
+            model=llm_cfg.model,
+            api_base=llm_cfg.api_base,
+            api_key=llm_cfg.api_key,
+            temperature=llm_cfg.temperature,
+            top_p=llm_cfg.top_p,
+            max_tokens=llm_cfg.max_tokens,
+            extra_params=dict(llm_cfg.extra_params),
+            num_retries=llm_cfg.num_retries,
+            timeout=llm_cfg.timeout,
+            rag_system_prompt=llm_cfg.rag_system_prompt,
+            rag_system_prompt_prefix=llm_cfg.rag_system_prompt_prefix,
+            reasoning_enabled=llm_cfg.reasoning_enabled,
+        )
+        request.app.state.answer_llm_client = llm
+
+    generate_kwargs: dict[str, Any] = {}
+    if answer_req.reasoning_enabled is not None:
+        generate_kwargs["reasoning_enabled"] = answer_req.reasoning_enabled
+    gen = await asyncio.to_thread(
+        llm.generate,
+        answer_req.query,
+        retrieval.chunks,
+        **generate_kwargs,
+    )
+    if gen.error:
+        logger.error("LLM answer generation failed for model %s: %s", gen.model, gen.error)
+        raise HTTPException(
+            status_code=502,
+            detail=f"LLM answer generation failed: {gen.error}",
+        )
+
+    judge = None
+    if answer_req.judge_enabled:
+        judge = getattr(request.app.state, "answer_judge_client", None)
+        if judge is None:
+            judge = LLMJudge.from_kwargs(
+                model=llm_cfg.model,
+                api_base=llm_cfg.api_base,
+                api_key=llm_cfg.api_key,
+                extra_params=dict(llm_cfg.extra_params),
+                num_retries=llm_cfg.num_retries,
+                timeout=llm_cfg.timeout,
+            )
+            request.app.state.answer_judge_client = judge
+
+    result = await asyncio.to_thread(
+        build_answer_result,
+        query=answer_req.query,
+        retrieval=retrieval,
+        generation=gen,
+        reference=answer_req.reference,
+        judge=judge,
+    )
+
+    return result.model_copy(
+        update={
+            "chunks": result.chunks if req.include_chunks else None,
+            "metadata": result.metadata if req.include_metadata else None,
         }
     )
 
