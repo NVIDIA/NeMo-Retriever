@@ -18,8 +18,9 @@ from nemo_retriever.cli.shared import (
     silence_noisy_libraries as _silence_noisy_libraries,
 )
 from nemo_retriever.cli.evidence import build_evidence_result
-from nemo_retriever.cli.query_workflow import query_documents
+from nemo_retriever.cli.query_workflow import agentic_query_documents, query_documents
 from nemo_retriever.query.options import (
+    QueryAgenticOptions,
     QueryEmbedOptions,
     QueryRerankOptions,
     QueryRequest,
@@ -204,6 +205,50 @@ def query_command(
         "--max-text-chars",
         help="('hits' format only) Truncate each hit's text to N chars (0 = metadata-only). Default: full text.",
     ),
+    agentic: bool = typer.Option(
+        False,
+        "--agentic",
+        help="Run an LLM-driven agentic (ReAct) retrieval loop instead of the default dense pass.",
+    ),
+    agentic_llm_model: str | None = typer.Option(
+        None,
+        "--agentic-llm-model",
+        help="Chat model the agent drives. Required when --agentic is set.",
+    ),
+    agentic_invoke_url: str | None = typer.Option(
+        None,
+        "--agentic-invoke-url",
+        help="OpenAI-compatible chat-completions endpoint for the agent LLM (agentic mode).",
+    ),
+    agentic_reasoning_effort: str | None = typer.Option(
+        "high",
+        "--agentic-reasoning-effort",
+        help="reasoning_effort forwarded on agentic LLM calls.",
+    ),
+    agentic_backend_top_k: int = typer.Option(
+        20,
+        "--agentic-backend-top-k",
+        min=1,
+        help="Backend retrieve-pool depth per agentic retrieval call.",
+    ),
+    agentic_react_max_steps: int = typer.Option(
+        50,
+        "--agentic-react-max-steps",
+        min=1,
+        help="Maximum ReAct loop iterations for the agentic query.",
+    ),
+    agentic_text_truncation: int = typer.Option(
+        0,
+        "--agentic-text-truncation",
+        min=0,
+        help="Max characters of each candidate shown to the agent; 0 disables truncation.",
+    ),
+    agentic_temperature: float = typer.Option(
+        0.0,
+        "--agentic-temperature",
+        min=0.0,
+        help="Sampling temperature for agentic LLM calls (0.0 = greedy).",
+    ),
 ) -> None:
     if output_format not in ("hits", "evidence"):
         typer.echo(f"Error: unknown --format {output_format!r} (use 'hits' or 'evidence').", err=True)
@@ -217,6 +262,51 @@ def query_command(
         embed_invoke_url = os.environ.get("EMBED_INVOKE_URL") or None
     rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     _silence_noisy_libraries()
+    if agentic and not agentic_llm_model:
+        typer.echo("Error: --agentic requires --agentic-llm-model.", err=True)
+        raise typer.Exit(1)
+    if agentic:
+        request = QueryRequest(
+            query=query,
+            retrieval=QueryRetrievalOptions(
+                top_k=top_k,
+                candidate_k=candidate_k,
+                page_dedup=page_dedup,
+                content_types=content_types,
+            ),
+            embed=QueryEmbedOptions(
+                embed_invoke_url=embed_invoke_url,
+                embed_model_name=embed_model_name,
+            ),
+            rerank=QueryRerankOptions(
+                enabled=rerank,
+                reranker_invoke_url=reranker_invoke_url,
+                reranker_model_name=reranker_model_name,
+                reranker_backend=reranker_backend,
+            ),
+            storage=QueryStorageOptions(
+                lancedb_uri=lancedb_uri,
+                table_name=table_name,
+            ),
+            agentic=QueryAgenticOptions(
+                enabled=agentic,
+                llm_model=agentic_llm_model,
+                invoke_url=agentic_invoke_url,
+                reasoning_effort=agentic_reasoning_effort,
+                backend_top_k=agentic_backend_top_k,
+                react_max_steps=agentic_react_max_steps,
+                text_truncation=agentic_text_truncation,
+                temperature=agentic_temperature,
+            ),
+        )
+        try:
+            with _quiet_capture():
+                ranked = agentic_query_documents(request)
+        except _ROOT_CLI_ERRORS as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(1) from exc
+        typer.echo(json.dumps(ranked, indent=2, sort_keys=True, default=str))
+        return
 
     try:
         reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None

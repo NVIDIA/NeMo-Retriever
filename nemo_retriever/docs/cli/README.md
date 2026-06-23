@@ -156,6 +156,59 @@ When querying a table ingested with an explicit embedding model, pass the same
 captioned image rows emitted by ingest. Hits with missing or unknown content
 types are excluded while `--content-types` is active.
 
+### Agentic retrieval
+
+`--agentic` swaps the single dense pass for an LLM-driven ReAct loop: the agent
+issues several retrieval sub-queries, fuses the candidates, and selects a final
+ranking. It searches the same LanceDB table built by `retriever ingest`, so it is
+a drop-in alternative to standard retrieval — add `--agentic` and name the chat
+model the agent drives with `--agentic-llm-model` (required):
+
+```bash
+retriever query "how does the ingestion pipeline handle tables?" \
+  --agentic \
+  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5
+
+# remote agent + embedding endpoints, fewer reasoning rounds
+retriever query "summarize the deployment options" \
+  --agentic \
+  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --agentic-invoke-url http://localhost:9000/v1/chat/completions \
+  --embed-invoke-url http://localhost:8000/v1 \
+  --agentic-react-max-steps 5
+```
+
+Unlike the dense path (which returns text-enriched hits), agentic mode returns
+the agent's ranked document IDs as JSON, each annotated with the source that
+produced it (`final_results`, `rrf`, or `selection_agent`). It reuses the same
+`--top-k`, `--lancedb-uri`, `--table-name`, `--embed-invoke-url`, and
+`--embed-model-name` options as standard retrieval.
+
+**How it works.** Each agentic query runs `Query → ReActAgentOperator → (RRF
+fusion) → SelectionAgentOperator → ranked results`:
+
+- `ReActAgentOperator` runs the per-query ReAct loop; every `retrieve` tool call
+  delegates to the standard `Retriever`, so the agent searches the same vector
+  DB and embedding config as dense retrieval.
+- `RRFAggregatorOperator` fuses candidates from the loop's multiple searches with
+  reciprocal rank fusion.
+- `SelectionAgentOperator` runs a final LLM selection pass over the fused set and
+  emits the ranked document IDs.
+
+Agentic-only knobs (apply only with `--agentic`):
+
+- `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
+  agent LLM; defaults to the operators' built-in endpoint when omitted.
+- `--agentic-reasoning-effort` (default `high`) — `reasoning_effort` forwarded on
+  agentic LLM calls.
+- `--agentic-backend-top-k` (default `20`) — candidates pulled from the vector DB
+  per retrieval call.
+- `--agentic-react-max-steps` (default `50`) — maximum ReAct loop iterations.
+- `--agentic-text-truncation` (default `0`) — max characters of each candidate
+  shown to the agent; `0` disables truncation.
+- `--agentic-temperature` (default `0.0`) — sampling temperature for agentic LLM
+  calls (`0.0` = greedy).
+
 <!-- --8<-- [end:quickstart] -->
 
 ## Common ingest options
