@@ -22,7 +22,7 @@ def _build_rerank_kwargs(options: QueryRerankOptions) -> dict[str, str]:
         rerank_kwargs: dict[str, str] = {"rerank_invoke_url": reranker_url}
         if options.reranker_model_name:
             rerank_kwargs["model_name"] = options.reranker_model_name
-        api_key = resolve_remote_api_key()
+        api_key = resolve_remote_api_key(options.reranker_api_key)
         if api_key is not None:
             rerank_kwargs["api_key"] = api_key
         return rerank_kwargs
@@ -35,12 +35,16 @@ def _build_rerank_kwargs(options: QueryRerankOptions) -> dict[str, str]:
 
 def _build_retriever_kwargs(request: QueryRequest) -> dict[str, Any]:
     embed_kwargs = build_embed_option_kwargs(request.embed.embed_invoke_url, request.embed.embed_model_name)
+    vdb_kwargs: dict[str, Any] = {
+        "uri": request.storage.lancedb_uri,
+        "table_name": request.storage.table_name,
+    }
+    # Only inject hybrid when opted in, so the vector-only path stays byte-for-byte legacy.
+    if request.retrieval.hybrid:
+        vdb_kwargs["hybrid"] = True
     retriever_kwargs: dict[str, Any] = {
         "top_k": request.retrieval.top_k,
-        "vdb_kwargs": {
-            "uri": request.storage.lancedb_uri,
-            "table_name": request.storage.table_name,
-        },
+        "vdb_kwargs": vdb_kwargs,
     }
     if embed_kwargs:
         retriever_kwargs["embed_kwargs"] = embed_kwargs

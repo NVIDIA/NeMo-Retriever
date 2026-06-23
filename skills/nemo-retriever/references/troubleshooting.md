@@ -2,7 +2,7 @@
 
 Read this only after you hit one of the named errors below. Don't read it pre-emptively.
 
-## If the index is missing or `retriever query` returns `[]`
+## If the index is missing or `retriever query` returns empty `evidence`
 
 Means ingest didn't complete (e.g. the text-only pipeline still hit the turn wall, or the table is empty). Tight fallback using the retriever's own pdfium-based extractor (always available — same binary the agent just used for `retriever query`):
 
@@ -18,21 +18,26 @@ For an unlisted subcommand: `<RETRIEVER_VENV>/bin/retriever <subcommand> --help`
 ## Failure modes (expected, not errors)
 
 - **First `ingest` takes ~60s+** — vLLM warmup. Expected.
-- **First `query` is slow** — embedder (and reranker, with `--rerank`) cold-start. ~10–15s on an idle GPU, but **1–3 minutes under concurrent load**. Expected — wait for it; do not kill or relaunch. It is wrapped in `timeout 2000`, so let it run to that ceiling before treating it as failed.
-- **Empty result** — ingest didn't run. Use the fallback above.
+- **First `query` is slow** — embedder cold-start. ~10–15s on an idle GPU, but **1–3 minutes under concurrent load**. Expected — wait for it; do not kill or relaunch. It is wrapped in `timeout 2000`, so let it run to that ceiling before treating it as failed.
+- **Empty `evidence`** — ingest didn't run (use the fallback above), or the question is genuinely out-of-corpus — read `coverage.thin_spots` to tell which.
 - **`Clamping num_partitions ...`** — informational on tiny corpora, not an error.
-- **Low-relevance top hit on tiny corpus** — look at `_distance` *gaps* between hits, not absolute values.
+- **Low-relevance top hit on tiny corpus** — even an unrelated query returns *something*; trust the ranking order (the `score` field is informational, not calibrated confidence).
 - **Page-element-detection warnings during ingest** — non-fatal as long as the embedding step itself succeeds (and they're silenced on a successful run, since `ingest` is quiet by default).
 
-## Unsupported file types (silent filter — the v2 regression mode)
+## Unsupported file types
 
-`retriever ingest --input-type=auto` silently drops `.flac`, `.rtf`, `.eml`, `.py`, `.jsonl`, `.zip`, etc. The "Ingested N documents" line uses the count of supported files — N may be lower than the folder count with no error. Before ingest, inventory:
+`retriever ingest` auto-detects supported input types from file extensions. It
+supports `.pdf`, `.docx`, `.pptx`, `.txt`, `.html`, `.jpg`, `.jpeg`, `.png`,
+`.tiff`, `.tif`, `.bmp`, `.svg`, `.mp3`, `.wav`, `.m4a`, `.mp4`, `.mov`, and
+`.mkv`. Treat other extensions such as `.flac`, `.rtf`, `.eml`, `.py`, `.jsonl`,
+and `.zip` as setup issues. Before ingest, inventory:
 
 ```bash
 find <dir> -type f -name '*.*' | sed 's/.*\.//' | sort -u
 ```
 
-If unsupported extensions appear, name them in your reply and ask the user whether to skip or convert. Don't let the count silently drop.
+If unsupported extensions appear, name them in your reply and ask the user
+whether to skip or convert them.
 
 ## You ran more than 2 Bash calls on a query turn
 

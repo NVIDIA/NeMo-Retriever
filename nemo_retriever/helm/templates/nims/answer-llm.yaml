@@ -1,0 +1,57 @@
+{{- if and (and (.Capabilities.APIVersions.Has "apps.nvidia.com/v1alpha1") .Values.nims.enabled) (eq .Values.nimOperator.answer_llm.enabled true) -}}
+{{- $cfg := .Values.nimOperator.answer_llm -}}
+{{- $name := $cfg.nimServiceName -}}
+apiVersion: apps.nvidia.com/v1alpha1
+kind: NIMCache
+metadata:
+  name: {{ $name }}
+  {{- include "nemo-retriever.nimcache.keepPolicy" . | nindent 2 }}
+spec:
+  source:
+    ngc:
+      modelPuller: "{{ $cfg.image.repository }}:{{ $cfg.image.tag }}"
+      pullSecret: {{ if $cfg.image.pullSecrets }}{{ index $cfg.image.pullSecrets 0 | quote }}{{ else }}{{ fail "nimOperator.answer_llm.image.pullSecrets must not be empty" }}{{ end }}
+      authSecret: {{ $cfg.authSecret | quote }}
+      {{- include "nemo-retriever.nimcache.modelBlock" (dict "context" $ "key" "answer_llm") | nindent 6 }}
+  storage:
+    pvc:
+      create: {{ $cfg.storage.pvc.create }}
+      storageClass: {{ $cfg.storage.pvc.storageClass | quote }}
+      size: {{ $cfg.storage.pvc.size }}
+      volumeAccessMode: {{ $cfg.storage.pvc.volumeAccessMode }}
+---
+apiVersion: apps.nvidia.com/v1alpha1
+kind: NIMService
+metadata:
+  name: {{ $name }}
+spec:
+  image:
+    repository: {{ $cfg.image.repository }}
+    tag: {{ $cfg.image.tag }}
+    pullPolicy: {{ $cfg.image.pullPolicy }}
+    pullSecrets:
+{{ toYaml $cfg.image.pullSecrets | indent 6 }}
+  authSecret: {{ $cfg.authSecret | quote }}
+  storage:
+    nimCache:
+      name: {{ $name }}
+  replicas: {{ $cfg.replicas }}
+  nodeSelector:
+{{ toYaml $cfg.nodeSelector | indent 4 }}
+  {{- include "nemo-retriever.nimServiceResources" (dict "context" $ "resources" $cfg.resources) | nindent 2 }}
+  tolerations:
+{{ toYaml $cfg.tolerations | indent 4 }}
+  expose:
+{{ toYaml $cfg.expose | indent 4 }}
+  env:
+{{- range $envVar := $cfg.env }}
+{{- if ne (toString $envVar.name) "NGC_API_KEY" }}
+{{ toYaml (list $envVar) | indent 4 }}
+{{- end }}
+{{- end }}
+    - name: NGC_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: {{ $cfg.authSecret | quote }}
+          key: NGC_API_KEY
+{{- end }}

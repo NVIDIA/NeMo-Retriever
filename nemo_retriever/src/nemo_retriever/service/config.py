@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from nemo_retriever.common.schemas.base import RichModel
 
@@ -76,6 +76,32 @@ class NimEndpointsConfig(RichModel):
         ),
     )
     api_key: str | None = None
+
+
+class LLMConfig(RichModel):
+    """Remote LLM configuration for service-mode RAG answer generation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    model: str = "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    api_base: str | None = None
+    api_key: str | None = None
+    temperature: float = 0.0
+    top_p: float | None = None
+    max_tokens: int = 512
+    extra_params: dict[str, Any] = Field(default_factory=dict)
+    num_retries: int = 3
+    timeout: float = 180.0
+    rag_system_prompt: str | None = None
+    rag_system_prompt_prefix: str | None = None
+    reasoning_enabled: bool = True
+
+    @model_validator(mode="after")
+    def _validate_enabled_model(self) -> "LLMConfig":
+        if self.enabled and not self.model.strip():
+            raise ValueError("llm.model must be set when llm.enabled is true")
+        return self
 
 
 class ResourceLimitsConfig(RichModel):
@@ -265,6 +291,7 @@ class ServiceConfig(RichModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     nim_endpoints: NimEndpointsConfig = Field(default_factory=NimEndpointsConfig)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
     resources: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)

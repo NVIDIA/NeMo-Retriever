@@ -1,91 +1,34 @@
-# retriever query
-
-Embed a text query and return the top-k nearest rows from a LanceDB table
-previously written by `retriever ingest` (or any compatible pipeline).
-
-If flags below look stale, re-check `retriever query --help`.
-
-## When to use this
-
-- You have already ingested documents and want to retrieve relevant
-  chunks/primitives for a natural-language query.
-- You want a one-shot CLI lookup — no service, no UI.
-
-**Use a different command when:**
-
-- You want recall metrics over a labelled query set → `retriever recall`.
-- You want to grade end-to-end QA quality → `retriever eval`.
-- You want a long-running query endpoint → `retriever service`.
-- You want to compare two retrieval runs → `retriever compare`.
-
-## Canonical invocations
-
-Top-10 search against the default table:
+# Query turn — the WHOLE workflow
 
 ```bash
-<RETRIEVER_VENV>/bin/retriever query "what is in chart 1?"
+timeout 2000 <RETRIEVER_VENV>/bin/retriever query "<the user's question>" --format evidence --hybrid --top-k 10 \
+  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --query-embed-backend hf \
+  | tee ./evidence.json
 ```
 
-Top-3, custom table:
+That's your FIRST tool call on every query turn, run **exactly** as one pipeline (cold runs take ~20–30s; wait for it — don't background it or fire parallel queries). Do not Read, Glob, Grep, or list PDFs first — those duplicate what `retriever query` already did. `--format evidence` returns answer-ready JSON:
 
-```bash
-<RETRIEVER_VENV>/bin/retriever query "average frequency ranges for tweeters" \
-  --top-k 3 \
-  --lancedb-uri ./my-lancedb \
-  --table-name my-corpus
+```
+{ "evidence": [ { text, source, locator, modality, fidelity, score, citation } ], "coverage": {...} }
 ```
 
-## Inputs
+`tee ./evidence.json` keeps the full result in the cwd (not `/tmp` — clobbered under parallel queries). Read it back only as needed (`<RETRIEVER_VENV>/bin/python -c "import json; print(json.load(open('./evidence.json'))['evidence'][0]['text'])"`); pulling all chunks' text into context inflates cached prompt size on every later turn.
 
-- **Positional `QUERY`** — single text string. Required. Quote it in the shell
-  to keep multi-word queries intact.
+**No narration between tool calls.** Do not write "Let me search…", "The retriever returned…", or any commentary — every token between the `query` call and the `Write` of `./output.json` becomes input (and cached input) for every later turn (quadratic cost). Go straight from reading the result to writing the file.
 
-## Outputs
+Each evidence item carries: `text`, `source` (doc basename), `locator` (`{kind: page, value: <int, 1-indexed>}`), `modality` (`text|table|chart|image|audio|video_frame`), **`fidelity`** (`verbatim > ocr > transcribed > vlm_caption`), `score`, and `citation` (ready-to-quote source + locator). Hit ORDER is authoritative; `score` is informational.
 
-- JSON array on stdout, one object per hit, in retriever ranking order.
-- The root CLI intentionally returns compact objects:
-  - `source` — origin document path.
-  - `page_number` — 1-indexed page when available.
-  - `text` — retrieved primitive text, table text, chart text, or image caption.
-- Internal scores, raw metadata, and bounding boxes are available from the Python
-  `Retriever.query(...)` API, not the public root CLI output.
+## Trust by fidelity — the core of a correct answer
 
-## Key flags
+A number or directional claim resting ONLY on a `vlm_caption` (chart/image transcription) is **unconfirmed** — chart transcriptions often flip direction words (`increase`↔`decrease`) or misread exact figures. Prefer `verbatim`/`ocr`/`table` evidence for exact values. If the figure you need appears only in a `vlm_caption`, quote it verbatim and tag "(chart-derived, unconfirmed)" unless a higher-fidelity item states the same fact. Never upgrade a low-fidelity reading to a confident fact.
 
-| Flag | Default | Notes |
-|---|---|---|
-| `--top-k` | `10` | Final number of hits to return. Must be >= 1. |
-| `--candidate-k` | unset | Wider pre-filter/pre-dedup candidate pool. When set, it must be >= `--top-k`; make it larger when `--page-dedup` or `--content-types` could reduce final hits. |
-| `--page-dedup` | `false` | Collapse results to unique document pages. |
-| `--content-types` | unset | Comma-separated content types to keep, such as `text,table` or `image,chart`; query-time values are normalized to canonical hit metadata types, `images` is accepted as an alias for captioned image rows, and untyped hits are excluded. |
-| `--lancedb-uri` | `lancedb` | Must match what `ingest` wrote to. |
-| `--table-name` | `nemo-retriever` | Must match what `ingest` wrote to. |
+## When the answer isn't in the first result
 
-## Ranking interpretation
+Re-`query` only when the top evidence doesn't yet answer — for a genuinely *distinct* sub-question (per entity when comparing/listing), or **with the exact term/phrase** when `coverage.thin_spots` flags a miss or a specific ID/code/figure isn't in the returned text (the fused BM25 leg matches exact strings semantic search skips — e.g. re-query `"mRNA-1273"` to surface every chunk that names it). Read `coverage.thin_spots` to tell "broaden the search" from "out of corpus". Do NOT re-issue reworded variants of the same question, reach for `pdftotext`/`pdfgrep`, or open the LanceDB table yourself — `query` already searched the whole corpus.
 
-- The embedder (`llama-nemotron-embed-vl-1b-v2`) returns mean-pooled vectors;
-  LanceDB ranks by L2 distance by default. The root CLI hides raw distance values;
-  treat result order as ranking-only, not calibrated confidence.
-- The query uses the **VL** variant of the embedder so text queries can match
-  ingested image/chart embeddings as well as text. Expect mixed-modality hits
-  in the result list.
+## Compose your reply from the evidence
 
-## Common failure modes
+- `final_answer`: **lead with the direct answer** — the exact figure (in the evidence's own units) or a bare Yes/No, for the exact entity asked — then support it. Synthesize from the evidence `text`. One paragraph, no restating the question, no hedging caveats. **Re-read the question**: address every entity / year / category it names, even those the evidence marks "not provided" (missing entities lose more judge points than imprecise numbers). If the asked-for fact isn't in the evidence, say so explicitly — never invent or extrapolate from adjacent material.
+- `ranked_retrieved`: one entry per evidence item in returned order: `{"doc_id": "<source>", "page_number": <locator.value>, "rank": <i+1>}`. Up to 10. **Indexing:** `locator.value` is 1-indexed; if the task's schema says 0-indexed, emit `value - 1`, else emit as-is.
 
-- **Empty result array** — table is empty (no ingest run yet) or
-  `--table-name` / `--lancedb-uri` don't match where ingest wrote.
-- **`Table 'nemo-retriever' was not found`** — same root cause: wrong table/URI,
-  or ingest hasn't been run.
-- **First query is slow (~10–15s)** — vLLM startup for the query embedder.
-  Subsequent queries in the same process are sub-second; one-shot CLI
-  invocations always pay this cost.
-- **Surprisingly low-relevance top hit** — for very short corpora, even
-  unrelated queries return *something*. Broaden with `--candidate-k`, use
-  `--page-dedup` for page diversity, or use `--content-types` for targeted
-  table/chart/image-caption searches.
-
-## Related
-
-- [[ingest]] — populate the table this command reads.
-- `retriever recall --help` — batch query → recall@k against ground truth.
-- `retriever eval --help` — end-to-end QA evaluation.
+After your reply, STOP. No print, no summary, no further tool calls.

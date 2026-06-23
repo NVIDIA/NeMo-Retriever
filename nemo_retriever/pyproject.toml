@@ -90,6 +90,8 @@ dependencies = [
 service = [
   # HTTP retry decorator used by NIM model interfaces
   "backoff",
+  # Remote answer generation client used by serviceConfig.llm and /v1/answer
+  "litellm>=1.86.0,<2",
   # Lightweight utilities used by pipeline operators
   "glom",
   "easydict",
@@ -99,6 +101,8 @@ service = [
   "apscheduler>=3.10",
   # Audio resampling used by ParakeetClient
   "librosa>=0.10.2",
+  # Explicitly avoid pulling older numba/llvmlite versions that precede python 3.12
+  "numba>=0.59",
 ]
 
 # ── Local model inference (GPU assumed; torch resolves to CUDA on Linux) ─────
@@ -146,6 +150,8 @@ multimedia = [
   "scipy>=1.11.0",
   "cairosvg>=2.7.0",
   "librosa>=0.10.2",
+  # Explicitly avoid pulling older numba/llvmlite versions that precede python 3.12
+  "numba>=0.59",
 ]
 
 # ── Nemotron Parse NIM client support ────────────────────────────────────────

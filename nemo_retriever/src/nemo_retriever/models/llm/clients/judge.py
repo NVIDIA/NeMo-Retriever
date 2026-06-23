@@ -235,7 +235,9 @@ class LLMJudge:
     """
 
     _DEFAULT_MODEL: str = "nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5"
-    _DEFAULT_SAMPLING: LLMInferenceParams = LLMInferenceParams(temperature=0.1, max_tokens=4096)
+    # max_tokens must accommodate the Nemotron reasoning block + the final
+    # {"rating": X}; NVIDIA's llm-judge recipe uses 32768. 4096 truncated mid-think.
+    _DEFAULT_SAMPLING: LLMInferenceParams = LLMInferenceParams(temperature=0.1, max_tokens=32768)
 
     def __init__(
         self,
@@ -296,6 +298,11 @@ class LLMJudge:
         ``_get_judge_rating``: retry on an invalid rating or a transport error
         up to ``num_retries`` attempts, then give up with NaN.
         """
+        # The prompt already forbids explanation and demands `{"rating": X}`, and
+        # _parse_rating strips any <think> block — i.e. the judge is designed for the
+        # Nemotron reasoning model. The only requirement is a large enough max_tokens
+        # for the reasoning block to finish and still emit the rating (NVIDIA's
+        # llm-judge recipe uses 32768); 4096 truncated mid-think -> null content.
         messages = [{"role": "user", "content": _render_prompt(prefix, query, user_answer, reference_answer)}]
         attempts = max(1, self.transport.num_retries)
         last_exc: Optional[Exception] = None

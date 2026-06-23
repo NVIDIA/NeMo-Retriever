@@ -37,6 +37,7 @@ models listed here are the supported integration points.
 
 from nemo_retriever.models.llm.types import (
     AnswerJudge,
+    AnswerRequest,
     AnswerResult,
     GenerationResult,
     JudgeResult,
@@ -66,7 +67,8 @@ __all__ = [
     "AnswerJudge",
     "LLMClient",
     "RetrieverStrategy",
-    # Result dataclasses
+    # Request/result models
+    "AnswerRequest",
     "AnswerResult",
     "GenerationResult",
     "JudgeResult",

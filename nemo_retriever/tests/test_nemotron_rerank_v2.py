@@ -482,6 +482,36 @@ class TestRerankViaEndpoint:
         assert scores[1] == 0.5  # index 1
         assert scores[2] == 0.1  # index 2
 
+    def test_posts_to_inference_api_rerank_url(self):
+        from nemo_retriever.operators.rerank import _rerank_via_endpoint
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "results": [
+                {"index": 1, "relevance_score": 0.7},
+                {"index": 0, "relevance_score": 0.2},
+            ]
+        }
+        mock_resp.raise_for_status = MagicMock()
+
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            scores = _rerank_via_endpoint(
+                "What is ML?",
+                ["Machine learning is...", "Paris is..."],
+                endpoint="https://inference-api.nvidia.com/v1/rerank",
+                model_name="nvidia/nvidia/llama-3.2-nv-rerankqa-1b-v2",
+            )
+
+        call_args = mock_post.call_args
+        assert call_args[0][0] == "https://inference-api.nvidia.com/v1/rerank"
+        assert call_args[1]["json"] == {
+            "model": "nvidia/nvidia/llama-3.2-nv-rerankqa-1b-v2",
+            "query": "What is ML?",
+            "documents": ["Machine learning is...", "Paris is..."],
+            "top_n": 2,
+        }
+        assert scores == [0.2, 0.7]
+
     def test_authorization_header_sent_when_api_key_provided(self):
         from nemo_retriever.operators.rerank import _rerank_via_endpoint
 
