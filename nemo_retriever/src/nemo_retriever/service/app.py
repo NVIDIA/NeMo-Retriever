@@ -244,12 +244,26 @@ def create_app(config: ServiceConfig) -> FastAPI:
     _configure_logging(config)
     _apply_resource_limits(config)
 
+    lifespan = _lifespan
+    mcp_asgi_app = None
+    if config.mcp.enabled:
+        try:
+            from fastmcp.utilities.lifespan import combine_lifespans
+
+            from nemo_retriever.service.mcp_server import build_mcp_app, settings_from_service_config
+
+            mcp_asgi_app = build_mcp_app(settings_from_service_config(config))
+            lifespan = combine_lifespans(_lifespan, mcp_asgi_app.lifespan)
+        except Exception:
+            mcp_asgi_app = None
+            logger.warning("FastMCP service integration failed to initialise; /mcp will not be mounted", exc_info=True)
+
     app = FastAPI(
         title="Retriever Service",
         description="Low-latency document ingestion service powered by nemo-retriever",
         version="26.5.0",
         docs_url="/docs",
-        lifespan=_lifespan,
+        lifespan=lifespan,
     )
     app.state.config = config
 
@@ -270,6 +284,10 @@ def create_app(config: ServiceConfig) -> FastAPI:
         )
     else:
         logger.info("Bearer-token authentication DISABLED (no api_token configured)")
+
+    if mcp_asgi_app is not None:
+        app.mount(config.mcp.path, mcp_asgi_app)
+        logger.info("FastMCP service endpoint mounted at %s", config.mcp.path)
 
     from nemo_retriever.service.routers import admin, ingest, metrics
     from nemo_retriever.service.services.prometheus import instrument_app

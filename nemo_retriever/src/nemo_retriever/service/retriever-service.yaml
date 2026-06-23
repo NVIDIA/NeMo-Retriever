@@ -100,6 +100,20 @@ auth:
     - "/openapi.json"
     - "/redoc"
 
+# FastMCP agent integration. When enabled, retriever service start mounts
+# the MCP HTTP transport at /mcp. The same tools are available over stdio
+# through `retriever service mcp-stdio`.
+mcp:
+  enabled: true
+  path: "/mcp"
+  # Defaults to loopback on server.port when null.
+  base_url: null
+  enable_write_tools: true
+  max_concurrency: 8
+  request_timeout_s: 60.0
+  ingest_timeout_s: 1800.0
+  poll_interval_s: 2.0
+
 # Controls whether (and how widely) client-supplied PipelineSpec
 # overrides are honored on a per-request basis.
 #

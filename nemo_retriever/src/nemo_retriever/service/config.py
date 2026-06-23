@@ -127,6 +127,37 @@ class AuthConfig(RichModel):
     bypass_paths: list[str] = Field(default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"])
 
 
+class MCPConfig(RichModel):
+    """FastMCP transport configuration for service-mode agent integrations."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    path: str = Field(default="/mcp", description="HTTP mount path for the service FastMCP app.")
+    base_url: str | None = Field(
+        default=None,
+        description=(
+            "Service URL MCP tools call internally. Defaults to loopback on server.port "
+            "when mounted by retriever service start."
+        ),
+    )
+    enable_write_tools: bool = True
+    max_concurrency: int = Field(default=8, ge=1)
+    request_timeout_s: float = Field(default=60.0, gt=0)
+    ingest_timeout_s: float = Field(default=1800.0, gt=0)
+    poll_interval_s: float = Field(default=2.0, gt=0)
+
+    @model_validator(mode="after")
+    def _validate_path(self) -> "MCPConfig":
+        if not self.path.startswith("/"):
+            raise ValueError("mcp.path must start with '/'")
+        if self.path == "/":
+            raise ValueError("mcp.path must not be '/' because it would shadow service routes")
+        if self.path.endswith("/"):
+            raise ValueError("mcp.path must not end with '/'")
+        return self
+
+
 class GatewayConfig(RichModel):
     """Backend service URLs used when ``mode`` is ``gateway``.
 
@@ -294,6 +325,7 @@ class ServiceConfig(RichModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     resources: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    mcp: MCPConfig = Field(default_factory=MCPConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
