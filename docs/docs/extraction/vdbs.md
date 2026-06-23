@@ -154,7 +154,7 @@ To implement a custom operator, follow the `VDB` abstract interface described in
 
 ## Related Topics { #related-topics }
 
-- [Metadata filtering: add sidecar metadata and filter searches](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb)
+- [Custom Metadata Ingestion & Search/Retrieval Filtering](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb)
 - [Vector DB operators and LanceDB (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/common/vdb)
 - [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md)
 - [Store Extracted Images](nemo-retriever-api-reference.md)
