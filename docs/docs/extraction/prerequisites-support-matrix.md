@@ -23,8 +23,7 @@ Before you begin using [NeMo Retriever Library](overview.md), confirm your softw
 - For audio and video, `ffmpeg` and `ffprobe` must be on `PATH` (for example
   `sudo apt-get install -y --no-install-recommends ffmpeg` on Debian/Ubuntu).
   `ffmpeg-python` and `nemo-retriever[multimedia]` do not install these binaries.
-  On Helm with package-repo access, set `service.installFfmpeg=true`. For
-  air-gapped clusters, see [Air-gapped and disconnected deployment](deployment-options.md#air-gapped-deployment).
+  For container and Kubernetes guidance, refer to [Audio and video](audio-video.md).
 - For PDF extraction with `extract_method="nemotron_parse"`, install the Nemotron Parse
   client dependencies with `pip install "nemo-retriever[nemotron-parse]"` (pulls
   `open-clip-torch`, which provides the `open_clip` module required by the Nemotron Parse
@@ -78,7 +77,7 @@ The NeMo Retriever Library extraction core pipeline features run on a single A10
 
 ### Default Helm NIMs { #default-helm-nims }
 
-The production Helm chart enables these NIM microservices **by default** (for example via `nimOperator.*.enabled=true`):
+The production Helm chart enables these NIM microservices **by default** (for example through `nimOperator.*.enabled=true`):
 
 | Helm flag | NIM | Role |
 |-----------|-----|------|
@@ -91,9 +90,9 @@ The production Helm chart enables these NIM microservices **by default** (for ex
 
 !!! note
 
-    **Helm / NIM:** The production chart deploys **Nemotron OCR v1** under `nimOperator.ocr` (`nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0`). For image defaults and upgrade notes, see [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#ocr-nim-configuration) in the Helm chart README.
+    **Helm / NIM:** The production chart deploys **Nemotron OCR v1** under `nimOperator.ocr` (`nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0`). For image defaults and upgrade notes, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#ocr-nim-configuration) in the Helm chart README.
 
-    **Local Hugging Face inference:** When you deploy locally with HuggingFace model weights (for example `pip install "nemo-retriever[local]"` and GPU inference without remote OCR NIM URLs), the default OCR engine is **Nemotron OCR v2**, which runs in **multilingual** mode by default. For CLI flags and API parameters, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). Remote OCR NIM endpoints use their own model and language behavior; local OCR language selectors are not sent on remote requests.
+    **Local Hugging Face inference:** When you deploy locally with HuggingFace model weights (for example `pip install "nemo-retriever[local]"` and GPU inference without remote OCR NIM URLs), the default OCR engine is **Nemotron OCR v2**, which runs in **multilingual** mode by default. For CLI flags and API parameters, refer to [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). Remote OCR NIM endpoints use their own model and language behavior; local OCR language selectors are not sent on remote requests.
 
 Default OCR NIM container for release Helm deployments:
 
@@ -139,11 +138,11 @@ For published NIM model IDs and deployment-specific constraints, use the product
 NeMo Retriever Library supports the following GPU hardware given system constraints in the table.
 
 - **HF model weights** — approximate Hugging Face checkpoint footprint (files such as `model*.safetensors`, `weights.pth`, or other published weight bundles in the model repository). Values are rounded from the current public file listing and can change when the repository is updated.
-- **NIM disk space** — approximate container and on-disk model cache for self-hosted NIM microservices (not the same as HF download size). For Nemotron 3 Nano Omni captioning, see the [NVIDIA NIM for Vision Language Models support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning).
+- **NIM disk space** — approximate container and on-disk model cache for self-hosted NIM microservices (not the same as HF download size). For Nemotron 3 Nano Omni captioning, refer to the [NVIDIA NIM for Vision Language Models support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning).
 
 Model repositories and NIM references are linked in [Core and Advanced Pipeline Features](#core-and-advanced-pipeline-features) above.
 
-**B200, H200 NVL, and audio/video extraction (26.05):** The [audio and video](audio-video.md) transcription path (self-hosted Parakeet ASR via `nimOperator.audio`) is **not supported on B200**, other Blackwell GPUs, or **H200 NVL**. Core PDF and multimodal extraction on those GPUs is unchanged. See footnote ⁴ below.
+**B200, H200 NVL, and audio/video extraction (26.05):** The [audio and video](audio-video.md) transcription path (self-hosted Parakeet ASR through `nimOperator.audio`) is **not supported on B200**, other Blackwell GPUs, or **H200 NVL**. Core PDF and multimodal extraction on those GPUs is unchanged. Refer to footnote ⁴ below.
 
 | Feature | HF Model Weights | GPU Option | [RTX Pro 6000](https://www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/) | [B200](https://www.nvidia.com/en-us/data-center/dgx-b200/) | [H200 NVL](https://www.nvidia.com/en-us/data-center/h200/) | [H100](https://www.nvidia.com/en-us/data-center/h100/) | [A100 80GB](https://www.nvidia.com/en-us/data-center/a100/) | A100 40GB | [A10G](https://aws.amazon.com/ec2/instance-types/g5/) | L40S | [RTX PRO 4500 Blackwell](https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-4500/) |
 |---------|------------------|------------|--------|--------|--------|--------|--------|--------|--------|--------|------------------------|
@@ -162,9 +161,9 @@ Model repositories and NIM references are linked in [Core and Advanced Pipeline 
 
 ¹ On other supported GPUs, Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`) may require a runtime TensorRT engine build (no prebuilt profile in the chart image).
 
-⁴ Self-hosted [audio/video extraction](audio-video.md) via Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`, `nimOperator.audio`) is **not supported** on **B200**, other **Blackwell** GPUs (compute capability 12.0), including RTX PRO 6000 Blackwell and RTX PRO 4500 Blackwell, or **H200 NVL**. Core PDF and multimodal extraction on those GPUs is unchanged. Video workflows that depend on Parakeet for speech transcription are affected the same way. `NIMService` for `nimOperator.audio` may stay not Ready or enter `CrashLoopBackOff` while building the Riva/TensorRT engine (for example ONNX Runtime IR version, cuDNN visibility, or FP8 tactic errors). Use a supported dedicated GPU (for example H100 or A100), [hosted Parakeet on build.nvidia.com](audio-video.md#parakeet-hosted-inference-build-nvidia), or set `nimOperator.audio.enabled=false`.
+⁴ Self-hosted [audio/video extraction](audio-video.md) through Parakeet ASR (`parakeet-1-1b-ctc-en-us:1.5.0`, `nimOperator.audio`) is **not supported** on **B200**, other **Blackwell** GPUs (compute capability 12.0), including RTX PRO 6000 Blackwell and RTX PRO 4500 Blackwell, or **H200 NVL**. Core PDF and multimodal extraction on those GPUs is unchanged. Video workflows that depend on Parakeet for speech transcription are affected the same way. `NIMService` for `nimOperator.audio` may stay not Ready or enter `CrashLoopBackOff` while building the Riva/TensorRT engine (for example ONNX Runtime IR version, cuDNN visibility, or FP8 tactic errors). Use a supported dedicated GPU (for example H100 or A100), [hosted Parakeet on build.nvidia.com](audio-video.md#parakeet-hosted-inference-build-nvidia), or set `nimOperator.audio.enabled=false`.
 
-³ Opt-in Omni captioning uses the [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant`). BF16 requires at least 80 GB total GPU memory; see the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
+³ Opt-in Omni captioning uses the [nemotron-3-nano-omni-30b-a3b-reasoning](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-nano-omni-30b-a3b-reasoning) NIM (`nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant`). BF16 requires at least 80 GB total GPU memory; refer to the [VLM NIM support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning). L40S requires two GPUs. A100 40GB, A10G, and RTX PRO 4500 are below the minimum.
 
 \* GPUs with less than 80GB VRAM cannot run the reranker concurrently with the core pipeline. 
 To perform recall testing with the reranker on these GPUs, shut down the core pipeline NIM microservices 
