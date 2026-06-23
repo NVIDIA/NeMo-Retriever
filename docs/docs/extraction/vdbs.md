@@ -83,7 +83,7 @@ When using the `Ingestor` with `vdb_upload`, pass `vdb_op="lancedb"` or a `Lance
 
 Semantic retrieval uses dense embeddings to find content that is similar in meaning to a query. In NeMo Retriever Library, the default vector path is LanceDB. Use these resources together with the sections on this page:
 
-- [Metadata and filtering](#metadata-and-filtering) for sidecar metadata at ingest and query-time filters
+- [Metadata and filtering](#metadata-and-filtering) for custom metadata at ingest and filtered retrieval
 - [Concepts](concepts.md) for broader pipeline and search patterns
 - [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md) for `Retriever.query` and `LanceDB.retrieval` parameters
 
@@ -91,15 +91,7 @@ Semantic retrieval uses dense embeddings to find content that is similar in mean
 
 ## Metadata and filtering { #metadata-and-filtering }
 
-Attach per-document metadata during ingestion and narrow LanceDB results at query time.
-
-Pass a **sidecar metadata table** on `vdb_upload` with `meta_dataframe`, `meta_source_field`, and `meta_fields` (all three required). Selected columns merge into each chunk's `content_metadata` before upload. During upload, that object is serialized as **compact JSON** in the LanceDB `metadata` column. Filter with server-side `where` on [`Retriever.query`](nemo-retriever-api-reference.md) or client-side `filter_hits_by_content_metadata`.
-
-**Worked example** — [nemo_retriever_retriever_query_metadata_filter.ipynb](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) — sidecar metadata at ingest, `Retriever.query` with `where`, and client-side filters.
-
-**Retriever service** — Upload the sidecar file with [`POST /v1/ingest/sidecar`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/routers/ingest.py#L1161-L1250) (multipart upload; refer to [`SidecarUploadResponse`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/common/schemas/responses.py#L60-L68)). Open a job with [`POST /v1/ingest/job`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/routers/ingest.py), then pass the returned `sidecar_id` as `meta_dataframe_id` with `meta_source_field` and `meta_fields` in `pipeline.vdb_upload_params` on [`POST /v1/ingest/job/{job_id}/document`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/service/routers/ingest.py#L707-L717) (metadata JSON uses [`IngestRequest`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/common/schemas/requests.py) and [`PipelineSpec`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/common/schemas/pipeline_spec.py#L55-L78)). Do not pass a local filesystem path as `meta_dataframe` in the service spec. Request shapes and form fields are in the OpenAPI UI at `/docs` on your retriever base URL (for example `http://localhost:7670/docs` after `retriever service start`).
-
-For parameter tables, SQL predicate patterns, and operator behavior, refer to [Vector DB operators and LanceDB — Metadata filtering](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/common/vdb#metadata-filtering) in `nemo_retriever/src/nemo_retriever/common/vdb/README.md`. The worked example notebook is also listed on [Notebooks for NeMo Retriever Library](notebooks/index.md).
+Refer to the [custom metadata notebook](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) for an end-to-end example of adding custom metadata fields to your documents and filtering retrieval results with that metadata.
 
 ## LanceDB deployment characteristics { #lancedb-deployment-characteristics }
 
