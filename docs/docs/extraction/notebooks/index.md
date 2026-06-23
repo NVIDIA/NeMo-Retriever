@@ -12,7 +12,7 @@ To get started with the basics, try one of the following guides or notebooks:
 
 - [Quickstart: retriever CLI](../../reference/retriever-cli-quickstart.md)
 - [Workflow: Ingest documents](../workflow-document-ingestion.md)
-- [How to add metadata to your documents and filter searches](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb)
+- [Adding Custom Metadata & Filtered Search](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/metadata_and_filtered_search.ipynb)
 - [Metadata filtering: add sidecar metadata and filter searches](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb)
 
 
