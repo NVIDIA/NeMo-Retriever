@@ -19,10 +19,12 @@ runs without any GPU / Ray dependencies.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 
 from nemo_retriever.service.app import create_app
 from nemo_retriever.service.config import (
@@ -30,6 +32,7 @@ from nemo_retriever.service.config import (
     PipelinePoolConfig,
     ServiceConfig,
 )
+from nemo_retriever.service import tracing
 from nemo_retriever.service.services.pipeline_pool import WorkItem
 from .conftest import create_test_job
 
@@ -37,6 +40,21 @@ from .conftest import create_test_job
 @pytest.fixture
 def captured_items() -> list[WorkItem]:
     return []
+
+
+class _CollectingExporter:
+    def __init__(self, exported: list[Any]) -> None:
+        self._exported = exported
+
+    def export(self, spans: Any) -> SpanExportResult:
+        self._exported.extend(spans)
+        return SpanExportResult.SUCCESS
+
+    def shutdown(self) -> None:
+        return None
+
+    def force_flush(self, timeout_millis: int = 30_000) -> bool:
+        return True
 
 
 @pytest.fixture
@@ -72,9 +90,90 @@ def app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: list[Wor
         yield client
 
 
+@pytest.fixture
+def traced_app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: list[WorkItem]):
+    """Build a traced standalone app with in-memory span export."""
+    from nemo_retriever.service.tracing import _reset_tracing_for_tests
+
+    exported: list[Any] = []
+    _reset_tracing_for_tests()
+    monkeypatch.setenv("OTEL_TRACES_EXPORTER", "otlp")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel:4317")
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    monkeypatch.setattr(
+        "nemo_retriever.service.tracing.OTLPSpanExporter",
+        lambda *args, **kwargs: _CollectingExporter(exported),
+    )
+    monkeypatch.setattr("nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor)
+
+    async def _stub_work(item: WorkItem) -> tuple[int, list[dict[str, Any]]]:
+        captured_items.append(item)
+        return 1, [{"id": item.id, "stub": True}]
+
+    def _stub_realtime(_config: ServiceConfig):
+        return _stub_work
+
+    def _stub_batch(_config: ServiceConfig):
+        return _stub_work
+
+    monkeypatch.setattr(
+        "nemo_retriever.service.services.pipeline_executor.create_realtime_work_fn",
+        _stub_realtime,
+    )
+    monkeypatch.setattr(
+        "nemo_retriever.service.services.pipeline_executor.create_batch_work_fn",
+        _stub_batch,
+    )
+
+    cfg = ServiceConfig(
+        mode="standalone",
+        pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
+        pipeline_overrides=PipelineOverridesConfig(),
+    )
+    try:
+        app = create_app(cfg)
+        with TestClient(app) as client:
+            yield client, exported
+    finally:
+        _reset_tracing_for_tests()
+
+
+@pytest.fixture
+def traced_gateway_app(monkeypatch: pytest.MonkeyPatch):
+    """Build a traced gateway app so dashboard job APIs are mounted."""
+    from nemo_retriever.service.tracing import _reset_tracing_for_tests
+
+    exported: list[Any] = []
+    _reset_tracing_for_tests()
+    monkeypatch.setenv("OTEL_TRACES_EXPORTER", "otlp")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel:4317")
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    monkeypatch.setattr(
+        "nemo_retriever.service.tracing.OTLPSpanExporter",
+        lambda *args, **kwargs: _CollectingExporter(exported),
+    )
+    monkeypatch.setattr("nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor)
+
+    cfg = ServiceConfig(mode="gateway")
+    try:
+        app = create_app(cfg)
+        with TestClient(app) as client:
+            yield client, exported
+    finally:
+        _reset_tracing_for_tests()
+
+
 def _make_pdf_bytes() -> bytes:
     """Return a 1-byte non-PDF payload — the worker is stubbed so content doesn't matter."""
     return b"%PDF-1.4\n%stub\n"
+
+
+def _wait_for_items(captured_items: list[WorkItem], count: int) -> None:
+    import time as _time
+
+    deadline = _time.monotonic() + 5.0
+    while len(captured_items) < count and _time.monotonic() < deadline:
+        _time.sleep(0.05)
 
 
 def test_ingest_without_spec_falls_back_to_legacy_pipeline(
@@ -203,6 +302,304 @@ def test_create_job_returns_201_and_aggregate_fields(app_with_stub_pool: TestCli
     assert body["status"] == "pending"
     assert body["label"] == "smoke"
     assert body["job_id"]
+
+
+def test_create_job_succeeds_when_tracing_span_setup_fails(
+    app_with_stub_pool: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _raise(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("tracer unavailable")
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.get_tracer", _raise)
+
+    resp = app_with_stub_pool.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 1, "label": "trace-failure"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["job_id"]
+    assert body.get("trace_id") is None
+    assert "x-trace-id" not in resp.headers
+
+
+def test_create_job_succeeds_when_tracing_span_enter_fails(
+    app_with_stub_pool: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _FailingSpanContext:
+        def __enter__(self) -> Any:
+            raise RuntimeError("span enter failed")
+
+        def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> bool:
+            raise AssertionError("span context should not be entered")
+
+    class _Tracer:
+        def start_as_current_span(self, name: str, **kwargs: Any) -> Any:
+            return _FailingSpanContext()
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.get_tracer", lambda: _Tracer())
+
+    resp = app_with_stub_pool.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 1, "label": "trace-enter-failure"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["job_id"]
+    assert body.get("trace_id") is None
+    assert "x-trace-id" not in resp.headers
+
+
+def test_create_job_succeeds_when_trace_context_injection_fails(
+    app_with_stub_pool: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _raise() -> Any:
+        raise RuntimeError("propagator unavailable")
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.inject_trace_context", _raise)
+
+    resp = app_with_stub_pool.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 1, "label": "inject-failure"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["job_id"]
+    assert body.get("trace_id") is None
+    assert "x-trace-id" not in resp.headers
+
+
+def test_document_upload_succeeds_when_accept_trace_context_extraction_fails(
+    app_with_stub_pool: TestClient,
+    captured_items: list[WorkItem],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job_id = create_test_job(app_with_stub_pool)
+
+    def _raise(_carrier: dict[str, str]) -> Any:
+        raise RuntimeError("propagator unavailable")
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.extract_trace_context", _raise)
+
+    resp = app_with_stub_pool.post(
+        f"/v1/ingest/job/{job_id}/document",
+        headers={"traceparent": "00-" + "1" * 32 + "-" + "2" * 16 + "-01"},
+        files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": "{}"},
+    )
+
+    assert resp.status_code == 202, resp.text
+    _wait_for_items(captured_items, 1)
+    assert captured_items[0].job_id == job_id
+
+
+def test_document_upload_succeeds_when_enqueue_trace_context_injection_fails(
+    app_with_stub_pool: TestClient,
+    captured_items: list[WorkItem],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    job_id = create_test_job(app_with_stub_pool)
+
+    def _raise() -> Any:
+        raise RuntimeError("propagator unavailable")
+
+    monkeypatch.setattr("nemo_retriever.service.tracing.inject_trace_context", _raise)
+
+    resp = app_with_stub_pool.post(
+        f"/v1/ingest/job/{job_id}/document",
+        files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": "{}"},
+    )
+
+    assert resp.status_code == 202, resp.text
+    _wait_for_items(captured_items, 1)
+    assert captured_items[0].job_id == job_id
+    assert captured_items[0].trace_context == {}
+
+
+def test_create_job_with_tracing_returns_trace_id_body_header_and_snapshot(
+    traced_app_with_stub_pool: tuple[TestClient, list[Any]],
+) -> None:
+    client, exported_spans = traced_app_with_stub_pool
+
+    resp = client.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 2, "label": "trace-smoke"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    trace_id = body["trace_id"]
+    assert re.fullmatch(r"[0-9a-f]{32}", trace_id)
+    assert resp.headers["x-trace-id"] == trace_id
+
+    snapshot = client.get(f"/v1/ingest/job/{body['job_id']}")
+    assert snapshot.status_code == 200, snapshot.text
+    assert snapshot.json()["trace_id"] == trace_id
+    assert exported_spans
+
+
+def test_create_job_with_tracing_uses_inbound_traceparent(
+    traced_app_with_stub_pool: tuple[TestClient, list[Any]],
+) -> None:
+    client, exported_spans = traced_app_with_stub_pool
+
+    with tracing.start_span("client.parent"):
+        inbound_trace_id = tracing.current_trace_id_hex()
+        carrier = dict(tracing.inject_trace_context())
+    assert inbound_trace_id is not None
+
+    resp = client.post(
+        "/v1/ingest/job",
+        headers=carrier,
+        json={"expected_documents": 1, "label": "trace-parent"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["trace_id"] == inbound_trace_id
+    assert resp.headers["x-trace-id"] == inbound_trace_id
+
+    ingest_span = next(span for span in exported_spans if span.name == "ingest.job")
+    assert f"{ingest_span.context.trace_id:032x}" == inbound_trace_id
+
+    snapshot = client.get(f"/v1/ingest/job/{body['job_id']}")
+    assert snapshot.status_code == 200, snapshot.text
+    assert snapshot.json()["trace_id"] == inbound_trace_id
+
+
+def test_job_upload_routes_emit_accept_spans(
+    traced_app_with_stub_pool: tuple[TestClient, list[Any]],
+    captured_items: list[WorkItem],
+) -> None:
+    client, exported_spans = traced_app_with_stub_pool
+    job_id = create_test_job(client, expected_documents=3)
+
+    document_resp = client.post(
+        f"/v1/ingest/job/{job_id}/document",
+        files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": "{}"},
+    )
+    page_resp = client.post(
+        f"/v1/ingest/job/{job_id}/page",
+        files={"file": ("page.png", b"page", "image/png")},
+        data={"document_id": "source-doc", "page_number": "1", "filename": "source.pdf"},
+    )
+    whole_resp = client.post(
+        f"/v1/ingest/job/{job_id}/whole",
+        files={"file": ("whole.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": "{}"},
+    )
+
+    assert document_resp.status_code == 202, document_resp.text
+    assert page_resp.status_code == 202, page_resp.text
+    assert whole_resp.status_code == 202, whole_resp.text
+    _wait_for_items(captured_items, 3)
+
+    names = {span.name for span in exported_spans}
+    assert "ingest.document.accept" in names
+    assert "ingest.page.accept" in names
+    assert "ingest.whole.accept" in names
+
+    accept_spans = {
+        span.name: span
+        for span in exported_spans
+        if span.name in {"ingest.document.accept", "ingest.page.accept", "ingest.whole.accept"}
+    }
+    for span in accept_spans.values():
+        attrs = dict(span.attributes)
+        assert attrs["service.role"] == "standalone"
+        assert attrs["job.id"] == job_id
+        assert attrs["route"].startswith("/v1/ingest/job/")
+
+
+def test_job_upload_accept_span_uses_job_trace_when_request_has_no_traceparent(
+    traced_app_with_stub_pool: tuple[TestClient, list[Any]],
+    captured_items: list[WorkItem],
+) -> None:
+    client, exported_spans = traced_app_with_stub_pool
+    create_resp = client.post("/v1/ingest/job", json={"expected_documents": 1})
+    assert create_resp.status_code == 201, create_resp.text
+    job_id = create_resp.json()["job_id"]
+    job_trace_id = create_resp.json()["trace_id"]
+
+    upload_resp = client.post(
+        f"/v1/ingest/job/{job_id}/document",
+        files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": "{}"},
+    )
+
+    assert upload_resp.status_code == 202, upload_resp.text
+    _wait_for_items(captured_items, 1)
+
+    accept_span = next(span for span in exported_spans if span.name == "ingest.document.accept")
+    assert f"{accept_span.context.trace_id:032x}" == job_trace_id
+    assert captured_items[0].trace_context["traceparent"].split("-")[1] == job_trace_id
+
+
+def test_job_upload_accept_span_prefers_inbound_traceparent_over_job_trace(
+    traced_app_with_stub_pool: tuple[TestClient, list[Any]],
+    captured_items: list[WorkItem],
+) -> None:
+    client, exported_spans = traced_app_with_stub_pool
+    create_resp = client.post("/v1/ingest/job", json={"expected_documents": 1})
+    assert create_resp.status_code == 201, create_resp.text
+    job_id = create_resp.json()["job_id"]
+    job_trace_id = create_resp.json()["trace_id"]
+
+    with tracing.start_span("client.parent"):
+        inbound_trace_id = tracing.current_trace_id_hex()
+        carrier = dict(tracing.inject_trace_context())
+    assert inbound_trace_id is not None
+    assert inbound_trace_id != job_trace_id
+
+    upload_resp = client.post(
+        f"/v1/ingest/job/{job_id}/document",
+        headers=carrier,
+        files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
+        data={"metadata": "{}"},
+    )
+
+    assert upload_resp.status_code == 202, upload_resp.text
+    _wait_for_items(captured_items, 1)
+
+    accept_span = next(span for span in exported_spans if span.name == "ingest.document.accept")
+    assert f"{accept_span.context.trace_id:032x}" == inbound_trace_id
+    assert f"{accept_span.context.trace_id:032x}" != job_trace_id
+    assert captured_items[0].trace_context["traceparent"].split("-")[1] == inbound_trace_id
+
+
+def test_dashboard_job_views_include_trace_id(traced_gateway_app: tuple[TestClient, list[Any]]) -> None:
+    client, exported_spans = traced_gateway_app
+
+    resp = client.post(
+        "/v1/ingest/job",
+        json={"expected_documents": 1, "label": "dashboard-trace"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    job_id = body["job_id"]
+    trace_id = body["trace_id"]
+    assert re.fullmatch(r"[0-9a-f]{32}", trace_id)
+
+    snapshot = client.get("/v1/dashboard/api/jobs/snapshot")
+    assert snapshot.status_code == 200, snapshot.text
+    snapshot_jobs = {job["job_id"]: job for job in snapshot.json()["jobs"]}
+    assert snapshot_jobs[job_id]["trace_id"] == trace_id
+
+    listing = client.get("/v1/dashboard/api/jobs/list")
+    assert listing.status_code == 200, listing.text
+    listed_jobs = {job["job_id"]: job for job in listing.json()["jobs"]}
+    assert listed_jobs[job_id]["trace_id"] == trace_id
+
+    detail = client.get(f"/v1/dashboard/api/jobs/{job_id}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["trace_id"] == trace_id
+    assert exported_spans
 
 
 def test_create_job_retain_results_persisted_on_aggregate(app_with_stub_pool: TestClient) -> None:

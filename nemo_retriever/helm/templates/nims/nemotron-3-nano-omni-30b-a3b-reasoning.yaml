@@ -42,5 +42,6 @@ spec:
   expose:
 {{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.expose | indent 4 }}
   env:
+{{ include "nemo-retriever.nimServiceOtelEnv" (dict "context" $ "key" "nemotron_3_nano_omni_30b_a3b_reasoning" "name" "nemotron-3-nano-omni-30b-a3b-reasoning") | nindent 4 }}
 {{ toYaml .Values.nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.env | indent 4 }}
 {{- end }}

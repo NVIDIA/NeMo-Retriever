@@ -123,6 +123,7 @@ function JobDetailView({ jobId, onBack }) {
               started_at: data.started_at || prev.started_at,
               finalized_at: data.finalized_at || prev.finalized_at,
               elapsed_s: data.elapsed_s != null ? data.elapsed_s : prev.elapsed_s,
+              trace_id: data.trace_id != null ? data.trace_id : prev.trace_id,
             } : prev);
             setSseStatus('connected');
           }
@@ -279,6 +280,16 @@ function JobDetailView({ jobId, onBack }) {
           ),
           React.createElement('div', { style: { fontSize: 12, color: 'var(--nv-text-muted)', marginTop: 4 } },
             `Created ${fmtTime(job.created_at)}  •  Started ${fmtTime(job.started_at)}  •  Finalized ${fmtTime(job.finalized_at)}`
+          ),
+          React.createElement('div', {
+            style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 12, color: 'var(--nv-text-muted)', marginTop: 6 }
+          },
+            React.createElement('span', { style: { fontWeight: 600 } }, 'Trace ID'),
+            React.createElement('span', {
+              className: 'mono',
+              title: job.trace_id || '',
+              style: { color: 'var(--nv-text)', userSelect: 'text' },
+            }, job.trace_id || '—'),
           ),
         ),
         React.createElement('div', {

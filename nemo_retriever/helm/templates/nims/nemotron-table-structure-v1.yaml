@@ -42,5 +42,6 @@ spec:
   expose:
 {{ toYaml .Values.nimOperator.table_structure.expose | indent 4 }}
   env:
+{{ include "nemo-retriever.nimServiceOtelEnv" (dict "context" $ "key" "table_structure" "name" "nemotron-table-structure-v1") | nindent 4 }}
 {{ toYaml .Values.nimOperator.table_structure.env | indent 4 }}
 {{- end }}

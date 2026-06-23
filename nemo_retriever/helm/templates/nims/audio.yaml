@@ -42,5 +42,6 @@ spec:
   expose:
 {{ toYaml .Values.nimOperator.audio.expose | indent 4 }}
   env:
+{{ include "nemo-retriever.nimServiceOtelEnv" (dict "context" $ "key" "audio" "name" "audio") | nindent 4 }}
 {{ toYaml .Values.nimOperator.audio.env | indent 4 }}
 {{- end }}

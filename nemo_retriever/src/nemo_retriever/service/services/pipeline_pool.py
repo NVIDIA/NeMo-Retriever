@@ -27,9 +27,9 @@ import asyncio
 import logging
 import time
 from enum import Enum
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 from nemo_retriever.service.config import PipelinePoolConfig
 from nemo_retriever.common.schemas.base import RichModel
@@ -55,6 +55,22 @@ class PoolType(str, Enum):
     BATCH = "batch"
 
 
+def _safe_extract_trace_context(carrier: Mapping[str, str] | None, *, pool_name: str, item_id: str) -> Any | None:
+    """Best-effort W3C trace context extraction for worker processing."""
+    from nemo_retriever.service import tracing
+
+    try:
+        return tracing.extract_trace_context(carrier)
+    except Exception as exc:
+        logger.warning(
+            "Pool '%s' trace context extraction failed for item %s; continuing without parent context: %s",
+            pool_name,
+            item_id,
+            exc,
+        )
+        return None
+
+
 class WorkItem(RichModel):
     """A unit of work submitted to a pool."""
 
@@ -72,6 +88,8 @@ class WorkItem(RichModel):
     # Validated per-request pipeline overrides (PipelineSpec serialised
     # to a dict). ``None`` means: run the legacy startup-baked pipeline.
     pipeline_spec: dict[str, Any] | None = None
+    trace_context: dict[str, str] = Field(default_factory=dict)
+    enqueued_at_monotonic_s: float | None = None
 
 
 async def _fire_gateway_callback(
@@ -238,6 +256,7 @@ class _Pool:
         updating a local job tracker.  In standalone mode (no callback),
         the local tracker is updated directly.
         """
+        from nemo_retriever.service import tracing
         from nemo_retriever.service.services.job_tracker import get_job_tracker
 
         assert self._queue is not None
@@ -249,79 +268,96 @@ class _Pool:
             if item is None:
                 self._queue.task_done()
                 return
-            # Per-item timer covers the *useful* work — tracker bookkeeping
-            # is excluded so the histogram reflects pipeline cost only.
-            t0 = time.monotonic()
-            outcome = "completed"
-            try:
-                tracker = get_job_tracker()
-                if tracker is not None:
-                    tracker.mark_processing(item.id)
-                result_rows = 0
-                result_data = None
-                if self._work_fn is not None:
-                    result = self._work_fn(item)
-                    if asyncio.iscoroutine(result):
-                        result = await result
-                    if isinstance(result, tuple) and len(result) == 2:
-                        result_rows, result_data = result
-                    elif isinstance(result, int):
-                        result_rows = result
-
-                retain_results = item.retain_results
-                if not retain_results and item.job_id:
-                    tracker_lookup = get_job_tracker()
-                    if tracker_lookup is not None:
-                        retain_results = tracker_lookup.should_retain_results(item.job_id)
-
-                if item.callback_url:
-                    if retain_results:
-                        from nemo_retriever.service.services.worker_result_store import store_result_data
-
-                        store_result_data(item.id, result_data)
-                    await _fire_gateway_callback(
-                        item.callback_url,
-                        item.id,
-                        "completed",
-                        result_rows=result_rows,
+            ctx = _safe_extract_trace_context(item.trace_context, pool_name=self._name, item_id=item.id)
+            with tracing.start_span(
+                f"pool.{self._name}.process",
+                context=ctx,
+                attributes={
+                    "pool": self._name,
+                    "document.id": item.id,
+                    "job.id": item.job_id or "",
+                },
+            ) as span:
+                if item.enqueued_at_monotonic_s is not None and hasattr(span, "set_attribute"):
+                    span.set_attribute(
+                        "queue.wait_ms",
+                        (time.monotonic() - item.enqueued_at_monotonic_s) * 1000.0,
                     )
-                elif tracker is not None:
-                    tracker.mark_completed(
-                        item.id,
-                        result_rows=result_rows,
-                        result_data=result_data if retain_results else None,
-                    )
-                self._processed += 1
-            except Exception as exc:
-                outcome = "failed"
-                if item.callback_url:
-                    await _fire_gateway_callback(
-                        item.callback_url,
-                        item.id,
-                        "failed",
-                        error=f"{type(exc).__name__}: {exc}",
-                    )
-                else:
+                # Per-item timer covers the *useful* work — tracker bookkeeping
+                # is excluded so the histogram reflects pipeline cost only.
+                t0 = time.monotonic()
+                outcome = "completed"
+                try:
                     tracker = get_job_tracker()
                     if tracker is not None:
-                        tracker.mark_failed(item.id, f"{type(exc).__name__}: {exc}")
-                logger.exception("Pool '%s' worker %d failed on item %s", self._name, worker_id, item.id)
-            finally:
-                # Always observe; cheaper to keep latency series complete
-                # than to gate on outcome. Bucketed histogram, so even
-                # very-failed-fast items show up in the low buckets.
-                duration_h.observe(time.monotonic() - t0)
-                if outcome == "completed":
-                    processed_ok.inc()
-                else:
-                    processed_err.inc()
-                self._queue.task_done()
+                        tracker.mark_processing(item.id)
+                    result_rows = 0
+                    result_data = None
+                    if self._work_fn is not None:
+                        result = self._work_fn(item)
+                        if asyncio.iscoroutine(result):
+                            result = await result
+                        if isinstance(result, tuple) and len(result) == 2:
+                            result_rows, result_data = result
+                        elif isinstance(result, int):
+                            result_rows = result
+
+                    retain_results = item.retain_results
+                    if not retain_results and item.job_id:
+                        tracker_lookup = get_job_tracker()
+                        if tracker_lookup is not None:
+                            retain_results = tracker_lookup.should_retain_results(item.job_id)
+
+                    if item.callback_url:
+                        if retain_results:
+                            from nemo_retriever.service.services.worker_result_store import store_result_data
+
+                            store_result_data(item.id, result_data)
+                        await _fire_gateway_callback(
+                            item.callback_url,
+                            item.id,
+                            "completed",
+                            result_rows=result_rows,
+                        )
+                    elif tracker is not None:
+                        tracker.mark_completed(
+                            item.id,
+                            result_rows=result_rows,
+                            result_data=result_data if retain_results else None,
+                        )
+                    self._processed += 1
+                except Exception as exc:
+                    outcome = "failed"
+                    if item.callback_url:
+                        await _fire_gateway_callback(
+                            item.callback_url,
+                            item.id,
+                            "failed",
+                            error=f"{type(exc).__name__}: {exc}",
+                        )
+                    else:
+                        tracker = get_job_tracker()
+                        if tracker is not None:
+                            tracker.mark_failed(item.id, f"{type(exc).__name__}: {exc}")
+                    logger.exception("Pool '%s' worker %d failed on item %s", self._name, worker_id, item.id)
+                finally:
+                    # Always observe; cheaper to keep latency series complete
+                    # than to gate on outcome. Bucketed histogram, so even
+                    # very-failed-fast items show up in the low buckets.
+                    duration_h.observe(time.monotonic() - t0)
+                    if outcome == "completed":
+                        processed_ok.inc()
+                    else:
+                        processed_err.inc()
+                    self._queue.task_done()
 
     async def submit(self, item: WorkItem) -> bool:
         """Enqueue a work item.  Returns ``False`` if the queue is full."""
         if not self._running or self._queue is None:
             return False
         try:
+            if item.enqueued_at_monotonic_s is None:
+                item.enqueued_at_monotonic_s = time.monotonic()
             self._queue.put_nowait(item)
             return True
         except asyncio.QueueFull:

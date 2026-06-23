@@ -1035,6 +1035,92 @@ sanity check before opening Grafana.
 
 ---
 
+## Tracing and Zipkin
+
+Helm installs the chart-owned OpenTelemetry Collector and Zipkin backend on by
+default. This is intentional: the legacy 26.1.2 Helm chart shipped with a
+managed Zipkin deployment enabled, so the new chart keeps a default trace
+backend available for functional parity. Pod trace export is also enabled by
+default for retriever service pods and chart-managed NIMs:
+
+```yaml
+topology:
+  otel:
+    enabled: true
+  zipkin:
+    enabled: true
+
+service:
+  otel:
+    enabled: true
+
+nimOperator:
+  otel:
+    enabled: true
+```
+
+Because Zipkin is chart-owned by default, an upgrade with default values can
+create a Zipkin Deployment and Service. Set `topology.zipkin.enabled=false`
+before upgrading if your deployment uses an external backend or should not run
+chart-owned Zipkin.
+
+With default values, retriever service pods and chart-managed NIMs emit OTLP to
+the chart's OpenTelemetry Collector, which exports traces to the chart-owned
+Zipkin service. Set `service.otel.enabled=false` or
+`nimOperator.otel.enabled=false` to opt out by surface. Open a job and read the
+Zipkin lookup key from either the JSON body or the `x-trace-id` response header:
+
+```bash
+kubectl port-forward svc/tracing-smoke-nemo-retriever 7670:80
+
+curl -s -D headers.txt -o job.json \
+  -X POST http://localhost:7670/v1/ingest/job \
+  -H 'content-type: application/json' \
+  -d '{"expected_documents":1}'
+
+TRACE_ID=$(jq -r .trace_id job.json)
+grep -i x-trace-id headers.txt
+```
+
+Port-forward Zipkin and query the trace directly:
+
+```bash
+kubectl port-forward svc/tracing-smoke-nemo-retriever-zipkin 9411:9411
+curl "http://localhost:9411/api/v2/trace/${TRACE_ID}"
+```
+
+Common opt-out and override knobs:
+
+```yaml
+topology:
+  zipkin:
+    enabled: false                 # do not deploy chart-owned Zipkin
+    exporter:
+      enabled: false               # keep Zipkin deployed, but do not export traces to it
+      endpoint: http://external-zipkin:9411/api/v2/spans
+
+service:
+  otel:
+    enabled: false                 # do not inject service pod instrumentation env
+
+nimOperator:
+  otel:
+    enabled: false                 # do not inject inherited NIM OTLP env
+  page_elements:
+    otel:
+      enabled: false               # per-NIM opt-out
+  ocr:
+    otel:
+      env:
+        TRITON_OTEL_RATE: "10"     # per-NIM Triton OTel override
+```
+
+Set `topology.zipkin.exporter.endpoint` when you run your own Zipkin-compatible
+collector. Set `topology.otel.enabled=false` to disable the chart-owned collector
+and all chart-rendered collector wiring.
+
+---
+
 ## OpenShift deployment { #openshift-deployment }
 
 OpenShift install procedures, **restricted-v2** / PSA **restricted** value overrides, prebuilt `ffmpeg` images, internal registry pull secrets, optional NIM `LD_LIBRARY_PATH` tuning, and install examples are in **[OpenShift deployment](./openshift.md)**. Pass `-f openshift-restricted.yaml` from that guide when you install on OpenShift.
