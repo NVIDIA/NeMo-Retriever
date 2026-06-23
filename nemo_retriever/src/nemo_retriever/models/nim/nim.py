@@ -6,12 +6,82 @@ from __future__ import annotations
 
 import logging
 import time
+from contextlib import nullcontext
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlsplit, urlunsplit
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+def _service_tracing() -> Any | None:
+    try:
+        from nemo_retriever.service import tracing
+    except Exception:
+        logger.debug("Service tracing helper unavailable for NIM request", exc_info=True)
+        return None
+    return tracing
+
+
+def _capture_trace_context() -> dict[str, str] | None:
+    service_tracing = _service_tracing()
+    if service_tracing is None:
+        return None
+    try:
+        return dict(service_tracing.inject_trace_context())
+    except Exception as exc:
+        logger.warning("OpenTelemetry trace context capture failed for NIM request: %s", exc)
+        return None
+
+
+def _extract_trace_context(service_tracing: Any, trace_context: Dict[str, str] | None) -> Any | None:
+    if not trace_context:
+        return None
+    try:
+        return service_tracing.extract_trace_context(trace_context)
+    except Exception as exc:
+        logger.warning("OpenTelemetry trace context extraction failed for NIM request: %s", exc)
+        return None
+
+
+def _set_span_attribute(span: Any, key: str, value: Any) -> None:
+    setter = getattr(span, "set_attribute", None)
+    if setter is None:
+        return
+    try:
+        setter(key, value)
+    except Exception:
+        logger.debug("Ignoring NIM tracing span attribute failure", exc_info=True)
+
+
+def _set_span_error(span: Any, exc_or_status: Any) -> None:
+    if isinstance(exc_or_status, int):
+        error_type = f"HTTP {exc_or_status}"
+    else:
+        error_type = type(exc_or_status).__name__
+    _set_span_attribute(span, "error.type", error_type)
+
+    setter = getattr(span, "set_status", None)
+    if setter is None:
+        return
+    try:
+        from opentelemetry.trace import Status, StatusCode
+
+        setter(Status(StatusCode.ERROR))
+    except Exception:
+        logger.debug("Ignoring NIM tracing span status failure", exc_info=True)
+
+
+def _safe_endpoint_attribute(invoke_url: str) -> str:
+    parts = urlsplit(str(invoke_url))
+    if not parts.scheme or not parts.netloc:
+        return str(invoke_url).split("?", 1)[0].split("#", 1)[0]
+    netloc = parts.hostname or ""
+    if parts.port is not None:
+        netloc = f"{netloc}:{parts.port}"
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
 def _chunk_ranges(total: int, chunk_size: int) -> List[Tuple[int, int]]:
@@ -66,15 +136,50 @@ def _post_with_retries(
     timeout_s: float,
     max_retries: int,
     max_429_retries: int,
+    trace_context: Dict[str, str] | None = None,
 ) -> Any:
     base_delay = 2.0
     attempt = 0
     retries_429 = 0
 
+    service_tracing = _service_tracing()
+    span_parent_context = (
+        _extract_trace_context(service_tracing, trace_context) if service_tracing is not None else None
+    )
+
     while attempt < int(max_retries):
+        request_headers = dict(headers)
         try:
-            response = requests.post(invoke_url, headers=headers, json=payload, timeout=float(timeout_s))
-            status_code = response.status_code
+            span_context = (
+                service_tracing.start_span(
+                    "nim.http.post",
+                    context=span_parent_context,
+                    attributes={
+                        "http.method": "POST",
+                        "nim.endpoint": _safe_endpoint_attribute(invoke_url),
+                        "retry.attempt": attempt,
+                    },
+                )
+                if service_tracing is not None
+                else nullcontext()
+            )
+            with span_context as span:
+                if service_tracing is not None:
+                    try:
+                        service_tracing.inject_trace_context(request_headers)
+                    except Exception as exc:
+                        logger.warning("OpenTelemetry trace propagation failed for NIM request: %s", exc)
+                try:
+                    response = requests.post(
+                        invoke_url, headers=request_headers, json=payload, timeout=float(timeout_s)
+                    )
+                except (requests.Timeout, requests.RequestException) as exc:
+                    _set_span_error(span, exc)
+                    raise
+                status_code = response.status_code
+                _set_span_attribute(span, "http.status_code", status_code)
+                if status_code >= 400:
+                    _set_span_error(span, status_code)
 
             if status_code == 429:
                 retries_429 += 1
@@ -204,6 +309,7 @@ class NIMClient:
 
         ranges = _chunk_ranges(n, int(max_batch_size))
         flattened: List[Optional[Any]] = [None] * n
+        trace_context = _capture_trace_context()
 
         def _invoke_one_batch(start: int, end: int, endpoint_url: str) -> Tuple[int, int, List[Any]]:
             inputs = [
@@ -223,6 +329,7 @@ class NIMClient:
                 timeout_s=float(timeout_s),
                 max_retries=int(max_retries),
                 max_429_retries=int(max_429_retries),
+                trace_context=trace_context,
             )
             per_image = _normalize_batch_response(response_json, end - start)
             return start, end, per_image
@@ -301,6 +408,7 @@ class NIMClient:
 
         invoke_urls = _parse_invoke_urls(invoke_url)
         results: List[Optional[str]] = [None] * len(messages_list)
+        trace_context = _capture_trace_context()
 
         def _invoke_one(idx: int, messages: List[Dict[str, Any]], endpoint_url: str) -> Tuple[int, str]:
             payload: Dict[str, Any] = {
@@ -318,6 +426,7 @@ class NIMClient:
                 timeout_s=float(timeout_s),
                 max_retries=int(max_retries),
                 max_429_retries=int(max_429_retries),
+                trace_context=trace_context,
             )
             return idx, extract_chat_completion_text(response_json)
 

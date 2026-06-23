@@ -47,6 +47,9 @@ dependencies = [
   "uvicorn[standard]>=0.30.0",
   "python-multipart>=0.0.9",
   "prometheus-fastapi-instrumentator>=7.0,<8",
+  "opentelemetry-api>=1.41.1",
+  "opentelemetry-sdk>=1.41.1",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.41.1",
   # MCP server for AI agent integration
   "fastmcp>=2.0.0",
   # HTTP clients
@@ -90,6 +93,8 @@ dependencies = [
 service = [
   # HTTP retry decorator used by NIM model interfaces
   "backoff",
+  # Remote answer generation client used by serviceConfig.llm and /v1/answer
+  "litellm>=1.86.0,<2",
   # Lightweight utilities used by pipeline operators
   "glom",
   "easydict",
@@ -99,6 +104,8 @@ service = [
   "apscheduler>=3.10",
   # Audio resampling used by ParakeetClient
   "librosa>=0.10.2",
+  # Explicitly avoid pulling older numba/llvmlite versions that precede python 3.12
+  "numba>=0.59",
 ]
 
 # ── Local model inference (GPU assumed; torch resolves to CUDA on Linux) ─────
@@ -146,6 +153,8 @@ multimedia = [
   "scipy>=1.11.0",
   "cairosvg>=2.7.0",
   "librosa>=0.10.2",
+  # Explicitly avoid pulling older numba/llvmlite versions that precede python 3.12
+  "numba>=0.59",
 ]
 
 # ── Nemotron Parse NIM client support ────────────────────────────────────────

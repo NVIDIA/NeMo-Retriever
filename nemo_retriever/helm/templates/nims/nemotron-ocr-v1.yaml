@@ -43,5 +43,6 @@ spec:
   expose:
 {{ toYaml .Values.nimOperator.ocr.expose | indent 4 }}
   env:
+{{ include "nemo-retriever.nimServiceOtelEnv" (dict "context" $ "key" "ocr" "name" $name) | nindent 4 }}
 {{ toYaml .Values.nimOperator.ocr.env | indent 4 }}
 {{- end }}

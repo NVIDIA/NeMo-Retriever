@@ -178,6 +178,12 @@ service:
   # Do not also set INSTALL_FFMPEG manually in service.env.
   installFfmpeg: true
 
+  # OpenTelemetry env defaults for the retriever service container.
+  otel:
+    enabled: true
+    serviceName: nemo-retriever-service
+    env: {}
+
   # Extra env vars (after the chart-managed ones). Use `envFrom` to pull
   # whole Secrets/ConfigMaps in.
   env: []
@@ -443,6 +449,59 @@ topology:
             processors: [batch]
             exporters: [debug]
 
+  # ---------------------------------------------------------------------------
+  # Zipkin
+  # ---------------------------------------------------------------------------
+  # Enabled by default to preserve managed trace-backend parity with the legacy
+  # 26.1.2 Helm chart. Set false to avoid deploying chart-owned Zipkin.
+  zipkin:
+    enabled: true
+    image:
+      repository: openzipkin/zipkin
+      tag: "3.5.0"
+      pullPolicy: IfNotPresent
+    port: 9411
+    javaOpts: "-Xms128m -Xmx512m -XX:+ExitOnOutOfMemoryError"
+    livenessProbe:
+      enabled: true
+      tcpSocket:
+        port: http
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 6
+    readinessProbe:
+      enabled: true
+      tcpSocket:
+        port: http
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+    startupProbe:
+      enabled: true
+      tcpSocket:
+        port: http
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 60
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+      limits:
+        cpu: "1"
+        memory: "1Gi"
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    podSecurityContext: {}
+    securityContext: {}
+    exporter:
+      enabled: true
+      endpoint: ""
+
 # =============================================================================
 # retriever-service.yaml configuration
 # =============================================================================
@@ -489,6 +548,45 @@ serviceConfig:
     # gRPC endpoint for the Parakeet ASR NIM (e.g. "parakeet-nim:50051").
     # Required for audio/video ingestion in service mode (without torch).
     audioGrpcEndpoint: ""
+
+  # Remote LLM endpoint used by POST /v1/answer. When the generic
+  # `nimOperator.answer_llm.enabled` block is enabled (and the NIM
+  # Operator CRDs exist), the chart auto-wires apiBase to that
+  # in-cluster OpenAI-compatible /v1 endpoint and flips answering on.
+  # Explicit apiBase/model values below always win, which lets operators
+  # point /v1/answer at an external OpenAI-compatible endpoint instead.
+  llm:
+    enabled: false
+    # Optional explicit LiteLLM/OpenAI model id. Leave empty to inherit
+    # `nimOperator.answer_llm.model` when the operator-managed answer LLM
+    # is enabled; set this when using an external LLM endpoint.
+    model: ""
+    apiBase: ""
+    # Optional Secret reference for external LLM credentials. The Secret is
+    # mounted as NEMO_RETRIEVER_LLM_API_KEY and read by the service CLI, so
+    # the key is not rendered into the retriever-service ConfigMap. When this
+    # is empty and nimOperator.answer_llm is enabled, the service mounts that
+    # NIM's authSecret instead because LiteLLM/OpenAI-compatible clients
+    # require a credential value even for local NIM endpoints.
+    apiKeySecret:
+      name: ""
+      key: api_key
+      optional: false
+    temperature: 0.0
+    topP: null
+    maxTokens: 512
+    extraParams: {}
+    numRetries: 3
+    timeout: 180.0
+    ragSystemPrompt: ""
+    # Optional prefix prepended to the RAG system prompt. Leave empty
+    # unless an endpoint needs model-specific prompt directives.
+    ragSystemPromptPrefix: ""
+    # Unified request-level reasoning control for /v1/answer. Defaults to true
+    # so external OpenAI-compatible providers receive only standard request
+    # parameters. Set false for Nemotron endpoints that should receive the
+    # portable no-reasoning controls.
+    reasoningEnabled: true
 
   # Pipeline worker pools.  Workers are abstract dispatchers — sizing
   # depends on whether they do local GPU work or fan out to remote NIMs.
@@ -786,6 +884,17 @@ nimOperator:
   # ``resources`` overrides the entire block when non-empty.
   nimServiceGpuLimit: 1
 
+  # OpenTelemetry defaults applied to NIMService env blocks.
+  otel:
+    enabled: true
+    endpoint: ""
+    tritonPath: "/v1/traces"
+    env:
+      NIM_ENABLE_OTEL: "true"
+      NIM_OTEL_TRACES_EXPORTER: "otlp"
+      NIM_OTEL_METRICS_EXPORTER: "console"
+      TRITON_OTEL_RATE: "1"
+
   # ---------------------------------------------------------------------------
   # Per-NIM defaults
   # ---------------------------------------------------------------------------
@@ -805,6 +914,8 @@ nimOperator:
   #     - nemotron_parse                           (Parse v1.2, ≈ 3.5 GiB GPU)
   #     - nemotron_3_nano_omni_30b_a3b_reasoning   (Omni 30B caption NIM,
   #                                                 ≈ 62 GiB BF16 weights)
+  #     - answer_llm                               (OpenAI-compatible answer LLM,
+  #                                                 Super-49B defaults)
   #     - audio                                    (Parakeet ASR)
   #
   # Two flags gate every NIM, so each one is opt-in along two independent
@@ -853,6 +964,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -897,6 +1013,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -943,6 +1064,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: OMP_NUM_THREADS
         value: "8"
@@ -986,6 +1112,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -998,12 +1129,80 @@ nimOperator:
       #   value: throughput
 
   # ---------------------------------------------------------------------------
-  # Optional / advanced NIMs. Enabled by default alongside the core four;
-  # the retriever-service does not auto-wire these into its config, so
-  # integrate them manually via your own pipeline configuration. Set
-  # `nimOperator.<key>.enabled: false` to skip one without disabling the
-  # whole sub-stack.
+  # Optional / advanced NIMs. Disabled by default unless noted below;
+  # opt in to the ones your pipeline or service endpoints actually use.
   # ---------------------------------------------------------------------------
+
+  # Generic OpenAI-compatible answer-generation LLM NIM.
+  #
+  # Disabled by default because answer LLMs are larger than the core
+  # extraction NIMs. The default image/model is Super-49B and requests
+  # two GPUs. Override `image.repository`, `image.tag`, `model`,
+  # `nimServiceName`, `resources`, `modelProfile`, and `env` to swap in
+  # another compatible LLM NIM such as Nemotron 3 Nano.
+  answer_llm:
+    enabled: false
+    # NIMService / NIMCache resource name and in-cluster Service DNS label.
+    nimServiceName: answer-llm
+    # LiteLLM/OpenAI model id rendered into retriever-service.yaml when
+    # this operator-managed LLM is enabled and serviceConfig.llm.model is
+    # left empty.
+    model: "openai/nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    # Optional prompt prefix to apply when this operator-managed LLM
+    # auto-wires /v1/answer. Leave empty to keep the LLM deployment and
+    # prompt defaults model-neutral; use serviceConfig.llm.reasoningEnabled
+    # for the portable request-level reasoning toggle.
+    ragSystemPromptPrefix: ""
+    image:
+      repository: nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5
+      tag: "2.0.5"
+      pullPolicy: IfNotPresent
+      pullSecrets:
+        - ngc-secret
+    authSecret: ngc-api
+    # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
+    # above for the shape; non-empty REPLACES the chart-wide default.
+    # Cache only the default BF16 2-GPU profile used by the Super-49B
+    # default resources. Override this when deploying a different model,
+    # profile, or GPU topology.
+    modelProfile:
+      profiles:
+        - "1146f49f84dff5dea09f5aa633cc70b92d7d972223d67878c841cd0fbccad4fb"
+    storage:
+      pvc:
+        create: true
+        storageClass: ""
+        size: "250Gi"
+        volumeAccessMode: ReadWriteOnce
+    replicas: 1
+    # The Super-49B default uses a 2-GPU tensor-parallel profile. This
+    # non-empty resources block intentionally replaces
+    # nimOperator.nimServiceGpuLimit. Override for smaller LLM NIMs.
+    resources:
+      limits:
+        nvidia.com/gpu: 2
+    nodeSelector: {}
+    tolerations: []
+    expose:
+      service:
+        type: ClusterIP
+        port: 8000
+        grpcPort: 8001
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+      - name: NIM_TENSOR_PARALLEL_SIZE
+        value: "2"
+      # Conservative tensor-parallel startup default; override when your
+      # deployment fabric has been validated with custom all-reduce enabled.
+      - name: NIM_PASSTHROUGH_ARGS
+        value: "--disable-custom-all-reduce"
+      # Conservative single-pod tensor-parallel defaults that avoid
+      # transport assumptions across GPU fabrics.
+      - name: NCCL_IB_DISABLE
+        value: "1"
+      - name: NCCL_P2P_DISABLE
+        value: "1"
 
   # Llama Nemotron rerank VL 1B v2 — multimodal reranking NIM.
   #
@@ -1049,6 +1248,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -1101,6 +1305,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -1159,6 +1368,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -1195,6 +1409,11 @@ nimOperator:
         type: ClusterIP
         port: 9000
         grpcPort: 50051
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_TAGS_SELECTOR
         value: "name=parakeet-1-1b-ctc-en-us,mode=ofl,vad=default,diarizer=disabled"

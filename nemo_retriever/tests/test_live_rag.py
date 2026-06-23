@@ -110,8 +110,13 @@ class TestAnswer:
         with patch.object(r, "query", return_value=_fake_hits()):
             result = r.answer("q?", llm=llm)
 
+        from nemo_retriever.models.llm.types import AnswerResult
+
+        assert isinstance(result, AnswerResult)
         assert result.answer == "RAG retrieves context and uses an LLM."
         assert result.chunks and result.metadata
+        assert result.chunk_count == 3
+        assert result.model_dump()["chunk_count"] == 3
         assert result.model == "fake-llm/test"
         assert result.error is None
         assert result.token_f1 is None
@@ -119,6 +124,18 @@ class TestAnswer:
         assert result.answer_in_context is None
         assert result.judge_score is None
         assert result.failure_mode is None
+        assert llm.generate.call_args.kwargs == {}
+
+    def test_answer_forwards_reasoning_override_when_set(self):
+        """Per-call reasoning override is forwarded only when requested."""
+        r = _make_retriever()
+        llm = MagicMock()
+        llm.generate.return_value = _fake_generation()
+
+        with patch.object(r, "query", return_value=_fake_hits()):
+            r.answer("q?", llm=llm, reasoning_enabled=False)
+
+        assert llm.generate.call_args.kwargs == {"reasoning_enabled": False}
 
     def test_answer_with_reference_no_judge(self):
         """Reference supplied -> Tier 1+2 populated, Tier 3 left None."""
@@ -626,6 +643,9 @@ def _build_fake_llm_client(*, top_p: float | None = None):
         extra_params={},
         num_retries=3,
         timeout=120.0,
+        rag_system_prompt=None,
+        rag_system_prompt_prefix=None,
+        reasoning_enabled=True,
     )
     sampling = SimpleNamespace(temperature=0.0, top_p=top_p, max_tokens=512)
     return SimpleNamespace(transport=transport, sampling=sampling)

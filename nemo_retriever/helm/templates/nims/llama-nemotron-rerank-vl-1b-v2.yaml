@@ -42,5 +42,6 @@ spec:
   expose:
 {{ toYaml .Values.nimOperator.rerankqa.expose | indent 4 }}
   env:
+{{ include "nemo-retriever.nimServiceOtelEnv" (dict "context" $ "key" "rerankqa" "name" "llama-nemotron-rerank-vl-1b-v2") | nindent 4 }}
 {{ toYaml .Values.nimOperator.rerankqa.env | indent 4 }}
 {{- end }}
