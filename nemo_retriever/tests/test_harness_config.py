@@ -517,17 +517,13 @@ def test_load_harness_config_rejects_invalid_recall_mode(tmp_path: Path) -> None
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="evaluation_mode=recall is only supported"):
+    with pytest.raises(ValueError, match="evaluation_mode must be one of"):
         load_harness_config(config_file=str(cfg_path))
 
 
-def test_load_harness_config_supports_agentic_recall_fields(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_load_harness_config_rejects_removed_retrieval_mode_key(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
-    query_csv = tmp_path / "query.csv"
-    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
     cfg_path = tmp_path / "test_configs.yaml"
     cfg_path.write_text(
         "\n".join(
@@ -540,13 +536,45 @@ def test_load_harness_config_supports_agentic_recall_fields(
                 "datasets:",
                 "  tiny:",
                 f"    path: {dataset_dir}",
-                f"    query_csv: {query_csv}",
-                "    input_type: pdf",
-                "    evaluation_mode: recall",
                 "    retrieval_mode: agentic",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="retrieval_mode is no longer supported"):
+        load_harness_config(config_file=str(cfg_path))
+
+
+def test_load_harness_config_supports_agentic_audio_recall_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text(
+        "query,expected_media_id,expected_start_time,expected_end_time\nq,clip,1.5,3.5\n",
+        encoding="utf-8",
+    )
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny_audio",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny_audio:",
+                f"    path: {dataset_dir}",
+                f"    query_csv: {query_csv}",
+                "    input_type: audio",
+                "    evaluation_mode: audio_recall",
+                "    agentic: true",
                 "    recall_required: true",
                 "    recall_adapter: none",
-                "    recall_match_mode: pdf_page",
+                "    recall_match_mode: audio_segment",
                 "    agentic_llm_model: config-model",
                 "    agentic_backend_top_k: 27",
             ]
@@ -559,14 +587,75 @@ def test_load_harness_config_supports_agentic_recall_fields(
     monkeypatch.setenv("HARNESS_AGENTIC_TEMPERATURE", "0.25")
 
     cfg = load_harness_config(config_file=str(cfg_path))
-    assert cfg.evaluation_mode == "recall"
+    assert cfg.evaluation_mode == "audio_recall"
+    assert cfg.agentic is True
     assert cfg.retrieval_mode == "agentic"
     assert cfg.agentic_llm_model == "config-model"
     assert cfg.agentic_backend_top_k == 27
     assert cfg.agentic_invoke_url == "http://llm/v1/chat/completions"
     assert cfg.agentic_num_concurrent == 4
     assert cfg.agentic_temperature == 0.25
-    assert cfg.recall_match_mode == "pdf_page"
+    assert cfg.recall_match_mode == "audio_segment"
+
+
+def test_harness_config_rejects_agentic_backend_top_k_below_beir_k(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        evaluation_mode="beir",
+        agentic=True,
+        agentic_llm_model="model",
+        agentic_backend_top_k=5,
+        beir_loader="jp20_csv",
+        beir_ks=(1, 10),
+    )
+
+    assert "agentic_backend_top_k must be >= target top_k (10)" in cfg.validate()
+
+
+def test_harness_config_rejects_agentic_nvidia_temperature_above_max(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        evaluation_mode="beir",
+        agentic=True,
+        agentic_llm_model="model",
+        agentic_temperature=1.5,
+        beir_loader="jp20_csv",
+    )
+
+    assert "agentic_temperature must be between 0.0 and 1.0 for NVIDIA NIM endpoints" in cfg.validate()
+
+
+def test_harness_config_rejects_malformed_agentic_numeric_values(tmp_path: Path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    cfg = HarnessConfig(
+        dataset_dir=str(dataset_dir),
+        dataset_label="tiny",
+        preset="base",
+        evaluation_mode="beir",
+        agentic=True,
+        agentic_llm_model="model",
+        agentic_react_max_steps="many",
+        agentic_text_truncation=1.5,
+        agentic_num_concurrent=0,
+        agentic_temperature=float("inf"),
+        beir_loader="jp20_csv",
+    )
+
+    errors = cfg.validate()
+
+    assert "agentic_react_max_steps must be an integer" in errors
+    assert "agentic_text_truncation must be an integer" in errors
+    assert "agentic_num_concurrent must be >= 1" in errors
+    assert "agentic_temperature must be finite" in errors
 
 
 def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> None:

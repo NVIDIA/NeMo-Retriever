@@ -300,20 +300,25 @@ def test_build_command_supports_beir_evaluation_mode(tmp_path: Path) -> None:
     assert effective_query_csv is None
 
 
-def test_build_command_passes_agentic_recall_options(tmp_path: Path) -> None:
+
+def test_build_command_passes_agentic_audio_recall_options(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     query_csv = tmp_path / "query.csv"
-    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    query_csv.write_text(
+        "query,expected_media_id,expected_start_time,expected_end_time\nq,clip,1.5,3.5\n",
+        encoding="utf-8",
+    )
     cfg = HarnessConfig(
         dataset_dir=str(dataset_dir),
-        dataset_label="jp20",
+        dataset_label="audio",
         preset="single_gpu",
-        evaluation_mode="recall",
-        retrieval_mode="agentic",
+        input_type="audio",
+        evaluation_mode="audio_recall",
+        agentic=True,
         query_csv=str(query_csv),
         recall_required=True,
-        recall_match_mode="pdf_page",
+        recall_match_mode="audio_segment",
         agentic_llm_model="test-llm",
         agentic_invoke_url="http://llm/v1/chat/completions",
         agentic_reasoning_effort="high",
@@ -326,10 +331,11 @@ def test_build_command_passes_agentic_recall_options(tmp_path: Path) -> None:
 
     cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
 
-    assert cmd[cmd.index("--retrieval-mode") + 1] == "agentic"
-    assert cmd[cmd.index("--evaluation-mode") + 1] == "recall"
+    assert "--retrieval-mode" not in cmd
+    assert "--agentic" in cmd
+    assert cmd[cmd.index("--evaluation-mode") + 1] == "audio_recall"
     assert cmd[cmd.index("--query-csv") + 1] == str(query_csv)
-    assert cmd[cmd.index("--recall-match-mode") + 1] == "pdf_page"
+    assert cmd[cmd.index("--recall-match-mode") + 1] == "audio_segment"
     assert "--no-recall-details" in cmd
     assert cmd[cmd.index("--agentic-llm-model") + 1] == "test-llm"
     assert cmd[cmd.index("--agentic-invoke-url") + 1] == "http://llm/v1/chat/completions"
@@ -340,7 +346,6 @@ def test_build_command_passes_agentic_recall_options(tmp_path: Path) -> None:
     assert cmd[cmd.index("--agentic-num-concurrent") + 1] == "7"
     assert cmd[cmd.index("--agentic-temperature") + 1] == "0.6"
     assert effective_query_csv == query_csv
-
 
 def test_build_command_does_not_include_api_key(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
@@ -1471,6 +1476,7 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "audio_split_type": cfg.audio_split_type,
             "audio_split_interval": cfg.audio_split_interval,
             "evaluation_mode": cfg.evaluation_mode,
+            "agentic": cfg.agentic,
             "retrieval_mode": cfg.retrieval_mode,
             "beir_loader": cfg.beir_loader,
             "beir_dataset_name": cfg.beir_dataset_name,

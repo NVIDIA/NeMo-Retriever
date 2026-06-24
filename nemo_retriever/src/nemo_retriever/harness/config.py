@@ -11,13 +11,19 @@ from typing import Any
 
 import yaml
 
+from nemo_retriever.query.agentic_options import (
+    agentic_backend_top_k_error,
+    agentic_int_min_error,
+    agentic_target_top_k,
+    agentic_temperature_error,
+)
+
 NEMO_RETRIEVER_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = NEMO_RETRIEVER_ROOT.parent
 DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
 DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.yaml"
 VALID_RUN_MODES = {"batch", "inprocess", "service"}
-VALID_EVALUATION_MODES = {"none", "recall", "audio_recall", "beir"}
-VALID_RETRIEVAL_MODES = {"standard", "agentic"}
+VALID_EVALUATION_MODES = {"none", "audio_recall", "beir"}
 VALID_RECALL_ADAPTERS = {"none"}
 VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"}
 VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
@@ -34,6 +40,7 @@ REMOVED_HARNESS_KEY_MESSAGES = {
     ),
     "store_text": "store_text is no longer supported by the harness; use the pipeline CLI store flags instead",
     "strip_base64": "strip_base64 is no longer supported by the harness; use the pipeline CLI store flags instead",
+    "retrieval_mode": "retrieval_mode is no longer supported by the harness; use agentic: true instead",
 }
 REMOVED_HARNESS_KEYS = set(REMOVED_HARNESS_KEY_MESSAGES)
 REMOVED_HARNESS_ENV_KEYS = {
@@ -41,6 +48,7 @@ REMOVED_HARNESS_ENV_KEYS = {
     "HARNESS_STORE_IMAGES_URI": "store_images_uri",
     "HARNESS_STORE_TEXT": "store_text",
     "HARNESS_STRIP_BASE64": "strip_base64",
+    "HARNESS_RETRIEVAL_MODE": "retrieval_mode",
 }
 DEFAULT_NIGHTLY_SLACK_METRIC_KEYS = [
     "pages",
@@ -87,10 +95,10 @@ class HarnessConfig:
     audio_split_type: str = "size"
     audio_split_interval: int = 500000
     evaluation_mode: str = "none"
-    retrieval_mode: str = "standard"
+    agentic: bool = False
     agentic_llm_model: str | None = None
     agentic_invoke_url: str | None = None
-    agentic_reasoning_effort: str | None = "high"
+    agentic_reasoning_effort: str | None = None
     agentic_backend_top_k: int = 20
     agentic_react_max_steps: int = 50
     agentic_text_truncation: int = 0
@@ -169,6 +177,10 @@ class HarnessConfig:
     gpu_ocr: float = 0.1
     gpu_embed: float = 0.25
 
+    @property
+    def retrieval_mode(self) -> str:
+        return "agentic" if self.agentic else "standard"
+
     def validate(self) -> list[str]:
         errors: list[str] = []
         if not self.dataset_dir:
@@ -185,29 +197,39 @@ class HarnessConfig:
         if self.evaluation_mode not in VALID_EVALUATION_MODES:
             errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
 
-        if self.retrieval_mode not in VALID_RETRIEVAL_MODES:
-            errors.append(f"retrieval_mode must be one of {sorted(VALID_RETRIEVAL_MODES)}")
-
-        if self.retrieval_mode == "agentic":
+        if self.agentic:
             if self.run_mode == "service":
-                errors.append("retrieval_mode=agentic is not supported by harness service mode")
-            if self.evaluation_mode not in {"recall", "audio_recall", "beir"}:
-                errors.append("retrieval_mode=agentic requires evaluation_mode recall, audio_recall, or beir")
+                errors.append("agentic=true is not supported by harness service mode")
+            if self.evaluation_mode not in {"audio_recall", "beir"}:
+                errors.append("agentic=true requires evaluation_mode audio_recall or beir")
             if not str(self.agentic_llm_model or "").strip():
-                errors.append("agentic_llm_model is required when retrieval_mode=agentic")
-            if int(self.agentic_backend_top_k) < 1:
-                errors.append("agentic_backend_top_k must be >= 1")
-            if int(self.agentic_react_max_steps) < 1:
-                errors.append("agentic_react_max_steps must be >= 1")
-            if int(self.agentic_text_truncation) < 0:
-                errors.append("agentic_text_truncation must be >= 0")
-            if int(self.agentic_num_concurrent) < 1:
-                errors.append("agentic_num_concurrent must be >= 1")
-            if float(self.agentic_temperature) < 0.0:
-                errors.append("agentic_temperature must be >= 0.0")
-
-        if self.evaluation_mode == "recall" and self.retrieval_mode != "agentic":
-            errors.append("evaluation_mode=recall is only supported when retrieval_mode=agentic")
+                errors.append("agentic_llm_model is required when agentic=true")
+            for field_name, value, min_value in (
+                ("agentic_react_max_steps", self.agentic_react_max_steps, 1),
+                ("agentic_text_truncation", self.agentic_text_truncation, 0),
+                ("agentic_num_concurrent", self.agentic_num_concurrent, 1),
+            ):
+                integer_error = agentic_int_min_error(value, field_name=field_name, min_value=min_value)
+                if integer_error:
+                    errors.append(integer_error)
+            if self.evaluation_mode in {"audio_recall", "beir"}:
+                try:
+                    target_top_k = agentic_target_top_k(self.evaluation_mode, list(self.beir_ks))
+                except (TypeError, ValueError) as exc:
+                    errors.append(str(exc))
+                else:
+                    backend_error = agentic_backend_top_k_error(
+                        self.agentic_backend_top_k,
+                        target_top_k=target_top_k,
+                    )
+                    if backend_error:
+                        errors.append(backend_error)
+            temperature_error = agentic_temperature_error(
+                self.agentic_temperature,
+                invoke_url=self.agentic_invoke_url,
+            )
+            if temperature_error:
+                errors.append(temperature_error)
 
         if self.run_mode == "service":
             if not self.manage_service and not self.service_url:
@@ -227,7 +249,7 @@ class HarnessConfig:
                     errors.append("helm_set must be a mapping/dict")
             return errors
 
-        if self.evaluation_mode in {"recall", "audio_recall"} and self.recall_required and not self.query_csv:
+        if self.evaluation_mode == "audio_recall" and self.recall_required and not self.query_csv:
             errors.append("recall_required=true requires query_csv")
 
         if self.input_type not in {"pdf", "txt", "html", "doc", "audio", "video"}:
@@ -252,9 +274,6 @@ class HarnessConfig:
                     errors.append("video_frame_fps must be > 0.0")
                 if int(self.video_frame_text_dedup_max_dropped_frames) < 0:
                     errors.append("video_frame_text_dedup_max_dropped_frames must be >= 0")
-        elif self.evaluation_mode == "recall":
-            if self.recall_match_mode not in {"pdf_page", "pdf_only"}:
-                errors.append("recall_match_mode must be pdf_page or pdf_only when evaluation_mode=recall")
         elif self.evaluation_mode == "beir":
             if self.beir_loader not in VALID_BEIR_LOADERS:
                 errors.append(f"beir_loader must be one of {sorted(VALID_BEIR_LOADERS)}")
@@ -451,7 +470,7 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         ),
         "HARNESS_VIDEO_AV_FUSE": ("video_av_fuse", _parse_bool),
         "HARNESS_EVALUATION_MODE": ("evaluation_mode", str),
-        "HARNESS_RETRIEVAL_MODE": ("retrieval_mode", str),
+        "HARNESS_AGENTIC": ("agentic", _parse_bool),
         "HARNESS_AGENTIC_LLM_MODEL": ("agentic_llm_model", str),
         "HARNESS_AGENTIC_INVOKE_URL": ("agentic_invoke_url", str),
         "HARNESS_AGENTIC_REASONING_EFFORT": ("agentic_reasoning_effort", str),

@@ -43,10 +43,11 @@ class FakeRetriever:
         _ = query
         hits = [
             {
-                "source": "/tmp/doc.pdf",
+                "source": {"source_id": "/tmp/clip.wav"},
                 "source_id": "/tmp/doc.pdf",
                 "page_number": 1,
                 "pdf_page": "doc_1",
+                "metadata": {"segment_start_seconds": 1.0, "segment_end_seconds": 3.0},
                 "text": "matching document",
                 "_score": 0.9,
             },
@@ -71,25 +72,10 @@ class FakeRetriever:
         return [list(hits)[:limit] for hits in raw_hits]
 
 
-def test_build_qrels_requires_aligned_lengths():
-    from nemo_retriever.query.agentic import build_qrels
+def test_build_beir_run_from_ranked_doc_ids_orders_by_rank():
+    from nemo_retriever.tools.recall.beir import build_beir_run_from_ranked_doc_ids
 
-    with pytest.raises(ValueError, match="same length"):
-        build_qrels(["q1"], ["doc_1", "doc_2"])
-
-
-def test_build_beir_run_from_agentic_result_orders_by_rank():
-    from nemo_retriever.query.agentic import build_beir_run_from_agentic_result
-
-    result = pd.DataFrame(
-        {
-            "query_id": ["q1", "q1", "q1"],
-            "doc_id": ["d2", "d1", "d3"],
-            "rank": [2, 1, 3],
-            "message": ["ok", "ok", "ok"],
-        }
-    )
-    run = build_beir_run_from_agentic_result(["q1", "q2"], result)
+    run = build_beir_run_from_ranked_doc_ids(["q1", "q2"], [["d1", "d2", "d3"]])
 
     assert list(run["q1"]) == ["d1", "d2", "d3"]
     assert run["q1"]["d1"] > run["q1"]["d2"] > run["q1"]["d3"]
@@ -147,36 +133,42 @@ def test_agentic_retriever_honors_top_k(mock_react_step, mock_selection_step):
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
-def test_run_agentic_recall_evaluation_computes_metrics(mock_react_step, mock_selection_step, tmp_path):
-    from nemo_retriever.query.agentic import AgenticRetrievalConfig, run_agentic_recall_evaluation
+def test_run_agentic_audio_recall_evaluation_computes_metrics(mock_react_step, mock_selection_step, tmp_path):
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, run_agentic_audio_recall_evaluation
 
     query_csv = tmp_path / "queries.csv"
-    pd.DataFrame({"query": ["find doc"], "pdf_page": ["doc_1"]}).to_csv(query_csv, index=False)
+    pd.DataFrame(
+        {
+            "query": ["find clip"],
+            "expected_media_id": ["clip"],
+            "expected_start_time": [0.0],
+            "expected_end_time": [4.0],
+        }
+    ).to_csv(query_csv, index=False)
 
-    final_ids = ["doc_1"] + [f"extra_{i}" for i in range(9)]
+    audio_doc_id = "clip	1.000000	3.000000"
+    final_ids = [audio_doc_id] + [f"extra_{i}" for i in range(9)]
     mock_react_step.return_value = _make_tool_call_response(
         "final_results",
         {"doc_ids": final_ids, "message": "done", "search_successful": "true"},
     )
     mock_selection_step.return_value = _make_tool_call_response(
         "log_selected_documents",
-        {"doc_ids": ["doc_1"], "message": "doc_1 is best"},
+        {"doc_ids": [audio_doc_id], "message": "clip is best"},
     )
 
     cfg = AgenticRetrievalConfig(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
-    df_query, result, qrels, run, metrics = run_agentic_recall_evaluation(
+    df_query, result, gold, retrieved, metrics = run_agentic_audio_recall_evaluation(
         query_csv=query_csv,
         cfg=cfg,
-        match_mode="pdf_page",
         ks=(1, 5, 10),
     )
 
-    assert df_query["golden_answer"].tolist() == ["doc_1"]
-    assert result["doc_id"].tolist()[0] == "doc_1"
-    assert qrels == {"0": {"doc_1": 1}}
-    assert run["0"]["doc_1"] == 10.0
+    assert df_query["golden_answer"].tolist() == ["clip	0.000000	4.000000"]
+    assert result["doc_id"].tolist()[0] == audio_doc_id
+    assert gold == ["clip	0.000000	4.000000"]
+    assert retrieved[0][0] == audio_doc_id
     assert metrics["recall@1"] == 1.0
-    assert metrics["ndcg@1"] == 1.0
 
 
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
@@ -236,3 +228,47 @@ def test_agentic_config_rejects_nonpositive_top_k():
 
     with pytest.raises(ValueError, match="top_k"):
         AgenticRetrievalConfig(llm_model="m", top_k=0)
+
+
+def test_agentic_config_rejects_noninteger_top_k():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    with pytest.raises(ValueError, match="top_k must be an integer"):
+        AgenticRetrievalConfig(llm_model="m", top_k=1.5)
+
+
+def test_agentic_config_normalizes_integer_like_values():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="m",
+        invoke_url="http://localhost/v1/chat/completions",
+        top_k="5.0",
+        backend_top_k="6.0",
+        temperature="0.25",
+    )
+
+    assert cfg.top_k == 5
+    assert cfg.backend_top_k == 6
+    assert cfg.temperature == 0.25
+
+
+def test_agentic_config_rejects_backend_top_k_below_target():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    with pytest.raises(ValueError, match="backend_top_k"):
+        AgenticRetrievalConfig(llm_model="m", backend_top_k=4, top_k=5)
+
+
+def test_agentic_config_rejects_nvidia_temperature_above_max():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    with pytest.raises(ValueError, match="between 0.0 and 1.0"):
+        AgenticRetrievalConfig(llm_model="m", temperature=1.5)
+
+
+def test_agentic_config_rejects_nonfinite_temperature():
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    with pytest.raises(ValueError, match="temperature must be finite"):
+        AgenticRetrievalConfig(llm_model="m", temperature=float("nan"))

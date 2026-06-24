@@ -434,7 +434,7 @@ def test_graph_pipeline_cli_rejects_invalid_recall_mode(tmp_path) -> None:
 
     assert result.exit_code != 0
     assert result.exception is not None
-    assert "--evaluation-mode=recall is currently supported only" in result.output
+    assert "Unsupported --evaluation-mode: 'recall'" in str(result.exception)
 
 
 def test_graph_pipeline_cli_requires_agentic_llm_model(tmp_path) -> None:
@@ -448,8 +448,7 @@ def test_graph_pipeline_cli_requires_agentic_llm_model(tmp_path) -> None:
             str(dataset_dir),
             "--evaluation-mode",
             "beir",
-            "--retrieval-mode",
-            "agentic",
+            "--agentic",
             "--beir-loader",
             "vidore_hf",
             "--beir-dataset-name",
@@ -458,10 +457,10 @@ def test_graph_pipeline_cli_requires_agentic_llm_model(tmp_path) -> None:
     )
 
     assert result.exit_code != 0
-    assert "--retrieval-mode=agentic requires --agentic-llm-model" in result.output
+    assert "--agentic requires --agentic-llm-model" in result.output
 
 
-def test_graph_pipeline_cli_recall_agentic_requires_pdf_match_mode(tmp_path) -> None:
+def test_graph_pipeline_cli_agentic_requires_supported_evaluation_mode(tmp_path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
     (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
@@ -470,19 +469,13 @@ def test_graph_pipeline_cli_recall_agentic_requires_pdf_match_mode(tmp_path) -> 
         batch_pipeline.app,
         [
             str(dataset_dir),
-            "--evaluation-mode",
-            "recall",
-            "--retrieval-mode",
-            "agentic",
+            "--agentic",
             "--agentic-llm-model",
             "test-model",
-            "--query-csv",
-            str(tmp_path / "queries.csv"),
         ],
     )
     assert result.exit_code != 0
-    assert "--evaluation-mode=recall requires" in result.output
-    assert "--recall-match-mode=pdf_page" in result.output
+    assert "--agentic is supported only" in result.output
 
 
 def test_graph_pipeline_cli_rejects_audio_recall_for_pdf_inputs(tmp_path) -> None:
@@ -576,7 +569,7 @@ def test_pipeline_agentic_beir_wires_config_options(monkeypatch) -> None:
         embed_remote_api_key="embed-key",
         embed_modality="text",
         query_csv=None,
-        recall_match_mode="pdf_page",
+        audio_match_tolerance_secs=2.0,
         reranker=False,
         reranker_model_name="reranker",
         reranker_invoke_url=None,
@@ -669,6 +662,29 @@ def test_graph_pipeline_cli_accepts_harness_runtime_metric_flags(tmp_path, monke
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["recall_details"] is False
     assert payload["evaluation_mode"] == "beir"
+
+
+def test_graph_pipeline_cli_service_mode_rejects_agentic_flag(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--run-mode",
+            "service",
+            "--agentic",
+            "--agentic-llm-model",
+            "test-model",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--run-mode=service" in result.output
+    assert "--agentic" in result.output
+    assert "--agentic-llm-model" in result.output
 
 
 def test_graph_pipeline_cli_service_mode_rejects_ingest_flag(tmp_path) -> None:

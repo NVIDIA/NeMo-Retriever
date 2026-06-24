@@ -11,6 +11,11 @@ import os
 
 import typer
 
+from nemo_retriever.query.agentic_options import (
+    AGENTIC_OPENAI_COMPATIBLE_TEMPERATURE_MAX,
+    agentic_backend_top_k_error,
+    agentic_temperature_error,
+)
 from nemo_retriever.cli.ingest import app as ingest_app
 from nemo_retriever.cli.shared import (
     ROOT_CLI_ERRORS as _ROOT_CLI_ERRORS,
@@ -221,9 +226,9 @@ def query_command(
         help="OpenAI-compatible chat-completions endpoint for the agent LLM (agentic mode).",
     ),
     agentic_reasoning_effort: str | None = typer.Option(
-        "high",
+        None,
         "--agentic-reasoning-effort",
-        help="reasoning_effort forwarded on agentic LLM calls.",
+        help="reasoning_effort forwarded on agentic LLM calls when set.",
     ),
     agentic_backend_top_k: int = typer.Option(
         20,
@@ -247,7 +252,8 @@ def query_command(
         0.0,
         "--agentic-temperature",
         min=0.0,
-        help="Sampling temperature for agentic LLM calls (0.0 = greedy).",
+        max=AGENTIC_OPENAI_COMPATIBLE_TEMPERATURE_MAX,
+        help="Sampling temperature for agentic LLM calls (0.0 = greedy). NVIDIA endpoints allow up to 1.0; other OpenAI-compatible endpoints allow up to 2.0.",
     ),
 ) -> None:
     if output_format not in ("hits", "evidence"):
@@ -266,6 +272,14 @@ def query_command(
         typer.echo("Error: --agentic requires --agentic-llm-model.", err=True)
         raise typer.Exit(1)
     if agentic:
+        backend_error = agentic_backend_top_k_error(agentic_backend_top_k, target_top_k=top_k)
+        if backend_error:
+            typer.echo(f"Error: {backend_error}", err=True)
+            raise typer.Exit(1)
+        temperature_error = agentic_temperature_error(agentic_temperature, invoke_url=agentic_invoke_url)
+        if temperature_error:
+            typer.echo(f"Error: {temperature_error}", err=True)
+            raise typer.Exit(1)
         request = QueryRequest(
             query=query,
             retrieval=QueryRetrievalOptions(

@@ -369,8 +369,6 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
         cfg.input_type,
         "--evaluation-mode",
         cfg.evaluation_mode,
-        "--retrieval-mode",
-        cfg.retrieval_mode,
     ]
 
     if not cfg.use_heuristics:
@@ -477,26 +475,14 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
             str(cfg.audio_match_tolerance_secs),
             "--no-recall-details",
         ]
-    elif cfg.evaluation_mode == "recall":
-        if not cfg.query_csv:
-            raise ValueError("Recall evaluation requires query_csv")
-        if cfg.recall_match_mode not in {"pdf_page", "pdf_only"}:
-            raise ValueError("Recall evaluation requires recall_match_mode=pdf_page or pdf_only")
-        effective_query_csv = Path(cfg.query_csv)
-        cmd += [
-            "--query-csv",
-            str(effective_query_csv),
-            "--recall-match-mode",
-            cfg.recall_match_mode,
-            "--no-recall-details",
-        ]
     else:
         effective_query_csv = None
 
-    if cfg.retrieval_mode == "agentic":
+    if cfg.agentic:
         if not cfg.agentic_llm_model:
             raise ValueError("Agentic retrieval requires agentic_llm_model")
         cmd += [
+            "--agentic",
             "--agentic-llm-model",
             cfg.agentic_llm_model,
             "--agentic-backend-top-k",
@@ -785,6 +771,7 @@ def _run_single(
             "audio_split_type": cfg.audio_split_type,
             "audio_split_interval": cfg.audio_split_interval,
             "evaluation_mode": cfg.evaluation_mode,
+            "agentic": cfg.agentic,
             "retrieval_mode": cfg.retrieval_mode,
             "beir_loader": cfg.beir_loader,
             "agentic_llm_model": cfg.agentic_llm_model,

@@ -48,7 +48,7 @@ class QueryAgenticOptions:
     enabled: bool = False
     llm_model: str | None = None
     invoke_url: str | None = None
-    reasoning_effort: str | None = "high"
+    reasoning_effort: str | None = None
     backend_top_k: int = 20
     react_max_steps: int = 50
     text_truncation: int = 0
