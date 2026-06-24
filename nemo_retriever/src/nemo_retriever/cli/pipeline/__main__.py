@@ -1166,9 +1166,9 @@ def run(
 
     if quiet:
         # Imported lazily to avoid a cycle (main.py lazy-imports this module).
-        from nemo_retriever.cli.main import _silence_noisy_libraries
+        from nemo_retriever.cli.shared import silence_noisy_libraries
 
-        _silence_noisy_libraries()
+        silence_noisy_libraries()
     log_handle, original_stdout, original_stderr = _configure_logging(log_file, debug=bool(debug))
     if quiet:
         # Hide INFO-level "Building graph pipeline...", "Starting ingestion...",
@@ -1509,9 +1509,9 @@ def run(
             return execute_ingest_plan(ingest_plan, **local_execute_kwargs).result
 
         if quiet:
-            from nemo_retriever.cli.main import _quiet_capture
+            from nemo_retriever.cli.shared import quiet_capture
 
-            with _quiet_capture():
+            with quiet_capture():
                 raw_result = _run_ingest()
         else:
             raw_result = _run_ingest()

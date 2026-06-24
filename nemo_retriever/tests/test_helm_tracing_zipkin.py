@@ -28,7 +28,7 @@ NIMSERVICE_NAMES = {
     "llama-nemotron-embed-vl-1b-v2",
     "llama-nemotron-rerank-vl-1b-v2",
     "nemotron-3-nano-omni-30b-a3b-reasoning",
-    "nemotron-ocr-v1",
+    "nemotron-ocr-v2",
     "nemotron-page-elements-v3",
     "nemotron-parse",
     "nemotron-table-structure-v1",

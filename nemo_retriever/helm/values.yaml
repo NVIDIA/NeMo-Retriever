@@ -830,7 +830,7 @@ nimOperator:
     # NIMCache/NIMService names retired from the chart. deploy.sh deletes these
     # after each successful helm reconcile so they do not linger with keep-on-uninstall.
     pruneRetiredNimResources:
-      - nemotron-ocr-v2
+      - nemotron-ocr-v1
     pvc:
       create: true
       # If set, applies to every per-NIM PVC that doesn't override
@@ -1032,14 +1032,14 @@ nimOperator:
       - name: OMP_NUM_THREADS
         value: "1"
 
-  # Nemotron OCR v1. Used by the OCR stage of the pipeline.
+  # Nemotron OCR v2. Used by the OCR stage of the pipeline.
   ocr:
     enabled: true
     # NIMService / NIMCache resource name and in-cluster Service DNS label.
-    nimServiceName: nemotron-ocr-v1
+    nimServiceName: nemotron-ocr-v2
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-ocr-v1
-      tag: "1.3.0"
+      repository: nvcr.io/nim/nvidia/nemotron-ocr-v2
+      tag: "1.4.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
