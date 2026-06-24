@@ -94,7 +94,7 @@ def test_readme_video_pipeline_build_graph_chain() -> None:
     graph = build_graph(
         extraction_mode="auto",
         extract_params=ExtractParams(
-            ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1",
+            ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v2",
         ),
         audio_chunk_params=AudioChunkParams(
             enabled=True,
@@ -134,7 +134,7 @@ def test_audio_only_excludes_visual_branch_from_graph() -> None:
     graph = build_graph(
         extraction_mode="auto",
         extract_params=ExtractParams(
-            ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1",
+            ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v2",
         ),
         audio_chunk_params=AudioChunkParams(
             enabled=True,

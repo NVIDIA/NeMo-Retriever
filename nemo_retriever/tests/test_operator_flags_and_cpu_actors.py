@@ -182,7 +182,7 @@ class TestGraphicElementsCPUActor:
         assert actor._graphic_elements_model is None
         assert actor._ocr_model is None
         assert "nemotron-graphic-elements-v1" in actor._graphic_elements_invoke_url
-        assert "nemotron-ocr-v1" in actor._ocr_invoke_url
+        assert "nemotron-ocr-v2" in actor._ocr_invoke_url
 
     def test_creates_with_custom_urls(self):
         from nemo_retriever.operators.extract.chart.cpu_actor import GraphicElementsCPUActor
@@ -317,7 +317,7 @@ class TestOCRCPUActor:
 
         actor = OCRCPUActor()
         assert actor._model is None
-        assert "nemotron-ocr-v1" in actor.ocr_kwargs["invoke_url"]
+        assert "nemotron-ocr-v2" in actor.ocr_kwargs["invoke_url"]
 
     def test_creates_with_custom_invoke_url(self):
         from nemo_retriever.operators.extract.ocr.cpu_ocr import OCRCPUActor
