@@ -25,6 +25,7 @@ import nemo_retriever.ingest.service as ingest_service
 import nemo_retriever.cli.ingest_workflow as ingest_workflow
 import nemo_retriever.cli.ingest.graph_commands as ingest_cli_graph
 import nemo_retriever.cli.ingest.shared as ingest_cli_shared
+import nemo_retriever.cli.shared as cli_shared
 from nemo_retriever.ingestor.graph_ingestor import GraphIngestor
 from nemo_retriever.common.params import (
     ASRParams,
@@ -1321,7 +1322,7 @@ def test_root_ingest_reports_os_errors(monkeypatch) -> None:
 
 
 def test_root_cli_error_handler_includes_pydantic_validation_error() -> None:
-    assert ValidationError in cli_main._ROOT_CLI_ERRORS
+    assert ValidationError in cli_shared.ROOT_CLI_ERRORS
 
 
 def test_resolve_ingest_plan_validates_run_mode_before_creating_ingestor(monkeypatch) -> None:
@@ -1349,7 +1350,7 @@ def test_silence_noisy_libraries_sets_env_vars(monkeypatch) -> None:
     ):
         monkeypatch.delenv(var, raising=False)
 
-    cli_main._silence_noisy_libraries()
+    cli_shared.silence_noisy_libraries()
 
     assert os.environ["VLLM_LOGGING_LEVEL"] == "ERROR"
     assert os.environ["TRANSFORMERS_VERBOSITY"] == "error"
@@ -1361,7 +1362,7 @@ def test_silence_noisy_libraries_sets_env_vars(monkeypatch) -> None:
 
 
 def test_quiet_capture_swallows_output_on_success(capfd: pytest.CaptureFixture[str]) -> None:
-    with cli_main._quiet_capture():
+    with cli_shared.quiet_capture():
         sys.stdout.write("noisy stdout\n")
         sys.stdout.flush()
         sys.stderr.write("noisy stderr\n")
@@ -1376,7 +1377,7 @@ def test_quiet_capture_flushes_captured_output_to_stderr_on_error(
     capfd: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(RuntimeError, match="boom"):
-        with cli_main._quiet_capture():
+        with cli_shared.quiet_capture():
             sys.stdout.write("about to fail\n")
             sys.stdout.flush()
             sys.stderr.write("diagnostic detail\n")

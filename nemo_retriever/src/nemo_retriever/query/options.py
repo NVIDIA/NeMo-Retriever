@@ -41,9 +41,14 @@ class QueryStorageOptions:
 
 
 @dataclass(frozen=True)
+class QueryServiceOptions:
+    service_url: str = "http://localhost:7670"
+    service_api_token: str | None = None
+
+
+@dataclass(frozen=True)
 class QueryAgenticOptions:
-    """Options for the agentic (ReAct) retrieval strategy. Mirrors ``QueryRerankOptions``:
-    ``enabled`` switches the standard dense pass for an LLM-driven agent loop."""
+    """Options for the agentic (ReAct) retrieval strategy."""
 
     enabled: bool = False
     llm_model: str | None = None
@@ -63,3 +68,10 @@ class QueryRequest:
     rerank: QueryRerankOptions = field(default_factory=QueryRerankOptions)
     storage: QueryStorageOptions = field(default_factory=QueryStorageOptions)
     agentic: QueryAgenticOptions = field(default_factory=QueryAgenticOptions)
+
+
+@dataclass(frozen=True)
+class ServiceQueryRequest:
+    query: str
+    retrieval: QueryRetrievalOptions = field(default_factory=QueryRetrievalOptions)
+    service: QueryServiceOptions = field(default_factory=QueryServiceOptions)
