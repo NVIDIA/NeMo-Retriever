@@ -60,7 +60,7 @@ Charts and infographic regions are classified with other page layout elements (t
 
     For chart and infographic detection and modality-specific retrieval, use the default **pdfium** layout path (page-elements detection and OCR), not `extract_method="nemotron_parse"`.
 
-For how chart-labeled PDF regions interact with captioning, refer to [Image captioning](#image-captioning).
+Chart-labeled PDF regions are **not** routed through the Omni caption stage; they remain on the layout-and-OCR path. For scope and validation guidance, refer to [Image captioning](#image-captioning).
 
 For natural-language infographic descriptions, optionally enable [image captioning](#image-captioning) and set `caption_infographics=True` when you need VLM captions on infographic regions.
 
@@ -74,7 +74,13 @@ For natural-language infographic descriptions, optionally enable [image captioni
 
 Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
-When you run extraction locally with Hugging Face weights, the default OCR engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, refer to [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). For Kubernetes deployment, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration) in the Helm chart README.
+OCR artifacts depend on how you deploy.
+
+**Helm / NIM:** The production chart deploys **Nemotron OCR v2**. For image defaults and upgrade notes, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration) in the Helm chart README.
+
+**Local Hugging Face inference:** The default engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, refer to [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode).
+
+For Kubernetes defaults and the Helm-vs-local split, refer to [OCR artifacts (Helm vs local Hugging Face)](prerequisites-support-matrix.md#nemotron-ocr-v2-language-mode) in the support matrix.
 
 **Related**
 
