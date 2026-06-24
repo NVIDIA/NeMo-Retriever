@@ -63,7 +63,15 @@ For natural-language infographic descriptions, optionally enable [image captioni
 
 Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
-OCR artifacts depend on how you deploy. **Helm / NIM:** the production chart deploys **Nemotron OCR v2**. For image defaults and upgrade notes, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration) in the Helm chart README. **Local Hugging Face inference:** the default engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, refer to [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). For Kubernetes defaults and the Helm-vs-local split, refer to [OCR artifacts (Helm vs local Hugging Face)](prerequisites-support-matrix.md#nemotron-ocr-v2-language-mode) in the support matrix.
+OCR artifacts depend on how you deploy.
+
+**Helm / NIM:** The production chart deploys **Nemotron OCR v2**. For image defaults and upgrade notes, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration) in the Helm chart README.
+
+**Hosted remote inference:** CPU OCR actors default to the hosted **Nemotron OCR v2** endpoint when you do not set `ocr_invoke_url`.
+
+**Local Hugging Face inference:** The default engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, refer to [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode).
+
+For Kubernetes defaults and the Helm-vs-local split, refer to [OCR artifacts (Helm vs local Hugging Face)](prerequisites-support-matrix.md#nemotron-ocr-v2-language-mode) in the support matrix.
 
 **Related**
 
