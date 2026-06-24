@@ -73,7 +73,7 @@ WhereOption = Annotated[
     str | None,
     typer.Option(
         "--where",
-        help="Advanced: raw LanceDB SQL predicate appended to structured query filters.",
+        help="Advanced/trusted-caller: raw LanceDB SQL predicate appended to structured query filters.",
     ),
 ]
 LanceDbUriOption = Annotated[
