@@ -470,6 +470,24 @@ def test_root_query_agentic_requires_llm_model() -> None:
     assert "requires --agentic-llm-model" in result.output
 
 
+def test_root_query_agentic_rejects_filter_flags() -> None:
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "query",
+            "hello",
+            "--agentic",
+            "--agentic-llm-model",
+            "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+            "--source-id",
+            "docs/a.pdf",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "not supported with --agentic" in result.output
+
+
 def test_root_query_agentic_plumbs_rerank_into_config(monkeypatch) -> None:
     """`--rerank` with `--agentic` wires the reranker config into AgenticRetrievalConfig
     (reranker model + endpoint + backend), so the agent's retrieval backend reranks."""
