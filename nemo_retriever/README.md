@@ -711,26 +711,11 @@ sudo apt install python3.12-dev
 
 After installing the headers, restart the pipeline.
 
-## ViDoRe Harness Sweep
+## Retriever Harness
 
-The harness includes BEIR-style ViDoRe dataset presets in `nemo_retriever/harness/test_configs.yaml` and a ready-made sweep definition in `nemo_retriever/harness/vidore_sweep.yaml`.
-
-The ViDoRe harness datasets are configured to:
-
-- read PDFs from `/datasets/retrieval-eval/vidore_v3_corpus_pdf/...`
-- ingest with `embed_modality: text_image`
-- embed at `embed_granularity: page`
-- enable `extract_page_as_image: true` and `extract_infographics: true`
-- evaluate with BEIR-style `ndcg` and `recall` metrics
-
-To run the full ViDoRe sweep:
-
-```bash
-cd ~/NeMo-Retriever/nemo_retriever
-retriever-harness sweep --runs-config harness/vidore_sweep.yaml
-```
-
-The same commands also work under the main CLI as `retriever harness ...` if you prefer a single top-level command namespace.
+The developer harness runs code-owned benchmarks through `retriever harness`.
+Use `retriever harness list --runsets` to see available benchmark names and
+runsets, then run one benchmark with `retriever harness run <benchmark>`.
 
 ### Ingest image storage
 
@@ -744,6 +729,4 @@ retriever ingest ./data \
 
 The store stage writes the image payloads produced by ingest. With
 `--embed-granularity page`, stored assets are page images. With
-`--embed-granularity element`, stored assets are element images. Store is not
-currently configured through the harness; use `retriever pipeline run` only when
-you also need pipeline-specific compatibility artifacts.
+`--embed-granularity element`, stored assets are element images.
