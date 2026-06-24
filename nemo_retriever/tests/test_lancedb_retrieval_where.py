@@ -97,6 +97,45 @@ def test_retrieval_metadata_like_predicate() -> None:
     assert cm["doc_id"] == "x"
 
 
+def test_retrieval_metadata_like_matches_compact_sidecar_metadata() -> None:
+    d = tempfile.mkdtemp()
+    schema = pa.schema(
+        [
+            pa.field("vector", pa.list_(pa.float32(), 2)),
+            pa.field("text", pa.string()),
+            pa.field("metadata", pa.string()),
+            pa.field("source", pa.string()),
+        ]
+    )
+    rows = [
+        {
+            "vector": [1.0, 0.0],
+            "text": "alpha chunk",
+            "metadata": json.dumps({"meta_a": "alpha", "page_number": 1}, separators=(",", ":")),
+            "source": "{}",
+        },
+        {
+            "vector": [0.0, 1.0],
+            "text": "bravo chunk",
+            "metadata": json.dumps({"meta_a": "bravo", "page_number": 2}, separators=(",", ":")),
+            "source": "{}",
+        },
+    ]
+    lancedb.connect(d).create_table("t", rows, schema=schema, mode="overwrite")
+    op = LanceDB(uri=d, table_name="t", overwrite=False, vector_dim=2, validate_vector_length=False, hybrid=False)
+
+    filtered = op.retrieval(
+        [[1.0, 0.0]],
+        top_k=10,
+        table_path=d,
+        table_name="t",
+        where='metadata LIKE \'%"meta_a":"alpha"%\'',
+    )
+
+    assert [hit["text"] for hit in filtered[0]] == ["alpha chunk"]
+    assert json.loads(filtered[0][0]["metadata"])["meta_a"] == "alpha"
+
+
 def test_retrieval_search_kwargs_must_be_dict() -> None:
     d = tempfile.mkdtemp()
     _tiny_table(d)

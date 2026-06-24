@@ -15,7 +15,16 @@ class QueryRequest(BaseModel):
     source_id: str | None = None
     source: str | None = None
     page_number: int | None = Field(default=None, ge=0)
-    where: str | None = None
+    where: str | None = Field(
+        default=None,
+        description=(
+            "Advanced trusted-caller LanceDB/DataFusion predicate. The VectorDB service "
+            "passes this to table.search(...).where(...) as a read-only pre-filter before "
+            "limit(). Prefer source_id, source, and page_number for common filtering. "
+            "Deployers should expose this only inside the same auth/trust boundary as "
+            "unfiltered /v1/query access."
+        ),
+    )
 
 
 class QueryResult(BaseModel):
