@@ -16,7 +16,8 @@ REPO_ROOT = NEMO_RETRIEVER_ROOT.parent
 DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
 DEFAULT_NIGHTLY_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "nightly_config.yaml"
 VALID_RUN_MODES = {"batch", "inprocess", "service"}
-VALID_EVALUATION_MODES = {"none", "audio_recall", "beir"}
+VALID_EVALUATION_MODES = {"none", "recall", "audio_recall", "beir"}
+VALID_RETRIEVAL_MODES = {"standard", "agentic"}
 VALID_RECALL_ADAPTERS = {"none"}
 VALID_BEIR_LOADERS = {"bo10k_csv", "bo767_csv", "earnings_csv", "financebench_json", "jp20_csv", "vidore_hf"}
 VALID_BEIR_DOC_ID_FIELDS = {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
@@ -86,6 +87,15 @@ class HarnessConfig:
     audio_split_type: str = "size"
     audio_split_interval: int = 500000
     evaluation_mode: str = "none"
+    retrieval_mode: str = "standard"
+    agentic_llm_model: str | None = None
+    agentic_invoke_url: str | None = None
+    agentic_reasoning_effort: str | None = "high"
+    agentic_backend_top_k: int = 20
+    agentic_react_max_steps: int = 50
+    agentic_text_truncation: int = 0
+    agentic_num_concurrent: int = 1
+    agentic_temperature: float = 0.0
     beir_loader: str | None = None
     video_extract_audio: bool = True
     video_extract_frames: bool = True
@@ -172,6 +182,33 @@ class HarnessConfig:
         if self.run_mode not in VALID_RUN_MODES:
             errors.append(f"run_mode must be one of {sorted(VALID_RUN_MODES)}")
 
+        if self.evaluation_mode not in VALID_EVALUATION_MODES:
+            errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
+
+        if self.retrieval_mode not in VALID_RETRIEVAL_MODES:
+            errors.append(f"retrieval_mode must be one of {sorted(VALID_RETRIEVAL_MODES)}")
+
+        if self.retrieval_mode == "agentic":
+            if self.run_mode == "service":
+                errors.append("retrieval_mode=agentic is not supported by harness service mode")
+            if self.evaluation_mode not in {"recall", "audio_recall", "beir"}:
+                errors.append("retrieval_mode=agentic requires evaluation_mode recall, audio_recall, or beir")
+            if not str(self.agentic_llm_model or "").strip():
+                errors.append("agentic_llm_model is required when retrieval_mode=agentic")
+            if int(self.agentic_backend_top_k) < 1:
+                errors.append("agentic_backend_top_k must be >= 1")
+            if int(self.agentic_react_max_steps) < 1:
+                errors.append("agentic_react_max_steps must be >= 1")
+            if int(self.agentic_text_truncation) < 0:
+                errors.append("agentic_text_truncation must be >= 0")
+            if int(self.agentic_num_concurrent) < 1:
+                errors.append("agentic_num_concurrent must be >= 1")
+            if float(self.agentic_temperature) < 0.0:
+                errors.append("agentic_temperature must be >= 0.0")
+
+        if self.evaluation_mode == "recall" and self.retrieval_mode != "agentic":
+            errors.append("evaluation_mode=recall is only supported when retrieval_mode=agentic")
+
         if self.run_mode == "service":
             if not self.manage_service and not self.service_url:
                 errors.append("service_url is required when run_mode='service' and manage_service=false")
@@ -190,10 +227,7 @@ class HarnessConfig:
                     errors.append("helm_set must be a mapping/dict")
             return errors
 
-        if self.evaluation_mode not in VALID_EVALUATION_MODES:
-            errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
-
-        if self.evaluation_mode == "audio_recall" and self.recall_required and not self.query_csv:
+        if self.evaluation_mode in {"recall", "audio_recall"} and self.recall_required and not self.query_csv:
             errors.append("recall_required=true requires query_csv")
 
         if self.input_type not in {"pdf", "txt", "html", "doc", "audio", "video"}:
@@ -218,6 +252,9 @@ class HarnessConfig:
                     errors.append("video_frame_fps must be > 0.0")
                 if int(self.video_frame_text_dedup_max_dropped_frames) < 0:
                     errors.append("video_frame_text_dedup_max_dropped_frames must be >= 0")
+        elif self.evaluation_mode == "recall":
+            if self.recall_match_mode not in {"pdf_page", "pdf_only"}:
+                errors.append("recall_match_mode must be pdf_page or pdf_only when evaluation_mode=recall")
         elif self.evaluation_mode == "beir":
             if self.beir_loader not in VALID_BEIR_LOADERS:
                 errors.append(f"beir_loader must be one of {sorted(VALID_BEIR_LOADERS)}")
@@ -414,6 +451,15 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         ),
         "HARNESS_VIDEO_AV_FUSE": ("video_av_fuse", _parse_bool),
         "HARNESS_EVALUATION_MODE": ("evaluation_mode", str),
+        "HARNESS_RETRIEVAL_MODE": ("retrieval_mode", str),
+        "HARNESS_AGENTIC_LLM_MODEL": ("agentic_llm_model", str),
+        "HARNESS_AGENTIC_INVOKE_URL": ("agentic_invoke_url", str),
+        "HARNESS_AGENTIC_REASONING_EFFORT": ("agentic_reasoning_effort", str),
+        "HARNESS_AGENTIC_BACKEND_TOP_K": ("agentic_backend_top_k", _parse_number),
+        "HARNESS_AGENTIC_REACT_MAX_STEPS": ("agentic_react_max_steps", _parse_number),
+        "HARNESS_AGENTIC_TEXT_TRUNCATION": ("agentic_text_truncation", _parse_number),
+        "HARNESS_AGENTIC_NUM_CONCURRENT": ("agentic_num_concurrent", _parse_number),
+        "HARNESS_AGENTIC_TEMPERATURE": ("agentic_temperature", _parse_number),
         "HARNESS_BEIR_LOADER": ("beir_loader", str),
         "HARNESS_BEIR_DATASET_NAME": ("beir_dataset_name", str),
         "HARNESS_BEIR_SPLIT": ("beir_split", str),

@@ -517,8 +517,56 @@ def test_load_harness_config_rejects_invalid_recall_mode(tmp_path: Path) -> None
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="evaluation_mode must be one of"):
+    with pytest.raises(ValueError, match="evaluation_mode=recall is only supported"):
         load_harness_config(config_file=str(cfg_path))
+
+
+def test_load_harness_config_supports_agentic_recall_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    query_csv = tmp_path / "query.csv"
+    query_csv.write_text("query,pdf_page\nq,doc_1\n", encoding="utf-8")
+    cfg_path = tmp_path / "test_configs.yaml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "active:",
+                "  dataset: tiny",
+                "  preset: base",
+                "presets:",
+                "  base: {}",
+                "datasets:",
+                "  tiny:",
+                f"    path: {dataset_dir}",
+                f"    query_csv: {query_csv}",
+                "    input_type: pdf",
+                "    evaluation_mode: recall",
+                "    retrieval_mode: agentic",
+                "    recall_required: true",
+                "    recall_adapter: none",
+                "    recall_match_mode: pdf_page",
+                "    agentic_llm_model: config-model",
+                "    agentic_backend_top_k: 27",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("HARNESS_AGENTIC_INVOKE_URL", "http://llm/v1/chat/completions")
+    monkeypatch.setenv("HARNESS_AGENTIC_NUM_CONCURRENT", "4")
+    monkeypatch.setenv("HARNESS_AGENTIC_TEMPERATURE", "0.25")
+
+    cfg = load_harness_config(config_file=str(cfg_path))
+    assert cfg.evaluation_mode == "recall"
+    assert cfg.retrieval_mode == "agentic"
+    assert cfg.agentic_llm_model == "config-model"
+    assert cfg.agentic_backend_top_k == 27
+    assert cfg.agentic_invoke_url == "http://llm/v1/chat/completions"
+    assert cfg.agentic_num_concurrent == 4
+    assert cfg.agentic_temperature == 0.25
+    assert cfg.recall_match_mode == "pdf_page"
 
 
 def test_load_harness_config_supports_audio_recall_fields(tmp_path: Path) -> None:

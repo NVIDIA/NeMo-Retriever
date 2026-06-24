@@ -21,11 +21,12 @@ import pandas as pd
 
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
-from nemo_retriever.tools.recall.beir import VALID_BEIR_DOC_ID_FIELDS
+from nemo_retriever.tools.recall.beir import VALID_BEIR_DOC_ID_FIELDS, compute_beir_metrics, load_beir_dataset
 from nemo_retriever.tools.recall.beir import _extract_doc_id_from_hit as _beir_doc_id_from_hit
 from nemo_retriever.tools.recall.core import (
     _hit_to_audio_segment_key,
     _normalize_pdf_name,
+    _normalize_query_df,
 )
 from nemo_retriever.graph.retriever import Retriever
 
@@ -380,3 +381,102 @@ def _none_if_empty(value: Optional[str]) -> Optional[str]:
     if not stripped or stripped.lower() in {"none", "null"}:
         return None
     return stripped
+
+
+def build_qrels(query_ids: Sequence[str], gold_doc_ids: Sequence[str]) -> dict[str, dict[str, int]]:
+    """Build BEIR-style qrels from one expected document key per query."""
+
+    if len(query_ids) != len(gold_doc_ids):
+        raise ValueError("query_ids and gold_doc_ids must have the same length.")
+
+    qrels: dict[str, dict[str, int]] = {}
+    for query_id, doc_id in zip(query_ids, gold_doc_ids):
+        normalized_doc_id = str(doc_id).strip()
+        qrels[str(query_id)] = {normalized_doc_id: 1} if normalized_doc_id else {}
+    return qrels
+
+
+def build_beir_run_from_agentic_result(
+    query_ids: Sequence[str],
+    result: pd.DataFrame,
+) -> dict[str, dict[str, float]]:
+    """Convert agentic ranked rows to BEIR/pytrec_eval run format."""
+
+    run: dict[str, dict[str, float]] = {str(query_id): {} for query_id in query_ids}
+    if result.empty:
+        return run
+
+    required = {"query_id", "doc_id", "rank"}
+    missing = required - set(result.columns)
+    if missing:
+        raise ValueError(f"Agentic result missing required columns: {sorted(missing)}")
+
+    for query_id, group in result.groupby("query_id", sort=False):
+        ordered_doc_ids: list[str] = []
+        seen_doc_ids: set[str] = set()
+
+        for _, row in group.sort_values("rank").iterrows():
+            doc_id = str(row.get("doc_id", "")).strip()
+            if not doc_id or doc_id in seen_doc_ids:
+                continue
+            seen_doc_ids.add(doc_id)
+            ordered_doc_ids.append(doc_id)
+
+        run[str(query_id)] = {
+            doc_id: float(len(ordered_doc_ids) - rank) for rank, doc_id in enumerate(ordered_doc_ids)
+        }
+
+    return run
+
+
+def run_agentic_recall_evaluation(
+    *,
+    query_csv: Path,
+    cfg: AgenticRetrievalConfig,
+    match_mode: str = "pdf_page",
+    ks: Sequence[int] = (1, 5, 10),
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, dict[str, int]], dict[str, dict[str, float]], dict[str, float]]:
+    """Run agentic retrieval against a query CSV and compute recall/NDCG metrics."""
+
+    df_query = _normalize_query_df(pd.read_csv(query_csv), match_mode=match_mode)
+    if "query_id" in df_query.columns:
+        query_ids = df_query["query_id"].astype(str).tolist()
+    else:
+        query_ids = [str(idx) for idx in range(len(df_query.index))]
+    queries = df_query["query"].astype(str).tolist()
+    gold_doc_ids = df_query["golden_answer"].astype(str).tolist()
+
+    result = AgenticRetriever(cfg, match_mode=match_mode).retrieve(query_ids, queries)
+    qrels = build_qrels(query_ids, gold_doc_ids)
+    run = build_beir_run_from_agentic_result(query_ids, result)
+    metrics = compute_beir_metrics(qrels, run, ks=ks)
+    return df_query, result, qrels, run, metrics
+
+
+def run_agentic_beir_evaluation(
+    *,
+    loader: str,
+    dataset_name: str,
+    cfg: AgenticRetrievalConfig,
+    split: str = "test",
+    query_language: str | None = None,
+    doc_id_field: str = "pdf_basename",
+    ks: Sequence[int] = (1, 3, 5, 10),
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, dict[str, int]], dict[str, dict[str, float]], dict[str, float]]:
+    """Load a BEIR-style dataset, run agentic retrieval, and compute metrics."""
+
+    dataset = load_beir_dataset(
+        loader,
+        dataset_name=dataset_name,
+        split=split,
+        query_language=query_language,
+        doc_id_field=doc_id_field,
+    )
+    result = AgenticRetriever(cfg, match_mode="pdf_page", doc_id_field=doc_id_field).retrieve(
+        dataset.query_ids,
+        dataset.queries,
+    )
+    run = build_beir_run_from_agentic_result(dataset.query_ids, result)
+    metrics = compute_beir_metrics(dataset.qrels, run, ks=ks)
+    df_query = pd.DataFrame({"query_id": dataset.query_ids, "query": dataset.queries})
+    return df_query, result, dataset.qrels, run, metrics
