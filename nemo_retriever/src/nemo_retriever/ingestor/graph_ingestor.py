@@ -339,6 +339,22 @@ def _summarize_error_payload(error: Any) -> str:
     return _sanitize_error_text(error) or type(error).__name__
 
 
+def _format_public_failure_message(record: dict[str, Any]) -> str:
+    return "row {row_index}, column {column}, path {path}: {summary}".format(
+        row_index=record.get("row_index"),
+        column=record.get("column"),
+        path=record.get("path"),
+        summary=_summarize_error_payload(record.get("error")),
+    )
+
+
+def _coerce_source_identifier(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _sanitize_error_text(value: Any, *, limit: int = _ERROR_MESSAGE_LIMIT) -> str | None:
     if value is None:
         return None
@@ -711,7 +727,7 @@ class GraphIngestor(ingestor):
             A ``pandas.DataFrame``.
         ``return_failures=True``
             ``(result, failures)`` where ``failures`` is a list of
-            structured row-level stage error records.
+            service-style ``(source, error)`` tuples.
         """
         return_failures = self._resolve_return_failures(params, kwargs)
         default_branches = self._plan_default_extraction_branches()
@@ -1045,6 +1061,59 @@ class GraphIngestor(ingestor):
                 child_path = f"{path}[{i}]" if path else f"[{i}]"
                 yield from cls._iter_stage_errors_from_value(child, path=child_path)
 
+    @staticmethod
+    def _row_value(row: Any, key: str) -> Any:
+        if isinstance(row, dict):
+            return row.get(key)
+        getter = getattr(row, "get", None)
+        if callable(getter):
+            try:
+                return getter(key)
+            except Exception:
+                return None
+        return None
+
+    @staticmethod
+    def _nested_mapping_value(value: Any, path: tuple[str, ...]) -> Any:
+        current = value
+        for key in path:
+            if not isinstance(current, dict):
+                return None
+            current = current.get(key)
+        return current
+
+    @classmethod
+    def _source_identifier_from_row(cls, row: Any, row_index: Any) -> str:
+        for field in ("document_id", "path", "source_path"):
+            identifier = _coerce_source_identifier(cls._row_value(row, field))
+            if identifier is not None:
+                return identifier
+
+        metadata = cls._row_value(row, "metadata")
+        for nested_path in (
+            ("source_path",),
+            ("source_metadata", "source_id"),
+            ("source_metadata", "source_name"),
+        ):
+            identifier = _coerce_source_identifier(cls._nested_mapping_value(metadata, nested_path))
+            if identifier is not None:
+                return identifier
+
+        for field in ("source_id", "source_name"):
+            identifier = _coerce_source_identifier(cls._row_value(row, field))
+            if identifier is not None:
+                return identifier
+
+        return f"row {row_index}" if row_index is not None else "row ?"
+
+    @staticmethod
+    def _public_failure_tuple(record: dict[str, Any]) -> tuple[str, str]:
+        identifier = _coerce_source_identifier(record.get("source_identifier"))
+        if identifier is None:
+            row_index = record.get("row_index")
+            identifier = f"row {row_index}" if row_index is not None else "row ?"
+        return identifier, _format_public_failure_message(record)
+
     @classmethod
     def _stage_error_records(cls, batch: Any, *, columns: Iterable[str] | None = None) -> list[dict[str, Any]]:
         iter_batches = getattr(batch, "iter_batches", None)
@@ -1068,11 +1137,13 @@ class GraphIngestor(ingestor):
                 else [c for c in requested_columns if c in available_columns]
             )
             for row_index, row in batch_df.iterrows():
+                source_identifier = cls._source_identifier_from_row(row, row_index)
                 for column in target_columns:
                     for record in cls._iter_stage_errors_from_value(row[column]):
                         records.append(
                             {
                                 "row_index": row_index,
+                                "source_identifier": source_identifier,
                                 "column": column,
                                 **record,
                             }
@@ -1205,9 +1276,12 @@ class GraphIngestor(ingestor):
         columns = set(diagnostics.keys()) if diagnostics else None
         return self._stage_error_records(result, columns=columns)
 
+    def _collect_failure_tuples(self, result: Any) -> list[tuple[str, str]]:
+        return [self._public_failure_tuple(record) for record in self._collect_failure_records(result)]
+
     def _finalize_ingest_result(self, result: Any, *, return_failures: bool) -> Any:
         if return_failures:
-            return result, self._collect_failure_records(result)
+            return result, self._collect_failure_tuples(result)
         self._raise_for_stage_errors(result)
         return result
 
