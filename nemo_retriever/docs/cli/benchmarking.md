@@ -48,6 +48,38 @@ retriever harness sweep --runs-config nemo_retriever/harness/nightly_config.yaml
 retriever harness nightly --runs-config nemo_retriever/harness/nightly_config.yaml --dry-run
 ```
 
+### Agentic evaluation
+
+Harness runs use standard retrieval unless `agentic: true` is set in the
+selected dataset config or via `--override agentic=true`. Agentic harness
+evaluation is supported for BEIR and audio recall only; it is not supported with
+service run mode because the ReAct graph runs locally after ingest.
+
+Minimal BEIR override example:
+
+```bash
+retriever harness run --dataset jp20 --preset single_gpu \
+  --override agentic=true \
+  --override agentic_llm_model=nvidia/llama-3.3-nemotron-super-49b-v1.5
+```
+
+Useful agentic overrides:
+
+- `agentic_invoke_url` — OpenAI-compatible chat-completions endpoint. Omit to
+  use the built-in NVIDIA endpoint.
+- `agentic_backend_top_k` — backend candidate pool per ReAct retrieval call.
+  Must be at least the final requested metric depth (`max(beir_ks)` for BEIR,
+  `10` for audio recall).
+- `agentic_temperature` — defaults to `0.0`; hosted/default NVIDIA endpoints are
+  validated as `0.0..1.0`, while other OpenAI-compatible endpoints allow
+  `0.0..2.0`.
+- `agentic_reasoning_effort` — optional provider-specific field forwarded only
+  when configured.
+
+Audio recall remains transcript-segment retrieval: the agent sees retrieved text
+chunks and segment IDs, then recall scoring matches media ID plus segment time
+within `audio_match_tolerance_secs`.
+
 ### Image storage
 
 For normal ingest, configure image persistence on `retriever ingest` with

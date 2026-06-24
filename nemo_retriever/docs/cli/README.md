@@ -199,15 +199,17 @@ Agentic-only knobs (apply only with `--agentic`):
 
 - `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
   agent LLM; defaults to the operators' built-in endpoint when omitted.
-- `--agentic-reasoning-effort` (default `high`) — `reasoning_effort` forwarded on
-  agentic LLM calls.
+- `--agentic-reasoning-effort` — optional `reasoning_effort` forwarded on
+  agentic LLM calls when set. Leave unset for endpoints that do not support this
+  provider-specific field.
 - `--agentic-backend-top-k` (default `20`) — candidates pulled from the vector DB
   per retrieval call.
 - `--agentic-react-max-steps` (default `50`) — maximum ReAct loop iterations.
 - `--agentic-text-truncation` (default `0`) — max characters of each candidate
   shown to the agent; `0` disables truncation.
 - `--agentic-temperature` (default `0.0`) — sampling temperature for agentic LLM
-  calls (`0.0` = greedy).
+  calls (`0.0` = greedy). Hosted/default NVIDIA NIM endpoints allow `0.0..1.0`;
+  other OpenAI-compatible endpoints allow `0.0..2.0`.
 
 <!-- --8<-- [end:quickstart] -->
 
