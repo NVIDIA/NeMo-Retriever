@@ -22,6 +22,7 @@ from nemo_retriever.cli.shared import (
     silence_noisy_libraries,
 )
 from nemo_retriever.common.vdb.records import RetrievalHit
+from nemo_retriever.query.filters import has_query_filters
 from nemo_retriever.query.options import (
     QueryAgenticOptions,
     QueryEmbedOptions,
@@ -219,8 +220,16 @@ def _local_command(
     try:
         reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None
         effective_retrieval_mode = _query_retrieval_mode(ctx, retrieval_mode, hybrid)
+        filters = _filter_options(
+            source_id=source_id,
+            source=source,
+            page_number=page_number,
+            where=where,
+        )
 
         if agentic:
+            if has_query_filters(filters):
+                raise ValueError("--source-id, --source, --page-number, and --where are not supported with --agentic.")
             request = QueryRequest(
                 query=query,
                 retrieval=_retrieval_options(
@@ -271,12 +280,7 @@ def _local_command(
                     content_types=content_types,
                     retrieval_mode=effective_retrieval_mode,
                 ),
-                filters=_filter_options(
-                    source_id=source_id,
-                    source=source,
-                    page_number=page_number,
-                    where=where,
-                ),
+                filters=filters,
                 embed=QueryEmbedOptions(
                     embed_invoke_url=embed_invoke_url,
                     embed_model_name=embed_model_name,

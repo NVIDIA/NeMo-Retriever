@@ -106,6 +106,11 @@ def build_query_where_clause(options: QueryFilterOptions) -> str | None:
     return " AND ".join(clauses)
 
 
+def has_query_filters(options: QueryFilterOptions) -> bool:
+    """Return whether any query filter option is set."""
+    return build_query_where_clause(options) is not None
+
+
 def query_filter_payload(options: QueryFilterOptions) -> dict[str, Any]:
     """Return the public service query filter payload for non-empty fields."""
     payload: dict[str, Any] = {}

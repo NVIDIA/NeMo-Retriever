@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from nemo_retriever.query.filters import build_query_where_clause, query_filter_payload
+from nemo_retriever.query.filters import build_query_where_clause, has_query_filters, query_filter_payload
 from nemo_retriever.query.options import QueryFilterOptions
 
 
@@ -54,6 +54,12 @@ def test_advanced_where_is_pass_through_and_combines_with_structured_filters() -
         'OR metadata LIKE \'%"page_number": "2"%\') '
         "AND (text = 'alpha')"
     )
+
+
+def test_has_query_filters_reports_non_empty_options() -> None:
+    assert not has_query_filters(QueryFilterOptions())
+    assert has_query_filters(QueryFilterOptions(source_id="docs/a.pdf"))
+    assert has_query_filters(QueryFilterOptions(where="text = 'alpha'"))
 
 
 def test_negative_page_filter_is_rejected() -> None:
