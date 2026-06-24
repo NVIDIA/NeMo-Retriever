@@ -28,7 +28,7 @@ For audio and video extraction in Kubernetes, set `service.installFfmpeg=true` s
 
 ### I want examples and notebooks
 
-1. [Jupyter Notebooks](notebooks/index.md)
+1. [Jupyter Notebooks](starter-kits.md)
 
 ### I need API details and keys
 
