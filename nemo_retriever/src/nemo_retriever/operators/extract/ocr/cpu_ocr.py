@@ -19,11 +19,10 @@ from nemo_retriever.common.modality.ocr.shared import ocr_page_elements
 class OCRCPUActor(AbstractOperator, CPUOperator):
     """Remote OCR variant of :class:`OCRActor`.
 
-    The hosted NIM endpoint is still v1-only until OCR v2 is released remotely.
+    Defaults to the hosted Nemotron OCR v2 NIM endpoint.
     """
 
-    # Keep the remote default on v1 until a hosted OCR v2 NIM is available.
-    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
+    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2"
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)

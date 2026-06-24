@@ -391,9 +391,9 @@ class TestTableStructureGPUActor:
         monkeypatch.setitem(local_models.__dict__, "NemotronTableStructureV1", mock_ts)
         monkeypatch.setitem(local_models.__dict__, "NemotronOCRV2", mock_ocr)
 
-        actor = GPUActor(ocr_invoke_url="http://ocr.example/v1/cv/nvidia/nemotron-ocr-v1")
+        actor = GPUActor(ocr_invoke_url="http://ocr.example/v1/cv/nvidia/nemotron-ocr-v2")
 
-        assert actor._ocr_invoke_url == "http://ocr.example/v1/cv/nvidia/nemotron-ocr-v1"
+        assert actor._ocr_invoke_url == "http://ocr.example/v1/cv/nvidia/nemotron-ocr-v2"
         assert actor._ocr_model is None
         mock_ocr.assert_not_called()
         mock_ts.assert_called_once_with()
