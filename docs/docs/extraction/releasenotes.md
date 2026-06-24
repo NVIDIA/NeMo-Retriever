@@ -37,8 +37,8 @@ Highlights for the 26.05 release include:
 ### Models, OCR, and captioning
 
 - Nemotron OCR v2 is the default OCR engine for Hugging Face and Helm NIM deployments, with CLI language selectors and unified OCR actors.  
-- Nemotron Parse is available as an alternate PDF extraction method (v1.2 HTTP interface; optional Helm NIM; local inference via vLLM where configured)  
-- VLM image captioning via vLLM (including Omni caption model profiles) addresses the capability deferred in 26.03  
+- Nemotron Parse is available as an alternate PDF extraction method (v1.2 HTTP interface; optional Helm NIM; local inference with vLLM where configured)  
+- VLM image captioning with vLLM (including Omni caption model profiles) addresses the capability deferred in 26.03  
 - vLLM-backed text and vision-language embedders, multimodal VL reranker, and torch 2.11 for local GPU installs  
 
 ### Multimodal extraction
@@ -48,7 +48,7 @@ Highlights for the 26.05 release include:
 
 ### Retrieval and RAG
 
-- Live RAG SDK with `Retriever.retrieve()`,  reference answer generation `Retriever.answer()`, and optional batch operator graphs via LiteLLM (`[llm]` extra)  
+- Live RAG SDK with `Retriever.retrieve()`, reference answer generation `Retriever.answer()`, and optional batch operator graphs through LiteLLM (`[llm]` extra)  
 
 ### Vector database
 
