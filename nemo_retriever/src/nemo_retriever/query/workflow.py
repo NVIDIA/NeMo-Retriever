@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from nemo_retriever.common.params import build_embed_option_kwargs
@@ -56,9 +57,76 @@ def _build_retriever_kwargs(request: QueryRequest) -> dict[str, Any]:
     return retriever_kwargs
 
 
+@dataclass(frozen=True)
+class ResolvedQueryPlan:
+    """Resolved Retriever query configuration reusable across many queries."""
+
+    top_k: int
+    candidate_k: int | None
+    page_dedup: bool
+    content_types: str | None
+    lancedb_uri: str
+    table_name: str
+    embed_kwargs: dict[str, Any]
+    hybrid: bool
+    rerank: bool
+    rerank_kwargs: dict[str, Any]
+
+    def retriever_kwargs(self) -> dict[str, Any]:
+        vdb_kwargs: dict[str, Any] = {
+            "uri": self.lancedb_uri,
+            "table_name": self.table_name,
+        }
+        if self.hybrid:
+            vdb_kwargs["hybrid"] = True
+
+        kwargs: dict[str, Any] = {
+            "top_k": self.top_k,
+            "vdb_kwargs": vdb_kwargs,
+        }
+        if self.embed_kwargs:
+            kwargs["embed_kwargs"] = dict(self.embed_kwargs)
+        if self.rerank:
+            kwargs["rerank"] = True
+            if self.rerank_kwargs:
+                kwargs["rerank_kwargs"] = dict(self.rerank_kwargs)
+        return kwargs
+
+    def create_retriever(self) -> Retriever:
+        return Retriever(**self.retriever_kwargs())
+
+    def query_kwargs(self) -> dict[str, Any]:
+        return {
+            "candidate_k": self.candidate_k,
+            "page_dedup": self.page_dedup,
+            "content_types": self.content_types,
+        }
+
+
+def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
+    """Resolve root query options once so callers can reuse a Retriever."""
+    embed_kwargs = build_embed_option_kwargs(request.embed.embed_invoke_url, request.embed.embed_model_name)
+    rerank_kwargs = _build_rerank_kwargs(request.rerank) if request.rerank.enabled else {}
+    content_types = request.retrieval.content_types
+    if content_types is not None and not isinstance(content_types, str):
+        content_types = ",".join(str(value) for value in content_types)
+    return ResolvedQueryPlan(
+        top_k=int(request.retrieval.top_k),
+        candidate_k=request.retrieval.candidate_k,
+        page_dedup=bool(request.retrieval.page_dedup),
+        content_types=content_types,
+        lancedb_uri=str(request.storage.lancedb_uri),
+        table_name=str(request.storage.table_name),
+        embed_kwargs=embed_kwargs,
+        hybrid=bool(request.retrieval.hybrid),
+        rerank=bool(request.rerank.enabled),
+        rerank_kwargs=rerank_kwargs,
+    )
+
+
 def query_documents(request: QueryRequest) -> list[RetrievalHit]:
     """Run the SDK query path used by the root CLI."""
-    retriever = Retriever(**_build_retriever_kwargs(request))
+    retriever = resolve_query_plan(request).create_retriever()
     return retriever.query(
         request.query,
         candidate_k=request.retrieval.candidate_k,

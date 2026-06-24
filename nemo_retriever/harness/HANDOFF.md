@@ -1,106 +1,159 @@
-<!-- SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES. -->
+<!-- SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Nemo Retriever harness
+# Retriever harness handoff
 
-Operator-oriented notes for `nemo_retriever` benchmark runs. Implementation details live in source; this file is the short map.
+Operator notes for the revamped internal `retriever harness`.
 
 ## Scope
 
-- Standalone benchmark harness behind `retriever harness`.
-- Invokes **`nemo_retriever.examples.graph_pipeline`** (`batch` / `inprocess` via `--run-mode`).
-- LanceDB only; recall gating via `recall_required` in config.
+- Developer-only benchmark harness for Retriever engineers.
+- Artifact-first: stdout is for humans; agents and orchestrators should read
+  JSON artifacts.
+- Uses shared Retriever ingest/query workflow code.
+- Does not route phase-one commands through `retriever pipeline run` or
+  `nemo_retriever.examples.graph_pipeline`.
 
-## Key files
+## Core commands
 
-| Path | Role |
-|------|------|
-| `nemo_retriever/src/nemo_retriever/harness/run.py` | Run/sweep/nightly, metrics from `*.runtime.summary.json`, `results.json` |
-| `nemo_retriever/src/nemo_retriever/harness/config.py` | YAML + env merge → `HarnessConfig` |
-| `nemo_retriever/src/nemo_retriever/harness/artifacts.py` | Session dirs, `session_summary.json`, `latest_commit` helper |
-| `nemo_retriever/src/nemo_retriever/harness/recall_adapters.py` | Query CSV adapters for recall |
-| `nemo_retriever/harness/test_configs.yaml` | `active`, presets, datasets |
-| `nemo_retriever/harness/nightly_config.yaml` | Sweep / nightly run list |
-
-## Defaults (`test_configs.yaml`)
-
-- Default dataset: `jp20` (BEIR evaluation workflow with query CSV).
-- Default run mode: `batch`.
-- `bo20`: ingestion-oriented (`recall_required: false`, no query CSV).
-- Presets: `single_gpu`, `dgx_8gpu`.
-- Datasets with adapters: `earnings` (`page_plus_one`), `financebench` (`financebench_json`, `pdf_only`), `bo10k` (recall off by default until queries are set).
-
-## CLI (repo root)
+Run from the repository root through the `nemo_retriever` project:
 
 ```bash
-source .retriever/bin/activate   # or retriever_runtime in container
-uv pip install -e ./nemo_retriever   # if needed
+uv run --project nemo_retriever retriever harness list --json
+uv run --project nemo_retriever retriever harness show jp20_beir --json
+uv run --project nemo_retriever retriever harness run jp20_beir \
+  --dry-run \
+  --output-dir /tmp/retriever-harness-dry-run \
+  --json
+
+uv run --project nemo_retriever retriever harness run jp20_beir \
+  --output-dir /tmp/retriever-harness-jp20-beir \
+  --require 'files==20' \
+  --require 'pages==1940' \
+  --require 'query_count==115' \
+  --require 'recall_5>=0.85' \
+  --require 'ndcg_10>=0.75' \
+  --json
 ```
+
+The primary command surface is intentionally small:
+
+- `list`
+- `show`
+- `run`
+- `run-set`
+- `diff`
+
+Legacy graph-pipeline harness execution, sweep, nightly, runner, reporting, and
+portal paths have been removed.
+
+Useful negative-path checks:
 
 ```bash
-retriever harness run --dataset jp20 --preset single_gpu
-retriever harness run --dataset jp20 --preset single_gpu --tag nightly
+uv run --project nemo_retriever retriever harness run jp20_beir \
+  --dry-run \
+  --output-dir /tmp/retriever-harness-invalid \
+  --set query.nope=1 \
+  --json
 
-retriever harness sweep --runs-config nemo_retriever/harness/nightly_config.yaml
-retriever harness nightly --runs-config nemo_retriever/harness/nightly_config.yaml --dry-run
+uv run --project nemo_retriever retriever harness run jp20_beir \
+  --dry-run \
+  --output-dir /tmp/retriever-harness-missing \
+  --set dataset.path=/tmp/retriever-harness-does-not-exist \
+  --json
 
-retriever harness summary nemo_retriever/artifacts/<session_dir>
-retriever harness compare <session_a> <session_b>
+uv run --project nemo_retriever retriever harness run jp20_beir \
+  --dry-run \
+  --output-dir /tmp/retriever-harness-gate-fail \
+  --require 'files>20' \
+  --json
 ```
 
-## Artifacts
+Expected exit codes:
 
-Per run directory:
+- `0`: success
+- `2`: invalid benchmark/config/override
+- `3`: dataset or input missing
+- `10`: ingest failure
+- `11`: query failure
+- `12`: evaluation failure
+- `20`: metric gate failure
+- `30`: artifact write failure
+- `70`: unexpected internal error
 
-- **`results.json`** — authoritative record (outcome, `test_config`, `metrics`, `summary_metrics`, `runtime_summary`, paths).
-- **`command.txt`** — replayable command line.
-- **`runtime_metrics/`** — `*.runtime.summary.json` (metrics source for the harness).
-- **`lancedb/`** — vector store (largest on-disk use).
+## Built-in benchmarks
 
-Session:
+The current code-owned registry includes:
 
-- **`session_summary.json`** — one row per run (high level); use each run’s **`results.json`** for detail.
+- `jp20_smoke`: cheap JP20 fast-text ingest check; no BEIR queries.
+- `jp20_beir`: full JP20 ingest plus 115 BEIR queries and recall/NDCG metrics.
+- `bo20_smoke`
+- `bo767_beir`
+- `financebench_beir`
+- `bo10k_beir_fast_text`
 
-## `results.json` (short contract)
+`earnings_consulting` corpus exists locally, but the old
+`data/earnings_consulting_multimodal.csv` query/qrels file is not present in
+this checkout. Do not treat `earnings_beir` as phase-one-ready until that file
+is restored or replaced.
 
-Prefer **`summary_metrics`** for dashboards (small set: pages, ingest timing, recall headline keys when present). **`metrics`** holds the fuller flat merge. **`test_config`** is the resolved harness configuration for that run (not the same as post-hoc “what the graph resolved” unless documented elsewhere). Shape is defined by `harness/run.py` and consumers should tolerate new optional keys.
+## Artifact contract
 
-## Operational notes
+Per run, read these files instead of scraping CLI text:
 
-- `recall_required: true` without recall metrics → harness failure (`missing_recall_metrics`).
-- Relative `query_csv` resolves next to the YAML file, then repo root.
-- Dataset paths under `/datasets/retrieval-eval/...` may resolve to `/raid/$USER/...` when the former is missing.
-- Store is not configured through the harness. Use `retriever ingest --store-images-uri <uri>` for normal local or object-storage image assets; use `retriever pipeline run --store-images-uri <uri>` only for pipeline-specific compatibility workflows.
+- `status.json`
+- `events.jsonl`
+- `resolved_benchmark.json`
+- `ingest_plan.json`
+- `query_plan.json`
+- `summary_metrics.json`
+- `environment.json`
+- `results.json`
+- `run.log` when ingest/query execution runs
+- `beir_metrics.json` when BEIR evaluation executes
+- `beir_run.trec` when BEIR evaluation executes
+- `query_results.jsonl` when queries execute
 
-## Backlog (maintainers / agents)
+Dry-runs resolve the benchmark, ingest plan, query plan, and summary metrics,
+but intentionally do not execute ingest or BEIR queries. Dry-run artifact
+payloads list only files that were actually written; they do not create or
+advertise empty BEIR result files.
 
-Ideas not committed to code; pick up or trim as priorities change.
+Non-dry harness runs use the same quiet capture behavior as `retriever ingest
+--quiet`: noisy lower-level model/progress output is suppressed on success and
+flushed on failure. Suppressed output is persisted to `run.log` for both
+successful and failed non-dry runs.
 
-- **Config ergonomics:** preset inheritance or a scaling helper to cut duplicated numeric blocks in YAML.
-- **Ops:** optional artifact retention command (prune old sessions by age or size).
-- **Recall UX:** a single `recall_profile` (or similar) that maps to adapter + match mode to avoid invalid combinations.
-- **Runs:** optional matrix expansion for `nightly_config`-style lists (keep explicit run list as default UX).
-- **Reporting:** export session or `results.json` sets to CSV for spreadsheets.
-- **Strictness:** optional mode that errors on unknown harness YAML keys.
+## Expectations And Gates
 
-## When changing the harness (checklist)
+Use explicit `--require` gates. The harness intentionally does not encode
+recommended thresholds in Python; known results live in
+`nemo_retriever/harness/EXPECTED_RESULTS.md` so humans and agents can inspect
+and update them as benchmarks mature.
 
-1. `config.py` + defaults in `test_configs.yaml` (and env keys if any).
-2. `run.py` and artifact payloads (`results.json` / `session_summary.json` shape).
-3. Unit tests under `nemo_retriever/tests/test_harness_*.py` and graph coverage via `test_graph_pipeline_cli.py`.
-4. `nemo_retriever/README.md` harness section if user-facing commands changed.
-5. At least one local run or `--dry-run` on the affected CLI path.
+Current JP20 examples:
 
-**Done-ish bar:** tests green, schema changes intentional, README examples still true, session output not accidentally duplicated.
+- `jp20_smoke`: `files==20`, `pages==1940`
+- `jp20_beir`: `files==20`, `pages==1940`, `query_count==115`,
+  `recall_5>=0.85`, `ndcg_10>=0.75`
 
-## Tests
+Dry-runs can only evaluate gates for metrics available without execution, such
+as `files` and `pages`.
 
-```bash
-pytest -q nemo_retriever/tests/test_harness_run.py \
-  nemo_retriever/tests/test_harness_config.py \
-  nemo_retriever/tests/test_harness_reporting.py \
-  nemo_retriever/tests/test_harness_nightly.py \
-  nemo_retriever/tests/test_graph_pipeline_cli.py
-```
+## Current validated smoke
 
-See `nemo_retriever/README.md` for broader retriever documentation.
+Validated in `/raid/jioffe/nv-ingest-harness-revamp`:
+
+- `retriever harness list --json` exits `0`.
+- `retriever harness show jp20_beir --json` exits `0`.
+- `retriever harness run jp20_beir --dry-run --output-dir /tmp/retriever-harness-dry-run --json` exits `0`.
+- Invalid override `--set query.nope=1` exits `2`.
+- Missing dataset override exits `3`.
+- Passing gate `--require 'files>=20'` exits `0`.
+- Failing gate `--require 'files>20'` exits `20` with
+  `failure_reason=metric_gate_failed`.
+- Invalid gate syntax exits `2` with `failure_reason=invalid_metric_gate`.
+- `run-set jp20_core --dry-run --require 'files>=20'` exits `0`.
+- `run-set jp20_core --dry-run --require 'files>20'` exits `20`.
+- `retriever harness run jp20_beir --require 'recall_5>=0.85' --require 'ndcg_10>=0.75' --json`
+  exits `0` on the current local dataset/hardware.

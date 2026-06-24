@@ -198,10 +198,7 @@ def test_legacy_nv_ingest_root_compose_stack_is_removed():
         "validate_deployment_configs",
         "skaffold/nv-ingest.skaffold.yaml",
     )
-    ignored_files = {
-        THIS_FILE,
-        REPO_ROOT / "nemo_retriever" / "tests" / "test_harness_helm_profiles.py",
-    }
+    ignored_files = {THIS_FILE}
     assert _legacy_text_offenders(legacy_tokens, ignored_files) == []
 
 
