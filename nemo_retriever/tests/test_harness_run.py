@@ -331,7 +331,6 @@ def test_build_command_passes_agentic_audio_recall_options(tmp_path: Path) -> No
 
     cmd, _runtime_dir, _detection_file, effective_query_csv = _build_command(cfg, tmp_path, run_id="r1")
 
-    assert "--retrieval-mode" not in cmd
     assert "--agentic" in cmd
     assert cmd[cmd.index("--evaluation-mode") + 1] == "audio_recall"
     assert cmd[cmd.index("--query-csv") + 1] == str(query_csv)
@@ -1477,7 +1476,6 @@ def test_run_single_writes_results_with_run_metadata(monkeypatch, tmp_path: Path
             "audio_split_interval": cfg.audio_split_interval,
             "evaluation_mode": cfg.evaluation_mode,
             "agentic": cfg.agentic,
-            "retrieval_mode": cfg.retrieval_mode,
             "beir_loader": cfg.beir_loader,
             "beir_dataset_name": cfg.beir_dataset_name,
             "agentic_llm_model": cfg.agentic_llm_model,

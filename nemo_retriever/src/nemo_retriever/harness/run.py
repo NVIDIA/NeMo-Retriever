@@ -772,7 +772,6 @@ def _run_single(
             "audio_split_interval": cfg.audio_split_interval,
             "evaluation_mode": cfg.evaluation_mode,
             "agentic": cfg.agentic,
-            "retrieval_mode": cfg.retrieval_mode,
             "beir_loader": cfg.beir_loader,
             "agentic_llm_model": cfg.agentic_llm_model,
             "agentic_invoke_url": cfg.agentic_invoke_url,

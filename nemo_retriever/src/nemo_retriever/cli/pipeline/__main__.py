@@ -1393,7 +1393,6 @@ def run(
         resolved_agentic_invoke_url = (
             agentic_invoke_url or os.environ.get(AGENTIC_INVOKE_URL_ENV) or ""
         ).strip() or None
-        retrieval_mode_label = "agentic" if agentic else "standard"
         if agentic and not resolved_agentic_llm_model:
             raise typer.BadParameter(f"--agentic requires --agentic-llm-model or {AGENTIC_LLM_MODEL_ENV}.")
         if agentic:
@@ -1824,7 +1823,6 @@ def run(
                     "evaluation_secs": float(evaluation_total_time),
                     "total_secs": float(total_time),
                     "evaluation_mode": "qa",
-                    "retrieval_mode": retrieval_mode_label,
                     "evaluation_metrics": {},
                     "evaluation_count": None,
                     "recall_details": bool(recall_details),
@@ -1945,7 +1943,6 @@ def run(
                     "evaluation_secs": 0.0,
                     "total_secs": float(no_eval_total_time),
                     "evaluation_mode": evaluation_mode,
-                    "retrieval_mode": retrieval_mode_label,
                     "evaluation_metrics": {},
                     "recall_details": bool(recall_details),
                     "vdb_op": str(resolved_vdb_op),
@@ -1978,7 +1975,6 @@ def run(
                 "evaluation_secs": float(evaluation_total_time),
                 "total_secs": float(total_time),
                 "evaluation_mode": evaluation_mode,
-                "retrieval_mode": retrieval_mode_label,
                 "evaluation_metrics": dict(evaluation_metrics),
                 "evaluation_count": evaluation_query_count,
                 "recall_details": bool(recall_details),

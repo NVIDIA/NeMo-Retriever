@@ -521,31 +521,6 @@ def test_load_harness_config_rejects_invalid_recall_mode(tmp_path: Path) -> None
         load_harness_config(config_file=str(cfg_path))
 
 
-def test_load_harness_config_rejects_removed_retrieval_mode_key(tmp_path: Path) -> None:
-    dataset_dir = tmp_path / "dataset"
-    dataset_dir.mkdir()
-    cfg_path = tmp_path / "test_configs.yaml"
-    cfg_path.write_text(
-        "\n".join(
-            [
-                "active:",
-                "  dataset: tiny",
-                "  preset: base",
-                "presets:",
-                "  base: {}",
-                "datasets:",
-                "  tiny:",
-                f"    path: {dataset_dir}",
-                "    retrieval_mode: agentic",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="retrieval_mode is no longer supported"):
-        load_harness_config(config_file=str(cfg_path))
-
-
 def test_load_harness_config_supports_agentic_audio_recall_fields(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -589,7 +564,6 @@ def test_load_harness_config_supports_agentic_audio_recall_fields(
     cfg = load_harness_config(config_file=str(cfg_path))
     assert cfg.evaluation_mode == "audio_recall"
     assert cfg.agentic is True
-    assert cfg.retrieval_mode == "agentic"
     assert cfg.agentic_llm_model == "config-model"
     assert cfg.agentic_backend_top_k == 27
     assert cfg.agentic_invoke_url == "http://llm/v1/chat/completions"

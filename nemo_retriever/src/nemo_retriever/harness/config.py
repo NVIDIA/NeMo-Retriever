@@ -40,7 +40,6 @@ REMOVED_HARNESS_KEY_MESSAGES = {
     ),
     "store_text": "store_text is no longer supported by the harness; use the pipeline CLI store flags instead",
     "strip_base64": "strip_base64 is no longer supported by the harness; use the pipeline CLI store flags instead",
-    "retrieval_mode": "retrieval_mode is no longer supported by the harness; use agentic: true instead",
 }
 REMOVED_HARNESS_KEYS = set(REMOVED_HARNESS_KEY_MESSAGES)
 REMOVED_HARNESS_ENV_KEYS = {
@@ -48,7 +47,6 @@ REMOVED_HARNESS_ENV_KEYS = {
     "HARNESS_STORE_IMAGES_URI": "store_images_uri",
     "HARNESS_STORE_TEXT": "store_text",
     "HARNESS_STRIP_BASE64": "strip_base64",
-    "HARNESS_RETRIEVAL_MODE": "retrieval_mode",
 }
 DEFAULT_NIGHTLY_SLACK_METRIC_KEYS = [
     "pages",
@@ -176,10 +174,6 @@ class HarnessConfig:
     gpu_page_elements: float = 0.1
     gpu_ocr: float = 0.1
     gpu_embed: float = 0.25
-
-    @property
-    def retrieval_mode(self) -> str:
-        return "agentic" if self.agentic else "standard"
 
     def validate(self) -> list[str]:
         errors: list[str] = []
