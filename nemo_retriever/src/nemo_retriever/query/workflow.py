@@ -65,3 +65,62 @@ def query_documents(request: QueryRequest) -> list[RetrievalHit]:
         page_dedup=request.retrieval.page_dedup,
         content_types=request.retrieval.content_types,
     )
+
+
+def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
+    """Run agentic (ReAct) retrieval for a single query and return the agent's
+    ranked document IDs.
+
+    Unlike the dense ``query_documents`` path (which returns enriched hits with
+    text), the agent operates at the document-ID granularity of the configured
+    index, so the result is the ranked ``doc_id`` list the agent selected,
+    annotated with the source that produced it (``final_results`` / ``rrf`` /
+    ``selection_agent``). The LanceDB ``uri``/``table_name``, embedding config,
+    and (when ``--rerank`` is enabled) reranker config are passed straight
+    through to the wrapped ``Retriever`` that backs the agent's ``retrieve``
+    tool. Reranking therefore applies per agent retrieval hop.
+    """
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    api_key = resolve_remote_api_key()
+    cfg_kwargs: dict[str, Any] = {
+        "vdb_op": "lancedb",
+        "vdb_kwargs": {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name},
+        "top_k": int(request.retrieval.top_k),
+        "embedding_endpoint": request.embed.embed_invoke_url,
+        "embedding_api_key": api_key or "",
+        "llm_model": request.agentic.llm_model,
+        "invoke_url": request.agentic.invoke_url,
+        "api_key": api_key,
+        "reasoning_effort": request.agentic.reasoning_effort,
+        "backend_top_k": int(request.agentic.backend_top_k),
+        "react_max_steps": int(request.agentic.react_max_steps),
+        "text_truncation": int(request.agentic.text_truncation),
+        "temperature": float(request.agentic.temperature),
+    }
+    if request.embed.embed_model_name:
+        cfg_kwargs["query_embedder"] = request.embed.embed_model_name
+    if request.rerank.enabled:
+        # `reranker` doubles as the on/off gate (rerank=bool(cfg.reranker)) and the
+        # model name, so fall back to the default model when only --rerank is given.
+        cfg_kwargs["reranker"] = request.rerank.reranker_model_name or _LOCAL_VL_RERANK_MODEL
+        cfg_kwargs["reranker_endpoint"] = request.rerank.reranker_invoke_url
+        cfg_kwargs["reranker_api_key"] = resolve_remote_api_key(request.rerank.reranker_api_key) or ""
+        if request.rerank.reranker_backend:
+            cfg_kwargs["local_reranker_backend"] = request.rerank.reranker_backend
+
+    result = AgenticRetriever(AgenticRetrievalConfig(**cfg_kwargs)).retrieve(["0"], [str(request.query)])
+    if "rank" in result.columns:
+        result = result.sort_values("rank")
+    ranked: list[dict[str, Any]] = []
+    for _, row in result.iterrows():
+        ranked.append(
+            {
+                "rank": int(row.get("rank", len(ranked) + 1)),
+                "doc_id": str(row.get("doc_id", "")),
+                "result_source": str(row.get("result_source", "")),
+            }
+        )
+        if len(ranked) >= request.retrieval.top_k:
+            break
+    return ranked
