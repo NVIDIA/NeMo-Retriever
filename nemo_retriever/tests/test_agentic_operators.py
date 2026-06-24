@@ -75,6 +75,17 @@ class TestRRFAggregatorOperator:
         result = op.run(self._make_input())
         assert set(result.columns) >= {"query_id", "query_text", "doc_id", "rrf_score", "text"}
 
+    def test_carries_react_final_rank(self):
+        from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
+
+        df = self._make_input()
+        df["is_final_result"] = [False, False, True, False, False, False]
+        op = RRFAggregatorOperator(k=60)
+        result = op.run(df)
+
+        q1 = result[result["query_id"] == "q1"].set_index("doc_id")
+        assert int(q1.loc["d1", "react_final_rank"]) == 1
+
     def test_missing_column_raises(self):
         from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
 
@@ -181,10 +192,11 @@ class TestSelectionAgentOperator:
         )
         result = op.run(self._make_input())
 
-        assert list(result.columns) == ["query_id", "doc_id", "rank", "message"]
+        assert set(result.columns) >= {"query_id", "doc_id", "rank", "message", "result_source"}
         assert result["query_id"].tolist() == ["q1", "q1"]
         assert result["doc_id"].tolist() == ["d1", "d2"]
         assert result["rank"].tolist() == [1, 2]
+        assert result["result_source"].tolist() == ["selection_agent", "selection_agent"]
 
     @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
     def test_think_then_select(self, mock_step):
@@ -227,6 +239,82 @@ class TestSelectionAgentOperator:
         op.run(self._make_input())
 
         assert "RELEVANCE_DEFINITION" in captured_prompts[0]
+
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
+    def test_final_results_policy_skips_selection_agent(self, mock_step):
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
+
+        op = SelectionAgentOperator(
+            llm_model="test-model",
+            invoke_url="http://localhost/v1/chat/completions",
+            top_k=2,
+        )
+        df = pd.DataFrame(
+            {
+                "query_id": ["q1", "q1", "q1"],
+                "query_text": ["What causes inflation?"] * 3,
+                "doc_id": ["d1", "d2", "d3"],
+                "text": ["doc one", "doc two", "doc three"],
+                "rrf_score": [0.1, 0.9, 0.8],
+                "react_final_rank": [2, None, 1],
+            }
+        )
+        result = op.run(df)
+
+        assert result["doc_id"].tolist() == ["d3", "d1"]
+        assert result["result_source"].tolist() == ["final_results", "final_results"]
+        mock_step.assert_not_called()
+
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
+    def test_result_policy_uses_rrf_before_selection_when_no_final_results(self, mock_step):
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
+
+        op = SelectionAgentOperator(
+            llm_model="test-model",
+            invoke_url="http://localhost/v1/chat/completions",
+            top_k=2,
+        )
+        df = pd.DataFrame(
+            {
+                "query_id": ["q1", "q1", "q1"],
+                "query_text": ["What causes inflation?"] * 3,
+                "doc_id": ["d1", "d2", "d3"],
+                "text": ["doc one", "doc two", "doc three"],
+                "rrf_score": [0.1, 0.9, 0.8],
+                "react_final_rank": [None, None, None],
+            }
+        )
+        result = op.run(df)
+
+        assert result["doc_id"].tolist() == ["d2", "d3"]
+        assert result["result_source"].tolist() == ["rrf", "rrf"]
+        mock_step.assert_not_called()
+
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
+    def test_empty_final_results_is_not_valid_and_falls_back_to_rrf(self, mock_step):
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
+
+        op = SelectionAgentOperator(
+            llm_model="test-model",
+            invoke_url="http://localhost/v1/chat/completions",
+            top_k=2,
+        )
+        df = pd.DataFrame(
+            {
+                "query_id": ["q1", "q1"],
+                "query_text": ["What causes inflation?"] * 2,
+                "doc_id": ["d1", "d2"],
+                "text": ["doc one", "doc two"],
+                "rrf_score": [0.9, 0.8],
+                "has_valid_final_results": [False, False],
+                "react_final_rank": [None, None],
+            }
+        )
+        result = op.run(df)
+
+        assert result["doc_id"].tolist() == ["d1", "d2"]
+        assert result["result_source"].tolist() == ["rrf", "rrf"]
+        mock_step.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +393,67 @@ class TestReActAgentOperator:
         assert retriever.call_count >= 1
         assert 0 in result["step_idx"].values
 
+    def test_backend_top_k_caps_fetch_depth_and_replays_seen_docs(self):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        calls = []
+        docs = [
+            {"doc_id": "d1", "text": "already seen", "score": 0.9},
+            {"doc_id": "d2", "text": "new two", "score": 0.8},
+            {"doc_id": "d3", "text": "new three", "score": 0.7},
+            {"doc_id": "d4", "text": "outside backend cap", "score": 0.6},
+        ]
+
+        def retriever_fn(query_text, top_k):
+            calls.append((query_text, top_k))
+            return docs[:top_k]
+
+        op = ReActAgentOperator(
+            invoke_url="http://localhost/v1/chat/completions",
+            llm_model="test-model",
+            retriever_fn=retriever_fn,
+            retriever_top_k=2,
+            backend_top_k=3,
+        )
+
+        result = op._call_retriever("inflation", {"d1"}, api_key=None)
+
+        assert calls == [("inflation", 3)]
+        assert [doc["doc_id"] for doc in result] == ["d1", "d2", "d3"]
+        assert "retrieved before" in result[0]["text"]
+        assert result[1]["text"] == "new two"
+
+    @pytest.mark.parametrize(
+        ("fn_args", "target_top_k", "enforce_top_k"),
+        [
+            ({"doc_ids": [1], "message": "bad id type", "search_successful": "true"}, 1, False),
+            ({"doc_ids": [], "message": "empty", "search_successful": "false"}, 1, False),
+            ({"doc_ids": [""], "message": "empty-string id", "search_successful": "true"}, 1, False),
+            ({"doc_ids": ["  "], "message": "whitespace id", "search_successful": "true"}, 1, False),
+            ({"doc_ids": ["d1"], "message": "wrong count", "search_successful": "true"}, 2, True),
+            ({"doc_ids": ["d1"], "message": "bad status", "search_successful": "yes"}, 1, False),
+        ],
+    )
+    @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
+    def test_invalid_final_results_are_rejected(self, mock_step, fn_args, target_top_k, enforce_top_k):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        mock_step.return_value = _make_tool_call_response("final_results", fn_args)
+        retriever = MagicMock(return_value=[{"doc_id": "d1", "text": "monetary policy"}])
+
+        op = ReActAgentOperator(
+            invoke_url="http://localhost/v1/chat/completions",
+            llm_model="test-model",
+            retriever_fn=retriever,
+            user_msg_type="with_results",
+            target_top_k=target_top_k,
+            enforce_top_k=enforce_top_k,
+        )
+        result = op.run(self._make_input())
+
+        assert not result["is_final_result"].astype(bool).any()
+        assert not result["has_valid_final_results"].astype(bool).any()
+
     @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
     def test_output_row_structure(self, mock_step):
         from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
@@ -321,12 +470,42 @@ class TestReActAgentOperator:
             llm_model="test-model",
             retriever_fn=self._make_retriever(),
             user_msg_type="simple",
+            target_top_k=1,
         )
         result = op.run(self._make_input())
 
         assert (result["rank"] >= 1).all()
         assert result["step_idx"].dtype in (int, "int64")
         assert result["doc_id"].notna().all()
+
+    @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
+    def test_no_final_results_falls_back_to_retrieval_log(self, mock_step):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        mock_step.side_effect = [
+            _make_tool_call_response("retrieve", {"query": "inflation monetary policy"}),
+            _make_tool_call_response("think", {"thought": "still reasoning"}),
+        ]
+        retriever = MagicMock(
+            return_value=[
+                {"doc_id": "d1", "text": "monetary policy"},
+                {"doc_id": "d2", "text": "supply chains"},
+            ]
+        )
+
+        op = ReActAgentOperator(
+            invoke_url="http://localhost/v1/chat/completions",
+            llm_model="test-model",
+            retriever_fn=retriever,
+            user_msg_type="simple",
+            target_top_k=2,
+            max_steps=2,
+        )
+        result = op.run(self._make_input())
+
+        assert result["doc_id"].tolist() == ["d1", "d2"]
+        assert result["rank"].tolist() == [1, 2]
+        assert retriever.call_count == 1
 
     @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
     @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
@@ -345,7 +524,7 @@ class TestReActAgentOperator:
         mock_react_step.side_effect = [
             _make_tool_call_response("retrieve", {"query": "inflation"}),
             _make_tool_call_response(
-                "final_results", {"doc_ids": ["d1", "d2"], "message": "ok", "search_successful": "true"}
+                "final_results", {"doc_ids": ["d1"], "message": "ok", "search_successful": "true"}
             ),
         ]
         # Selection: immediately log_selected_documents
@@ -375,7 +554,7 @@ class TestReActAgentOperator:
         query_df = pd.DataFrame({"query_id": ["q1"], "query_text": ["What causes inflation?"]})
         result = InprocessExecutor(pipeline).ingest(query_df)
 
-        assert list(result.columns) == ["query_id", "doc_id", "rank", "message"]
+        assert set(result.columns) >= {"query_id", "doc_id", "rank", "message", "result_source"}
         assert result["query_id"].tolist() == ["q1"]
         assert result["rank"].tolist() == [1]
 
@@ -569,10 +748,9 @@ class TestSelectionAgentPreprocess:
 
 class TestSelectionAgentMaxSteps:
     @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
-    def test_max_steps_exhausted_returns_empty(self, mock_step):
+    def test_rrf_candidates_skip_selection_agent(self, mock_step):
         from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
-        # LLM only ever calls think — never log_selected_documents
         mock_step.return_value = _make_tool_call_response("think", {"thought": "still thinking..."})
 
         op = SelectionAgentOperator(
@@ -583,14 +761,17 @@ class TestSelectionAgentMaxSteps:
         )
         df = pd.DataFrame(
             {
-                "query_id": ["q1", "q1"],
-                "query_text": ["What causes inflation?"] * 2,
-                "doc_id": ["d1", "d2"],
-                "text": ["doc one", "doc two"],
+                "query_id": ["q1", "q1", "q1"],
+                "query_text": ["What causes inflation?"] * 3,
+                "doc_id": ["d1", "d2", "d3"],
+                "text": ["doc one", "doc two", "doc three"],
+                "rrf_score": [0.2, 0.9, 0.5],
             }
         )
         result = op.run(df)
 
-        assert len(result) == 0
-        assert list(result.columns) == ["query_id", "doc_id", "rank", "message"]
-        assert mock_step.call_count == 3
+        assert result["doc_id"].tolist() == ["d2", "d3"]
+        assert result["rank"].tolist() == [1, 2]
+        assert result["message"].tolist() == ["Using RRF ranking."] * 2
+        assert result["result_source"].tolist() == ["rrf", "rrf"]
+        mock_step.assert_not_called()

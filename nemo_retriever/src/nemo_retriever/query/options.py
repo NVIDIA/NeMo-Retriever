@@ -47,12 +47,27 @@ class QueryServiceOptions:
 
 
 @dataclass(frozen=True)
+class QueryAgenticOptions:
+    """Options for the agentic (ReAct) retrieval strategy."""
+
+    enabled: bool = False
+    llm_model: str | None = None
+    invoke_url: str | None = None
+    reasoning_effort: str | None = "high"
+    backend_top_k: int = 20
+    react_max_steps: int = 50
+    text_truncation: int = 0
+    temperature: float = 0.0
+
+
+@dataclass(frozen=True)
 class QueryRequest:
     query: str
     retrieval: QueryRetrievalOptions = field(default_factory=QueryRetrievalOptions)
     embed: QueryEmbedOptions = field(default_factory=QueryEmbedOptions)
     rerank: QueryRerankOptions = field(default_factory=QueryRerankOptions)
     storage: QueryStorageOptions = field(default_factory=QueryStorageOptions)
+    agentic: QueryAgenticOptions = field(default_factory=QueryAgenticOptions)
 
 
 @dataclass(frozen=True)

@@ -13,6 +13,7 @@ from typer.core import TyperGroup
 
 from nemo_retriever.cli.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
+from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
 from nemo_retriever.cli.query_workflow import query_documents as query_local_documents
 from nemo_retriever.cli.shared import (
     ROOT_CLI_ERRORS,
@@ -21,6 +22,7 @@ from nemo_retriever.cli.shared import (
 )
 from nemo_retriever.common.vdb.records import RetrievalHit
 from nemo_retriever.query.options import (
+    QueryAgenticOptions,
     QueryEmbedOptions,
     QueryRerankOptions,
     QueryRequest,
@@ -141,6 +143,14 @@ def _local_command(
     hybrid: opts.HybridOption = False,
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
+    agentic: opts.AgenticOption = False,
+    agentic_llm_model: opts.AgenticLlmModelOption = None,
+    agentic_invoke_url: opts.AgenticInvokeUrlOption = None,
+    agentic_reasoning_effort: opts.AgenticReasoningEffortOption = "high",
+    agentic_backend_top_k: opts.AgenticBackendTopKOption = 20,
+    agentic_react_max_steps: opts.AgenticReactMaxStepsOption = 50,
+    agentic_text_truncation: opts.AgenticTextTruncationOption = 0,
+    agentic_temperature: opts.AgenticTemperatureOption = 0.0,
 ) -> None:
     _validate_output_options(output_format, max_text_chars)
     if reranker_invoke_url is None:
@@ -149,9 +159,52 @@ def _local_command(
         embed_invoke_url = os.environ.get("EMBED_INVOKE_URL") or None
     rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
     silence_noisy_libraries()
+    if agentic and not agentic_llm_model:
+        typer.echo("Error: --agentic requires --agentic-llm-model.", err=True)
+        raise typer.Exit(1)
 
     try:
         reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None
+
+        if agentic:
+            request = QueryRequest(
+                query=query,
+                retrieval=_retrieval_options(
+                    top_k=top_k,
+                    candidate_k=candidate_k,
+                    page_dedup=page_dedup,
+                    content_types=content_types,
+                ),
+                embed=QueryEmbedOptions(
+                    embed_invoke_url=embed_invoke_url,
+                    embed_model_name=embed_model_name,
+                ),
+                rerank=QueryRerankOptions(
+                    enabled=rerank,
+                    reranker_invoke_url=reranker_invoke_url,
+                    reranker_model_name=reranker_model_name,
+                    reranker_backend=reranker_backend,
+                    reranker_api_key=reranker_api_key,
+                ),
+                storage=QueryStorageOptions(
+                    lancedb_uri=lancedb_uri,
+                    table_name=table_name,
+                ),
+                agentic=QueryAgenticOptions(
+                    enabled=agentic,
+                    llm_model=agentic_llm_model,
+                    invoke_url=agentic_invoke_url,
+                    reasoning_effort=agentic_reasoning_effort,
+                    backend_top_k=agentic_backend_top_k,
+                    react_max_steps=agentic_react_max_steps,
+                    text_truncation=agentic_text_truncation,
+                    temperature=agentic_temperature,
+                ),
+            )
+            with quiet_capture():
+                ranked = query_agentic_documents(request)
+            typer.echo(json.dumps(ranked, indent=2, sort_keys=True, default=str))
+            return
 
         def _request(use_hybrid: bool) -> QueryRequest:
             return QueryRequest(
