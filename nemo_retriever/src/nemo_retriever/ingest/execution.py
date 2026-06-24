@@ -11,6 +11,8 @@ from typing import Any, Sequence
 from nemo_retriever.ingest.plan import ResolvedIngestPlan
 from nemo_retriever.ingestor.manifest import format_branch_summary
 from nemo_retriever.ingestor import Ingestor, create_ingestor
+from nemo_retriever.common.vdb.lancedb import LanceDB
+from nemo_retriever.common.vdb.records import to_sparse_client_vdb_records
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +74,12 @@ def build_ingest_pipeline(plan: ResolvedIngestPlan) -> Ingestor:
     if plan.caption_params is not None:
         ingestor = ingestor.caption(plan.caption_params)
 
-    ingestor = ingestor.embed(plan.embed_params) if plan.embed_params is not None else ingestor.embed()
+    if not plan.sparse:
+        ingestor = ingestor.embed(plan.embed_params) if plan.embed_params is not None else ingestor.embed()
     if plan.store_params is not None:
         ingestor = ingestor.store(plan.store_params)
 
-    if plan.vdb_params is not None:
+    if plan.vdb_params is not None and not plan.sparse:
         ingestor = ingestor.vdb_upload(plan.vdb_params)
     return ingestor
 
@@ -112,6 +115,8 @@ def execute_ingest_plan(
         initial_n_rows = _count_lancedb_rows(lancedb_uri, table_name)
 
     result = build_ingest_pipeline(plan).ingest()
+    if plan.sparse:
+        _write_sparse_lancedb_result(result, lancedb_uri=lancedb_uri, table_name=table_name, overwrite=overwrite)
 
     result_n_rows = _count_result_rows(result) if verify_rows else None
     n_rows = _count_lancedb_rows(lancedb_uri, table_name) if verify_rows else None
@@ -149,6 +154,12 @@ def _resolve_lancedb_target(plan: ResolvedIngestPlan) -> tuple[str, str, bool] |
     table_name = str(vdb_kwargs.get("table_name") or vdb_kwargs.get("lancedb_table") or plan.table_name)
     overwrite = bool(vdb_kwargs.get("overwrite", True))
     return lancedb_uri, table_name, overwrite
+
+
+def _write_sparse_lancedb_result(result: object, *, lancedb_uri: str, table_name: str, overwrite: bool) -> None:
+    records = to_sparse_client_vdb_records(result)
+    vdb = LanceDB(uri=lancedb_uri, table_name=table_name, overwrite=overwrite, sparse=True)
+    vdb.run(records)
 
 
 def _raise_for_empty_ingest(

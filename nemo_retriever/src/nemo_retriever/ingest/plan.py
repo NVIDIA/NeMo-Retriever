@@ -205,6 +205,8 @@ class IngestStorageOptions:
     overwrite: bool = True
     # Also build the LanceDB FTS/BM25 index so `query --hybrid` can fuse lexical + vector.
     hybrid: bool = False
+    # Skip dense embedding and write a text-only LanceDB FTS table.
+    sparse: bool = False
 
 
 @dataclass(frozen=True)
@@ -301,6 +303,7 @@ class ResolvedIngestPlan:
     vdb_params: VdbUploadParams | None
     lancedb_uri: str
     table_name: str
+    sparse: bool = False
 
     def extract_call_kwargs(self) -> dict[str, Any]:
         kwargs: dict[str, Any] = {}
@@ -583,6 +586,8 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
     chunk = request.chunk
     embed = request.embed
     storage = request.storage
+    if storage.sparse and storage.hybrid:
+        raise ValueError("Pass only one retrieval-mode ingest option: --sparse or --hybrid.")
 
     validated_run_mode = _validate_run_mode(runtime.run_mode)
     validated_profile = validate_ingest_profile(source.profile)
@@ -642,14 +647,16 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         embed_gpus_per_actor=embed.batch.embed_gpus_per_actor,
     )
     extract_params = ExtractParams(**extract_kwargs)
-    embed_params = EmbedParams(**embed_kwargs) if embed_kwargs else None
+    embed_params = None if storage.sparse else EmbedParams(**embed_kwargs) if embed_kwargs else None
     vdb_upload_kwargs = {
         "uri": storage.lancedb_uri,
         "table_name": storage.table_name,
         "overwrite": bool(storage.overwrite),
     }
     # Keep vector-only ingest kwargs unchanged unless hybrid indexing is explicitly requested.
-    if storage.hybrid:
+    if storage.sparse:
+        vdb_upload_kwargs["sparse"] = True
+    elif storage.hybrid:
         vdb_upload_kwargs["hybrid"] = True
     vdb_params = VdbUploadParams(vdb_kwargs=vdb_upload_kwargs)
     caption_params = build_caption_params(
@@ -724,4 +731,5 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         vdb_params=vdb_params,
         lancedb_uri=storage.lancedb_uri,
         table_name=storage.table_name,
+        sparse=bool(storage.sparse),
     )

@@ -326,7 +326,7 @@ def test_root_query_reports_os_errors(monkeypatch) -> None:
     def fail_query_documents(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
         raise OSError("database unavailable")
 
-    monkeypatch.setattr(query_cli_app, "query_local_documents", fail_query_documents)
+    monkeypatch.setattr(query_cli_app, "query_local_documents_with_metadata", fail_query_documents)
 
     result = RUNNER.invoke(cli_main.app, ["query", "hello"])
 

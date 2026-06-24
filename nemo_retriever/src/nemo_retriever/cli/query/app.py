@@ -14,7 +14,7 @@ from typer.core import TyperGroup
 from nemo_retriever.cli.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
-from nemo_retriever.cli.query_workflow import query_documents as query_local_documents
+from nemo_retriever.cli.query_workflow import query_documents_with_metadata as query_local_documents_with_metadata
 from nemo_retriever.cli.shared import (
     ROOT_CLI_ERRORS,
     quiet_capture,
@@ -46,7 +46,10 @@ class DefaultLocalQueryGroup(TyperGroup):
 
 app = typer.Typer(
     cls=DefaultLocalQueryGroup,
-    help="Query Retriever indexes. Omitting a mode queries local LanceDB.",
+    help=(
+        "Query Retriever indexes. The local root CLI supports LanceDB indexes; "
+        "use the SDK VDB interface for other backends."
+    ),
     no_args_is_help=True,
 )
 
@@ -113,7 +116,7 @@ def _retrieval_options(
     candidate_k: int | None,
     page_dedup: bool,
     content_types: str | None,
-    hybrid: bool = False,
+    hybrid: bool | None = None,
 ) -> QueryRetrievalOptions:
     return QueryRetrievalOptions(
         top_k=top_k,
@@ -126,6 +129,7 @@ def _retrieval_options(
 
 @app.command("_local", hidden=True)
 def _local_command(
+    ctx: typer.Context,
     query: opts.QueryArgument,
     top_k: opts.TopKOption = 10,
     candidate_k: opts.CandidateKOption = None,
@@ -206,7 +210,12 @@ def _local_command(
             typer.echo(json.dumps(ranked, indent=2, sort_keys=True, default=str))
             return
 
-        def _request(use_hybrid: bool) -> QueryRequest:
+        hybrid_source = ctx.get_parameter_source("hybrid")
+        hybrid_override = (
+            hybrid if hybrid_source is not None and getattr(hybrid_source, "name", "") != "DEFAULT" else None
+        )
+
+        def _request(use_hybrid: bool | None) -> QueryRequest:
             return QueryRequest(
                 query=query,
                 retrieval=_retrieval_options(
@@ -234,16 +243,9 @@ def _local_command(
             )
 
         with quiet_capture():
-            if hybrid:
-                try:
-                    hits = query_local_documents(_request(True))
-                    strategies = ["semantic", "lexical"]
-                except Exception:  # noqa: BLE001 - preserve root query's vector fallback on missing FTS.
-                    hits = query_local_documents(_request(False))
-                    strategies = ["semantic"]
-            else:
-                hits = query_local_documents(_request(False))
-                strategies = ["semantic"]
+            result = query_local_documents_with_metadata(_request(hybrid_override))
+            hits = result.hits
+            strategies = result.strategies
     except ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc

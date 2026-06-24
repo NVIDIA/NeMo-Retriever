@@ -209,11 +209,18 @@ OverwriteOption = Annotated[
 HybridOption = Annotated[
     bool,
     typer.Option(
-        "--hybrid/--no-hybrid",
+        "--hybrid",
         help=(
             "Also build a full-text (BM25) index over ingested text so query --hybrid can fuse "
             "lexical and vector retrieval. Disabled by default."
         ),
+    ),
+]
+SparseOption = Annotated[
+    bool,
+    typer.Option(
+        "--sparse",
+        help="Skip dense embedding and build a LanceDB full-text-search-only table. Disabled by default.",
     ),
 ]
 RayAddressOption = Annotated[

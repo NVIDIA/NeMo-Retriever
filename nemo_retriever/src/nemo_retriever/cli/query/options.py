@@ -109,10 +109,10 @@ RerankOption = Annotated[
 HybridOption = Annotated[
     bool,
     typer.Option(
-        "--hybrid/--no-hybrid",
+        "--hybrid",
         help=(
-            "Fused vector + full-text (BM25) retrieval; falls back to vector-only if the table "
-            "has no FTS index. Opt-in (default off) preserves the legacy vector-only default."
+            "Override automatic LanceDB retrieval-mode detection for vector tables. By default, "
+            "query inspects the table and chooses dense, hybrid, or sparse retrieval."
         ),
     ),
 ]

@@ -1441,3 +1441,54 @@ def test_root_ingest_passes_hybrid_into_vdb_kwargs(monkeypatch, tmp_path) -> Non
         "overwrite": True,
         "hybrid": True,
     }
+
+
+def test_root_ingest_sparse_skips_embedding_and_writes_fts_table(monkeypatch, tmp_path) -> None:
+    lancedb = pytest.importorskip("lancedb")
+    fake_ingestor = _make_fake_ingestor()
+    doc = tmp_path / "a.pdf"
+    doc.write_bytes(b"%PDF-1.4\n")
+    fake_ingestor.ingest.return_value = [
+        {
+            "text": "alpha sparse manual",
+            "metadata": {
+                "content_metadata": {"id": "alpha", "page_number": 1, "type": "text"},
+                "source_metadata": {"source_id": str(doc)},
+            },
+        }
+    ]
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(doc),
+            "--lancedb-uri",
+            str(tmp_path / "db"),
+            "--table-name",
+            "sparse_docs",
+            "--sparse",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    fake_ingestor.embed.assert_not_called()
+    fake_ingestor.vdb_upload.assert_not_called()
+
+    table = lancedb.connect(str(tmp_path / "db")).open_table("sparse_docs")
+    assert "vector" not in table.schema.names
+    assert table.schema.metadata[b"retrieval_mode"] == b"sparse"
+    index_names = {index.name.lower() for index in table.list_indices()}
+    assert any("text" in name or "fts" in name for name in index_names)
+
+
+def test_root_ingest_rejects_sparse_and_hybrid_together(tmp_path) -> None:
+    doc = tmp_path / "a.pdf"
+    doc.write_bytes(b"%PDF-1.4\n")
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(doc), "--sparse", "--hybrid"])
+
+    assert result.exit_code == 1
+    assert "Pass only one retrieval-mode ingest option" in result.output

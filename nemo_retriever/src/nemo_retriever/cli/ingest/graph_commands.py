@@ -216,6 +216,7 @@ def _graph_ingest_command(
     store_images_uri: opts.StoreImagesUriOption = None,
     overwrite: opts.OverwriteOption = True,
     hybrid: opts.HybridOption = False,
+    sparse: opts.SparseOption = False,
     ray_address: opts.RayAddressOption = None,
     ray_log_to_driver: opts.RayLogToDriverOption = None,
     page_elements_invoke_url: opts.PageElementsInvokeUrlOption = None,

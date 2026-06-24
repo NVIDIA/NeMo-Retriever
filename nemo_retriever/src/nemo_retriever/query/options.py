@@ -14,9 +14,9 @@ class QueryRetrievalOptions:
     candidate_k: int | None = None
     page_dedup: bool = False
     content_types: str | Sequence[str] | None = None
-    # Fused vector + full-text (BM25) retrieval. Opt-in (default off) preserves the
-    # legacy vector-only path; requires the LanceDB table to carry an FTS index.
-    hybrid: bool = False
+    # Fused vector + full-text (BM25) retrieval override. ``None`` lets LanceDB
+    # table capability detection choose dense, hybrid, or sparse automatically.
+    hybrid: bool | None = None
 
 
 @dataclass(frozen=True)
