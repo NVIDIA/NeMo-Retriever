@@ -463,6 +463,17 @@ def test_graph_ingestor_return_failures_falls_back_to_row_index(monkeypatch) -> 
     assert "row failed" in failures[0][1]
 
 
+def test_graph_ingestor_row_value_logs_best_effort_lookup_failures(caplog) -> None:
+    class BrokenRow:
+        def get(self, key):
+            raise RuntimeError(f"cannot read {key}")
+
+    with caplog.at_level("DEBUG", logger="nemo_retriever.ingestor.graph_ingestor"):
+        assert GraphIngestor._row_value(BrokenRow(), "path") is None
+
+    assert "Failed to read source identifier field 'path'" in caplog.text
+
+
 @pytest.mark.integration
 def test_graph_ingestor_raises_for_explicit_remote_stage_errors() -> None:
     ingestor = GraphIngestor(

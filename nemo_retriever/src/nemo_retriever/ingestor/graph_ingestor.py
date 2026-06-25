@@ -719,6 +719,22 @@ class GraphIngestor(ingestor):
     def ingest(self, params: Any = None, **kwargs: Any) -> Any:
         """Build the operator graph and run it through the configured executor.
 
+        Parameters
+        ----------
+        params
+            Optional :class:`IngestExecuteParams` (or plain ``dict``) carrying
+            execute-time flags. Graph run modes honor ``return_failures``.
+        **kwargs
+            Execute-time flags passed directly. ``return_failures`` may be
+            passed here and takes precedence over the value in ``params``.
+        return_failures
+            When ``True`` (default ``False``), return ``(result, failures)``
+            instead of raising collected row-level stage errors. If no explicit
+            remote-stage diagnostics are configured, all output columns are
+            scanned for populated error fields so local collected failures can
+            still be returned; the default raise path remains scoped to
+            explicitly configured remote stages.
+
         Returns
         -------
         ``run_mode='batch'``
@@ -1069,7 +1085,14 @@ class GraphIngestor(ingestor):
         if callable(getter):
             try:
                 return getter(key)
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - row metadata lookup is best-effort diagnostic context.
+                logger.debug(
+                    "Failed to read source identifier field %r from row type %s: %s",
+                    key,
+                    type(row).__name__,
+                    exc,
+                    exc_info=True,
+                )
                 return None
         return None
 
@@ -1273,6 +1296,9 @@ class GraphIngestor(ingestor):
 
     def _collect_failure_records(self, result: Any) -> list[dict[str, Any]]:
         diagnostics = self._remote_stage_diagnostics()
+        # With explicit remote stages, report only their diagnostic columns.
+        # Without them, scan all columns so ``return_failures=True`` can expose
+        # local collected failures instead of silently returning an empty list.
         columns = set(diagnostics.keys()) if diagnostics else None
         return self._stage_error_records(result, columns=columns)
 
