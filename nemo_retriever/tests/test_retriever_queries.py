@@ -57,6 +57,7 @@ def _install_mock_graph(monkeypatch: pytest.MonkeyPatch, hits: list[list[dict[st
         return graph
 
     monkeypatch.setattr(Retriever, "_get_graph", fresh_get)
+    monkeypatch.setattr(Retriever, "_resolve_lancedb_query_mode", lambda self, runtime_vdb_kwargs: None)
     return resolved
 
 
@@ -133,9 +134,7 @@ class TestQueriesGraphExecution:
             def resolve_for_local_execution(self) -> FakeResolvedGraph:
                 return FakeResolvedGraph()
 
-        monkeypatch.setattr(Retriever, "_build_default_graph", lambda self, *, embed_extra=None: FakeGraph())
-
-        out = _make_retriever(top_k=1, rerank=True).query("q")
+        out = _make_retriever(top_k=1, rerank=True, graph=FakeGraph()).query("q")
 
         assert out == [{"text": "reranker winner", "source": "rerank.pdf", "page_number": 2, "_rerank_score": 0.9}]
         assert [call["top_k"] for call in execute_kwargs] == [4]
