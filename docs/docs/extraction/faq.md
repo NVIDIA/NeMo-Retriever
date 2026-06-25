@@ -29,8 +29,9 @@ No. Chart-labeled PDF regions are not routed through Omni captioning. Refer to [
 
 ## When should I consider advanced visual parsing?
 
-For scanned documents, or documents with complex layouts, 
-you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate PDF extraction method by setting `extract_method="nemotron_parse"`. 
+For scanned documents, or documents with complex layouts,
+you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate PDF extraction method by setting `extract_method="nemotron_parse"`.
+Nemotron Parse does not produce chart modality rows. For chart detection and chart-filtered retrieval, use the default **pdfium** layout path instead (refer to [Charts and infographics](multimodal-extraction.md#charts-and-infographics)).
 For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
 ## Why are the environment variables different between library mode and self-hosted mode?

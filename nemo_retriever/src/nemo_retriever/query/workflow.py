@@ -4,15 +4,31 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from nemo_retriever.common.params import build_embed_option_kwargs
-from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
+from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
 from nemo_retriever.graph.retriever import Retriever
+from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 from nemo_retriever.common.vdb.records import RetrievalHit
 
 _LOCAL_VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+
+
+@dataclass(frozen=True)
+class QueryDocumentsResult:
+    hits: list[RetrievalHit]
+    strategies: list[str]
+
+
+def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | None) -> list[str]:
+    if mode == "hybrid":
+        return ["semantic", "lexical"]
+    if mode == "sparse":
+        return ["lexical"]
+    return ["semantic"]
 
 
 def _build_rerank_kwargs(options: QueryRerankOptions) -> dict[str, str]:
@@ -39,9 +55,8 @@ def _build_retriever_kwargs(request: QueryRequest) -> dict[str, Any]:
         "uri": request.storage.lancedb_uri,
         "table_name": request.storage.table_name,
     }
-    # Only inject hybrid when opted in, so the vector-only path stays byte-for-byte legacy.
-    if request.retrieval.hybrid:
-        vdb_kwargs["hybrid"] = True
+    if request.retrieval.retrieval_mode != "auto":
+        vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
     retriever_kwargs: dict[str, Any] = {
         "top_k": request.retrieval.top_k,
         "vdb_kwargs": vdb_kwargs,
@@ -56,15 +71,27 @@ def _build_retriever_kwargs(request: QueryRequest) -> dict[str, Any]:
     return retriever_kwargs
 
 
-def query_documents(request: QueryRequest) -> list[RetrievalHit]:
-    """Run the SDK query path used by the root CLI."""
+def query_documents_with_metadata(request: QueryRequest) -> QueryDocumentsResult:
+    """Run the SDK query path and return hits plus resolved retrieval strategy metadata."""
     retriever = Retriever(**_build_retriever_kwargs(request))
-    return retriever.query(
+    mode: LanceRetrievalMode | None = None
+    resolve_mode = getattr(retriever, "_resolve_lancedb_query_mode", None)
+    if callable(resolve_mode):
+        lancedb_mode = resolve_mode(None)
+        if lancedb_mode is not None:
+            mode = lancedb_mode[0]
+    hits = retriever.query(
         request.query,
         candidate_k=request.retrieval.candidate_k,
         page_dedup=request.retrieval.page_dedup,
         content_types=request.retrieval.content_types,
     )
+    return QueryDocumentsResult(hits=hits, strategies=_strategies_for_retrieval_mode(mode))
+
+
+def query_documents(request: QueryRequest) -> list[RetrievalHit]:
+    """Run the SDK query path used by the root CLI."""
+    return query_documents_with_metadata(request).hits
 
 
 def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
@@ -83,9 +110,12 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
     api_key = resolve_remote_api_key()
+    vdb_kwargs: dict[str, Any] = {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name}
+    if request.retrieval.retrieval_mode != "auto":
+        vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
     cfg_kwargs: dict[str, Any] = {
         "vdb_op": "lancedb",
-        "vdb_kwargs": {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name},
+        "vdb_kwargs": vdb_kwargs,
         "top_k": int(request.retrieval.top_k),
         "embedding_endpoint": request.embed.embed_invoke_url,
         "embedding_api_key": api_key or "",

@@ -85,12 +85,14 @@ def _derive_fidelity(content_type: Any, metadata: dict[str, Any], content_metada
     return None
 
 
-def _client_record_from_graph_row(row: dict[str, Any]) -> dict[str, Any] | None:
+def _client_record_from_graph_row(row: dict[str, Any], *, require_embedding: bool = True) -> dict[str, Any] | None:
     metadata = _dict_or_empty(row.get("metadata"))
 
     embedding = _embedding_from_graph_row(row, metadata)
     text = row.get("text") or row.get("content") or metadata.get("content")
-    if embedding is None or not text:
+    if require_embedding and embedding is None:
+        return None
+    if not text:
         return None
 
     content_metadata = _dict_or_empty(metadata.get("content_metadata"))
@@ -132,7 +134,8 @@ def _client_record_from_graph_row(row: dict[str, Any]) -> dict[str, Any] | None:
         source_metadata.setdefault("source_name", source_name)
 
     record_metadata = dict(metadata)
-    record_metadata["embedding"] = embedding
+    if embedding is not None:
+        record_metadata["embedding"] = embedding
     record_metadata["content"] = str(text)
     record_metadata["content_metadata"] = content_metadata
     record_metadata["source_metadata"] = source_metadata
@@ -159,6 +162,24 @@ def to_client_vdb_records(rows: list[dict[str, Any]]) -> list[list[dict[str, Any
         if isinstance(row, dict) and (record := _client_record_from_graph_row(row)) is not None
     ]
     # Preserve legacy contract: no uploadable rows → [], not [[]].
+    return [inner] if inner else []
+
+
+def to_sparse_client_vdb_records(rows: Any) -> list[list[dict[str, Any]]]:
+    """Convert graph-pipeline rows into text/provenance records for sparse LanceDB ingest."""
+    if hasattr(rows, "to_pandas"):
+        rows = rows.to_pandas()
+    if hasattr(rows, "to_dict"):
+        rows = rows.to_dict("records")
+    if isinstance(rows, list) and all(isinstance(batch, list) for batch in rows):
+        nested = [[record for record in batch if isinstance(record, dict) and record.get("metadata")] for batch in rows]
+        nested = [batch for batch in nested if batch]
+        return nested
+    inner = [
+        record
+        for row in rows or []
+        if isinstance(row, dict) and (record := _client_record_from_graph_row(row, require_embedding=False)) is not None
+    ]
     return [inner] if inner else []
 
 
