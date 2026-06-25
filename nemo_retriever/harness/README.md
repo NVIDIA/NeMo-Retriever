@@ -91,6 +91,69 @@ definitions to the Python registry instead.
 The harness accepts JSON, YAML, or YML runfiles. The checked-in JP20 example is
 [`runfiles/jp20_beir.json`](runfiles/jp20_beir.json).
 
+## Controls And Overrides
+
+Benchmarks are code-owned defaults. Use `--set KEY=VALUE` for one-off
+ablations, or put the same keys under `set` in a runfile for reproducible
+agent/orchestrator runs.
+
+Examples:
+
+```bash
+retriever harness run jp20_beir \
+  --set query.top_k=20 \
+  --set query.rerank=true \
+  --set ingest.extract.batch.page_elements_workers=1
+```
+
+Runfile equivalent:
+
+```json
+{
+  "schema_version": 1,
+  "benchmark": "bo767_beir",
+  "mode": "batch",
+  "set": {
+    "query.top_k": 10,
+    "ingest.extract.batch.pdf_extract_workers": 8,
+    "ingest.embed.batch.embed_batch_size": 64
+  }
+}
+```
+
+Supported override namespaces:
+
+- `dataset.*`: dataset path, query/qrels file, input type, BEIR loader, and
+  BEIR doc ID settings.
+- `ingest.*`: profile, input type, Ray mode/address, extraction/media/caption,
+  dedup, chunk, embedding, image-store, storage, and batch worker settings.
+- `query.*`: top-k, candidate-k, page dedup, content types, hybrid search,
+  embedding endpoint/model, reranking, LanceDB URI, and table name.
+- `evaluation.*`: evaluation mode, BEIR loader/dataset/split/language/doc ID
+  field, and metric cutoffs.
+
+Unknown override keys fail during resolution with exit code `2`. Values are
+parsed as YAML scalars/lists/maps, so booleans, numbers, nulls, and lists can be
+passed naturally.
+
+Use `retriever harness show <benchmark> --json` and `retriever harness run
+<benchmark> --dry-run --json` to inspect the exact resolved benchmark and
+plans before launching an expensive run.
+
+## Implementation Boundary
+
+The harness does not shell out to `retriever ingest`, `retriever query`, or
+`retriever pipeline run`. It calls the same Python workflow/planning APIs used
+by the CLI:
+
+- ingest: `resolve_ingest_plan(...)` and `run_ingest_workflow(...)`
+- query: `resolve_query_plan(...)` and shared query workflow objects
+- BEIR: harness-owned query iteration over the resolved query plan
+
+This keeps benchmark execution in-process at the Python boundary while still
+reusing the CLI-owned request/plan/workflow seams. Stdout remains diagnostic
+only; artifacts and exit codes are the contract.
+
 ## Artifacts
 
 Read these files instead of scraping stdout:
