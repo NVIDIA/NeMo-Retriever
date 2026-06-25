@@ -192,16 +192,22 @@ class AgenticRetriever:
             },
         )
         self._lock = threading.Lock()
+        # Full hits keyed by doc_id, captured at the retrieval boundary (before the
+        # agent loop reduces them to doc_id/text/score) so the final output can
+        # re-hydrate the metadata the agent drops. Reset at the start of retrieve().
+        self._hit_cache: dict[str, dict[str, Any]] = {}
 
     def retrieve(self, query_ids: Sequence[str], query_texts: Sequence[str]) -> pd.DataFrame:
         """Return selected ranked documents for each query.
 
-        The output schema matches ``SelectionAgentOperator``: ``query_id``,
-        ``doc_id``, ``rank``, and ``message``.
+        Columns: ``query_id``, ``doc_id``, ``rank``, ``message``, ``result_source``,
+        and ``hit`` — the full ``RetrievalHit`` (text/metadata/source/page/…) captured
+        at retrieval time and re-hydrated by ``doc_id`` (``{}`` when unavailable).
         """
 
         if len(query_ids) != len(query_texts):
             raise ValueError("query_ids and query_texts must have the same length.")
+        self._hit_cache.clear()
 
         from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
         from nemo_retriever.operators.graph_ops.rrf_aggregator_operator import RRFAggregatorOperator
@@ -254,7 +260,11 @@ class AgenticRetriever:
             [str(query_text) for query_text in query_texts],
             top_k=target_top_k,
         )
-        return _raw_hits_to_agentic_result([str(query_id) for query_id in query_ids], raw_hits)
+        result = _raw_hits_to_agentic_result([str(query_id) for query_id in query_ids], raw_hits)
+        # Re-hydrate the metadata dropped at the agent boundary by joining the
+        # selected doc_ids back to the full hits captured in _retrieve_for_agent.
+        result["hit"] = [self._hit_cache.get(str(doc_id), {}) for doc_id in result["doc_id"]]
+        return result
 
     def _retrieve_for_agent(self, query_text: str, top_k: int) -> list[dict[str, Any]]:
         """Retriever callback used by ``ReActAgentOperator``.
@@ -280,6 +290,10 @@ class AgenticRetriever:
             )
             if not doc_id:
                 continue
+            # Capture the full hit (minus the embedding) for output re-hydration;
+            # first occurrence per doc_id wins. Locked: shared across ReAct workers.
+            with self._lock:
+                self._hit_cache.setdefault(doc_id, {k: v for k, v in hit_dict.items() if k != "vector"})
             text = str(hit_dict.get("text", ""))
             if int(self._cfg.text_truncation) > 0:
                 text = text[: int(self._cfg.text_truncation)]

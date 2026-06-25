@@ -90,10 +90,16 @@ def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mo
     cfg = AgenticRetrievalConfig(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
     result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
 
-    assert list(result.columns) == ["query_id", "doc_id", "rank", "message", "result_source"]
+    assert list(result.columns) == ["query_id", "doc_id", "rank", "message", "result_source", "hit"]
     assert result["query_id"].tolist() == ["0"] * 10
     assert result["doc_id"].tolist()[0] == "doc_1"
     assert result["rank"].tolist() == list(range(1, 11))
+    # doc_1 was actually retrieved, so its row re-hydrates the full hit metadata
+    # (dropped at the agent boundary) rather than just a bare doc_id.
+    doc1_hit = result.loc[result["doc_id"] == "doc_1", "hit"].iloc[0]
+    assert doc1_hit.get("source") == "/tmp/doc.pdf"
+    assert doc1_hit.get("page_number") == 1
+    assert "text" in doc1_hit
 
 
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
