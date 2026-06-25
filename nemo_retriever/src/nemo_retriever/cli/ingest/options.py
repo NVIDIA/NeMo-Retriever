@@ -8,6 +8,7 @@ from typing import Annotated
 
 import typer
 
+from nemo_retriever.common.params import CaptionParams
 from nemo_retriever.ingest.plan import (
     AudioSplitTypeValue,
     IngestIndexModeValue,
@@ -17,6 +18,10 @@ from nemo_retriever.ingest.plan import (
     OcrVersionValue,
     TableOutputFormatValue,
 )
+from nemo_retriever.models import VL_EMBED_MODEL
+
+DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
+DEFAULT_CAPTION_MODEL = str(CaptionParams.model_fields["model_name"].default)
 
 DocumentsArgument = Annotated[
     list[str],
@@ -163,7 +168,13 @@ ApiKeyOption = Annotated[
 ]
 CaptionModelNameOption = Annotated[
     str | None,
-    typer.Option("--caption-model-name", help="Optional VLM caption model name override."),
+    typer.Option(
+        "--caption-model-name",
+        help=(
+            f"Optional VLM caption model name override. Defaults to {DEFAULT_CAPTION_MODEL} "
+            "when --caption is enabled."
+        ),
+    ),
 ]
 CaptionContextTextMaxCharsOption = Annotated[
     int | None,
@@ -272,7 +283,10 @@ TableOutputFormatOption = Annotated[
 EmbedInvokeUrlOption = Annotated[str | None, typer.Option("--embed-invoke-url", help="Embedding NIM endpoint URL.")]
 EmbedModelNameOption = Annotated[
     str | None,
-    typer.Option("--embed-model-name", help="Optional embedding model name override."),
+    typer.Option(
+        "--embed-model-name",
+        help=f"Optional embedding model name override. Defaults to {DEFAULT_EMBED_MODEL} when omitted.",
+    ),
 ]
 LocalIngestEmbedBackendOption = Annotated[
     LocalIngestEmbedBackendValue | None,

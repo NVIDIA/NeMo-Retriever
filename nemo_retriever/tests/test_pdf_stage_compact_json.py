@@ -8,7 +8,15 @@ that bloat sidecars for programmatic consumers."""
 
 from __future__ import annotations
 
+import pandas as pd
+from typer.testing import CliRunner
+
+import nemo_retriever.cli.pdf.stage as pdf_stage
 from nemo_retriever.cli.pdf.stage import _strip_null_empty
+from nemo_retriever.common.api.internal.schemas.extract.extract_pdf_schema import (
+    NemotronParseConfigSchema,
+    PDFExtractorSchema,
+)
 
 
 def test_strip_drops_nulls_and_empty_collections():
@@ -44,3 +52,45 @@ def test_strip_filters_lists_and_drops_emptied_lists():
 
 def test_strip_preserves_scalar_strings_and_numbers():
     assert _strip_null_empty({"text": "hello", "n": 42}) == {"text": "hello", "n": 42}
+
+
+def _invoke_pdf_stage_and_capture_config(monkeypatch, tmp_path, args: list[str]) -> PDFExtractorSchema:
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    captured: list[PDFExtractorSchema] = []
+
+    monkeypatch.setattr(pdf_stage, "_safe_pdf_page_count", lambda _path: 1)
+    monkeypatch.setattr(pdf_stage, "pdf_files_to_ledger_df", lambda *_args, **_kwargs: pd.DataFrame())
+
+    def fake_extract(_df_ledger, *, extractor_config, **_kwargs):
+        captured.append(extractor_config)
+        return pd.DataFrame(), {}
+
+    monkeypatch.setattr(pdf_stage, "extract_pdf_primitives_from_ledger_df", fake_extract)
+
+    result = CliRunner().invoke(pdf_stage.app, [str(pdf), *args])
+    assert result.exit_code == 0, result.output
+    return captured[0]
+
+
+def test_pdf_stage_default_pdfium_does_not_configure_nemotron_parse(monkeypatch, tmp_path):
+    extractor_config = _invoke_pdf_stage_and_capture_config(monkeypatch, tmp_path, [])
+
+    assert extractor_config.nemotron_parse_config is None
+
+
+def test_pdf_stage_nemotron_parse_omits_model_to_use_schema_default(monkeypatch, tmp_path):
+    extractor_config = _invoke_pdf_stage_and_capture_config(
+        monkeypatch,
+        tmp_path,
+        [
+            "--method",
+            "nemotron_parse",
+            "--nemotron-parse-http-endpoint",
+            "http://parse:8000/v1/chat/completions",
+        ],
+    )
+
+    assert extractor_config.nemotron_parse_config.nemotron_parse_model_name == (
+        NemotronParseConfigSchema.model_fields["nemotron_parse_model_name"].default
+    )
