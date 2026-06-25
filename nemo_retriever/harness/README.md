@@ -73,7 +73,41 @@ parallelism and memory pressure.
 - `diff`: compare two run artifact directories by `summary_metrics.json`.
 
 Legacy graph-pipeline harness execution, sweep, nightly, runner, reporting, and
-portal commands were removed.
+portal commands are not part of the phase-one CLI surface. Portal and Helm
+support files are intentionally preserved for follow-on owner work.
+
+## Reviewer Guide
+
+Review the PR in this order:
+
+1. Start with this README for the user-facing harness contract.
+2. Read `benchmark_registry.py` for code-owned datasets, benchmarks, and
+   runsets.
+3. Read `resolution.py` for how registry specs, runfiles, CLI `--set`
+   overrides, and mode selection become ingest/query requests.
+4. Read `execution.py` for the artifact-first run lifecycle and exit-code
+   behavior.
+5. Read `beir_runner.py` and `metrics.py` for query evaluation and
+   `summary_metrics.json` construction.
+6. Read `artifact_writer.py` for artifact names, status updates, and `run.log`
+   capture.
+
+Intentional removals:
+
+- old `run.py` and `runner.py`: subprocess-oriented graph-pipeline harness
+  execution and portal runner agent
+- old `parsers.py`: regex parsing of stdout/progress logs
+- old `nightly.py`, `reporting.py`, and nightly/sweep YAML: previous session
+  reporting and scheduled-run machinery
+- old harness pytests: this harness is validated by functional benchmark
+  execution and artifact/exit-code checks
+
+Intentional preserves:
+
+- `portal/`, `history.py`, `scheduler.py`, `slack.py`: retained for the
+  upcoming portal repurpose work
+- `helm_manager.py`, `helm-profiles/`, and harness Helm examples: retained for
+  Helm owner follow-up work
 
 ## Runfiles
 

@@ -45,7 +45,14 @@ The primary command surface is intentionally small:
 - `diff`
 
 Legacy graph-pipeline harness execution, sweep, nightly, runner, reporting, and
-portal paths have been removed.
+portal commands are not part of the phase-one CLI surface. Portal and Helm
+support files are preserved for follow-on owner work.
+
+For review, start with `README.md`, then inspect the core implementation in
+`benchmark_registry.py`, `resolution.py`, `execution.py`, `beir_runner.py`,
+`metrics.py`, and `artifact_writer.py`. The intentional deletion set is the old
+subprocess-oriented runner/sweep/nightly/reporting/stdout-parser machinery, not
+the portal or Helm ownership surfaces.
 
 Useful negative-path checks:
 
