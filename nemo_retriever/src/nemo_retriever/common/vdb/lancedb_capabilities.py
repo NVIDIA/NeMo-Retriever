@@ -12,7 +12,6 @@ from typing import Any, Literal
 import pyarrow as pa
 
 LanceRetrievalMode = Literal["dense", "hybrid", "sparse", "unknown"]
-LanceQueryModeOverride = Literal["auto", "dense", "hybrid", "sparse"]
 
 _RETRIEVAL_MODE_METADATA_KEYS = (
     "retrieval_mode",
@@ -27,29 +26,11 @@ _RETRIEVAL_MODES: dict[str, LanceRetrievalMode] = {
 
 @dataclass(frozen=True)
 class LanceTableCapabilities:
-    """Detected LanceDB table features used to select a retrieval path."""
-
     has_vector: bool
     has_fts: bool
     retrieval_mode: LanceRetrievalMode
     vector_column: str | None
     text_column: str | None
-
-    def query_mode(self, *, mode_override: LanceQueryModeOverride = "auto") -> LanceRetrievalMode:
-        """Return the effective query mode after applying an optional mode override.
-
-        Args:
-            mode_override: ``auto`` leaves the detected table mode unchanged.
-                ``dense``, ``hybrid``, and ``sparse`` request that explicit
-                retrieval mode and are validated by the caller against the table
-                capabilities.
-
-        Returns:
-            The retrieval mode the query path should execute.
-        """
-        if mode_override != "auto":
-            return mode_override
-        return self.retrieval_mode
 
 
 def _table_schema(table: Any) -> pa.Schema:
@@ -138,19 +119,6 @@ def _mode_from_capabilities(has_vector: bool, has_fts: bool) -> LanceRetrievalMo
 
 
 def inspect_lancedb_table(uri: str, table_name: str) -> LanceTableCapabilities:
-    """Inspect a LanceDB table by URI and table name.
-
-    Args:
-        uri: LanceDB database URI.
-        table_name: Name of the table to inspect.
-
-    Returns:
-        Detected table capabilities.
-
-    Raises:
-        Exception: Propagates LanceDB connection and table-open errors, such as
-            a missing database or table.
-    """
     import lancedb  # type: ignore
 
     table = lancedb.connect(uri).open_table(table_name)
@@ -158,16 +126,6 @@ def inspect_lancedb_table(uri: str, table_name: str) -> LanceTableCapabilities:
 
 
 def inspect_lancedb_table_object(table: Any) -> LanceTableCapabilities:
-    """Inspect an already-open LanceDB table object.
-
-    Args:
-        table: LanceDB table-like object exposing ``schema`` and optionally
-            ``list_indices()``.
-
-    Returns:
-        Detected table capabilities based on schema, FTS indexes, and optional
-        retrieval-mode schema metadata.
-    """
     schema = _table_schema(table)
     fts_columns = _detect_fts_columns(table)
     vector_column = _detect_vector_column(schema)

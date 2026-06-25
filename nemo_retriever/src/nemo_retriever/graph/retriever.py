@@ -17,7 +17,7 @@ from nemo_retriever.graph.retriever_utils import (
     rerank_long_dataframe_to_hits,
 )
 from nemo_retriever.common.vdb.lancedb_capabilities import (
-    LanceQueryModeOverride,
+    LanceRetrievalMode,
     LanceTableCapabilities,
     inspect_lancedb_table,
 )
@@ -273,7 +273,7 @@ class Retriever:
             )
         if "hybrid" in lancedb_kwargs:
             mode_override = "hybrid" if bool(lancedb_kwargs["hybrid"]) else "dense"
-        mode = caps.query_mode(mode_override=cast(LanceQueryModeOverride, mode_override))
+        mode = caps.retrieval_mode if mode_override == "auto" else cast(LanceRetrievalMode, mode_override)
 
         if mode == "unknown":
             raise ValueError(

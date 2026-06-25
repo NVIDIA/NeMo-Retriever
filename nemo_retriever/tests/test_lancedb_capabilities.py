@@ -12,10 +12,9 @@ import pytest
 lancedb = pytest.importorskip("lancedb")
 pa = pytest.importorskip("pyarrow")
 
-from nemo_retriever.common.vdb.lancedb_capabilities import inspect_lancedb_table  # noqa: E402
-from nemo_retriever.common.vdb.lancedb_capabilities import LanceTableCapabilities  # noqa: E402
-from nemo_retriever.graph.retriever import Retriever  # noqa: E402
 import nemo_retriever.graph.retriever as retriever_module  # noqa: E402
+from nemo_retriever.common.vdb.lancedb_capabilities import LanceTableCapabilities, inspect_lancedb_table  # noqa: E402
+from nemo_retriever.graph.retriever import Retriever  # noqa: E402
 
 
 def _create_vector_table(uri: str, table_name: str, *, fts: bool = False) -> None:
@@ -63,6 +62,25 @@ def _create_sparse_table(uri: str, table_name: str) -> None:
     table.create_fts_index("text", replace=True)
 
 
+def _fail_embed_graph(*_args: Any, **_kwargs: Any) -> list[list[dict[str, Any]]]:
+    raise AssertionError("sparse query should not build or execute the embedding graph")
+
+
+def _patch_graph_hits(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = []
+
+    def fake_execute(
+        _self: Retriever,
+        _query_texts: list[str],
+        **kwargs: Any,
+    ) -> list[list[dict[str, Any]]]:
+        calls.append(kwargs["vdb_call_kwargs"])
+        return [[{"text": "alpha safety manual", "metadata": {"type": "text"}, "source": "alpha.pdf"}]]
+
+    monkeypatch.setattr(Retriever, "_execute_queries_graph", fake_execute)
+    return calls
+
+
 def test_detector_returns_dense_for_vector_only_table(tmp_path) -> None:
     uri = str(tmp_path / "db")
     _create_vector_table(uri, "dense")
@@ -104,10 +122,7 @@ def test_sparse_query_does_not_call_embedding_graph(monkeypatch, tmp_path) -> No
     uri = str(tmp_path / "db")
     _create_sparse_table(uri, "sparse")
 
-    def fail_embed_graph(*_args: Any, **_kwargs: Any) -> list[list[dict[str, Any]]]:
-        raise AssertionError("sparse query should not build or execute the embedding graph")
-
-    monkeypatch.setattr(Retriever, "_execute_queries_graph", fail_embed_graph)
+    monkeypatch.setattr(Retriever, "_execute_queries_graph", _fail_embed_graph)
 
     hits = Retriever(vdb_kwargs={"uri": uri, "table_name": "sparse"}).query("alpha", top_k=1)
 
@@ -118,13 +133,7 @@ def test_sparse_query_does_not_call_embedding_graph(monkeypatch, tmp_path) -> No
 def test_hybrid_table_query_automatically_enables_hybrid(monkeypatch, tmp_path) -> None:
     uri = str(tmp_path / "db")
     _create_vector_table(uri, "hybrid", fts=True)
-    calls: list[dict[str, Any]] = []
-
-    def fake_execute(self, query_texts, **kwargs):  # noqa: ANN001
-        calls.append(kwargs["vdb_call_kwargs"])
-        return [[{"text": "alpha safety manual", "metadata": {"type": "text"}, "source": "alpha.pdf"}]]
-
-    monkeypatch.setattr(Retriever, "_execute_queries_graph", fake_execute)
+    calls = _patch_graph_hits(monkeypatch)
 
     Retriever(vdb_kwargs={"uri": uri, "table_name": "hybrid"}).query("alpha", top_k=1)
 
@@ -134,13 +143,7 @@ def test_hybrid_table_query_automatically_enables_hybrid(monkeypatch, tmp_path) 
 def test_existing_dense_query_behavior_is_unchanged(monkeypatch, tmp_path) -> None:
     uri = str(tmp_path / "db")
     _create_vector_table(uri, "dense")
-    calls: list[dict[str, Any]] = []
-
-    def fake_execute(self, query_texts, **kwargs):  # noqa: ANN001
-        calls.append(kwargs["vdb_call_kwargs"])
-        return [[{"text": "alpha safety manual", "metadata": {"type": "text"}, "source": "alpha.pdf"}]]
-
-    monkeypatch.setattr(Retriever, "_execute_queries_graph", fake_execute)
+    calls = _patch_graph_hits(monkeypatch)
 
     Retriever(vdb_kwargs={"uri": uri, "table_name": "dense"}).query("alpha", top_k=1)
 
@@ -150,13 +153,7 @@ def test_existing_dense_query_behavior_is_unchanged(monkeypatch, tmp_path) -> No
 def test_explicit_dense_override_on_hybrid_table(monkeypatch, tmp_path) -> None:
     uri = str(tmp_path / "db")
     _create_vector_table(uri, "hybrid", fts=True)
-    calls: list[dict[str, Any]] = []
-
-    def fake_execute(self, query_texts, **kwargs):  # noqa: ANN001
-        calls.append(kwargs["vdb_call_kwargs"])
-        return [[{"text": "alpha safety manual", "metadata": {"type": "text"}, "source": "alpha.pdf"}]]
-
-    monkeypatch.setattr(Retriever, "_execute_queries_graph", fake_execute)
+    calls = _patch_graph_hits(monkeypatch)
 
     Retriever(vdb_kwargs={"uri": uri, "table_name": "hybrid", "retrieval_mode": "dense"}).query("alpha", top_k=1)
 
@@ -166,13 +163,7 @@ def test_explicit_dense_override_on_hybrid_table(monkeypatch, tmp_path) -> None:
 def test_explicit_hybrid_override_on_hybrid_table(monkeypatch, tmp_path) -> None:
     uri = str(tmp_path / "db")
     _create_vector_table(uri, "hybrid", fts=True)
-    calls: list[dict[str, Any]] = []
-
-    def fake_execute(self, query_texts, **kwargs):  # noqa: ANN001
-        calls.append(kwargs["vdb_call_kwargs"])
-        return [[{"text": "alpha safety manual", "metadata": {"type": "text"}, "source": "alpha.pdf"}]]
-
-    monkeypatch.setattr(Retriever, "_execute_queries_graph", fake_execute)
+    calls = _patch_graph_hits(monkeypatch)
 
     Retriever(vdb_kwargs={"uri": uri, "table_name": "hybrid", "retrieval_mode": "hybrid"}).query("alpha", top_k=1)
 
@@ -183,10 +174,7 @@ def test_explicit_sparse_override_on_hybrid_table_uses_sparse_retrieval(monkeypa
     uri = str(tmp_path / "db")
     _create_vector_table(uri, "hybrid", fts=True)
 
-    def fail_embed_graph(*_args: Any, **_kwargs: Any) -> list[list[dict[str, Any]]]:
-        raise AssertionError("sparse override should not build or execute the embedding graph")
-
-    monkeypatch.setattr(Retriever, "_execute_queries_graph", fail_embed_graph)
+    monkeypatch.setattr(Retriever, "_execute_queries_graph", _fail_embed_graph)
 
     hits = Retriever(vdb_kwargs={"uri": uri, "table_name": "hybrid", "retrieval_mode": "sparse"}).query(
         "alpha",
