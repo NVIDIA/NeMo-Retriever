@@ -139,6 +139,11 @@ class AgenticRetrievalConfig:
     # Drives the ReAct target, the RRF/selection cut, and the per-hop fetch depth
     # (which is raised to at least this). Defaults to 10.
     top_k: int = AGENTIC_TARGET_TOP_K
+    # Per-hop retrieval shaping, forwarded to ``Retriever.query`` on every agent
+    # retrieval hop (mirrors the dense path's --candidate-k/--page-dedup/--content-types).
+    candidate_k: Optional[int] = None
+    page_dedup: bool = False
+    content_types: str | Sequence[str] | None = None
 
     def __post_init__(self) -> None:
         if self.llm_model is None or not str(self.llm_model).strip():
@@ -276,8 +281,17 @@ class AgenticRetriever:
         which still run concurrently under ``num_concurrent > 1``.
         """
 
+        # candidate_k must be >= the hop's top_k, which grows as the agent paginates,
+        # so floor it at top_k when the caller requested a wider pool.
+        candidate_k = max(int(self._cfg.candidate_k), int(top_k)) if self._cfg.candidate_k else None
         with self._lock:
-            hits = self._retriever.query(str(query_text), top_k=int(top_k))
+            hits = self._retriever.query(
+                str(query_text),
+                top_k=int(top_k),
+                candidate_k=candidate_k,
+                page_dedup=bool(self._cfg.page_dedup),
+                content_types=self._cfg.content_types,
+            )
 
         docs: list[dict[str, Any]] = []
         doc_id_field = getattr(self, "_doc_id_field", None)
