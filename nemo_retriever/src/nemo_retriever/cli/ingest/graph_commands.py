@@ -21,6 +21,7 @@ from nemo_retriever.ingest.plan import (
     IngestExtractBatchOptions,
     IngestExtractOptions,
     IngestImageStoreOptions,
+    IngestIndexModeValue,
     IngestMediaOptions,
     IngestPlanRequest,
     IngestRunModeValue,
@@ -28,6 +29,7 @@ from nemo_retriever.ingest.plan import (
     IngestSourceOptions,
     IngestStorageOptions,
     resolve_ingest_plan,
+    validate_ingest_index_mode,
 )
 
 
@@ -79,6 +81,41 @@ def _validate_graph_ingest_mode_options(values: Mapping[str, Any], *, run_mode: 
     if batch_only_flags:
         joined_flags = ", ".join(batch_only_flags)
         raise ValueError(f"Batch-only option(s) require `retriever ingest batch`: {joined_flags}")
+
+
+def _parameter_was_provided(ctx: typer.Context, parameter_name: str) -> bool:
+    source = ctx.get_parameter_source(parameter_name)
+    return source is not None and getattr(source, "name", "") != "DEFAULT"
+
+
+def _resolve_index_mode_option(
+    ctx: typer.Context,
+    *,
+    index_mode: str,
+    hybrid: bool,
+    sparse: bool,
+) -> IngestIndexModeValue:
+    try:
+        resolved = validate_ingest_index_mode(index_mode)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    has_index_mode = _parameter_was_provided(ctx, "index_mode")
+    has_hybrid_alias = _parameter_was_provided(ctx, "hybrid")
+    has_sparse_alias = _parameter_was_provided(ctx, "sparse")
+    provided_modes = [has_index_mode, has_hybrid_alias, has_sparse_alias]
+    if sum(provided_modes) > 1:
+        typer.echo(
+            "Error: pass only one index mode option: --index-mode, deprecated --hybrid, or deprecated --sparse.",
+            err=True,
+        )
+        raise typer.Exit(1)
+    if has_hybrid_alias and hybrid:
+        return "hybrid"
+    if has_sparse_alias and sparse:
+        return "sparse"
+    return resolved
 
 
 def _matching_option_values(values: Mapping[str, Any], options_type: type[Any]) -> dict[str, Any]:
@@ -215,6 +252,7 @@ def _graph_ingest_command(
     dedup_iou_threshold: opts.DedupIouThresholdOption = None,
     store_images_uri: opts.StoreImagesUriOption = None,
     overwrite: opts.OverwriteOption = True,
+    index_mode: opts.IndexModeOption = "dense",
     hybrid: opts.HybridOption = False,
     sparse: opts.SparseOption = False,
     ray_address: opts.RayAddressOption = None,
@@ -261,4 +299,6 @@ def _graph_ingest_command(
     embed_gpus_per_actor: opts.EmbedGpusPerActorOption = None,
     quiet: opts.QuietOption = True,
 ) -> None:
-    _run_graph_ingest_from_parsed_options(ctx.params, run_mode=_graph_run_mode_for_command(ctx))
+    parsed_options = dict(ctx.params)
+    parsed_options["index_mode"] = _resolve_index_mode_option(ctx, index_mode=index_mode, hybrid=hybrid, sparse=sparse)
+    _run_graph_ingest_from_parsed_options(parsed_options, run_mode=_graph_run_mode_for_command(ctx))
