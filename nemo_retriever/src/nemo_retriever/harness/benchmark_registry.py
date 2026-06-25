@@ -52,7 +52,7 @@ DATASETS: dict[str, DatasetSpec] = {
     "bo767": DatasetSpec(
         name="bo767",
         path="/datasets/nv-ingest/bo767",
-        query_file=_data_path("bo767_annotations.csv"),
+        query_file=_data_path("bo767_query_gt.csv"),
         input_type="pdf",
         beir_loader="bo767_csv",
         beir_doc_id_field="pdf_page",
@@ -60,7 +60,7 @@ DATASETS: dict[str, DatasetSpec] = {
     ),
     "financebench": DatasetSpec(
         name="financebench",
-        path="/datasets/nv-ingest/financebench",
+        path="/datasets/nv-ingest/foundation_rag/financebench",
         query_file=_data_path("financebench_train.json"),
         input_type="pdf",
         beir_loader="financebench_json",
@@ -78,12 +78,21 @@ DATASETS: dict[str, DatasetSpec] = {
     ),
     "earnings_consulting": DatasetSpec(
         name="earnings_consulting",
-        path="/datasets/nv-ingest/earnings_consulting",
+        path="/datasets/nv-ingest/earnings_consulting_flattened",
         query_file=_data_path("earnings_consulting_multimodal.csv"),
         input_type="pdf",
         beir_loader="earnings_csv",
         beir_doc_id_field="pdf_page",
-        description="Earnings consulting corpus; qrels may be absent in phase one.",
+        description="Earnings consulting multimodal benchmark corpus.",
+    ),
+    "vidore_v3_finance_en": DatasetSpec(
+        name="vidore_v3_finance_en",
+        path="/datasets/nv-ingest/vidore_v3/vidore_v3_finance_en",
+        query_file=None,
+        input_type="pdf",
+        beir_loader="vidore_hf",
+        beir_doc_id_field="pdf_page",
+        description="ViDoRe v3 English finance benchmark slice.",
     ),
 }
 
@@ -176,6 +185,29 @@ BENCHMARKS: dict[str, BenchmarkSpec] = {
         summary_keys=DEFAULT_SUMMARY_KEYS,
         tags=("beir", "finance", "pdf"),
         description="FinanceBench end-to-end BEIR retrieval benchmark.",
+    ),
+    "earnings_beir": BenchmarkSpec(
+        name="earnings_beir",
+        dataset="earnings_consulting",
+        ingest=_base_ingest(profile="auto"),
+        query=_base_query(top_k=10),
+        evaluation=_beir_eval(DATASETS["earnings_consulting"]),
+        summary_keys=DEFAULT_SUMMARY_KEYS,
+        tags=("beir", "earnings", "pdf"),
+        description="Earnings consulting end-to-end BEIR retrieval benchmark.",
+    ),
+    "vidore_v3_finance_en_beir": BenchmarkSpec(
+        name="vidore_v3_finance_en_beir",
+        dataset="vidore_v3_finance_en",
+        ingest=_base_ingest(profile="auto"),
+        query=_base_query(top_k=10),
+        evaluation={
+            **_beir_eval(DATASETS["vidore_v3_finance_en"]),
+            "dataset_name": "vidore_v3_finance_en",
+        },
+        summary_keys=DEFAULT_SUMMARY_KEYS,
+        tags=("beir", "vidore", "finance", "pdf"),
+        description="ViDoRe v3 English finance BEIR retrieval benchmark.",
     ),
     "bo10k_beir_fast_text": BenchmarkSpec(
         name="bo10k_beir_fast_text",

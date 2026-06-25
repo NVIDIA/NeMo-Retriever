@@ -59,6 +59,11 @@ uv run --project nemo_retriever retriever harness run \
   --json
 ```
 
+Large checked-in BEIR runfiles such as BO767, FinanceBench, Earnings, and
+ViDoRe use `mode: batch`. Keep JP20 local for quick smoke validation, and use
+batch mode for larger canonical quality runs so Ray-backed ingest owns worker
+parallelism and memory pressure.
+
 ## Commands
 
 - `list`: list code-owned benchmarks and optional runsets.

@@ -22,6 +22,7 @@ from nemo_retriever.common.input_files import (
     raise_input_path_not_found,
 )
 from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env
+from nemo_retriever.common.ray_runtime import disable_ray_uv_runtime_env_hook, without_uv_run_env
 from nemo_retriever.common import ray_resource_hueristics as _rrh
 from nemo_retriever.common.ray_resource_hueristics import (
     gather_cluster_resources,
@@ -231,36 +232,38 @@ class RayDataExecutor(AbstractExecutor):
         ray.data.Dataset
             The lazy Ray dataset with all graph stages appended.
         """
-        import ray
-        import ray.data as rd
+        with without_uv_run_env():
+            import ray
+            import ray.data as rd
 
-        if not isinstance(data, (rd.Dataset, str, list)):
-            raise TypeError(
-                f"data must be a path/glob string, list of globs, or ray.data.Dataset, " f"got {type(data).__name__}"
-            )
+            disable_ray_uv_runtime_env_hook(ray)
+            if not isinstance(data, (rd.Dataset, str, list)):
+                raise TypeError(
+                    f"data must be a path/glob string, list of globs, or ray.data.Dataset, " f"got {type(data).__name__}"
+                )
 
-        input_paths: Optional[List[str]] = None
-        if isinstance(data, (str, list)):
-            input_paths = expand_input_file_patterns(data)
+            input_paths: Optional[List[str]] = None
+            if isinstance(data, (str, list)):
+                input_paths = expand_input_file_patterns(data)
 
-        if self._ray_address or not ray.is_initialized():
-            venv = os.path.dirname(os.path.dirname(sys.executable))
-            venv_bin = os.path.join(venv, "bin")
-            pypath = os.pathsep.join(p for p in sys.path if p)
-            ray_env_vars: dict[str, str] = {
-                "VIRTUAL_ENV": venv,
-                "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
-                "PYTHONPATH": pypath,
-            }
-            ray_env_vars.update(collect_hf_runtime_env())
-            ray_env_vars.update(collect_remote_auth_runtime_env())
-            os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
-            runtime_env = {"env_vars": ray_env_vars}
-            ray.init(
-                address=self._ray_address,
-                ignore_reinit_error=True,
-                runtime_env=runtime_env,
-            )
+            if self._ray_address or not ray.is_initialized():
+                venv = os.path.dirname(os.path.dirname(sys.executable))
+                venv_bin = os.path.join(venv, "bin")
+                pypath = os.pathsep.join(p for p in sys.path if p)
+                ray_env_vars: dict[str, str] = {
+                    "VIRTUAL_ENV": venv,
+                    "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+                    "PYTHONPATH": pypath,
+                }
+                ray_env_vars.update(collect_hf_runtime_env())
+                ray_env_vars.update(collect_remote_auth_runtime_env())
+                os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
+                runtime_env = {"env_vars": ray_env_vars, "py_executable": sys.executable}
+                ray.init(
+                    address=self._ray_address,
+                    ignore_reinit_error=True,
+                    runtime_env=runtime_env,
+                )
 
         ctx = rd.DataContext.get_current()
         ctx.enable_rich_progress_bars = True
