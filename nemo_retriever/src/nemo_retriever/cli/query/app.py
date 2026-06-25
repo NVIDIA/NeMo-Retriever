@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import cast
 
@@ -236,8 +237,15 @@ def _local_command(
                     temperature=agentic_temperature,
                 ),
             )
-            with quiet_capture():
-                ranked = query_agentic_documents(request)
+            # Agentic retrieval is a multi-step ReAct loop, not a single dense pass, so
+            # surface per-query/step progress instead of running blind. Mirrors the
+            # `pipeline run` logging setup: INFO to stderr (stdout stays clean JSON).
+            logging.basicConfig(
+                level=logging.INFO,
+                format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+                force=True,
+            )
+            ranked = query_agentic_documents(request)
             typer.echo(json.dumps(ranked, indent=2, sort_keys=True, default=str))
             return
 
