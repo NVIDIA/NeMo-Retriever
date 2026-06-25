@@ -12,6 +12,7 @@ from typing import Any, Literal
 import pyarrow as pa
 
 LanceRetrievalMode = Literal["dense", "hybrid", "sparse", "unknown"]
+LanceQueryModeOverride = Literal["auto", "dense", "hybrid", "sparse"]
 
 _RETRIEVAL_MODE_METADATA_KEYS = (
     "retrieval_mode",
@@ -34,23 +35,20 @@ class LanceTableCapabilities:
     vector_column: str | None
     text_column: str | None
 
-    def query_mode(self, *, hybrid: bool | None = None) -> LanceRetrievalMode:
-        """Return the effective query mode after applying an optional hybrid override.
+    def query_mode(self, *, mode_override: LanceQueryModeOverride = "auto") -> LanceRetrievalMode:
+        """Return the effective query mode after applying an optional mode override.
 
         Args:
-            hybrid: ``True`` requests hybrid retrieval when FTS is available,
-                ``False`` requests dense retrieval when a vector column exists,
-                and ``None`` leaves the detected table mode unchanged.
+            mode_override: ``auto`` leaves the detected table mode unchanged.
+                ``dense``, ``hybrid``, and ``sparse`` request that explicit
+                retrieval mode and are validated by the caller against the table
+                capabilities.
 
         Returns:
             The retrieval mode the query path should execute.
         """
-        if self.retrieval_mode == "sparse":
-            return "sparse"
-        if hybrid is True:
-            return "hybrid" if self.has_fts else "dense"
-        if hybrid is False and self.has_vector:
-            return "dense"
+        if mode_override != "auto":
+            return mode_override
         return self.retrieval_mode
 
 

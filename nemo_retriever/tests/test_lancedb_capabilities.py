@@ -147,6 +147,56 @@ def test_existing_dense_query_behavior_is_unchanged(monkeypatch, tmp_path) -> No
     assert calls == [{}]
 
 
+def test_explicit_dense_override_on_hybrid_table(monkeypatch, tmp_path) -> None:
+    uri = str(tmp_path / "db")
+    _create_vector_table(uri, "hybrid", fts=True)
+    calls: list[dict[str, Any]] = []
+
+    def fake_execute(self, query_texts, **kwargs):  # noqa: ANN001
+        calls.append(kwargs["vdb_call_kwargs"])
+        return [[{"text": "alpha safety manual", "metadata": {"type": "text"}, "source": "alpha.pdf"}]]
+
+    monkeypatch.setattr(Retriever, "_execute_queries_graph", fake_execute)
+
+    Retriever(vdb_kwargs={"uri": uri, "table_name": "hybrid", "retrieval_mode": "dense"}).query("alpha", top_k=1)
+
+    assert calls == [{"hybrid": False}]
+
+
+def test_explicit_hybrid_override_on_hybrid_table(monkeypatch, tmp_path) -> None:
+    uri = str(tmp_path / "db")
+    _create_vector_table(uri, "hybrid", fts=True)
+    calls: list[dict[str, Any]] = []
+
+    def fake_execute(self, query_texts, **kwargs):  # noqa: ANN001
+        calls.append(kwargs["vdb_call_kwargs"])
+        return [[{"text": "alpha safety manual", "metadata": {"type": "text"}, "source": "alpha.pdf"}]]
+
+    monkeypatch.setattr(Retriever, "_execute_queries_graph", fake_execute)
+
+    Retriever(vdb_kwargs={"uri": uri, "table_name": "hybrid", "retrieval_mode": "hybrid"}).query("alpha", top_k=1)
+
+    assert calls == [{"hybrid": True}]
+
+
+def test_explicit_sparse_override_on_hybrid_table_uses_sparse_retrieval(monkeypatch, tmp_path) -> None:
+    uri = str(tmp_path / "db")
+    _create_vector_table(uri, "hybrid", fts=True)
+
+    def fail_embed_graph(*_args: Any, **_kwargs: Any) -> list[list[dict[str, Any]]]:
+        raise AssertionError("sparse override should not build or execute the embedding graph")
+
+    monkeypatch.setattr(Retriever, "_execute_queries_graph", fail_embed_graph)
+
+    hits = Retriever(vdb_kwargs={"uri": uri, "table_name": "hybrid", "retrieval_mode": "sparse"}).query(
+        "alpha",
+        top_k=1,
+    )
+
+    assert hits
+    assert hits[0]["text"] == "alpha safety manual"
+
+
 def test_retriever_caches_lancedb_capability_inspection(monkeypatch) -> None:
     calls: list[tuple[str, str]] = []
     caps = LanceTableCapabilities(

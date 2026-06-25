@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Sequence
+from typing import Literal, Sequence
+
+
+QueryRetrievalMode = Literal["auto", "dense", "hybrid", "sparse"]
 
 
 @dataclass(frozen=True)
@@ -14,9 +17,9 @@ class QueryRetrievalOptions:
     candidate_k: int | None = None
     page_dedup: bool = False
     content_types: str | Sequence[str] | None = None
-    # Fused vector + full-text (BM25) retrieval override. ``None`` lets LanceDB
-    # table capability detection choose dense, hybrid, or sparse automatically.
-    hybrid: bool | None = None
+    # ``auto`` lets LanceDB table capability detection choose dense, hybrid, or
+    # sparse retrieval. Explicit modes are expert overrides.
+    retrieval_mode: QueryRetrievalMode = "auto"
 
 
 @dataclass(frozen=True)

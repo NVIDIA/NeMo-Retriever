@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import cast
 
 import click
 import typer
@@ -27,6 +28,7 @@ from nemo_retriever.query.options import (
     QueryRerankOptions,
     QueryRequest,
     QueryRetrievalOptions,
+    QueryRetrievalMode,
     QueryServiceOptions,
     QueryStorageOptions,
     ServiceQueryRequest,
@@ -35,6 +37,7 @@ from nemo_retriever.query.service import query_documents as query_service_docume
 
 _DEFAULT_COMMAND = "_local"
 _GROUP_OPTIONS = {"--help", "-h", "--install-completion", "--show-completion"}
+_RETRIEVAL_MODES: set[str] = {"auto", "dense", "hybrid", "sparse"}
 
 
 class DefaultLocalQueryGroup(TyperGroup):
@@ -94,6 +97,31 @@ def _validate_output_options(output_format: str, max_text_chars: int | None) -> 
         raise typer.Exit(1)
 
 
+def _validate_retrieval_mode(retrieval_mode: str) -> QueryRetrievalMode:
+    normalized = retrieval_mode.strip().lower()
+    if normalized not in _RETRIEVAL_MODES:
+        typer.echo(
+            "Error: unknown --retrieval-mode " f"{retrieval_mode!r} (use 'auto', 'dense', 'hybrid', or 'sparse').",
+            err=True,
+        )
+        raise typer.Exit(1)
+    return cast(QueryRetrievalMode, normalized)
+
+
+def _query_retrieval_mode(ctx: typer.Context, retrieval_mode: str, hybrid: bool) -> QueryRetrievalMode:
+    resolved = _validate_retrieval_mode(retrieval_mode)
+    hybrid_source = ctx.get_parameter_source("hybrid")
+    has_hybrid_alias = hybrid_source is not None and getattr(hybrid_source, "name", "") != "DEFAULT"
+    retrieval_mode_source = ctx.get_parameter_source("retrieval_mode")
+    has_retrieval_mode = retrieval_mode_source is not None and getattr(retrieval_mode_source, "name", "") != "DEFAULT"
+    if has_hybrid_alias and has_retrieval_mode:
+        typer.echo("Error: pass only one of --retrieval-mode or deprecated --hybrid.", err=True)
+        raise typer.Exit(1)
+    if has_hybrid_alias and hybrid:
+        return "hybrid"
+    return resolved
+
+
 def _emit_query_output(
     hits: list[RetrievalHit],
     *,
@@ -116,14 +144,14 @@ def _retrieval_options(
     candidate_k: int | None,
     page_dedup: bool,
     content_types: str | None,
-    hybrid: bool | None = None,
+    retrieval_mode: QueryRetrievalMode = "auto",
 ) -> QueryRetrievalOptions:
     return QueryRetrievalOptions(
         top_k=top_k,
         candidate_k=candidate_k,
         page_dedup=page_dedup,
         content_types=content_types,
-        hybrid=hybrid,
+        retrieval_mode=retrieval_mode,
     )
 
 
@@ -144,6 +172,7 @@ def _local_command(
     reranker_model_name: opts.RerankerModelNameOption = None,
     reranker_backend: opts.RerankerBackendOption = None,
     rerank: opts.RerankOption = False,
+    retrieval_mode: opts.RetrievalModeOption = "auto",
     hybrid: opts.HybridOption = False,
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
@@ -169,6 +198,7 @@ def _local_command(
 
     try:
         reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None
+        effective_retrieval_mode = _query_retrieval_mode(ctx, retrieval_mode, hybrid)
 
         if agentic:
             request = QueryRequest(
@@ -178,6 +208,7 @@ def _local_command(
                     candidate_k=candidate_k,
                     page_dedup=page_dedup,
                     content_types=content_types,
+                    retrieval_mode=effective_retrieval_mode,
                 ),
                 embed=QueryEmbedOptions(
                     embed_invoke_url=embed_invoke_url,
@@ -210,12 +241,7 @@ def _local_command(
             typer.echo(json.dumps(ranked, indent=2, sort_keys=True, default=str))
             return
 
-        hybrid_source = ctx.get_parameter_source("hybrid")
-        hybrid_override = (
-            hybrid if hybrid_source is not None and getattr(hybrid_source, "name", "") != "DEFAULT" else None
-        )
-
-        def _request(use_hybrid: bool | None) -> QueryRequest:
+        def _request() -> QueryRequest:
             return QueryRequest(
                 query=query,
                 retrieval=_retrieval_options(
@@ -223,7 +249,7 @@ def _local_command(
                     candidate_k=candidate_k,
                     page_dedup=page_dedup,
                     content_types=content_types,
-                    hybrid=use_hybrid,
+                    retrieval_mode=effective_retrieval_mode,
                 ),
                 embed=QueryEmbedOptions(
                     embed_invoke_url=embed_invoke_url,
@@ -243,7 +269,7 @@ def _local_command(
             )
 
         with quiet_capture():
-            result = query_local_documents_with_metadata(_request(hybrid_override))
+            result = query_local_documents_with_metadata(_request())
             hits = result.hits
             strategies = result.strategies
     except ROOT_CLI_ERRORS as exc:

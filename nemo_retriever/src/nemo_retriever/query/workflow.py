@@ -55,8 +55,8 @@ def _build_retriever_kwargs(request: QueryRequest) -> dict[str, Any]:
         "uri": request.storage.lancedb_uri,
         "table_name": request.storage.table_name,
     }
-    if request.retrieval.hybrid is not None:
-        vdb_kwargs["hybrid"] = bool(request.retrieval.hybrid)
+    if request.retrieval.retrieval_mode != "auto":
+        vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
     retriever_kwargs: dict[str, Any] = {
         "top_k": request.retrieval.top_k,
         "vdb_kwargs": vdb_kwargs,
@@ -110,9 +110,12 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
     api_key = resolve_remote_api_key()
+    vdb_kwargs: dict[str, Any] = {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name}
+    if request.retrieval.retrieval_mode != "auto":
+        vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
     cfg_kwargs: dict[str, Any] = {
         "vdb_op": "lancedb",
-        "vdb_kwargs": {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name},
+        "vdb_kwargs": vdb_kwargs,
         "top_k": int(request.retrieval.top_k),
         "embedding_endpoint": request.embed.embed_invoke_url,
         "embedding_api_key": api_key or "",

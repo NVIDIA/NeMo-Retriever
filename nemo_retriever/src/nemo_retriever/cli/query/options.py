@@ -106,14 +106,22 @@ RerankOption = Annotated[
         ),
     ),
 ]
+RetrievalModeOption = Annotated[
+    str,
+    typer.Option(
+        "--retrieval-mode",
+        help=(
+            "Expert LanceDB retrieval mode: auto, dense, hybrid, or sparse. Default auto inspects the table "
+            "and chooses the supported mode."
+        ),
+    ),
+]
 HybridOption = Annotated[
     bool,
     typer.Option(
         "--hybrid",
-        help=(
-            "Override automatic LanceDB retrieval-mode detection for vector tables. By default, "
-            "query inspects the table and chooses dense, hybrid, or sparse retrieval."
-        ),
+        help="Deprecated alias for --retrieval-mode hybrid.",
+        hidden=True,
     ),
 ]
 OutputFormatOption = Annotated[
