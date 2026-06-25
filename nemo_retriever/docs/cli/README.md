@@ -6,7 +6,8 @@ ingest and retrieval.
 For product-facing examples, prefer these commands:
 
 - `retriever ingest` - ingest supported documents and media into a Retriever index.
-- `retriever query` - query a local LanceDB table written by ingest.
+- `retriever query` - query a local LanceDB table written by local or batch ingest.
+- `retriever query service` - query a Retriever service deployment.
 
 `retriever pipeline run` remains available as a development and compatibility
 command for legacy pipeline workflows, evaluation, intermediate artifacts, and
@@ -69,9 +70,8 @@ retriever query "What is in this document?" \
 By default, local ingest writes to `lancedb/nemo-retriever` and `retriever query`
 reads from the same table.
 
-The `retriever query` examples below apply to local and batch ingest output
-written to LanceDB. Service ingest sends documents to a remote service; querying
-service-owned storage is handled by that service deployment.
+The plain `retriever query` examples below apply to local and batch ingest output
+written to LanceDB. Use `retriever query service` to query a Retriever service.
 
 ### Ingest a larger corpus with batch mode
 
@@ -94,8 +94,13 @@ retriever ingest service ./data/pdf_corpus \
 ```
 
 Use `--service-api-token` or `NEMO_RETRIEVER_API_TOKEN` when the service requires
-a bearer token. Service ingest does not expose `--lancedb-uri`; the service owns
-its vector database configuration.
+a bearer token. Service ingest does not expose `--lancedb-uri`; the service
+configures its vector database. Query the service with:
+
+```bash
+retriever query service "What is in this corpus?" \
+  --service-url http://localhost:7670
+```
 
 ### Route ingest to hosted or self-hosted NIM endpoints
 
@@ -131,9 +136,10 @@ retriever query "What is in this document?" \
 
 ### Query result controls
 
-`retriever query` returns compact JSON hits with `source`, `page_number`, and
-`text`. Use `--candidate-k`, `--page-dedup`, and `--content-types` to shape the
-result set after vector retrieval:
+Both `retriever query` and `retriever query service` return compact JSON hits
+with `source`, `page_number`, and `text`. Use `--candidate-k`, `--page-dedup`,
+and `--content-types` to control how results are selected after vector
+retrieval:
 
 ```bash
 retriever query "annual revenue by region" \
@@ -142,19 +148,27 @@ retriever query "annual revenue by region" \
   --content-types table
 ```
 
-`--top-k` is the final number of hits returned. `--candidate-k` is the wider
-candidate pool retrieved before page deduplication, content-type filtering, and
-final truncation. It must be greater than or equal to `--top-k`, and should
-usually be larger when page deduplication or content-type filtering might
-otherwise remove too many of the top retrieved rows. Page deduplication and
-content-type filtering are applied after vector retrieval, preserving the
-retriever's ranking order and truncating the final output to `--top-k`.
-When querying a table ingested with an explicit embedding model, pass the same
-`--embed-model-name` to `retriever query`.
+`--top-k` is the final number of results to return after filtering and
+deduplication. `--candidate-k` is the number of raw results to retrieve from
+LanceDB or the Retriever service before filtering, page deduplication, and
+final truncation. If omitted, the candidate pool is the same size as
+`--top-k`. Set `--candidate-k` larger than `--top-k` when page deduplication
+or content-type filtering might remove too many of the nearest retrieved rows.
+It must always be greater than or equal to `--top-k`.
+
+Page deduplication and content-type filtering are applied after vector
+retrieval, preserving retriever ranking order and truncating the final output to
+`--top-k`. When querying a local table ingested with an explicit embedding
+model, pass the same `--embed-model-name` to `retriever query`.
+
 `--content-types` accepts comma-separated content types such as `text`, `table`,
 `chart`, `image`, and `infographic`. `images` is accepted as an alias for
-captioned image rows emitted by ingest. Hits with missing or unknown content
-types are excluded while `--content-types` is active.
+captioned image rows emitted by ingest. This option filters by content-type
+metadata only; it does not filter by source, page, or other metadata
+predicates. Hits with missing or unknown content-type metadata are excluded
+while `--content-types` is active. In service mode, results must include
+content-type metadata to match this filter. Default display values in the JSON
+output are not used for content-type matching.
 
 ### Agentic retrieval
 

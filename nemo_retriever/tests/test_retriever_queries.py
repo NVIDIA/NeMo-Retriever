@@ -12,7 +12,8 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from nemo_retriever.graph.retriever import Retriever, _shape_query_hits
+from nemo_retriever.graph.retriever import Retriever
+from nemo_retriever.query.shaping import shape_query_hits
 
 
 def _make_hits(n: int, base_score: float = 0.5) -> list[dict[str, Any]]:
@@ -189,7 +190,7 @@ class TestQueryHitShaping:
             {"text": "first p2", "pdf_basename": "handbook", "page_number": 2},
         ]
 
-        out = _shape_query_hits(hits, top_k=10, page_dedup=True)
+        out = shape_query_hits(hits, top_k=10, page_dedup=True)
 
         assert [h["text"] for h in out] == ["first p1", "first p2"]
 
@@ -199,7 +200,7 @@ class TestQueryHitShaping:
             {"text": "v2", "pdf_basename": "report.v2", "page_number": 1},
         ]
 
-        out = _shape_query_hits(hits, top_k=10, page_dedup=True)
+        out = shape_query_hits(hits, top_k=10, page_dedup=True)
 
         assert [h["text"] for h in out] == ["v1", "v2"]
 
@@ -209,7 +210,7 @@ class TestQueryHitShaping:
             {"text": "dir b", "source_id": "/dir_b/report.pdf", "page_number": 1},
         ]
 
-        out = _shape_query_hits(hits, top_k=10, page_dedup=True)
+        out = shape_query_hits(hits, top_k=10, page_dedup=True)
 
         assert [h["text"] for h in out] == ["dir a", "dir b"]
 
@@ -220,7 +221,7 @@ class TestQueryHitShaping:
             {"text": "chart row", "metadata": {"type": "chart"}, "page_number": 3},
         ]
 
-        out = _shape_query_hits(hits, top_k=10, content_types="text,table")
+        out = shape_query_hits(hits, top_k=10, content_types="text,table")
 
         assert [h["text"] for h in out] == ["text row", "table row"]
 
@@ -231,7 +232,7 @@ class TestQueryHitShaping:
             {"text": "chart row", "metadata": {"type": "chart"}, "page_number": 3},
         ]
 
-        out = _shape_query_hits(hits, top_k=10, content_types="image")
+        out = shape_query_hits(hits, top_k=10, content_types="image")
 
         assert [h["text"] for h in out] == ["image row"]
 
@@ -241,7 +242,7 @@ class TestQueryHitShaping:
             {"text": "top-level chart", "metadata": "{}", "content_type": "chart", "page_number": 2},
         ]
 
-        out = _shape_query_hits(hits, top_k=10, content_types="table")
+        out = shape_query_hits(hits, top_k=10, content_types="table")
 
         assert [h["text"] for h in out] == ["top-level table"]
 
@@ -251,7 +252,7 @@ class TestQueryHitShaping:
             {"text": "metadata image", "metadata": {"_content_type": "image"}, "page_number": 2},
         ]
 
-        out = _shape_query_hits(hits, top_k=10, content_types="table")
+        out = shape_query_hits(hits, top_k=10, content_types="table")
 
         assert [h["text"] for h in out] == ["metadata table"]
 
@@ -262,7 +263,7 @@ class TestQueryHitShaping:
             {"text": "chart row 2", "metadata": {"type": "chart"}, "page_number": 3},
         ]
 
-        out = _shape_query_hits(hits, top_k=3, content_types="text")
+        out = shape_query_hits(hits, top_k=3, content_types="text")
 
         assert [h["text"] for h in out] == ["text row"]
 
@@ -272,13 +273,13 @@ class TestQueryHitShaping:
             {"text": "text row", "metadata": {"type": "text"}, "page_number": 2},
         ]
 
-        out = _shape_query_hits(hits, top_k=10, content_types="text")
+        out = shape_query_hits(hits, top_k=10, content_types="text")
 
         assert [h["text"] for h in out] == ["text row"]
 
     def test_empty_content_type_allowlist_uses_python_api_name(self) -> None:
         with pytest.raises(ValueError, match="content_types must include"):
-            _shape_query_hits([], top_k=3, content_types=[])
+            shape_query_hits([], top_k=3, content_types=[])
 
 
 class TestRunModeServiceRequiresHttpEmbed:

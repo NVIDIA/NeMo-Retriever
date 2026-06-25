@@ -1,6 +1,6 @@
-# Notebooks for NeMo Retriever Library
+# Starter Kits for NeMo Retriever Library
 
-To get started using [NeMo Retriever Library](../overview.md), you can try one of the ready-made notebooks that are available.
+To get started using [NeMo Retriever Library](overview.md), you can try one of the ready-made notebooks that are available.
 
 ## Dataset Downloads for Benchmarking
 
@@ -10,9 +10,9 @@ If you plan to run benchmarking or evaluation tests, you must download the [Benc
 
 To get started with the basics, try one of the following guides or notebooks:
 
-- [Quickstart: retriever CLI](../../reference/retriever-cli-quickstart.md)
-- [Workflow: Ingest documents](../workflow-document-ingestion.md)
-- [How to add metadata to your documents and filter searches](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb)
+- [Quickstart: retriever CLI](../reference/retriever-cli-quickstart.md)
+- [Workflow: Ingest documents](workflow-document-ingestion.md)
+- [Adding Custom Metadata for Filtered Search/Retrieval](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) — also summarized on [Vector databases — Metadata and filtering](vdbs.md#metadata-and-filtering)
 
 
 For more advanced scenarios, try one of the following notebooks:

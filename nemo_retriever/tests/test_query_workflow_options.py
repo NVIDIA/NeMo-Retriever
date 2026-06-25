@@ -6,13 +6,18 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
+import nemo_retriever.query.service as query_service
 import nemo_retriever.query.workflow as query_workflow
 from nemo_retriever.query.options import (
     QueryEmbedOptions,
     QueryRerankOptions,
     QueryRequest,
     QueryRetrievalOptions,
+    QueryServiceOptions,
     QueryStorageOptions,
+    ServiceQueryRequest,
 )
 
 
@@ -122,3 +127,57 @@ def test_query_documents_uses_typed_request(monkeypatch) -> None:
             },
         )
     ]
+
+
+def test_service_query_uses_candidate_pool_and_preserves_local_shaping(monkeypatch) -> None:
+    client_calls: list[dict[str, Any]] = []
+
+    class FakeServiceClient:
+        def __init__(self, *, base_url: str, api_token: str | None = None, **_kwargs: Any) -> None:
+            client_calls.append({"base_url": base_url, "api_token": api_token})
+
+        def query(self, query: str, *, top_k: int) -> list[list[dict[str, Any]]]:
+            client_calls.append({"query": query, "top_k": top_k})
+            return [
+                [
+                    {"text": "keep", "source": "doc.pdf", "page_number": 1, "metadata": {"type": "text"}},
+                    {"text": "duplicate", "source": "doc.pdf", "page_number": 1, "metadata": {"type": "text"}},
+                    {"text": "table", "source": "doc.pdf", "page_number": 2, "metadata": {"type": "table"}},
+                ]
+            ]
+
+    monkeypatch.setattr(query_service, "RetrieverServiceClient", FakeServiceClient)
+
+    request = ServiceQueryRequest(
+        query="deployment?",
+        retrieval=QueryRetrievalOptions(
+            top_k=2,
+            candidate_k=3,
+            page_dedup=True,
+            content_types="text",
+        ),
+        service=QueryServiceOptions(service_url="http://svc:7670", service_api_token="secret"),
+    )
+
+    assert query_service.query_documents(request) == [
+        {"text": "keep", "source": "doc.pdf", "page_number": 1, "metadata": {"type": "text"}},
+    ]
+    assert client_calls == [
+        {"base_url": "http://svc:7670", "api_token": "secret"},
+        {"query": "deployment?", "top_k": 3},
+    ]
+
+
+def test_service_query_validates_candidate_pool_before_calling_service(monkeypatch) -> None:
+    class FakeServiceClient:
+        def __init__(self, **_kwargs: Any) -> None:
+            raise AssertionError("service client should not be constructed")
+
+    monkeypatch.setattr(query_service, "RetrieverServiceClient", FakeServiceClient)
+    request = ServiceQueryRequest(
+        query="deployment?",
+        retrieval=QueryRetrievalOptions(top_k=3, candidate_k=2),
+    )
+
+    with pytest.raises(ValueError, match=r"candidate_k \(2\) must be greater than or equal to top_k \(3\)"):
+        query_service.query_documents(request)

@@ -2,9 +2,9 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Async client for submitting documents to the retriever service.
+"""Client helpers for retriever service ingest and query calls.
 
-Uploads whole documents via ``POST /v1/ingest/job/{job_id}/document``
+Ingest uploads whole documents via ``POST /v1/ingest/job/{job_id}/document``
 (after opening a job aggregate with ``POST /v1/ingest/job``), tracks
 completion via the per-job ``GET /v1/ingest/job/{job_id}/events`` SSE
 stream (with ``POST /v1/ingest/status/batch`` bulk-poll fallback), and
@@ -19,14 +19,15 @@ API compatibility
 -----------------
 The Retriever Service v2 refactor (multi-pod) removed the legacy
 single-shot ``POST /v1/ingest`` and the firehose
-``GET /v1/ingest/events`` routes in favor of the job-scoped API used
-here.  Older SDK builds may still call the legacy routes; the server
-now returns ``410 Gone`` with a migration body for those.  This client
-detects the matching failure mode on its own side — a ``404`` or
-``410`` from the very first call to ``POST /v1/ingest/job`` — and
-raises :class:`RetrieverServiceCompatibilityError` so callers see a
-single, actionable "SDK and service versions are out of sync" message
-instead of an empty/no-completion result.
+``GET /v1/ingest/events`` routes in favor of the job-scoped ingest API
+used here.  Older SDK builds may still call the legacy routes; the
+server now returns ``410 Gone`` with a migration body for those.  Ingest
+entry points detect the matching failure mode on their first call to
+``POST /v1/ingest/job`` and raise
+:class:`RetrieverServiceCompatibilityError` so callers see a single,
+actionable "SDK and service versions are out of sync" message instead
+of an empty/no-completion result. Query uses ``POST /v1/query`` and
+validates that response with the shared query schema.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Callable, NamedTuple
 
 import httpx
+from pydantic import ValidationError
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -47,6 +49,8 @@ from rich.progress import (
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
+
+from nemo_retriever.service.query_schema import QueryResponse
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +87,7 @@ class RetrieverServiceCompatibilityError(RuntimeError):
     job-scoped routes (``POST /v1/ingest/job`` +
     ``POST /v1/ingest/job/{job_id}/document`` +
     ``GET /v1/ingest/job/{job_id}/events``).  Whenever the very first
-    call from this client — opening a job aggregate via
+    call from an ingest entry point — opening a job aggregate via
     ``POST /v1/ingest/job`` — returns ``404`` (route missing) or
     ``410`` (route removed, with migration body), the deployed
     nrl-service is older than this SDK build.  Raising a dedicated
@@ -181,19 +185,16 @@ class DocumentTracker:
 
 
 class RetrieverServiceClient:
-    """Submits documents to a running retriever service and tracks results.
+    """Submits documents to a running retriever service and queries its VectorDB endpoint.
 
-    Opens a job aggregate with ``POST /v1/ingest/job`` (sized to the
-    number of files), then uses ``POST /v1/ingest/job/{job_id}/document``
-    for each upload. Completion is tracked via the per-job
-    ``GET /v1/ingest/job/{job_id}/events`` SSE stream with
-    ``POST /v1/ingest/status/batch`` as a bulk-poll fallback.
+    Ingest opens a job aggregate with ``POST /v1/ingest/job`` (sized to
+    the number of files), then uses
+    ``POST /v1/ingest/job/{job_id}/document`` for each upload. Query uses
+    ``POST /v1/query`` directly.
 
-    The first request issued by every entry point is ``POST /v1/ingest/job``;
-    if that returns ``404`` or ``410`` the client raises
-    :class:`RetrieverServiceCompatibilityError` to surface a clear
-    SDK/service version-mismatch message rather than silently producing
-    an empty result list.
+    Ingest entry points translate ``404`` or ``410`` from job-scoped
+    routes into :class:`RetrieverServiceCompatibilityError` so callers
+    see a clear SDK/service version-mismatch message.
     """
 
     def __init__(
@@ -210,6 +211,39 @@ class RetrieverServiceClient:
     @property
     def _auth_headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._api_token}"} if self._api_token else {}
+
+    # ------------------------------------------------------------------
+    # Query
+    # ------------------------------------------------------------------
+
+    def query(self, query: str | list[str], *, top_k: int) -> list[list[dict[str, Any]]]:
+        """Search ingested documents through ``POST /v1/query``."""
+        url = f"{self._base_url}/v1/query"
+        expected_results = len(query) if isinstance(query, list) else 1
+        payload: dict[str, Any] = {"query": query, "top_k": int(top_k)}
+        try:
+            with httpx.Client(
+                timeout=httpx.Timeout(300.0, connect=30.0),
+                headers=self._auth_headers,
+            ) as client:
+                resp = client.post(url, json=payload)
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"Service query failed: {type(exc).__name__}: {exc}") from exc
+
+        if resp.status_code >= 400:
+            detail = resp.text[:500] if resp.text else "(empty)"
+            raise RuntimeError(f"Service query failed: HTTP {resp.status_code}: {detail}")
+
+        try:
+            body = resp.json()
+        except ValueError as exc:
+            raise RuntimeError("Service query returned invalid JSON.") from exc
+
+        try:
+            query_response = QueryResponse.model_validate(body)
+            return query_response.hits_by_query(expected_results=expected_results)
+        except (ValidationError, ValueError) as exc:
+            raise RuntimeError(f"Service query returned invalid response: {exc}") from exc
 
     # ------------------------------------------------------------------
     # Job lifecycle
