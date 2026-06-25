@@ -23,13 +23,12 @@ logger = logging.getLogger(__name__)
 class GraphicElementsCPUActor(AbstractOperator, CPUOperator):
     """CPU-only variant of :class:`GraphicElementsActor`.
 
-    Defaults to build.nvidia.com endpoints for ``nemotron-graphic-elements-v1``
-    and hosted ``nemotron-ocr-v1``. Remote OCR remains URL-driven until OCR v2
-    NIM is released.
+    Defaults to the build.nvidia.com endpoint for
+    ``nemotron-graphic-elements-v1`` and hosted ``nemotron-ocr-v2``.
     """
 
     DEFAULT_GRAPHIC_ELEMENTS_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1"
-    DEFAULT_OCR_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
+    DEFAULT_OCR_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2"
 
     def __init__(
         self,
