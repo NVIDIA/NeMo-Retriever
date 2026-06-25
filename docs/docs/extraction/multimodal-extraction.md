@@ -54,11 +54,11 @@ Charts and infographic regions are classified with other page layout elements (t
 
     When you set `extract_method="nemotron_parse"`:
 
-    - The pipeline does not produce `chart` modality rows, even when `extract_charts=True`.
-    - Chart-filtered retrieval (for example, queries scoped to figure or chart content) returns no hits.
-    - Chart-heavy figure pages are typically emitted as `Picture` or other non-chart modalities.
+    - The pipeline does not produce `chart` or `infographic` modality rows, even when `extract_charts=True` or `extract_infographics=True`.
+    - Chart- and infographic-filtered retrieval (for example, queries scoped to figure or chart content) returns no hits.
+    - Chart-heavy and infographic-heavy pages are typically emitted as `Picture` or other non-chart modalities.
 
-    For chart detection and chart-specific retrieval, use the default **pdfium** layout path (page-elements detection and OCR), not `extract_method="nemotron_parse"`.
+    For chart and infographic detection and modality-specific retrieval, use the default **pdfium** layout path (page-elements detection and OCR), not `extract_method="nemotron_parse"`.
 
 Chart-labeled PDF regions are **not** routed through the Omni caption stage; they remain on the layout-and-OCR path. For scope and validation guidance, refer to [Image captioning](prerequisites-support-matrix.md#image-captioning-2605).
 
