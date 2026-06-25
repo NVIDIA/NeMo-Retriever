@@ -189,4 +189,4 @@ ERROR 2025-04-24 22:49:44.434 nimutils.py:68] }
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Deployment options](deployment-options.md)
 - [Deploy with Helm](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md)
-- [NeMo Retriever Library — prerequisites / deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) (supported **Helm** charts)
+- [About getting started](getting-started-about.md) (prerequisites and deployment)
