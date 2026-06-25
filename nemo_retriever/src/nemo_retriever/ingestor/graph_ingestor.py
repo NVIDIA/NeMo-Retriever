@@ -71,6 +71,7 @@ from nemo_retriever.common.input_files import (
     input_type_for_path,
 )
 from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env, resolve_remote_api_key
+from nemo_retriever.common.ray_runtime import disable_ray_uv_runtime_env_hook, without_uv_run_env
 from nemo_retriever.common.ray_resource_hueristics import gather_cluster_resources
 
 
@@ -874,27 +875,29 @@ class GraphIngestor(ingestor):
         return result
 
     def _ensure_batch_runtime(self) -> tuple[Any, Any]:
-        import ray
+        with without_uv_run_env():
+            import ray
 
-        if self._ray_address or not ray.is_initialized():
-            venv = os.path.dirname(os.path.dirname(sys.executable))
-            venv_bin = os.path.join(venv, "bin")
-            pypath = os.pathsep.join(p for p in sys.path if p)
-            ray_env_vars: dict[str, str] = {
-                "VIRTUAL_ENV": venv,
-                "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
-                "PYTHONPATH": pypath,
-            }
-            ray_env_vars.update(collect_hf_runtime_env())
-            ray_env_vars.update(collect_remote_auth_runtime_env())
-            os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
-            runtime_env = {"env_vars": ray_env_vars}
-            ray.init(
-                address=self._ray_address,
-                ignore_reinit_error=True,
-                runtime_env=runtime_env,
-                log_to_driver=self._ray_log_to_driver,
-            )
+            disable_ray_uv_runtime_env_hook(ray)
+            if self._ray_address or not ray.is_initialized():
+                venv = os.path.dirname(os.path.dirname(sys.executable))
+                venv_bin = os.path.join(venv, "bin")
+                pypath = os.pathsep.join(p for p in sys.path if p)
+                ray_env_vars: dict[str, str] = {
+                    "VIRTUAL_ENV": venv,
+                    "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
+                    "PYTHONPATH": pypath,
+                }
+                ray_env_vars.update(collect_hf_runtime_env())
+                ray_env_vars.update(collect_remote_auth_runtime_env())
+                os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
+                runtime_env = {"env_vars": ray_env_vars, "py_executable": sys.executable}
+                ray.init(
+                    address=self._ray_address,
+                    ignore_reinit_error=True,
+                    runtime_env=runtime_env,
+                    log_to_driver=self._ray_log_to_driver,
+                )
         return ray, gather_cluster_resources(ray)
 
     # ------------------------------------------------------------------

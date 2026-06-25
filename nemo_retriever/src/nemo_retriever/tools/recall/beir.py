@@ -24,8 +24,8 @@ VALID_BEIR_LOADERS: frozenset[str] = frozenset(
 VALID_BEIR_DOC_ID_FIELDS: frozenset[str] = frozenset(
     {"pdf_basename", "pdf_page", "pdf_page_modality", "source_id", "path"}
 )
-REPO_ROOT = Path(__file__).resolve().parents[4]
-BO767_ANNOTATIONS_PATH = REPO_ROOT / "data" / "bo767_annotations.csv"
+REPO_ROOT = Path(__file__).resolve().parents[5]
+BO767_ANNOTATIONS_PATH = REPO_ROOT / "data" / "bo767_query_gt.csv"
 BO10K_ANNOTATIONS_PATH = REPO_ROOT / "data" / "digital_corpora_10k_annotations.csv"
 EARNINGS_ANNOTATIONS_PATH = REPO_ROOT / "data" / "earnings_consulting_multimodal.csv"
 FINANCEBENCH_ANNOTATIONS_PATH = REPO_ROOT / "data" / "financebench_train.json"
@@ -528,6 +528,65 @@ def build_qrels_by_query_id(
     return dict(qrels)
 
 
+def _vidore_doc_id_from_corpus_row(row: Any, *, doc_id_field: str) -> str | None:
+    doc_id = str(_row_get(row, "doc_id") or "").strip()
+    corpus_id = _row_get(row, "corpus_id")
+    if doc_id_field == "source_id":
+        return str(corpus_id)
+    if doc_id_field == "path":
+        return f"{doc_id}.pdf" if doc_id else None
+    if doc_id_field == "pdf_basename":
+        return doc_id or None
+    if doc_id_field == "pdf_page":
+        try:
+            page_number = int(_row_get(row, "page_number_in_doc")) + 1
+        except (TypeError, ValueError):
+            return None
+        return f"{doc_id}_{page_number}" if doc_id else None
+    return None
+
+
+def _build_vidore_corpus_id_map(corpus_rows: Iterable[Any], *, doc_id_field: str) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for row in corpus_rows:
+        corpus_id = _row_get(row, "corpus_id")
+        doc_id = _vidore_doc_id_from_corpus_row(row, doc_id_field=doc_id_field)
+        if corpus_id is not None and doc_id:
+            mapping[str(corpus_id)] = doc_id
+    return mapping
+
+
+def _build_mapped_qrels_by_query_id(
+    rows: Iterable[Any],
+    *,
+    allowed_query_ids: set[str],
+    corpus_id_map: dict[str, str],
+) -> dict[str, dict[str, int]]:
+    qrels: defaultdict[str, dict[str, int]] = defaultdict(dict)
+
+    for row in rows:
+        query_id = _row_get(row, "query_id")
+        corpus_id = _row_get(row, "corpus_id")
+        if query_id is None or corpus_id is None:
+            continue
+
+        query_id_str = str(query_id)
+        if query_id_str not in allowed_query_ids:
+            continue
+
+        mapped_corpus_id = corpus_id_map.get(str(corpus_id))
+        if mapped_corpus_id is None:
+            continue
+
+        try:
+            score = int(_row_get(row, "score", 1))
+        except (TypeError, ValueError):
+            score = 1
+        qrels[query_id_str][mapped_corpus_id] = score
+
+    return dict(qrels)
+
+
 def load_beir_dataset(
     loader: str,
     *,
@@ -568,6 +627,11 @@ def load_beir_dataset(
     except Exception as exc:
         logger.debug("load_dataset config='qrels' failed (%s); retrying with data_dir", exc)
         qrels_rows = load_dataset(ds_repo, data_dir="qrels", split=split)
+    try:
+        corpus_rows = load_dataset(ds_repo, "corpus", split=split)
+    except Exception as exc:
+        logger.debug("load_dataset config='corpus' failed (%s); retrying with data_dir", exc)
+        corpus_rows = load_dataset(ds_repo, data_dir="corpus", split=split)
 
     query_ids, queries = build_queries_by_id(queries_rows, query_language=query_language)
     if not query_ids:
@@ -582,7 +646,14 @@ def load_beir_dataset(
         )
 
     allowed_query_ids = set(query_ids)
-    qrels = build_qrels_by_query_id(qrels_rows, allowed_query_ids=allowed_query_ids)
+    corpus_id_map = _build_vidore_corpus_id_map(corpus_rows, doc_id_field=doc_id_field)
+    if not corpus_id_map:
+        raise ValueError(f"No corpus ID mapping loaded for dataset={dataset_name!r} split={split!r}")
+    qrels = _build_mapped_qrels_by_query_id(
+        qrels_rows,
+        allowed_query_ids=allowed_query_ids,
+        corpus_id_map=corpus_id_map,
+    )
     if not qrels:
         raise ValueError(f"No qrels loaded for dataset={dataset_name!r} split={split!r}")
 

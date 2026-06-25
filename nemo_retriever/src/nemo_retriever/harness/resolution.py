@@ -258,10 +258,16 @@ def validate_dataset_inputs(resolved: dict[str, Any], *, dry_run: bool) -> tuple
 
     query_file = dataset.get("query_file")
     evaluation = resolved.get("evaluation") or {}
-    if evaluation.get("mode") == "beir":
+    uses_remote_eval_dataset = evaluation.get("loader") == "vidore_hf"
+    if evaluation.get("mode") == "beir" and not uses_remote_eval_dataset:
         query_file = evaluation.get("dataset_name") or query_file
     query_path = _resolve_repo_path(query_file) if query_file else None
-    if not dry_run and evaluation.get("mode") == "beir" and (query_path is None or not query_path.exists()):
+    if (
+        not dry_run
+        and evaluation.get("mode") == "beir"
+        and not uses_remote_eval_dataset
+        and (query_path is None or not query_path.exists())
+    ):
         raise HarnessRunError(
             EXIT_MISSING_INPUT,
             FailurePayload(
@@ -275,7 +281,7 @@ def validate_dataset_inputs(resolved: dict[str, Any], *, dry_run: bool) -> tuple
     dataset["query_file_exists"] = bool(query_path and query_path.exists())
     if query_path is not None:
         dataset["resolved_query_file"] = str(query_path)
-        if evaluation.get("mode") == "beir":
+        if evaluation.get("mode") == "beir" and not uses_remote_eval_dataset:
             evaluation["dataset_name"] = str(query_path)
     return dataset_path, query_path
 
