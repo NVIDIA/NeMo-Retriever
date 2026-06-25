@@ -24,6 +24,7 @@ from nemo_retriever.cli.shared import (
 )
 from nemo_retriever.common.vdb.records import RetrievalHit
 from nemo_retriever.query.options import (
+    DEFAULT_AGENTIC_LLM_MODEL,
     QueryAgenticOptions,
     QueryEmbedOptions,
     QueryRerankOptions,
@@ -178,7 +179,7 @@ def _local_command(
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
     agentic: opts.AgenticOption = False,
-    agentic_llm_model: opts.AgenticLlmModelOption = None,
+    agentic_llm_model: opts.AgenticLlmModelOption = DEFAULT_AGENTIC_LLM_MODEL,
     agentic_invoke_url: opts.AgenticInvokeUrlOption = None,
     agentic_reasoning_effort: opts.AgenticReasoningEffortOption = "high",
     agentic_backend_top_k: opts.AgenticBackendTopKOption = 20,
