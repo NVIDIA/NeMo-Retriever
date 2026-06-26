@@ -399,12 +399,33 @@ def test_root_query_agentic_passes_config_and_prints_ranked(monkeypatch) -> None
     ]
 
 
-def test_root_query_agentic_requires_llm_model() -> None:
-    """Agentic mode is inert without a chat model to drive the loop."""
+def test_root_query_agentic_defaults_llm_model(monkeypatch) -> None:
+    """--agentic without --agentic-llm-model falls back to the default 49B model."""
+    import pandas as pd
+
+    import nemo_retriever.query.agentic as agentic_retrieval
+    from nemo_retriever.query.options import DEFAULT_AGENTIC_LLM_MODEL
+
+    config_calls: list[dict[str, Any]] = []
+
+    class FakeConfig:
+        def __init__(self, **kwargs: Any) -> None:
+            config_calls.append(kwargs)
+
+    class FakeAgenticRetriever:
+        def __init__(self, cfg: Any) -> None:
+            pass
+
+        def retrieve(self, query_ids: Any, query_texts: Any) -> Any:
+            return pd.DataFrame([{"query_id": "0", "doc_id": "a.pdf", "rank": 1, "result_source": "rrf"}])
+
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetrievalConfig", FakeConfig)
+    monkeypatch.setattr(agentic_retrieval, "AgenticRetriever", FakeAgenticRetriever)
+
     result = RUNNER.invoke(cli_main.app, ["query", "hello", "--agentic"])
 
-    assert result.exit_code == 1
-    assert "requires --agentic-llm-model" in result.output
+    assert result.exit_code == 0
+    assert config_calls[0]["llm_model"] == DEFAULT_AGENTIC_LLM_MODEL
 
 
 def test_root_query_agentic_plumbs_rerank_into_config(monkeypatch) -> None:
