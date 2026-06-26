@@ -49,7 +49,7 @@ Run the above with your working directory at the repository root (so `data/multi
 
 ### Ingest a test corpus (CLI)
 
-`graph_pipeline` is the canonical ingestion script used throughout the [QA evaluation guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/evaluation/README.md#step-1-ingest-and-embed-pdfs-nemo-retriever). Point it at a **directory** of PDFs to produce a ready-to-query LanceDB table.
+`graph_pipeline` is the canonical ingestion script used throughout the [QA evaluation guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/tools/evaluation/README.md#step-1-ingest-and-embed-pdfs-nemo-retriever). Point it at a **directory** of PDFs to produce a ready-to-query LanceDB table.
 
 !!! note "Corpus size and LanceDB indexing"
 
