@@ -14,7 +14,6 @@ AGENTIC_AUDIO_RECALL_KS = (1, 5, 10)
 AGENTIC_TEMPERATURE_MIN = 0.0
 AGENTIC_OPENAI_COMPATIBLE_TEMPERATURE_MAX = 2.0
 AGENTIC_NVIDIA_TEMPERATURE_MAX = 1.0
-AGENTIC_NVIDIA_BUILD_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions"
 
 
 def _parse_integer(value: object, *, field_name: str) -> tuple[int | None, str | None]:
@@ -44,17 +43,15 @@ def _parse_integer(value: object, *, field_name: str) -> tuple[int | None, str |
 
 def agentic_int_value(value: object, *, field_name: str) -> int:
     parsed, error = _parse_integer(value, field_name=field_name)
-    if error:
-        raise ValueError(error)
-    assert parsed is not None
+    if error or parsed is None:
+        raise ValueError(error or f"{field_name} must be an integer")
     return parsed
 
 
 def agentic_int_min_error(value: object, *, field_name: str, min_value: int) -> str | None:
     parsed, error = _parse_integer(value, field_name=field_name)
-    if error:
-        return error
-    assert parsed is not None
+    if error or parsed is None:
+        return error or f"{field_name} must be an integer"
     if parsed < int(min_value):
         return f"{field_name} must be >= {int(min_value)}"
     return None
@@ -110,9 +107,8 @@ def agentic_target_top_k(evaluation_mode: str, beir_k: list[int] | tuple[int, ..
     positive_ks: list[int] = []
     for raw_k in raw_ks:
         parsed_k, error = _parse_integer(raw_k, field_name="k")
-        if error:
+        if error or parsed_k is None:
             raise ValueError("agentic evaluation k values must be integers")
-        assert parsed_k is not None
         if parsed_k > 0:
             positive_ks.append(parsed_k)
     if not positive_ks:
@@ -127,9 +123,8 @@ def agentic_backend_top_k_error(
     field_name: str = "agentic_backend_top_k",
 ) -> str | None:
     parsed, error = _parse_integer(backend_top_k, field_name=field_name)
-    if error:
-        return error
-    assert parsed is not None
+    if error or parsed is None:
+        return error or f"{field_name} must be an integer"
     value = parsed
 
     if value < 1:

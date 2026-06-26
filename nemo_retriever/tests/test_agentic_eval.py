@@ -75,11 +75,17 @@ class FakeRetriever:
 def test_build_beir_run_from_ranked_doc_ids_orders_by_rank():
     from nemo_retriever.tools.recall.beir import build_beir_run_from_ranked_doc_ids
 
-    run = build_beir_run_from_ranked_doc_ids(["q1", "q2"], [["d1", "d2", "d3"]])
+    run = build_beir_run_from_ranked_doc_ids(["q1"], [["d1", "d2", "d3"]])
 
     assert list(run["q1"]) == ["d1", "d2", "d3"]
     assert run["q1"]["d1"] > run["q1"]["d2"] > run["q1"]["d3"]
-    assert run["q2"] == {}
+
+
+def test_build_beir_run_from_ranked_doc_ids_rejects_length_mismatch():
+    from nemo_retriever.tools.recall.beir import build_beir_run_from_ranked_doc_ids
+
+    with pytest.raises(ValueError, match="query_ids and ranked_doc_ids must have the same length"):
+        build_beir_run_from_ranked_doc_ids(["q1", "q2"], [["d1"]])
 
 
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")

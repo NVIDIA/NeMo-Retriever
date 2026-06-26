@@ -729,6 +729,9 @@ def build_beir_run_from_ranked_doc_ids(
 ) -> dict[str, dict[str, float]]:
     """Convert ranked document IDs into BEIR/pytrec_eval run format."""
 
+    if len(query_ids) != len(ranked_doc_ids):
+        raise ValueError("query_ids and ranked_doc_ids must have the same length")
+
     run: dict[str, dict[str, float]] = {str(query_id): {} for query_id in query_ids}
     for query_id, doc_ids in zip(query_ids, ranked_doc_ids):
         ordered_doc_ids: list[str] = []
