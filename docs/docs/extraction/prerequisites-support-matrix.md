@@ -102,8 +102,6 @@ These NIM microservices are **optional** for the default extraction pipeline. Th
 | `nemotron_3_nano_omni_30b_a3b_reasoning` | [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) | Supported image captioning when you enable the caption stage |
 | `audio` | [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) | [Audio and video](audio-video.md) transcription |
 
-<span id="image-captioning-2605"></span>
-
 ### Image captioning { #image-captioning }
 
 Use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above.
