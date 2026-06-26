@@ -478,6 +478,29 @@ def _build_command(cfg: HarnessConfig, artifact_dir: Path, run_id: str) -> tuple
     else:
         effective_query_csv = None
 
+    if cfg.agentic:
+        if not cfg.agentic_llm_model:
+            raise ValueError("Agentic retrieval requires agentic_llm_model")
+        cmd += [
+            "--agentic",
+            "--agentic-llm-model",
+            cfg.agentic_llm_model,
+            "--agentic-backend-top-k",
+            str(cfg.agentic_backend_top_k),
+            "--agentic-react-max-steps",
+            str(cfg.agentic_react_max_steps),
+            "--agentic-text-truncation",
+            str(cfg.agentic_text_truncation),
+            "--agentic-num-concurrent",
+            str(cfg.agentic_num_concurrent),
+            "--agentic-temperature",
+            str(cfg.agentic_temperature),
+        ]
+        if cfg.agentic_invoke_url:
+            cmd += ["--agentic-invoke-url", cfg.agentic_invoke_url]
+        if cfg.agentic_reasoning_effort is not None:
+            cmd += ["--agentic-reasoning-effort", cfg.agentic_reasoning_effort]
+
     if cfg.page_elements_invoke_url:
         cmd += ["--page-elements-invoke-url", cfg.page_elements_invoke_url]
     if cfg.ocr_invoke_url:
@@ -748,7 +771,16 @@ def _run_single(
             "audio_split_type": cfg.audio_split_type,
             "audio_split_interval": cfg.audio_split_interval,
             "evaluation_mode": cfg.evaluation_mode,
+            "agentic": cfg.agentic,
             "beir_loader": cfg.beir_loader,
+            "agentic_llm_model": cfg.agentic_llm_model,
+            "agentic_invoke_url": cfg.agentic_invoke_url,
+            "agentic_reasoning_effort": cfg.agentic_reasoning_effort,
+            "agentic_backend_top_k": cfg.agentic_backend_top_k,
+            "agentic_react_max_steps": cfg.agentic_react_max_steps,
+            "agentic_text_truncation": cfg.agentic_text_truncation,
+            "agentic_num_concurrent": cfg.agentic_num_concurrent,
+            "agentic_temperature": cfg.agentic_temperature,
             "beir_dataset_name": cfg.beir_dataset_name,
             "beir_split": cfg.beir_split,
             "beir_query_language": cfg.beir_query_language,

@@ -437,6 +437,47 @@ def test_graph_pipeline_cli_rejects_invalid_recall_mode(tmp_path) -> None:
     assert "Unsupported --evaluation-mode: 'recall'" in str(result.exception)
 
 
+def test_graph_pipeline_cli_requires_agentic_llm_model(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--evaluation-mode",
+            "beir",
+            "--agentic",
+            "--beir-loader",
+            "vidore_hf",
+            "--beir-dataset-name",
+            "vidore_v3_finance_en",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--agentic requires --agentic-llm-model" in result.output
+
+
+def test_graph_pipeline_cli_agentic_requires_supported_evaluation_mode(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--agentic",
+            "--agentic-llm-model",
+            "test-model",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "--agentic is supported only" in result.output
+
+
 def test_graph_pipeline_cli_rejects_audio_recall_for_pdf_inputs(tmp_path) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
@@ -501,6 +542,76 @@ def test_graph_pipeline_cli_routes_beir_mode_to_evaluator(tmp_path, monkeypatch)
     assert tuple(captured["cfg"].ks) == (5, 10)
 
 
+def test_pipeline_agentic_beir_wires_config_options(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_run_agentic_beir_evaluation(**kwargs):
+        captured.update(kwargs)
+        return (
+            pd.DataFrame({"query_id": ["q1"]}),
+            pd.DataFrame({"query_id": ["q1"], "doc_id": ["doc"], "rank": [1]}),
+            {"q1": {"doc": 1}},
+            {"q1": {"doc": 10.0}},
+            {"recall@1": 1.0},
+        )
+
+    import nemo_retriever.query.agentic as agentic_module
+
+    monkeypatch.setattr(model_module, "resolve_embed_model", lambda _name: "resolved-embed")
+    monkeypatch.setattr(agentic_module, "run_agentic_beir_evaluation", fake_run_agentic_beir_evaluation)
+
+    label, _elapsed, metrics, query_count, ran = pipeline_main._run_agentic_evaluation(
+        evaluation_mode="beir",
+        vdb_op="lancedb",
+        vdb_kwargs={"uri": "db", "table_name": "tbl"},
+        embed_model_name="embed",
+        embed_invoke_url="http://embed/v1",
+        embed_remote_api_key="embed-key",
+        embed_modality="text",
+        query_csv=None,
+        audio_match_tolerance_secs=2.0,
+        reranker=False,
+        reranker_model_name="reranker",
+        reranker_invoke_url=None,
+        reranker_api_key="",
+        local_reranker_backend="vllm",
+        local_hf_batch_size=4,
+        local_query_embed_backend="hf",
+        agentic_llm_model="llm",
+        agentic_invoke_url="http://llm/v1/chat/completions",
+        agentic_api_key="llm-key",
+        agentic_react_max_steps=51,
+        agentic_backend_top_k=23,
+        agentic_text_truncation=99,
+        agentic_reasoning_effort="high",
+        agentic_num_concurrent=7,
+        agentic_temperature=0.6,
+        beir_loader="vidore_hf",
+        beir_dataset_name="vidore_v3_finance_en",
+        beir_split="test",
+        beir_query_language=None,
+        beir_doc_id_field="pdf_basename",
+        beir_k=[1, 5],
+    )
+
+    cfg = captured["cfg"]
+    assert label == "Agentic BEIR"
+    assert metrics["recall@1"] == 1.0
+    assert query_count == 1
+    assert ran is True
+    assert captured["loader"] == "vidore_hf"
+    assert captured["dataset_name"] == "vidore_v3_finance_en"
+    assert captured["doc_id_field"] == "pdf_basename"
+    assert captured["ks"] == (1, 5)
+    assert cfg.query_embedder == "resolved-embed"
+    assert cfg.react_max_steps == 51
+    assert cfg.backend_top_k == 23
+    assert cfg.text_truncation == 99
+    assert cfg.reasoning_effort == "high"
+    assert cfg.num_concurrent == 7
+    assert cfg.temperature == 0.6
+
+
 def test_graph_pipeline_cli_accepts_harness_runtime_metric_flags(tmp_path, monkeypatch) -> None:
     dataset_dir = tmp_path / "dataset"
     dataset_dir.mkdir()
@@ -551,6 +662,29 @@ def test_graph_pipeline_cli_accepts_harness_runtime_metric_flags(tmp_path, monke
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["recall_details"] is False
     assert payload["evaluation_mode"] == "beir"
+
+
+def test_graph_pipeline_cli_service_mode_rejects_agentic_flag(tmp_path) -> None:
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "sample.pdf").write_text("placeholder", encoding="utf-8")
+
+    result = RUNNER.invoke(
+        batch_pipeline.app,
+        [
+            str(dataset_dir),
+            "--run-mode",
+            "service",
+            "--agentic",
+            "--agentic-llm-model",
+            "test-model",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--run-mode=service" in result.output
+    assert "--agentic" in result.output
+    assert "--agentic-llm-model" in result.output
 
 
 def test_graph_pipeline_cli_service_mode_rejects_ingest_flag(tmp_path) -> None:

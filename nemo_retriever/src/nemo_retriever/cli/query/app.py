@@ -16,6 +16,10 @@ from nemo_retriever.cli.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
 from nemo_retriever.cli.query_workflow import query_documents_with_metadata as query_local_documents_with_metadata
+from nemo_retriever.query.agentic_options import (
+    agentic_backend_top_k_error,
+    agentic_temperature_error,
+)
 from nemo_retriever.cli.shared import (
     ROOT_CLI_ERRORS,
     quiet_capture,
@@ -195,6 +199,16 @@ def _local_command(
     if agentic and not agentic_llm_model:
         typer.echo("Error: --agentic requires --agentic-llm-model.", err=True)
         raise typer.Exit(1)
+
+    if agentic:
+        backend_error = agentic_backend_top_k_error(agentic_backend_top_k, target_top_k=top_k)
+        if backend_error:
+            typer.echo(f"Error: {backend_error}", err=True)
+            raise typer.Exit(1)
+        temperature_error = agentic_temperature_error(agentic_temperature, invoke_url=agentic_invoke_url)
+        if temperature_error:
+            typer.echo(f"Error: {temperature_error}", err=True)
+            raise typer.Exit(1)
 
     try:
         reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None

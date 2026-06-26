@@ -11,6 +11,13 @@ from typing import Any
 
 import yaml
 
+from nemo_retriever.query.agentic_options import (
+    agentic_backend_top_k_error,
+    agentic_int_min_error,
+    agentic_target_top_k,
+    agentic_temperature_error,
+)
+
 NEMO_RETRIEVER_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = NEMO_RETRIEVER_ROOT.parent
 DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
@@ -86,6 +93,15 @@ class HarnessConfig:
     audio_split_type: str = "size"
     audio_split_interval: int = 500000
     evaluation_mode: str = "none"
+    agentic: bool = False
+    agentic_llm_model: str | None = None
+    agentic_invoke_url: str | None = None
+    agentic_reasoning_effort: str | None = None
+    agentic_backend_top_k: int = 20
+    agentic_react_max_steps: int = 50
+    agentic_text_truncation: int = 0
+    agentic_num_concurrent: int = 1
+    agentic_temperature: float = 0.0
     beir_loader: str | None = None
     video_extract_audio: bool = True
     video_extract_frames: bool = True
@@ -172,6 +188,43 @@ class HarnessConfig:
         if self.run_mode not in VALID_RUN_MODES:
             errors.append(f"run_mode must be one of {sorted(VALID_RUN_MODES)}")
 
+        if self.evaluation_mode not in VALID_EVALUATION_MODES:
+            errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
+
+        if self.agentic:
+            if self.run_mode == "service":
+                errors.append("agentic=true is not supported by harness service mode")
+            if self.evaluation_mode not in {"audio_recall", "beir"}:
+                errors.append("agentic=true requires evaluation_mode audio_recall or beir")
+            if not str(self.agentic_llm_model or "").strip():
+                errors.append("agentic_llm_model is required when agentic=true")
+            for field_name, value, min_value in (
+                ("agentic_react_max_steps", self.agentic_react_max_steps, 1),
+                ("agentic_text_truncation", self.agentic_text_truncation, 0),
+                ("agentic_num_concurrent", self.agentic_num_concurrent, 1),
+            ):
+                integer_error = agentic_int_min_error(value, field_name=field_name, min_value=min_value)
+                if integer_error:
+                    errors.append(integer_error)
+            if self.evaluation_mode in {"audio_recall", "beir"}:
+                try:
+                    target_top_k = agentic_target_top_k(self.evaluation_mode, list(self.beir_ks))
+                except (TypeError, ValueError) as exc:
+                    errors.append(str(exc))
+                else:
+                    backend_error = agentic_backend_top_k_error(
+                        self.agentic_backend_top_k,
+                        target_top_k=target_top_k,
+                    )
+                    if backend_error:
+                        errors.append(backend_error)
+            temperature_error = agentic_temperature_error(
+                self.agentic_temperature,
+                invoke_url=self.agentic_invoke_url,
+            )
+            if temperature_error:
+                errors.append(temperature_error)
+
         if self.run_mode == "service":
             if not self.manage_service and not self.service_url:
                 errors.append("service_url is required when run_mode='service' and manage_service=false")
@@ -189,9 +242,6 @@ class HarnessConfig:
                 if not isinstance(self.helm_set, dict):
                     errors.append("helm_set must be a mapping/dict")
             return errors
-
-        if self.evaluation_mode not in VALID_EVALUATION_MODES:
-            errors.append(f"evaluation_mode must be one of {sorted(VALID_EVALUATION_MODES)}")
 
         if self.evaluation_mode == "audio_recall" and self.recall_required and not self.query_csv:
             errors.append("recall_required=true requires query_csv")
@@ -414,6 +464,15 @@ def _apply_env_overrides(config_dict: dict[str, Any]) -> None:
         ),
         "HARNESS_VIDEO_AV_FUSE": ("video_av_fuse", _parse_bool),
         "HARNESS_EVALUATION_MODE": ("evaluation_mode", str),
+        "HARNESS_AGENTIC": ("agentic", _parse_bool),
+        "HARNESS_AGENTIC_LLM_MODEL": ("agentic_llm_model", str),
+        "HARNESS_AGENTIC_INVOKE_URL": ("agentic_invoke_url", str),
+        "HARNESS_AGENTIC_REASONING_EFFORT": ("agentic_reasoning_effort", str),
+        "HARNESS_AGENTIC_BACKEND_TOP_K": ("agentic_backend_top_k", _parse_number),
+        "HARNESS_AGENTIC_REACT_MAX_STEPS": ("agentic_react_max_steps", _parse_number),
+        "HARNESS_AGENTIC_TEXT_TRUNCATION": ("agentic_text_truncation", _parse_number),
+        "HARNESS_AGENTIC_NUM_CONCURRENT": ("agentic_num_concurrent", _parse_number),
+        "HARNESS_AGENTIC_TEMPERATURE": ("agentic_temperature", _parse_number),
         "HARNESS_BEIR_LOADER": ("beir_loader", str),
         "HARNESS_BEIR_DATASET_NAME": ("beir_dataset_name", str),
         "HARNESS_BEIR_SPLIT": ("beir_split", str),
