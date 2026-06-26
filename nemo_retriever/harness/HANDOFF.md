@@ -50,9 +50,11 @@ support files are preserved for follow-on owner work.
 
 For review, start with `README.md`, then inspect the core implementation in
 `benchmark_registry.py`, `resolution.py`, `execution.py`, `beir_runner.py`,
-`metrics.py`, and `artifact_writer.py`. The intentional deletion set is the old
-subprocess-oriented runner/sweep/nightly/reporting/stdout-parser machinery, not
-the portal or Helm ownership surfaces.
+`metrics.py`, `artifact_writer.py`, and `json_io.py`. `json_io.py` is the shared
+artifact JSON read/write seam used to avoid duplicate JSON helper behavior. The
+intentional deletion set is the old subprocess-oriented
+runner/sweep/nightly/reporting/stdout-parser machinery, not the portal or Helm
+ownership surfaces.
 
 Useful negative-path checks:
 

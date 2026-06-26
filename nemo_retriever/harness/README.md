@@ -91,6 +91,8 @@ Review the PR in this order:
    `summary_metrics.json` construction.
 6. Read `artifact_writer.py` for artifact names, status updates, and `run.log`
    capture.
+7. Read `json_io.py` for shared artifact JSON read/write helpers used by the
+   harness, diff, runset, Slack, and artifact-writing paths.
 
 Intentional removals:
 
@@ -122,7 +124,9 @@ orchestrators. They describe one concrete run request:
 Runfiles cannot define new datasets or benchmarks. Add recurring benchmark
 definitions to the Python registry instead.
 
-The harness accepts JSON, YAML, or YML runfiles. The checked-in JP20 example is
+The harness accepts JSON, YAML, or YML runfiles. Runfiles use
+`schema_version: 1`; unknown top-level runfile keys fail during resolution with
+exit code `2`. The checked-in JP20 example is
 [`runfiles/jp20_beir.json`](runfiles/jp20_beir.json).
 
 ## Controls And Overrides
