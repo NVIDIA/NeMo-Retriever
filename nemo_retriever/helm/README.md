@@ -200,7 +200,7 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcApiSecret.password=$NGC_API_KEY
 ```
 
-### Recommended minimal install { #recommended-minimal-install-2605 }
+### Recommended minimal install (26.05) { #recommended-minimal-install-2605 }
 
 Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`):
 

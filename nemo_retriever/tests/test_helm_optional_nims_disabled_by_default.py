@@ -357,12 +357,12 @@ class OptionalNimsDefaultDisabledTests(TestCase):
         # Find the heredoc-style minimal install command. The recipe
         # ends with `audio.enabled=false`; the block above that is what
         # we inspect.
-        marker = "### Recommended minimal install"
+        marker = "Recommended minimal install (26.05)"
         idx = readme.find(marker)
         self.assertNotEqual(
             idx,
             -1,
-            "README must keep a `Recommended minimal install` "
+            "README must keep a `Recommended minimal install (26.05)` "
             "section even after the defaults flip — it documents the "
             "two flags that are still needed (`rerankqa` + `audio`).",
         )
