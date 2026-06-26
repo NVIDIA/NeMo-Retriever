@@ -93,18 +93,18 @@ Default VL embedder container and model for release deployments:
 
 ### Optional Helm NIMs (not auto-wired) { #optional-helm-nims-not-auto-wired-by-default }
 
-These NIM microservices are **optional** for the default extraction pipeline. The retriever service does **not** call them until you enable the matching pipeline stage (reranker, Nemotron Parse, caption, or audio). For **26.05 production**, disable keys you do not need (refer to [Recommended minimal install (26.05)](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#recommended-minimal-install-2605)). Set `nimOperator.<key>.enabled=true` when you want that NIM reconciled. Chart keys are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/26.05/nemo_retriever/helm/README.md#nim-operator-sub-stack).
+These NIM microservices are **optional** for the default extraction pipeline. The retriever service does **not** call them until you enable the matching pipeline stage (reranker, Nemotron Parse, caption, or audio). In production, disable keys you do not need (refer to [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#recommended-minimal-install-2605)). Set `nimOperator.<key>.enabled=true` when you want that NIM reconciled. Chart keys are in the [NeMo Retriever Helm chart README](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#nim-operator-sub-stack).
 
 | Helm flag | NIM | Role |
 |-----------|-----|------|
 | `rerankqa` | [llama-nemotron-rerank-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2) | Reranking for improved retrieval accuracy |
 | `nemotron_parse` | [nemotron-parse](https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2) | Optional PDF `extract_method="nemotron_parse"` (default PDF extraction uses **pdfium**) |
-| `nemotron_3_nano_omni_30b_a3b_reasoning` | [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) | Supported image captioning for 26.05 when you enable the caption stage |
+| `nemotron_3_nano_omni_30b_a3b_reasoning` | [nemotron-3-nano-omni-30b-a3b-reasoning](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) | Supported image captioning when you enable the caption stage |
 | `audio` | [parakeet-1-1b-ctc-en-us](https://huggingface.co/nvidia/parakeet-ctc-1.1b) | [Audio and video](audio-video.md) transcription |
 
-### Image captioning (26.05) { #image-captioning-2605 }
+### Image captioning { #image-captioning }
 
-For 26.05, use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above.
+Use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above.
 
 Optional features listed in the table above require additional GPU support, disk space, and feature-specific system dependencies beyond the four default NIMs.
 
