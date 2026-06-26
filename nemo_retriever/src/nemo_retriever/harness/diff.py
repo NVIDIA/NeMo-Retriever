@@ -4,63 +4,27 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from nemo_retriever.harness.contracts import EXIT_INVALID, FailurePayload, HarnessRunError
-
-
-def _artifact_file(path_or_dir: Path, name: str) -> Path:
-    path = path_or_dir.expanduser()
-    if not path.is_absolute():
-        path = (Path.cwd() / path).resolve()
-    else:
-        path = path.resolve()
-    if path.is_dir():
-        path = path / name
-    if not path.exists():
-        raise HarnessRunError(
-            EXIT_INVALID,
-            FailurePayload(
-                failed_phase="resolve",
-                failure_reason="invalid_benchmark",
-                retryable=False,
-                message=f"Artifact file not found: {path}",
-            ),
-        )
-    return path
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise HarnessRunError(
-            EXIT_INVALID,
-            FailurePayload(
-                failed_phase="resolve",
-                failure_reason="invalid_benchmark",
-                retryable=False,
-                message=f"Invalid JSON in {path}: {exc}",
-            ),
-        ) from exc
-    if not isinstance(data, dict):
-        raise HarnessRunError(
-            EXIT_INVALID,
-            FailurePayload(
-                failed_phase="resolve",
-                failure_reason="invalid_benchmark",
-                retryable=False,
-                message=f"Expected JSON object in {path}",
-            ),
-        )
-    return data
+from nemo_retriever.harness.json_io import artifact_file, read_json_object
 
 
 def _read_summary(path_or_dir: Path) -> tuple[Path, dict[str, Any]]:
-    summary_path = _artifact_file(path_or_dir, "summary_metrics.json")
-    return summary_path, _read_json(summary_path)
+    try:
+        summary_path = artifact_file(path_or_dir, "summary_metrics.json")
+        return summary_path, read_json_object(summary_path)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HarnessRunError(
+            EXIT_INVALID,
+            FailurePayload(
+                failed_phase="resolve",
+                failure_reason="invalid_benchmark",
+                retryable=False,
+                message=str(exc),
+            ),
+        ) from exc
 
 
 def _numeric(value: Any) -> float | None:

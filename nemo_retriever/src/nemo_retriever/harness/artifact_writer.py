@@ -15,19 +15,11 @@ import tempfile
 from typing import Any, Mapping
 
 from nemo_retriever.harness.contracts import FailurePayload, PHASE_VALUES, STATUS_VALUES
+from nemo_retriever.harness.json_io import jsonable, write_json
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-def jsonable(value: Any) -> Any:
-    return json.loads(json.dumps(value, default=str))
-
-
-def write_json(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(jsonable(payload), indent=2, sort_keys=False) + "\n", encoding="utf-8")
 
 
 def append_jsonl(path: Path, payload: Mapping[str, Any]) -> None:
