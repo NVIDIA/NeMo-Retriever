@@ -32,6 +32,8 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from nemo_retriever.query.filters import build_query_where_clause
+from nemo_retriever.query.options import QueryFilterOptions
 from nemo_retriever.service.query_schema import QueryRequest, QueryResponse, QueryResult
 
 logger = logging.getLogger(__name__)
@@ -129,7 +131,12 @@ class VectorDBState:
         except Exception:
             return 0
 
-    def search(self, vectors: list[list[float]], top_k: int) -> list[list[dict[str, Any]]]:
+    def search(
+        self,
+        vectors: list[list[float]],
+        top_k: int,
+        where: str | None = None,
+    ) -> list[list[dict[str, Any]]]:
         """Search the LanceDB table with precomputed query vectors."""
         if not self._table_exists:
             return [[] for _ in vectors]
@@ -137,9 +144,13 @@ class VectorDBState:
         from nemo_retriever.common.vdb.records import normalize_retrieval_results
 
         table = self._db.open_table(self.table_name)
+        where_clause = str(where).strip() if where is not None else None
         raw_results = []
         for vector in vectors:
-            results = table.search(vector).limit(top_k).to_list()
+            query = table.search(vector)
+            if where_clause:
+                query = query.where(where_clause)
+            results = query.limit(top_k).to_list()
             raw_results.append(results)
 
         return normalize_retrieval_results(raw_results)
@@ -260,7 +271,15 @@ def create_vectordb_app(
 
         async with _query_semaphore:
             vectors = await asyncio.to_thread(_state.embed_queries, queries)
-            hits_per_query = await asyncio.to_thread(_state.search, vectors, req.top_k)
+            where_clause = build_query_where_clause(
+                QueryFilterOptions(
+                    source_id=req.source_id,
+                    source=req.source,
+                    page_number=req.page_number,
+                    where=req.where,
+                )
+            )
+            hits_per_query = await asyncio.to_thread(_state.search, vectors, req.top_k, where_clause)
 
         results = [QueryResult(hits=hits) for hits in hits_per_query]
         return QueryResponse(results=results)
