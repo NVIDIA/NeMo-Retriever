@@ -354,7 +354,9 @@ retriever query "What is RAG?" \
   --agentic-backend-top-k 1
 ```
 
-The same flow is available from Python:
+The same flow is available from Python. It uses the same `NVIDIA_API_KEY`
+environment variable shown above for hosted embedding and chat-completions
+requests.
 
 ```python
 from nemo_retriever.cli.query_workflow import agentic_query_documents
@@ -366,6 +368,7 @@ from nemo_retriever.query.options import (
     QueryStorageOptions,
 )
 
+# Requires NVIDIA_API_KEY=nvapi-... in the environment.
 results = agentic_query_documents(
     QueryRequest(
         query="What is RAG?",
