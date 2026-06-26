@@ -317,7 +317,8 @@ flows above, then query the same `lancedb_uri`, `table_name`, and embedding
 model.
 
 For [build.nvidia.com](https://build.nvidia.com/) hosted inference, set
-`NVIDIA_API_KEY`. The hosted API uses `integrate.api.nvidia.com` endpoints:
+`NVIDIA_API_KEY`. On CPU-only machines, the CPU embedding actor and agent LLM
+use the hosted NVIDIA endpoints by default:
 
 ```bash
 export NVIDIA_API_KEY=nvapi-...
@@ -325,19 +326,17 @@ export NVIDIA_API_KEY=nvapi-...
 retriever query "Given their activities, which animal is responsible for the typos in my documents?" \
   --agentic \
   --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
-  --agentic-invoke-url https://integrate.api.nvidia.com/v1/chat/completions \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
-  --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-The `--agentic-invoke-url` option may be omitted to use the built-in NVIDIA
-hosted chat-completions endpoint. Keep `--embed-invoke-url` explicit when you
-want hosted embedding behavior on any machine. On CPU-only machines, embedding
-actors resolve to CPU/remote implementations and default to hosted endpoints;
-on GPU-capable machines, embedding prefers the local GPU implementation unless
-an endpoint URL is provided.
+The agentic LLM uses the built-in NVIDIA hosted chat-completions endpoint when
+`--agentic-invoke-url` is omitted. On CPU-only machines, embedding actors also
+resolve to CPU/remote implementations and default to hosted endpoints. On
+GPU-capable machines, embedding prefers the local GPU implementation unless an
+endpoint URL, such as `--embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings`,
+is provided.
 
 For a quick smoke test, lower the amount of agent work:
 
@@ -347,7 +346,6 @@ retriever query "What is RAG?" \
   --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
   --lancedb-uri lancedb \
   --table-name nemo-retriever \
-  --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
   --top-k 1 \
   --agentic-react-max-steps 1 \
@@ -378,13 +376,11 @@ results = agentic_query_documents(
             table_name="nemo-retriever",
         ),
         embed=QueryEmbedOptions(
-            embed_invoke_url="https://integrate.api.nvidia.com/v1/embeddings",
             embed_model_name="nvidia/llama-nemotron-embed-1b-v2",
         ),
         agentic=QueryAgenticOptions(
             enabled=True,
             llm_model="nvidia/llama-3.3-nemotron-super-49b-v1.5",
-            invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
         ),
     )
 )
