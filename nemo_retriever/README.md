@@ -309,6 +309,84 @@ Answer:
 Cat is the animal whose activity (jumping onto a laptop) matches the location of the typos, so the cat is responsible for the typos in the documents.
 ```
 
+### Run agentic retrieval
+
+Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
+It does not ingest documents; first build the index with one of the ingestion
+flows above, then query the same `lancedb_uri`, `table_name`, and embedding
+model.
+
+For [build.nvidia.com](https://build.nvidia.com/) hosted inference, set
+`NVIDIA_API_KEY`. The hosted API uses `integrate.api.nvidia.com` endpoints:
+
+```bash
+export NVIDIA_API_KEY=nvapi-...
+
+retriever query "Given their activities, which animal is responsible for the typos in my documents?" \
+  --agentic \
+  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --agentic-invoke-url https://integrate.api.nvidia.com/v1/chat/completions \
+  --lancedb-uri lancedb \
+  --table-name nemo-retriever \
+  --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
+  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+```
+
+The `--agentic-invoke-url` option may be omitted to use the built-in NVIDIA
+hosted chat-completions endpoint. Keep `--embed-invoke-url` explicit when you
+want hosted embedding behavior on any machine. On CPU-only machines, embedding
+actors resolve to CPU/remote implementations and default to hosted endpoints;
+on GPU-capable machines, embedding prefers the local GPU implementation unless
+an endpoint URL is provided.
+
+For a quick smoke test, lower the amount of agent work:
+
+```bash
+retriever query "What is RAG?" \
+  --agentic \
+  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --lancedb-uri lancedb \
+  --table-name nemo-retriever \
+  --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
+  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
+  --top-k 1 \
+  --agentic-react-max-steps 1 \
+  --agentic-backend-top-k 1
+```
+
+The same flow is available from Python:
+
+```python
+from nemo_retriever.cli.query_workflow import agentic_query_documents
+from nemo_retriever.query.options import (
+    QueryAgenticOptions,
+    QueryEmbedOptions,
+    QueryRequest,
+    QueryRetrievalOptions,
+    QueryStorageOptions,
+)
+
+results = agentic_query_documents(
+    QueryRequest(
+        query="What is RAG?",
+        retrieval=QueryRetrievalOptions(top_k=10),
+        storage=QueryStorageOptions(
+            lancedb_uri="lancedb",
+            table_name="nemo-retriever",
+        ),
+        embed=QueryEmbedOptions(
+            embed_invoke_url="https://integrate.api.nvidia.com/v1/embeddings",
+            embed_model_name="nvidia/llama-nemotron-embed-1b-v2",
+        ),
+        agentic=QueryAgenticOptions(
+            enabled=True,
+            llm_model="nvidia/llama-3.3-nemotron-super-49b-v1.5",
+            invoke_url="https://integrate.api.nvidia.com/v1/chat/completions",
+        ),
+    )
+)
+```
+
 ### Live RAG SDK (retrieve + answer in one call)
 
 The pattern above -- retrieve hits, build a prompt, call an LLM -- is baked into the SDK as `Retriever.answer()` so live applications can skip the boilerplate. The same `Retriever` instance powers three entry points:
