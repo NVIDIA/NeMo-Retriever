@@ -13,6 +13,20 @@ import yaml
 
 from nemo_retriever.harness.contracts import EXIT_INVALID, FailurePayload, HarnessRunError
 
+_ALLOWED_RUNFILE_KEYS = {
+    "schema_version",
+    "benchmark",
+    "base",
+    "name",
+    "mode",
+    "output_dir",
+    "run_id",
+    "set",
+    "require",
+    "requirements",
+    "dry_run",
+}
+
 
 @dataclass(frozen=True)
 class RunFileRequest:
@@ -116,6 +130,12 @@ def _optional_string(payload: Mapping[str, Any], key: str) -> str | None:
 def load_runfile(path: Path) -> RunFileRequest:
     source_path = path.expanduser().resolve()
     payload = _load_payload(source_path)
+    unknown_keys = sorted(set(payload) - _ALLOWED_RUNFILE_KEYS)
+    if unknown_keys:
+        raise _invalid(f"Runfile contains unknown key '{unknown_keys[0]}'.")
+    schema_version = payload.get("schema_version")
+    if schema_version is not None and schema_version != 1:
+        raise _invalid("Runfile 'schema_version' must be 1.")
     benchmark = payload.get("benchmark", payload.get("base"))
     if not isinstance(benchmark, str) or not benchmark:
         raise _invalid("Runfile must set 'benchmark' to a registered benchmark name.")

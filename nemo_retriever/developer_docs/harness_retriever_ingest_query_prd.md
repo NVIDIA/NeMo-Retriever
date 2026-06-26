@@ -258,16 +258,13 @@ Rules:
 
 ### Ablations
 
-Prefer explicit runsets in code for recurring ablations:
+Prefer explicit runsets in code for recurring ablations. Phase one runsets are
+intentionally literal lists of named benchmarks; they do not expand matrices yet.
 
 ```python
 RunSet(
     name="jp20_profile_x_rerank",
-    base="jp20_beir",
-    matrix={
-        "ingest.profile": ["auto", "fast-text"],
-        "query.rerank": [False, True],
-    },
+    runs=("jp20_beir", "jp20_beir_rerank"),
 )
 ```
 

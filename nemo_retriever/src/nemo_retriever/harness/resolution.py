@@ -58,6 +58,18 @@ def _field_names(cls: type[Any]) -> set[str]:
     return {field.name for field in fields(cls)}
 
 
+def _invalid_config(context: str, message: str) -> None:
+    raise HarnessRunError(
+        EXIT_INVALID,
+        FailurePayload(
+            failed_phase="resolve",
+            failure_reason="invalid_benchmark_config",
+            retryable=False,
+            message=f"{context}: {message}",
+        ),
+    )
+
+
 def _field_paths(prefix: str, cls: type[Any], *, exclude: set[str] | None = None) -> set[str]:
     excluded = exclude or set()
     return {f"{prefix}.{field.name}" for field in fields(cls) if field.name not in excluded}
@@ -170,6 +182,23 @@ def _deep_set(payload: dict[str, Any], dotted_key: str, value: Any) -> None:
             cursor[part] = nested
         cursor = nested
     cursor[parts[-1]] = value
+
+
+def _mapping_payload(context: str, data: Mapping[str, Any] | None) -> dict[str, Any]:
+    if data is None:
+        return {}
+    if not isinstance(data, Mapping):
+        _invalid_config(context, "expected an object")
+    return dict(data)
+
+
+def _validate_keys(context: str, data: Mapping[str, Any], allowed: set[str]) -> None:
+    unknown = sorted(set(data) - allowed)
+    if not unknown:
+        return
+    suggestion = get_close_matches(unknown[0], sorted(allowed), n=1)
+    suffix = f" Did you mean {suggestion[0]!r}?" if suggestion else ""
+    _invalid_config(context, f"unknown key {unknown[0]!r}.{suffix}")
 
 
 def _resolve_repo_path(value: str | None) -> Path | None:
@@ -286,14 +315,35 @@ def validate_dataset_inputs(resolved: dict[str, Any], *, dry_run: bool) -> tuple
     return dataset_path, query_path
 
 
-def _dataclass_kwargs(cls: type[Any], data: Mapping[str, Any]) -> dict[str, Any]:
+def _dataclass_kwargs(context: str, cls: type[Any], data: Mapping[str, Any] | None) -> dict[str, Any]:
     allowed = _field_names(cls)
-    return {key: value for key, value in dict(data or {}).items() if key in allowed}
+    payload = _mapping_payload(context, data)
+    _validate_keys(context, payload, allowed)
+    return payload
 
 
 def build_ingest_request(resolved: dict[str, Any], dataset_path: Path, artifact_dir: Path) -> IngestPlanRequest:
-    ingest = deepcopy(resolved["ingest"])
-    storage_data = dict(ingest.get("storage") or {})
+    ingest = _mapping_payload("ingest", deepcopy(resolved["ingest"]))
+    _validate_keys(
+        "ingest",
+        ingest,
+        {
+            "profile",
+            "input_type",
+            "run_mode",
+            "ray_address",
+            "ray_log_to_driver",
+            "extract",
+            "media",
+            "caption",
+            "dedup",
+            "chunk",
+            "embed",
+            "image_store",
+            "storage",
+        },
+    )
+    storage_data = _mapping_payload("ingest.storage", ingest.get("storage"))
     if not storage_data.get("lancedb_uri") or storage_data.get("lancedb_uri") == "lancedb":
         storage_data["lancedb_uri"] = str((artifact_dir / "lancedb").resolve())
     if not storage_data.get("table_name"):
@@ -301,12 +351,14 @@ def build_ingest_request(resolved: dict[str, Any], dataset_path: Path, artifact_
     ingest["storage"] = storage_data
     resolved["ingest"] = ingest
 
-    extract_data = dict(ingest.get("extract") or {})
+    extract_data = _mapping_payload("ingest.extract", ingest.get("extract"))
     extract_batch = IngestExtractBatchOptions(
-        **_dataclass_kwargs(IngestExtractBatchOptions, extract_data.pop("batch", {}))
+        **_dataclass_kwargs("ingest.extract.batch", IngestExtractBatchOptions, extract_data.pop("batch", {}))
     )
-    embed_data = dict(ingest.get("embed") or {})
-    embed_batch = IngestEmbedBatchOptions(**_dataclass_kwargs(IngestEmbedBatchOptions, embed_data.pop("batch", {})))
+    embed_data = _mapping_payload("ingest.embed", ingest.get("embed"))
+    embed_batch = IngestEmbedBatchOptions(
+        **_dataclass_kwargs("ingest.embed.batch", IngestEmbedBatchOptions, embed_data.pop("batch", {}))
+    )
     return IngestPlanRequest(
         source=IngestSourceOptions(
             documents=[str(dataset_path)],
@@ -319,24 +371,27 @@ def build_ingest_request(resolved: dict[str, Any], dataset_path: Path, artifact_
             ray_log_to_driver=ingest.get("ray_log_to_driver"),
         ),
         extract=IngestExtractOptions(
-            **_dataclass_kwargs(IngestExtractOptions, extract_data),
+            **_dataclass_kwargs("ingest.extract", IngestExtractOptions, extract_data),
             batch=extract_batch,
         ),
-        media=IngestMediaOptions(**_dataclass_kwargs(IngestMediaOptions, ingest.get("media") or {})),
-        caption=IngestCaptionOptions(**_dataclass_kwargs(IngestCaptionOptions, ingest.get("caption") or {})),
-        dedup=IngestDedupOptions(**_dataclass_kwargs(IngestDedupOptions, ingest.get("dedup") or {})),
-        chunk=IngestChunkOptions(**_dataclass_kwargs(IngestChunkOptions, ingest.get("chunk") or {})),
+        media=IngestMediaOptions(**_dataclass_kwargs("ingest.media", IngestMediaOptions, ingest.get("media"))),
+        caption=IngestCaptionOptions(**_dataclass_kwargs("ingest.caption", IngestCaptionOptions, ingest.get("caption"))),
+        dedup=IngestDedupOptions(**_dataclass_kwargs("ingest.dedup", IngestDedupOptions, ingest.get("dedup"))),
+        chunk=IngestChunkOptions(**_dataclass_kwargs("ingest.chunk", IngestChunkOptions, ingest.get("chunk"))),
         embed=IngestEmbedOptions(
-            **_dataclass_kwargs(IngestEmbedOptions, embed_data),
+            **_dataclass_kwargs("ingest.embed", IngestEmbedOptions, embed_data),
             batch=embed_batch,
         ),
-        image_store=IngestImageStoreOptions(**_dataclass_kwargs(IngestImageStoreOptions, ingest.get("image_store") or {})),
-        storage=IngestStorageOptions(**_dataclass_kwargs(IngestStorageOptions, storage_data)),
+        image_store=IngestImageStoreOptions(
+            **_dataclass_kwargs("ingest.image_store", IngestImageStoreOptions, ingest.get("image_store"))
+        ),
+        storage=IngestStorageOptions(**_dataclass_kwargs("ingest.storage", IngestStorageOptions, storage_data)),
     )
 
 
 def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryRequest:
-    query = dict(resolved.get("query") or {})
+    query = _mapping_payload("query", resolved.get("query"))
+    _validate_keys("query", query, {path.removeprefix("query.") for path in QUERY_OVERRIDE_PATHS})
     ingest_storage = dict((resolved.get("ingest") or {}).get("storage") or {})
     lancedb_uri = query.get("lancedb_uri") or ingest_storage.get("lancedb_uri") or "lancedb"
     table_name = query.get("table_name") or ingest_storage.get("table_name") or "nemo-retriever"
