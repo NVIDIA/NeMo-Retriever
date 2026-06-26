@@ -391,3 +391,46 @@ nemo-retriever.nim.endpointURL
 {{- include "nemo-retriever.nimOperator.url" (dict "context" $ctx "key" .key "serviceName" .serviceName "invokePath" .invokePath) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+nemo-retriever.localEmbed.enabled
+  True when in-pod Hugging Face query embedding is configured for workers
+  or the vectordb pod.
+*/}}
+{{- define "nemo-retriever.localEmbed.enabled" -}}
+{{- and .Values.serviceConfig.localModels.enabled .Values.serviceConfig.localModels.embed.enabled -}}
+{{- end -}}
+
+{{/*
+nemo-retriever.runtime.image
+  Container image for service and vectordb pods. When localModels are
+  enabled, prefers service.gpuImage when repository is set; otherwise
+  falls back to service.image (operators typically tag service-gpu builds
+  distinctly or reuse the same repository with a -gpu tag).
+*/}}
+{{- define "nemo-retriever.runtime.image.repository" -}}
+{{- $svc := .Values.service -}}
+{{- if and (include "nemo-retriever.localEmbed.enabled" . | eq "true") $svc.gpuImage.repository -}}
+{{- $svc.gpuImage.repository -}}
+{{- else -}}
+{{- $svc.image.repository -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "nemo-retriever.runtime.image.tag" -}}
+{{- $svc := .Values.service -}}
+{{- if and (include "nemo-retriever.localEmbed.enabled" . | eq "true") $svc.gpuImage.tag -}}
+{{- $svc.gpuImage.tag -}}
+{{- else -}}
+{{- $svc.image.tag -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "nemo-retriever.runtime.image.pullPolicy" -}}
+{{- $svc := .Values.service -}}
+{{- if and (include "nemo-retriever.localEmbed.enabled" . | eq "true") $svc.gpuImage.pullPolicy -}}
+{{- $svc.gpuImage.pullPolicy -}}
+{{- else -}}
+{{- $svc.image.pullPolicy -}}
+{{- end -}}
+{{- end -}}

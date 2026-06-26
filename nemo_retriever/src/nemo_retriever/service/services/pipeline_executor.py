@@ -30,7 +30,7 @@ from io import BytesIO
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 if TYPE_CHECKING:
-    from nemo_retriever.service.config import NimEndpointsConfig, ServiceConfig
+    from nemo_retriever.service.config import LocalModelsConfig, NimEndpointsConfig, ServiceConfig
     from nemo_retriever.service.services.pipeline_pool import WorkItem
 
 logger = logging.getLogger(__name__)
@@ -372,12 +372,7 @@ def _build_graph_ingestor_from_spec(
     extract_params = ExtractParams(**extract_kwargs)
 
     embed_override = spec.get("embed_params")
-    if base_embed is None and embed_override is None:
-        embed_params = None
-    else:
-        embed_base = base_embed or {}
-        embed_kwargs = _merge_server_owned(embed_base, embed_override, _TRUST_OWNED_EMBED_KEYS)
-        embed_params = EmbedParams(**embed_kwargs) if embed_kwargs.get("embed_invoke_url") else None
+    embed_params = _resolve_embed_params(base_embed, embed_override)
 
     # Caption baseline + per-request overrides. The base dict carries
     # the server-owned endpoint/API key/model name; the override carries
@@ -557,15 +552,52 @@ def _run_pipeline_in_process(
     return row_count, result_data, elapsed
 
 
-def build_extract_params(nim: NimEndpointsConfig) -> Any:
-    """Derive :class:`ExtractParams` from service NIM endpoint config.
+def _local_model_runtime_kwargs(local: "LocalModelsConfig") -> dict[str, Any]:
+    """Shared ``ModelRuntimeParams`` fields for in-pod HF stages."""
+    runtime: dict[str, Any] = {}
+    if local.device:
+        runtime["device"] = local.device
+    if local.hf_cache_dir:
+        runtime["hf_cache_dir"] = local.hf_cache_dir
+    return runtime
+
+
+def _embed_params_enabled(embed_kwargs: dict[str, Any]) -> bool:
+    """Return True when *embed_kwargs* describe a remote or local embed stage."""
+    if not embed_kwargs:
+        return False
+    if embed_kwargs.get("embed_invoke_url") or embed_kwargs.get("embedding_endpoint"):
+        return True
+    return bool(embed_kwargs.get("model_name") or embed_kwargs.get("embed_model_name"))
+
+
+def _resolve_embed_params(
+    base_embed: dict[str, Any] | None,
+    embed_override: dict[str, Any] | None,
+) -> Any | None:
+    """Merge server-owned and per-request embed kwargs into :class:`EmbedParams`."""
+    if base_embed is None and embed_override is None:
+        return None
+    embed_base = base_embed or {}
+    embed_kwargs = _merge_server_owned(embed_base, embed_override, _TRUST_OWNED_EMBED_KEYS)
+    if not _embed_params_enabled(embed_kwargs):
+        return None
+    from nemo_retriever.common.params import EmbedParams
+
+    return EmbedParams(**embed_kwargs)
+
+
+def build_extract_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None) -> Any:
+    """Derive :class:`ExtractParams` from service NIM and local-model config.
 
     The ``ExtractParams`` model validator auto-enables
     ``use_graphic_elements`` / ``use_table_structure`` when the
-    corresponding invoke URLs are provided.
+    corresponding invoke URLs are provided. When ``local_models.enabled``
+    is true, the same flags are set for stages that lack a NIM URL.
     """
     from nemo_retriever.common.params import ExtractParams
 
+    local = local or _default_local_models_config()
     kwargs: dict[str, Any] = {}
     if nim.page_elements_invoke_url:
         kwargs["page_elements_invoke_url"] = nim.page_elements_invoke_url
@@ -578,10 +610,26 @@ def build_extract_params(nim: NimEndpointsConfig) -> Any:
     if nim.api_key:
         kwargs["api_key"] = nim.api_key
 
+    if local.enabled and local.extract.enabled:
+        if local.extract.use_table_structure and not nim.table_structure_invoke_url:
+            kwargs["use_table_structure"] = True
+        if local.extract.use_graphic_elements and not nim.graphic_elements_invoke_url:
+            kwargs["use_graphic_elements"] = True
+        if not nim.ocr_invoke_url:
+            kwargs["ocr_version"] = local.extract.ocr_version
+            if local.extract.ocr_lang is not None:
+                kwargs["ocr_lang"] = local.extract.ocr_lang
+
     return ExtractParams(**kwargs)
 
 
-def build_caption_params(nim: NimEndpointsConfig) -> Any | None:
+def _default_local_models_config() -> "LocalModelsConfig":
+    from nemo_retriever.service.config import LocalModelsConfig
+
+    return LocalModelsConfig()
+
+
+def build_caption_params(nim: "NimEndpointsConfig") -> Any | None:
     """Derive :class:`CaptionParams` from service NIM endpoint config.
 
     Returns ``None`` when no caption endpoint is configured — clients
@@ -601,43 +649,61 @@ def build_caption_params(nim: NimEndpointsConfig) -> Any | None:
     return CaptionParams(**kwargs)
 
 
-def build_asr_params(nim: NimEndpointsConfig) -> Any | None:
-    """Derive :class:`ASRParams` from service NIM endpoint config.
+def build_asr_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None) -> Any | None:
+    """Derive :class:`ASRParams` from service NIM and local-model config.
 
-    Returns ``None`` when no audio gRPC endpoint is configured, signalling
-    that the audio pipeline should attempt local Parakeet (requires torch).
+    Returns ``None`` when neither a Parakeet NIM gRPC endpoint nor local
+    in-pod ASR is configured.
     """
-    if not nim.audio_grpc_endpoint:
-        return None
+    local = local or _default_local_models_config()
+    if nim.audio_grpc_endpoint:
+        from nemo_retriever.common.params import ASRParams
 
-    from nemo_retriever.common.params import ASRParams
+        return ASRParams(
+            audio_endpoints=(nim.audio_grpc_endpoint, None),
+            audio_infer_protocol="grpc",
+            auth_token=nim.api_key,
+        )
+    if local.enabled and local.asr.enabled:
+        from nemo_retriever.common.params import ASRParams
 
-    return ASRParams(
-        audio_endpoints=(nim.audio_grpc_endpoint, None),
-        audio_infer_protocol="grpc",
-        auth_token=nim.api_key,
-    )
+        return ASRParams()
+    return None
 
 
-def build_embed_params(nim: NimEndpointsConfig) -> Any | None:
-    """Derive :class:`EmbedParams` from service NIM endpoint config.
+def build_embed_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None) -> Any | None:
+    """Derive :class:`EmbedParams` from service NIM and local-model config.
 
-    Returns ``None`` when no embedding endpoint is configured, signalling
-    that the embed stage should be skipped.
+    Remote ``embed_invoke_url`` wins when set. Otherwise, when
+    ``local_models.enabled`` and ``local_models.embed.enabled``, returns
+    in-pod embed params (no HTTP endpoint).
     """
-    if not nim.embed_invoke_url:
-        return None
+    local = local or _default_local_models_config()
+    from nemo_retriever.common.params import EmbedParams, ModelRuntimeParams
 
-    from nemo_retriever.common.params import EmbedParams
+    if nim.embed_invoke_url:
+        kwargs: dict[str, Any] = {"embed_invoke_url": nim.embed_invoke_url}
+        if nim.embed_model_name:
+            kwargs["model_name"] = nim.embed_model_name
+            kwargs["embed_model_name"] = nim.embed_model_name
+        if nim.api_key:
+            kwargs["api_key"] = nim.api_key
+        return EmbedParams(**kwargs)
 
-    kwargs: dict[str, Any] = {"embed_invoke_url": nim.embed_invoke_url}
-    if nim.embed_model_name:
-        kwargs["model_name"] = nim.embed_model_name
-        kwargs["embed_model_name"] = nim.embed_model_name
-    if nim.api_key:
-        kwargs["api_key"] = nim.api_key
+    if local.enabled and local.embed.enabled:
+        kwargs = {
+            "model_name": local.embed.model_name,
+            "embed_model_name": local.embed.model_name,
+            "local_ingest_embed_backend": local.embed.local_ingest_embed_backend,
+        }
+        runtime_kwargs = _local_model_runtime_kwargs(local)
+        if local.embed.gpu_memory_utilization != 0.45:
+            runtime_kwargs["gpu_memory_utilization"] = local.embed.gpu_memory_utilization
+        if runtime_kwargs:
+            kwargs["runtime"] = ModelRuntimeParams(**runtime_kwargs)
+        return EmbedParams(**kwargs)
 
-    return EmbedParams(**kwargs)
+    return None
 
 
 def _make_work_fn(
@@ -652,10 +718,10 @@ def _make_work_fn(
     PDFium thread-safety issues (the C library has global mutable state
     that corrupts under concurrent thread access).
     """
-    extract_params = build_extract_params(config.nim_endpoints)
-    embed_params = build_embed_params(config.nim_endpoints)
+    extract_params = build_extract_params(config.nim_endpoints, config.local_models)
+    embed_params = build_embed_params(config.nim_endpoints, config.local_models)
     caption_params = build_caption_params(config.nim_endpoints)
-    asr_params = build_asr_params(config.nim_endpoints)
+    asr_params = build_asr_params(config.nim_endpoints, config.local_models)
 
     vectordb_url: str | None = None
     if config.vectordb.enabled:
@@ -696,13 +762,16 @@ def _make_work_fn(
             "max_tasks_per_child": _MAX_TASKS_PER_CHILD,
         },
         "nim_endpoints": _redact_dict(config.nim_endpoints.model_dump(mode="json")),
+        "local_models": _redact_dict(config.local_models.model_dump(mode="json")),
     }
 
     logger.info(
-        "Pipeline work function created (%s): extract=%s, embed=%s, " "process_pool_workers=%d, max_tasks_per_child=%d",
+        "Pipeline work function created (%s): extract=%s, embed=%s, local_models=%s, "
+        "process_pool_workers=%d, max_tasks_per_child=%d",
         label,
         type(extract_params).__name__,
         type(embed_params).__name__ if embed_params else "disabled",
+        config.local_models.enabled,
         num_workers,
         _MAX_TASKS_PER_CHILD,
     )

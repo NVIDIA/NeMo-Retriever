@@ -39,6 +39,26 @@ def start(
     gpu_devices: Optional[str] = typer.Option(
         None, "--gpu-devices", help="Comma-separated GPU device IDs (overrides YAML)."
     ),
+    local_models: bool = typer.Option(
+        False,
+        "--local-models/--no-local-models",
+        help="Load Hugging Face models in-pod instead of remote NIMs (overrides YAML).",
+    ),
+    local_embed_backend: Optional[str] = typer.Option(
+        None,
+        "--local-embed-backend",
+        help="In-pod embed backend when --local-models is set: hf or vllm (overrides YAML).",
+    ),
+    local_embed_model: Optional[str] = typer.Option(
+        None,
+        "--local-embed-model",
+        help="HF model id for in-pod embedding (overrides YAML).",
+    ),
+    hf_cache_dir: Optional[str] = typer.Option(
+        None,
+        "--hf-cache-dir",
+        help="Hugging Face model cache directory for in-pod models (overrides YAML).",
+    ),
     api_token: Optional[str] = typer.Option(
         None,
         "--api-token",
@@ -69,6 +89,14 @@ def start(
         overrides["llm.api_key"] = llm_api_key
     if gpu_devices is not None:
         overrides["resources.gpu_devices"] = [d.strip() for d in gpu_devices.split(",") if d.strip()]
+    if local_models:
+        overrides["local_models.enabled"] = True
+    if local_embed_backend is not None:
+        overrides["local_models.embed.local_ingest_embed_backend"] = local_embed_backend
+    if local_embed_model is not None:
+        overrides["local_models.embed.model_name"] = local_embed_model
+    if hf_cache_dir is not None:
+        overrides["local_models.hf_cache_dir"] = hf_cache_dir
     if api_token is not None:
         overrides["auth.api_token"] = api_token
 

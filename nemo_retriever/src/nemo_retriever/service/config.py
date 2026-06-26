@@ -33,6 +33,70 @@ class LoggingConfig(RichModel):
     format: str = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
 
+class LocalExtractConfig(RichModel):
+    """In-pod Hugging Face settings for PDF/image extraction stages."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    use_table_structure: bool = True
+    use_graphic_elements: bool = True
+    ocr_version: Literal["v1", "v2"] = "v2"
+    ocr_lang: Literal["multi", "english"] | None = None
+
+
+class LocalEmbedConfig(RichModel):
+    """In-pod Hugging Face settings for the embedding stage."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    model_name: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
+    local_ingest_embed_backend: str = "hf"
+    gpu_memory_utilization: float = 0.45
+
+    @model_validator(mode="after")
+    def _validate_backend(self) -> "LocalEmbedConfig":
+        from nemo_retriever.models import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
+
+        self.local_ingest_embed_backend = normalize_backend(
+            self.local_ingest_embed_backend,
+            _LOCAL_INGEST_EMBED_BACKENDS,
+            field_name="local_ingest_embed_backend",
+            default="hf",
+        )
+        return self
+
+
+class LocalAsrConfig(RichModel):
+    """In-pod Hugging Face Parakeet ASR when no Parakeet NIM gRPC endpoint is set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+
+
+class LocalModelsConfig(RichModel):
+    """Load Nemotron Hugging Face weights inside the service worker pod.
+
+  When ``enabled`` is true, pipeline stages without a matching
+  ``nim_endpoints.*`` URL load models from ``nemo_retriever.models.local``
+  instead of calling remote NIMs. Requires the ``[local]`` (and usually
+  ``[multimedia]``) install extras plus GPU resources.
+
+  NIM URLs always take precedence when both are configured for a stage.
+  """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    hf_cache_dir: str | None = None
+    device: str | None = None
+    extract: LocalExtractConfig = Field(default_factory=LocalExtractConfig)
+    embed: LocalEmbedConfig = Field(default_factory=LocalEmbedConfig)
+    asr: LocalAsrConfig = Field(default_factory=LocalAsrConfig)
+
+
 class NimEndpointsConfig(RichModel):
     """Remote NIM microservice endpoints used instead of local GPU models."""
 
@@ -322,6 +386,7 @@ class ServiceConfig(RichModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     nim_endpoints: NimEndpointsConfig = Field(default_factory=NimEndpointsConfig)
+    local_models: LocalModelsConfig = Field(default_factory=LocalModelsConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     resources: ResourceLimitsConfig = Field(default_factory=ResourceLimitsConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)

@@ -49,6 +49,27 @@ nim_endpoints:
   caption_model_name: null
   api_key: null
 
+# In-pod Hugging Face models (alternative to remote NIMs above).
+# Requires nemo-retriever[local] (+ multimedia for audio) and GPU resources.
+# NIM URLs always win when both are set for the same stage.
+local_models:
+  enabled: false
+  hf_cache_dir: null
+  device: null
+  extract:
+    enabled: true
+    use_table_structure: true
+    use_graphic_elements: true
+    ocr_version: v2
+    ocr_lang: null
+  embed:
+    enabled: true
+    model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+    local_ingest_embed_backend: hf
+    gpu_memory_utilization: 0.45
+  asr:
+    enabled: true
+
 # Remote LLM endpoint used by POST /v1/answer. Helm auto-wires these
 # fields when the Super-49B NIM is enabled.
 llm:
