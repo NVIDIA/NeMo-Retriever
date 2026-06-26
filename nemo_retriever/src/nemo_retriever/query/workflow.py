@@ -8,13 +8,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from nemo_retriever.common.params import build_embed_option_kwargs
-from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
-from nemo_retriever.graph.retriever import Retriever
-from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
+from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
 from nemo_retriever.common.vdb.records import RetrievalHit
+from nemo_retriever.graph.retriever import Retriever
+from nemo_retriever.models import VL_RERANK_MODEL
+from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
 
-_LOCAL_VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+_LOCAL_VL_RERANK_MODEL = VL_RERANK_MODEL
 
 
 @dataclass(frozen=True)
