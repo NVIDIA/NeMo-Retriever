@@ -54,6 +54,7 @@ from nemo_retriever.common.params import (
     EmbedParams,
     ExtractParams,
     HtmlChunkParams,
+    IngestExecuteParams,
     StoreParams,
     TextChunkParams,
     VideoFrameParams,
@@ -336,6 +337,22 @@ def _summarize_error_payload(error: Any) -> str:
         if parts:
             return ": ".join(parts)
     return _sanitize_error_text(error) or type(error).__name__
+
+
+def _format_public_failure_message(record: dict[str, Any]) -> str:
+    return "row {row_index}, column {column}, path {path}: {summary}".format(
+        row_index=record.get("row_index"),
+        column=record.get("column"),
+        path=record.get("path"),
+        summary=_summarize_error_payload(record.get("error")),
+    )
+
+
+def _coerce_source_identifier(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _sanitize_error_text(value: Any, *, limit: int = _ERROR_MESSAGE_LIMIT) -> str | None:
@@ -702,13 +719,33 @@ class GraphIngestor(ingestor):
     def ingest(self, params: Any = None, **kwargs: Any) -> Any:
         """Build the operator graph and run it through the configured executor.
 
+        Parameters
+        ----------
+        params
+            Optional :class:`IngestExecuteParams` (or plain ``dict``) carrying
+            execute-time flags. Graph run modes honor ``return_failures``.
+        **kwargs
+            Execute-time flags passed directly. ``return_failures`` may be
+            passed here and takes precedence over the value in ``params``.
+        return_failures
+            When ``True`` (default ``False``), return ``(result, failures)``
+            instead of raising collected row-level stage errors. If no explicit
+            remote-stage diagnostics are configured, all output columns are
+            scanned for populated error fields so local collected failures can
+            still be returned; the default raise path remains scoped to
+            explicitly configured remote stages.
+
         Returns
         -------
         ``run_mode='batch'``
             A materialized ``ray.data.Dataset``.
         ``run_mode='inprocess'``
             A ``pandas.DataFrame``.
+        ``return_failures=True``
+            ``(result, failures)`` where ``failures`` is a list of
+            service-style ``(source, error)`` tuples.
         """
+        return_failures = self._resolve_return_failures(params, kwargs)
         default_branches = self._plan_default_extraction_branches()
         if default_branches is None:
             single_effective = self._resolve_effective_extraction_inputs()
@@ -739,8 +776,7 @@ class GraphIngestor(ingestor):
                 raise RuntimeError("Internal error: extraction inputs were not resolved.")
             result = self._execute_single_graph(single_effective, post_extract_order=post_extract_order)
 
-        self._raise_for_stage_errors(result)
-        return result
+        return self._finalize_ingest_result(result, return_failures=return_failures)
 
     def _execute_single_graph(
         self,
@@ -1041,6 +1077,66 @@ class GraphIngestor(ingestor):
                 child_path = f"{path}[{i}]" if path else f"[{i}]"
                 yield from cls._iter_stage_errors_from_value(child, path=child_path)
 
+    @staticmethod
+    def _row_value(row: Any, key: str) -> Any:
+        if isinstance(row, dict):
+            return row.get(key)
+        getter = getattr(row, "get", None)
+        if callable(getter):
+            try:
+                return getter(key)
+            except Exception as exc:  # noqa: BLE001 - row metadata lookup is best-effort diagnostic context.
+                logger.debug(
+                    "Failed to read source identifier field %r from row type %s: %s",
+                    key,
+                    type(row).__name__,
+                    exc,
+                    exc_info=True,
+                )
+                return None
+        return None
+
+    @staticmethod
+    def _nested_mapping_value(value: Any, path: tuple[str, ...]) -> Any:
+        current = value
+        for key in path:
+            if not isinstance(current, dict):
+                return None
+            current = current.get(key)
+        return current
+
+    @classmethod
+    def _source_identifier_from_row(cls, row: Any, row_index: Any) -> str:
+        for field in ("document_id", "path", "source_path"):
+            identifier = _coerce_source_identifier(cls._row_value(row, field))
+            if identifier is not None:
+                return identifier
+
+        metadata = cls._row_value(row, "metadata")
+        for nested_path in (
+            ("source_path",),
+            ("source_metadata", "source_id"),
+            ("source_metadata", "source_name"),
+        ):
+            identifier = _coerce_source_identifier(cls._nested_mapping_value(metadata, nested_path))
+            if identifier is not None:
+                return identifier
+
+        for field in ("source_id", "source_name"):
+            identifier = _coerce_source_identifier(cls._row_value(row, field))
+            if identifier is not None:
+                return identifier
+
+        return f"row {row_index}" if row_index is not None else "row ?"
+
+    @staticmethod
+    def _public_failure_tuple(record: dict[str, Any]) -> tuple[str, str]:
+        identifier = _coerce_source_identifier(record.get("source_identifier"))
+        if identifier is None:
+            row_index = record.get("row_index")
+            identifier = f"row {row_index}" if row_index is not None else "row ?"
+        return identifier, _format_public_failure_message(record)
+
     @classmethod
     def _stage_error_records(cls, batch: Any, *, columns: Iterable[str] | None = None) -> list[dict[str, Any]]:
         iter_batches = getattr(batch, "iter_batches", None)
@@ -1064,11 +1160,13 @@ class GraphIngestor(ingestor):
                 else [c for c in requested_columns if c in available_columns]
             )
             for row_index, row in batch_df.iterrows():
+                source_identifier = cls._source_identifier_from_row(row, row_index)
                 for column in target_columns:
                     for record in cls._iter_stage_errors_from_value(row[column]):
                         records.append(
                             {
                                 "row_index": row_index,
+                                "source_identifier": source_identifier,
                                 "column": column,
                                 **record,
                             }
@@ -1185,6 +1283,33 @@ class GraphIngestor(ingestor):
         records = self._stage_error_records(result, columns=set(diagnostics.keys()))
         if records:
             raise GraphIngestionError(records, stage_diagnostics=diagnostics)
+
+    @staticmethod
+    def _resolve_return_failures(params: Any, kwargs: dict[str, Any]) -> bool:
+        if "return_failures" in kwargs:
+            return bool(kwargs["return_failures"])
+        if isinstance(params, IngestExecuteParams):
+            return bool(params.return_failures)
+        if isinstance(params, dict) and "return_failures" in params:
+            return bool(params["return_failures"])
+        return False
+
+    def _collect_failure_records(self, result: Any) -> list[dict[str, Any]]:
+        diagnostics = self._remote_stage_diagnostics()
+        # With explicit remote stages, report only their diagnostic columns.
+        # Without them, scan all columns so ``return_failures=True`` can expose
+        # local collected failures instead of silently returning an empty list.
+        columns = set(diagnostics.keys()) if diagnostics else None
+        return self._stage_error_records(result, columns=columns)
+
+    def _collect_failure_tuples(self, result: Any) -> list[tuple[str, str]]:
+        return [self._public_failure_tuple(record) for record in self._collect_failure_records(result)]
+
+    def _finalize_ingest_result(self, result: Any, *, return_failures: bool) -> Any:
+        if return_failures:
+            return result, self._collect_failure_tuples(result)
+        self._raise_for_stage_errors(result)
+        return result
 
     @staticmethod
     def extract_error_rows(batch: Any) -> Any:
