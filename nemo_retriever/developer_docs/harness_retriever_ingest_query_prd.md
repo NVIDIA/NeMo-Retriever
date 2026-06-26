@@ -167,9 +167,16 @@ Create a canonical registry, for example:
 nemo_retriever/src/nemo_retriever/harness/
   benchmark_specs.py
   benchmark_registry.py
-  runner.py
-  beir_eval.py
-  artifacts.py
+  resolution.py
+  execution.py
+  beir_runner.py
+  metrics.py
+  metric_gates.py
+  artifact_writer.py
+  json_io.py
+  runfile.py
+  runsets.py
+  diff.py
 ```
 
 Core types:
