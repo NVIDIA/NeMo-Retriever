@@ -189,7 +189,7 @@ NIM (the VL reranker `rerankqa`, Nemotron Parse, Omni 30B, and the
 Parakeet `audio` ASR NIM) is **disabled by default** to honor the
 "optional and disabled by default" contract in
 [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md);
-refer to [Recommended minimal install (26.05)](#recommended-minimal-install-2605)
+refer to [Recommended minimal install](#recommended-minimal-install-2605)
 for the opt-in `--set` flags that turn any of them on.
 
 ```bash
@@ -200,7 +200,7 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcApiSecret.password=$NGC_API_KEY
 ```
 
-### Recommended minimal install (26.05) { #recommended-minimal-install-2605 }
+### Recommended minimal install { #recommended-minimal-install-2605 }
 
 Deploy only the four core NIMs that the retriever service auto-wires (`page_elements`, `table_structure`, `ocr`, `vlm_embed`):
 
@@ -212,7 +212,7 @@ helm install retriever ./nemo_retriever/helm \
   --set ngcApiSecret.password=$NGC_API_KEY
 ```
 
-> The VL reranker (`rerankqa`), Nemotron Parse, the Nemotron 3 Nano Omni 30B caption NIM, the generic answer-generation LLM (`answer_llm`, Super-49B defaults), and the Parakeet `audio` ASR NIM are **all off by default** in 26.05 — they only reconcile when you explicitly opt in. Opt-in flags:
+> The VL reranker (`rerankqa`), Nemotron Parse, the Nemotron 3 Nano Omni 30B caption NIM, the generic answer-generation LLM (`answer_llm`, Super-49B defaults), and the Parakeet `audio` ASR NIM are **all off by default** — they only reconcile when you explicitly opt in. Opt-in flags:
 >
 > * VL reranker — `--set nimOperator.rerankqa.enabled=true`
 > * Nemotron Parse — `--set nimOperator.nemotron_parse.enabled=true`
@@ -305,7 +305,7 @@ For air-gapped clusters, refer to [Deployment options — Air-gapped and disconn
 
 To run self-hosted Parakeet for [audio and video extraction](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/audio-video.md):
 
-1. Set `nimOperator.audio.enabled=true` (it is on by default; disable other optional NIMs you do not need per [Recommended minimal install (26.05)](#recommended-minimal-install-2605)).
+1. Set `nimOperator.audio.enabled=true` (it is on by default; disable other optional NIMs you do not need per [Recommended minimal install](#recommended-minimal-install-2605)).
 2. Pin the ASR `NIMService` to a **dedicated GPU** with `nimOperator.audio.resources`, `nodeSelector`, or `tolerations` (refer to [NIM Operator](https://docs.nvidia.com/nim-operator/latest/index.html)).
 3. Confirm the GPU SKU in [Model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) (footnote ⁴ lists Blackwell limitations).
 4. Set `service.installFfmpeg=true` when the retriever service will process audio or video on clusters that allow runtime package install (refer to `service.installFfmpeg` above). On **OpenShift restricted-v2**, use a [prebuilt service image](./openshift.md#audio-and-video-ffmpeg-on-restricted-openshift) instead.
@@ -469,9 +469,9 @@ pair gated on three conditions ALL holding:
 | `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
 | `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
 | `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
-| `nimOperator.rerankqa.enabled`         | `false` | VL reranker NIM (optional; not auto-wired). Set `true` to opt in. Default `false` so 26.05 installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md) and do not silently provision an extra ≈ 3.1 GiB GPU NIM. The image points at the **VL** SKU (`llama-nemotron-rerank-vl-1b-v2`) per [prerequisites-support-matrix.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#default-helm-nims) — the text-only `llama-nemotron-rerank-1b-v2` silently degrades multimodal reranking and is not the documented POR. |
-| `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` when using `extract_method="nemotron_parse"`. Default `false` so 26.05 installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). Image tag follows the [image tag conventions](#image-tag-conventions). |
-| `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `false` | Omni 30B caption NIM (optional). Set `true` to enable image captioning — refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b). Default `false` so 26.05 installs do not silently pull ≈ 62 GiB of BF16 weights or claim a second dedicated GPU. Image tag follows the [image tag conventions](#image-tag-conventions). |
+| `nimOperator.rerankqa.enabled`         | `false` | VL reranker NIM (optional; not auto-wired). Set `true` to opt in. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md) and do not silently provision an extra ≈ 3.1 GiB GPU NIM. The image points at the **VL** SKU (`llama-nemotron-rerank-vl-1b-v2`) per [prerequisites-support-matrix.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#default-helm-nims) — the text-only `llama-nemotron-rerank-1b-v2` silently degrades multimodal reranking and is not the documented POR. |
+| `nimOperator.nemotron_parse.enabled`   | `false` | Structured-parse NIM (optional). Set `true` when using `extract_method="nemotron_parse"`. Default `false` so chart installs honor the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md). Image tag follows the [image tag conventions](#image-tag-conventions). |
+| `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled` | `false` | Omni 30B caption NIM (optional). Set `true` to enable image captioning — refer to [Image captioning (Omni 30B)](#image-captioning-omni-30b). Default `false` so chart installs do not silently pull ≈ 62 GiB of BF16 weights or claim a second dedicated GPU. Image tag follows the [image tag conventions](#image-tag-conventions). |
 | `nimOperator.answer_llm.enabled`       | `false` | Generic answer-generation LLM NIM (optional; Super-49B defaults). Set `true` to enable `/v1/answer` — refer to [Answer generation (operator-managed LLM)](#answer-generation-llm). Default `false` so installs do not silently claim answer-generation GPUs. |
 | `nimOperator.answer_llm.model`         | `openai/nvidia/llama-3.3-nemotron-super-49b-v1.5` | LiteLLM/OpenAI model id inherited by `serviceConfig.llm.model` when the operator-managed answer LLM is enabled and no explicit service model is set. |
 | `nimOperator.answer_llm.ragSystemPromptPrefix` | `""` | Optional prompt prefix inherited by `serviceConfig.llm.ragSystemPromptPrefix` only when explicitly set. Leave empty to keep the operator-managed LLM model-neutral and use `serviceConfig.llm.reasoningEnabled` for request-level reasoning control. |
@@ -492,7 +492,7 @@ pair gated on three conditions ALL holding:
 > are auto-wired into the retriever-service config. Optional NIMs may reconcile
 > when `nimOperator.<key>.enabled` is `true` in `values.yaml`, but the
 > retriever-service won't call them unless you wire your pipeline to use them.
-> For 26.05, prefer the [minimal install](#recommended-minimal-install-2605) overrides.
+> For minimal installs, prefer the [minimal install](#recommended-minimal-install-2605) overrides.
 
 #### Filtering cached GPU profiles { #filtering-cached-gpu-profiles }
 
@@ -563,7 +563,7 @@ Every NIM in this chart pins an exact NGC image tag in `values.yaml`
 | Family | Example | Meaning |
 | ------ | ------- | ------- |
 | Plain semver | `nemotron-page-elements-v3:1.8.0` | A standard NIM release, identical bytes on every pull. Used by the four core NIMs and the reranker / ASR NIMs. |
-| `<semver>-variant` | `nemotron-parse-v1.2:1.7.0-variant`, `nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` | The Nemotron Parse and Nemotron 3 Nano Omni 30B builds that ship per-GPU TensorRT engine variants the NIM Operator selects from at reconciliation time (see the Omni and Parse rows in the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table). The `-variant` suffix is the NGC tag that ships alongside the 26.05 chart and matches footnote ³ of the support matrix. |
+| `<semver>-variant` | `nemotron-parse-v1.2:1.7.0-variant`, `nemotron-3-nano-omni-30b-a3b-reasoning:1.7.0-variant` | The Nemotron Parse and Nemotron 3 Nano Omni 30B builds that ship per-GPU TensorRT engine variants the NIM Operator selects from at reconciliation time (refer to the Omni and Parse rows in the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table). The `-variant` suffix is the NGC tag that ships alongside this chart and matches footnote ³ of the support matrix. |
 
 For air-gapped mirror pipelines: mirror the *exact* tag — both the
 plain semver and the `-variant` form — and do not substitute `:latest`.
@@ -581,18 +581,18 @@ helm upgrade --install retriever ./nemo_retriever/helm \
 and validate against the same release of the retriever service before
 production rollout.
 
-**Charts and captioning (26.05).** Charts and infographics use **page_elements**
+**Charts and captioning.** Charts and infographics use **page_elements**
 and **ocr** (no `graphic_elements` operator NIM in this chart). For image
-captioning, set `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true` — see
+captioning, set `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true` — refer to
 [Image captioning (Omni 30B)](#image-captioning-omni-30b) for the
 chart-side wiring and
-[Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605)
+[Image captioning](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning)
 for the product matrix.
 
 #### Image captioning (Omni 30B) { #image-captioning-omni-30b }
 
 The Nemotron 3 Nano Omni VLM is the canonical image-caption NIM for
-26.05.  When you enable it,
+this chart. When you enable it,
 
 ```bash
 helm upgrade --install retriever ./nemo_retriever/helm \
@@ -1131,10 +1131,10 @@ OpenShift install procedures, **restricted-v2** / PSA **restricted** value overr
 
 Refer to [Deployment options — Air-gapped and disconnected deployment](https://docs.nvidia.com/nemo/retriever/latest/extraction/deployment-options/#air-gapped-deployment) for overview and workflow. Chart-specific reference for mirroring:
 
-### Container images to mirror (26.05 chart defaults)
+### Container images to mirror (chart defaults)
 
-Verify tags on the Git branch or tag you ship (for example `26.05` or
-`26.5.0`). Defaults below match
+Verify tags on the Git branch or tag you ship (for example `main` or
+your release tag). Defaults below match
 [`values.yaml`](./values.yaml) on the current chart.
 
 | Role | `nimOperator` key | Default image (`repository:tag`) |
@@ -1196,8 +1196,8 @@ nimOperator:
   outside the chart.
 - For **offline captioning**, enable
   `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning` and point the pipeline
-  caption endpoint at the in-cluster NIM URL (see
-  [Image captioning (26.05)](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning-2605)).
+  caption endpoint at the in-cluster NIM URL (refer to
+  [Image captioning](https://docs.nvidia.com/nemo/retriever/latest/extraction/prerequisites-support-matrix/#image-captioning)).
 
 ### Mirroring pattern
 
