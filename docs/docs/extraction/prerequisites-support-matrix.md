@@ -119,7 +119,7 @@ NeMo Retriever Library supports the following GPU hardware given system constrai
 
 Model repositories and NIM references are linked in [Core and Advanced Pipeline Features](#core-and-advanced-pipeline-features) above.
 
-**B200 and audio/video extraction (26.05):** The [audio and video](audio-video.md) transcription path (self-hosted Parakeet ASR through `nimOperator.audio`) is **not supported on B200** or other Blackwell GPUs. Core PDF and multimodal extraction on B200 is unchanged. Refer to footnote ⁴ below.
+**B200 and audio/video extraction:** The [audio and video](audio-video.md) transcription path (self-hosted Parakeet ASR through `nimOperator.audio`) is **not supported on B200** or other Blackwell GPUs. Core PDF and multimodal extraction on B200 is unchanged. Refer to footnote ⁴ below.
 
 | Feature | HF Model Weights | GPU Option | [RTX Pro 6000](https://www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/) | [B200](https://www.nvidia.com/en-us/data-center/dgx-b200/) | [H200 NVL](https://www.nvidia.com/en-us/data-center/h200/) | [H100](https://www.nvidia.com/en-us/data-center/h100/) | [A100 80GB](https://www.nvidia.com/en-us/data-center/a100/) | A100 40GB | [A10G](https://aws.amazon.com/ec2/instance-types/g5/) | L40S | [RTX PRO 4500 Blackwell](https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-4500/) |
 |---------|------------------|------------|--------|--------|--------|--------|--------|--------|--------|--------|------------------------|
