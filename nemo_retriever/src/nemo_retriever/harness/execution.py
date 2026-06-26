@@ -14,7 +14,6 @@ from nemo_retriever.harness.artifact_writer import (
     ArtifactWriter,
     capture_output_to_log,
     redact,
-    write_json,
 )
 from nemo_retriever.harness.beir_runner import run_beir_queries
 from nemo_retriever.harness.contracts import (
@@ -29,6 +28,7 @@ from nemo_retriever.harness.contracts import (
     RunOutcome,
 )
 from nemo_retriever.harness.environment import collect_environment
+from nemo_retriever.harness.json_io import write_json
 from nemo_retriever.harness.metrics import build_summary_metrics
 from nemo_retriever.harness.metric_gates import enforce_metric_gates, parse_metric_gates
 from nemo_retriever.harness.resolution import (
@@ -42,6 +42,34 @@ from nemo_retriever.harness.resolution import (
 )
 from nemo_retriever.ingest.plan import resolve_ingest_plan
 from nemo_retriever.query.workflow import resolve_query_plan
+
+
+def _run_result_payload(
+    writer: ArtifactWriter,
+    *,
+    status: str,
+    success: bool,
+    exit_code: int,
+    dry_run: bool,
+    resolved: dict[str, Any] | None,
+    summary_metrics: dict[str, Any],
+    failure: FailurePayload | None,
+    **extra: Any,
+) -> dict[str, Any]:
+    result = {
+        "run_id": writer.run_id,
+        "benchmark": writer.benchmark,
+        "status": status,
+        "success": success,
+        "exit_code": exit_code,
+        "dry_run": bool(dry_run),
+        "resolved_benchmark": resolved,
+        "summary_metrics": summary_metrics,
+        "failure": failure.to_dict() if failure is not None else None,
+        "artifacts": artifact_paths(writer),
+    }
+    result.update(extra)
+    return result
 
 
 def _write_failure_result(
@@ -65,19 +93,17 @@ def _write_failure_result(
         failure=failure,
         summary_metrics_path=writer.path("summary_metrics.json"),
     )
-    result = {
-        "run_id": writer.run_id,
-        "benchmark": writer.benchmark,
-        "status": "failed",
-        "success": False,
-        "exit_code": exit_code,
-        "dry_run": bool(dry_run),
-        "resolved_benchmark": resolved,
-        "summary_metrics": summary_metrics,
-        "failure": failure.to_dict(),
-        "status_payload": status_payload,
-        "artifacts": artifact_paths(writer),
-    }
+    result = _run_result_payload(
+        writer,
+        status="failed",
+        success=False,
+        exit_code=exit_code,
+        dry_run=dry_run,
+        resolved=resolved,
+        summary_metrics=summary_metrics,
+        failure=failure,
+        status_payload=status_payload,
+    )
     write_json(writer.path("results.json"), result)
     return result
 
@@ -208,23 +234,21 @@ def run_benchmark(
         writer.status(status="running", phase="write_artifacts")
         write_json(writer.path("summary_metrics.json"), summary_metrics)
         skipped_metric_gates = enforce_metric_gates(summary_metrics, requirements, skip_missing=dry_run)
-        result = {
-            "run_id": writer.run_id,
-            "benchmark": benchmark,
-            "status": "complete",
-            "success": True,
-            "exit_code": EXIT_SUCCESS,
-            "dry_run": bool(dry_run),
-            "resolved_benchmark": resolved,
-            "summary_metrics": summary_metrics,
-            "ingest_summary": ingest_summary,
-            "beir_metrics": beir_metrics,
-            "metric_gates": list(requirements),
-            "skipped_metric_gates": list(skipped_metric_gates),
-            "runfile": {"source_path": runfile_path, "payload": runfile_payload} if runfile_payload is not None else None,
-            "failure": None,
-            "artifacts": artifact_paths(writer),
-        }
+        result = _run_result_payload(
+            writer,
+            status="complete",
+            success=True,
+            exit_code=EXIT_SUCCESS,
+            dry_run=dry_run,
+            resolved=resolved,
+            summary_metrics=summary_metrics,
+            failure=None,
+            ingest_summary=ingest_summary,
+            beir_metrics=beir_metrics,
+            metric_gates=list(requirements),
+            skipped_metric_gates=list(skipped_metric_gates),
+            runfile={"source_path": runfile_path, "payload": runfile_payload} if runfile_payload is not None else None,
+        )
         write_json(writer.path("results.json"), result)
         writer.status(
             status="complete",

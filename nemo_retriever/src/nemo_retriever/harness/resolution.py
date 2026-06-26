@@ -75,6 +75,11 @@ def _field_paths(prefix: str, cls: type[Any], *, exclude: set[str] | None = None
     return {f"{prefix}.{field.name}" for field in fields(cls) if field.name not in excluded}
 
 
+def _override_child_keys(prefix: str, paths: set[str]) -> set[str]:
+    dotted_prefix = f"{prefix}."
+    return {path.removeprefix(dotted_prefix).split(".", 1)[0] for path in paths if path.startswith(dotted_prefix)}
+
+
 INGEST_OVERRIDE_PATHS = {
     "ingest.profile",
     "ingest.input_type",
@@ -324,25 +329,7 @@ def _dataclass_kwargs(context: str, cls: type[Any], data: Mapping[str, Any] | No
 
 def build_ingest_request(resolved: dict[str, Any], dataset_path: Path, artifact_dir: Path) -> IngestPlanRequest:
     ingest = _mapping_payload("ingest", deepcopy(resolved["ingest"]))
-    _validate_keys(
-        "ingest",
-        ingest,
-        {
-            "profile",
-            "input_type",
-            "run_mode",
-            "ray_address",
-            "ray_log_to_driver",
-            "extract",
-            "media",
-            "caption",
-            "dedup",
-            "chunk",
-            "embed",
-            "image_store",
-            "storage",
-        },
-    )
+    _validate_keys("ingest", ingest, _override_child_keys("ingest", INGEST_OVERRIDE_PATHS))
     storage_data = _mapping_payload("ingest.storage", ingest.get("storage"))
     if not storage_data.get("lancedb_uri") or storage_data.get("lancedb_uri") == "lancedb":
         storage_data["lancedb_uri"] = str((artifact_dir / "lancedb").resolve())
@@ -391,7 +378,7 @@ def build_ingest_request(resolved: dict[str, Any], dataset_path: Path, artifact_
 
 def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryRequest:
     query = _mapping_payload("query", resolved.get("query"))
-    _validate_keys("query", query, {path.removeprefix("query.") for path in QUERY_OVERRIDE_PATHS})
+    _validate_keys("query", query, _override_child_keys("query", QUERY_OVERRIDE_PATHS))
     ingest_storage = dict((resolved.get("ingest") or {}).get("storage") or {})
     lancedb_uri = query.get("lancedb_uri") or ingest_storage.get("lancedb_uri") or "lancedb"
     table_name = query.get("table_name") or ingest_storage.get("table_name") or "nemo-retriever"

@@ -8,7 +8,7 @@ from pathlib import Path
 import time
 from typing import Any, Mapping, Sequence
 
-from nemo_retriever.harness.artifact_writer import append_jsonl, ArtifactWriter, write_json
+from nemo_retriever.harness.artifact_writer import append_jsonl, ArtifactWriter
 from nemo_retriever.harness.contracts import (
     EXIT_EVALUATION_FAILURE,
     EXIT_MISSING_INPUT,
@@ -16,6 +16,7 @@ from nemo_retriever.harness.contracts import (
     FailurePayload,
     HarnessRunError,
 )
+from nemo_retriever.harness.json_io import write_json
 from nemo_retriever.query.workflow import ResolvedQueryPlan
 from nemo_retriever.tools.recall.beir import (
     build_beir_run_from_hits,

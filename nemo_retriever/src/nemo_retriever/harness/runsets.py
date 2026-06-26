@@ -9,11 +9,11 @@ from difflib import get_close_matches
 from pathlib import Path
 from typing import Any, Sequence
 
-from nemo_retriever.harness.artifact_writer import write_json
 from nemo_retriever.harness.artifacts import get_artifacts_root
 from nemo_retriever.harness.benchmark_registry import get_runset, runset_names
 from nemo_retriever.harness.contracts import EXIT_INVALID, EXIT_SUCCESS, FailurePayload, HarnessRunError, RunOutcome
 from nemo_retriever.harness.execution import run_benchmark
+from nemo_retriever.harness.json_io import write_json
 
 
 def _session_id(runset: str) -> str:
@@ -42,6 +42,17 @@ def _runset_or_error(name: str):
                 message=f"Unknown runset {name!r}.{suffix}",
             ),
         ) from exc
+
+
+def _run_outcome_summary(benchmark: str, outcome: RunOutcome) -> dict[str, Any]:
+    return {
+        "benchmark": benchmark,
+        "artifact_dir": str(outcome.artifact_dir),
+        "exit_code": outcome.exit_code,
+        "success": outcome.exit_code == EXIT_SUCCESS,
+        "summary_metrics": outcome.results.get("summary_metrics", {}),
+        "results_path": str(outcome.artifact_dir / "results.json"),
+    }
 
 
 def run_runset(
@@ -87,15 +98,7 @@ def run_runset(
             requirements=requirements,
             dry_run=dry_run,
         )
-        run_result = {
-            "benchmark": expanded["benchmark"],
-            "artifact_dir": str(outcome.artifact_dir),
-            "exit_code": outcome.exit_code,
-            "success": outcome.exit_code == EXIT_SUCCESS,
-            "summary_metrics": outcome.results.get("summary_metrics", {}),
-            "results_path": str(outcome.artifact_dir / "results.json"),
-        }
-        run_results.append(run_result)
+        run_results.append(_run_outcome_summary(str(expanded["benchmark"]), outcome))
         if exit_code == EXIT_SUCCESS and outcome.exit_code != EXIT_SUCCESS:
             exit_code = outcome.exit_code
 
