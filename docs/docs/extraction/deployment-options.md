@@ -28,7 +28,7 @@ For audio and video extraction in Kubernetes, set `service.installFfmpeg=true` s
 
 ### I want examples and notebooks
 
-1. [Jupyter Notebooks](starter-kits.md)
+1. [Jupyter Notebooks](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/README.md)
 
 ### I need API details and keys
 
