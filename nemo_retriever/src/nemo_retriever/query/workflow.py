@@ -34,29 +34,6 @@ def _build_rerank_kwargs(options: QueryRerankOptions) -> dict[str, str]:
     return local
 
 
-def _build_retriever_kwargs(request: QueryRequest) -> dict[str, Any]:
-    embed_kwargs = build_embed_option_kwargs(request.embed.embed_invoke_url, request.embed.embed_model_name)
-    vdb_kwargs: dict[str, Any] = {
-        "uri": request.storage.lancedb_uri,
-        "table_name": request.storage.table_name,
-    }
-    # Only inject hybrid when opted in, so the vector-only path stays byte-for-byte legacy.
-    if request.retrieval.hybrid:
-        vdb_kwargs["hybrid"] = True
-    retriever_kwargs: dict[str, Any] = {
-        "top_k": request.retrieval.top_k,
-        "vdb_kwargs": vdb_kwargs,
-    }
-    if embed_kwargs:
-        retriever_kwargs["embed_kwargs"] = embed_kwargs
-    if request.rerank.enabled:
-        rerank_kwargs = _build_rerank_kwargs(request.rerank)
-        retriever_kwargs["rerank"] = True
-        if rerank_kwargs:
-            retriever_kwargs["rerank_kwargs"] = rerank_kwargs
-    return retriever_kwargs
-
-
 @dataclass(frozen=True)
 class ResolvedQueryPlan:
     """Resolved Retriever query configuration reusable across many queries."""
@@ -126,10 +103,5 @@ def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
 
 def query_documents(request: QueryRequest) -> list[RetrievalHit]:
     """Run the SDK query path used by the root CLI."""
-    retriever = resolve_query_plan(request).create_retriever()
-    return retriever.query(
-        request.query,
-        candidate_k=request.retrieval.candidate_k,
-        page_dedup=request.retrieval.page_dedup,
-        content_types=request.retrieval.content_types,
-    )
+    plan = resolve_query_plan(request)
+    return plan.create_retriever().query(request.query, **plan.query_kwargs())

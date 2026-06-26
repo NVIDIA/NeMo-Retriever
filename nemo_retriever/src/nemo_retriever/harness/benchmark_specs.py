@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any, Mapping
 
 
@@ -44,7 +44,6 @@ class RunSet:
     runs: tuple[str, ...]
     tags: tuple[str, ...] = ()
     description: str | None = None
-    matrix: Mapping[str, tuple[Any, ...]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
