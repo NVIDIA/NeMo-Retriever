@@ -21,7 +21,7 @@ from nemo_retriever.ingest.plan import (
 from nemo_retriever.models import VL_EMBED_MODEL
 
 DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
-DEFAULT_CAPTION_MODEL = str(CaptionParams.model_fields["model_name"].default)
+DEFAULT_CAPTION_MODEL = CaptionParams().model_name
 
 DocumentsArgument = Annotated[
     list[str],

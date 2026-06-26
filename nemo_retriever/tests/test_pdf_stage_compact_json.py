@@ -94,3 +94,20 @@ def test_pdf_stage_nemotron_parse_omits_model_to_use_schema_default(monkeypatch,
     assert extractor_config.nemotron_parse_config.nemotron_parse_model_name == (
         NemotronParseConfigSchema.model_fields["nemotron_parse_model_name"].default
     )
+
+
+def test_pdf_stage_nemotron_parse_uses_explicit_model_name(monkeypatch, tmp_path):
+    extractor_config = _invoke_pdf_stage_and_capture_config(
+        monkeypatch,
+        tmp_path,
+        [
+            "--method",
+            "nemotron_parse",
+            "--nemotron-parse-http-endpoint",
+            "http://parse:8000/v1/chat/completions",
+            "--nemotron-parse-model-name",
+            "my-custom-model",
+        ],
+    )
+
+    assert extractor_config.nemotron_parse_config.nemotron_parse_model_name == "my-custom-model"
