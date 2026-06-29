@@ -68,7 +68,7 @@ class LlamaNemotronEmbed1BV2Embedder:
         max_model_len = int(self.max_length) if int(self.max_length) > 0 else None
         self._llm = create_vllm_llm(
             str(model_id),
-            revision=get_hf_revision(model_id),
+            revision=get_hf_revision(model_id, allow_local_path=True),
             dimensions=self.dimensions,
             gpu_memory_utilization=self.gpu_memory_utilization,
             enforce_eager=self.enforce_eager,
