@@ -7,6 +7,8 @@ This package wraps **vector database backends** behind a small `VDB` interface (
 
 The only built-in backend key today is **`lancedb`**, resolved by `get_vdb_op_cls()` in `factory.py` to the concrete **`LanceDB`** class in `lancedb.py`.
 
+The root CLI is intentionally LanceDB-first: `retriever ingest ...` writes LanceDB tables, and `retriever query ...` queries LanceDB tables. Other VDB backends should plug in through the SDK/operator layer by implementing `VDB` and registering a backend key in `factory.py`; the root CLI does not currently expose a generic `--vdb-op` / `--vdb-kwargs-json` query surface.
+
 ---
 
 ## `IngestVdbOperator` (ingestion)
@@ -127,6 +129,8 @@ hits_per_query = op.process(
 ## `Retriever` and `RetrieveVdbOperator`
 
 The high-level **`Retriever`** class (`retriever.py`) uses **`RetrieveVdbOperator`** internally. Pass a flat LanceDB **`vdb_kwargs`** dict with `uri`, `table_name`, filters, etc., or the explicit nested shape `{"vdb_op": "lancedb", "vdb_kwargs": {...}}`.
+
+For non-LanceDB backends, implement the `VDB` interface in a backend module, register the backend in `factory.py`, and construct `Retriever` through the SDK with `{"vdb_op": "<backend>", "vdb_kwargs": {...}}` or a concrete `{"vdb": backend_instance}`. The root `retriever query` CLI remains LanceDB-only.
 
 It **lazy-builds** the operator:
 

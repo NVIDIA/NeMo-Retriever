@@ -36,10 +36,10 @@ For small-scale workloads, such as workloads of fewer than 100 PDFs, you can use
 After [following the quickstart installation steps](nemo_retriever), you can start ingesting content like with the following snippet:
 ```python
 from nemo_retriever import create_ingestor
-from nemo_retriever.io import to_markdown, to_markdown_by_page
+from nemo_retriever.common.io import to_markdown, to_markdown_by_page
 from pathlib import Path
 
-documents = [str(Path("../data/multimodal_test.pdf"))]
+documents = [str(Path("data/multimodal_test.pdf"))]
 ingestor = create_ingestor(run_mode="batch")
 
 # ingestion tasks are chainable and defined lazily
@@ -93,7 +93,7 @@ dict_keys([1, 2, 3])
 To query for relevant snippets of the ingested content, and use them with an LLM to generate answers, use the following code.
 
 ```python
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.graph.retriever import Retriever
 from openai import OpenAI
 import os
 

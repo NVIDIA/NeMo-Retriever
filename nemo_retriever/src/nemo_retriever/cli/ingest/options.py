@@ -10,6 +10,7 @@ import typer
 
 from nemo_retriever.ingest.plan import (
     AudioSplitTypeValue,
+    IngestIndexModeValue,
     IngestProfileValue,
     LocalIngestEmbedBackendValue,
     OcrLangValue,
@@ -206,14 +207,30 @@ OverwriteOption = Annotated[
         ),
     ),
 ]
+IndexModeOption = Annotated[
+    IngestIndexModeValue,
+    typer.Option(
+        "--index-mode",
+        help=(
+            "LanceDB index mode: dense, hybrid, or sparse. Dense is vector-only; hybrid also builds "
+            "BM25/FTS; sparse skips dense embedding and writes an FTS-only table."
+        ),
+    ),
+]
 HybridOption = Annotated[
     bool,
     typer.Option(
-        "--hybrid/--no-hybrid",
-        help=(
-            "Also build a full-text (BM25) index over ingested text so query --hybrid can fuse "
-            "lexical and vector retrieval. Disabled by default."
-        ),
+        "--hybrid",
+        help="Deprecated alias for --index-mode hybrid.",
+        hidden=True,
+    ),
+]
+SparseOption = Annotated[
+    bool,
+    typer.Option(
+        "--sparse",
+        help="Deprecated alias for --index-mode sparse.",
+        hidden=True,
     ),
 ]
 RayAddressOption = Annotated[

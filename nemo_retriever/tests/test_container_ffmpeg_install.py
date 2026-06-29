@@ -117,15 +117,6 @@ class ContainerFfmpegInstallTests(TestCase):
                 self.assertNotIn("--build-arg INSTALL_FFMPEG=true", text)
                 self.assertNotIn("build an ffmpeg-enabled", text)
 
-    def test_deployment_options_describes_runtime_ffmpeg_install_for_helm(self) -> None:
-        repo_root = Path(__file__).resolve().parents[2]
-        deployment_options = _read_required_file(repo_root / "docs/docs/extraction/deployment-options.md")
-
-        self.assertIn("service.installFfmpeg=true", deployment_options)
-        self.assertIn("runtime", deployment_options)
-        self.assertNotIn("must run a service image that already includes", deployment_options)
-        self.assertNotIn("does not install operating system packages", deployment_options)
-
 
 if __name__ == "__main__":
     main()

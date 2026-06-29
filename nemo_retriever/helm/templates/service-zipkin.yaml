@@ -1,0 +1,26 @@
+{{- $otel := .Values.topology.otel | default dict -}}
+{{- $zipkin := .Values.topology.zipkin | default dict -}}
+{{- if not (kindIs "map" $otel) -}}
+{{- fail "topology.otel must be a map" -}}
+{{- end -}}
+{{- if not (kindIs "map" $zipkin) -}}
+{{- fail "topology.zipkin must be a map" -}}
+{{- end -}}
+{{- if and (get $otel "enabled") (get $zipkin "enabled") }}
+{{- $zipkinPort := include "nemo-retriever.zipkin.port" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nemo-retriever.zipkin.fullname" . }}
+  labels:
+    {{- include "nemo-retriever.role.labels" (dict "context" $ "role" "zipkin") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" "zipkin") | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ $zipkinPort }}
+      targetPort: http
+{{- end }}

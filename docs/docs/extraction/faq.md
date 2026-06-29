@@ -21,16 +21,17 @@ For more information, refer to [Vector databases](vdbs.md).
 For images that `nemoretriever-page-elements-v3` does not classify as tables, charts, or infographics,
 you can use our VLM caption task to create a dense caption of the detected image. 
 That caption is then embedded along with the rest of your content. 
-For chart-labeled PDF regions and other caption scope limits, see [Are PDF chart or figure regions captioned when Omni is enabled?](#are-pdf-chart-or-figure-regions-captioned-when-omni-is-enabled). For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
+For chart-labeled PDF regions and other caption scope limits, refer to [Are PDF chart or figure regions captioned when Omni is enabled?](#are-pdf-chart-or-figure-regions-captioned-when-omni-is-enabled). For more information, refer to [Extract Captions from Images](nemo-retriever-api-reference.md).
 
 ## Are PDF chart or figure regions captioned when Omni is enabled?
 
-No. Chart-labeled PDF regions are not routed through Omni captioning. See [Image captioning](prerequisites-support-matrix.md#image-captioning-2605) for scope, validation, and what the caption stage covers.
+No. Chart-labeled PDF regions are not routed through Omni captioning. Refer to [Charts and infographics](multimodal-extraction.md#charts-and-infographics) and [Image captioning](multimodal-extraction.md#image-captioning) for caption scope and validation.
 
 ## When should I consider advanced visual parsing?
 
-For scanned documents, or documents with complex layouts, 
-you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate PDF extraction method by setting `extract_method="nemotron_parse"`. 
+For scanned documents, or documents with complex layouts,
+you can use [nemotron-parse](https://build.nvidia.com/nvidia/nemotron-parse) as an alternate PDF extraction method by setting `extract_method="nemotron_parse"`.
+Nemotron Parse does not produce chart modality rows. For chart detection and chart-filtered retrieval, use the default **pdfium** layout path instead (refer to [Charts and infographics](multimodal-extraction.md#charts-and-infographics)).
 For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/nemotron-parse).
 
 ## Why are the environment variables different between library mode and self-hosted mode?
@@ -40,11 +41,9 @@ For more information, refer to [Nemotron Parse](https://build.nvidia.com/nvidia/
 For [self-hosted deployments](deployment-options.md#when-to-self-host-nims), you should set the environment variables `NGC_API_KEY` and `NIM_NGC_API_KEY`.
 For more information, refer to [Authentication and API keys](api-keys.md).
 
-For advanced scenarios, you might want to set environment variables for NIM container paths, tags, and batch sizes on the ingestion runtime. Configure them in your Helm values, Kubernetes `Secret`/`ConfigMap`, or follow [Environment variables](environment-config.md).
-
 ### Library Mode
 
-For production environments, you should use the provided Helm charts. When you run the NeMo Retriever Library from Python (without those charts), you should set the environment variable `NVIDIA_API_KEY`. This is because the NeMo Retriever containers and the NeMo Retriever services running inside them do not have access to arbitrary variables on your laptop or jump host unless you inject them into the workload (for example via Helm, `Secret`, or the client environment as documented on [Deployment options](deployment-options.md) and [Authentication and API keys](api-keys.md)).
+For production environments, you should use the provided Helm charts. When you run the NeMo Retriever Library from Python without those charts, set `NVIDIA_API_KEY` only when you call [build.nvidia.com](https://build.nvidia.com/) hosted inference—it is not required for locally deployed Hugging Face models or self-hosted NIM endpoints. For more information, refer to [Deployment options](deployment-options.md) and [Authentication and API keys](api-keys.md).
 
 For advanced scenarios, you might want to use library mode with self-hosted NIM instances. 
 You can set custom endpoints for each NIM. 

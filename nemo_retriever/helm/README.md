@@ -67,7 +67,7 @@ nemo_retriever/helm/
     └── nims/
         ├── nemotron-page-elements-v3.yaml     # NIMCache + NIMService
         ├── nemotron-table-structure-v1.yaml   # NIMCache + NIMService
-        ├── nemotron-ocr-v1.yaml               # NIMCache + NIMService (OCR)
+        ├── nemotron-ocr-v2.yaml               # NIMCache + NIMService (OCR)
         ├── llama-nemotron-embed-vl-1b-v2.yaml           # NIMCache + NIMService (VLM embed)
         ├── llama-nemotron-rerank-vl-1b-v2.yaml  # NIMCache + NIMService (optional; not auto-wired)
         ├── nemotron-parse.yaml                # NIMCache + NIMService (optional; not auto-wired)
@@ -229,7 +229,7 @@ The chart auto-wires the operator-managed in-cluster URLs of the four
 | --- | ------------------------ | ----------- |
 | `nimOperator.page_elements`   | `nemotron-page-elements-v3`   | `/v1/infer`      |
 | `nimOperator.table_structure` | `nemotron-table-structure-v1` | `/v1/infer`      |
-| `nimOperator.ocr`             | `nemotron-ocr-v1`             | `/v1/infer`      |
+| `nimOperator.ocr`             | `nemotron-ocr-v2`             | `/v1/infer`      |
 | `nimOperator.vlm_embed`       | `llama-nemotron-embed-vl-1b-v2` | `/v1/embeddings` |
 
 Track operator reconciliation with:
@@ -465,7 +465,7 @@ pair gated on three conditions ALL holding:
 | `nimOperator.page_elements.enabled`    | `true`  | Page-elements detector NIM. |
 | `nimOperator.table_structure.enabled`  | `true`  | Table-structure detector NIM. |
 | `nimOperator.ocr.enabled`              | `true`  | OCR NIM. |
-| `nimOperator.ocr.image`              | `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0` | Default OCR NIM image. |
+| `nimOperator.ocr.image`              | `nvcr.io/nim/nvidia/nemotron-ocr-v2:1.4.0` | Default OCR NIM image. |
 | `nimOperator.vlm_embed.enabled`        | `true`  | Multimodal embedding NIM (also used by the vectordb Pod). |
 | `nimOperator.vlm_embed.nimServiceName` | `llama-nemotron-embed-vl-1b-v2` | NIMService / in-cluster DNS name. |
 | `nimOperator.vlm_embed.image`          | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` | Default VLM embed NIM image. |
@@ -681,7 +681,7 @@ block). Confirm `image.repository` and `image.tag` before you upgrade.
 |------|------|
 | `nimOperator.nimCache.keepOnUninstall` | When `true`, NIMCache CRs survive `helm uninstall` (`helm.sh/resource-policy: keep`). NIMService CRs are always removed. Set `false` for dev clusters that should fully tear down on uninstall. |
 | `nimOperator.ocr.enabled` | Reconcile the OCR `NIMService` |
-| `nimOperator.ocr.image.repository` | NIM image (default `nvcr.io/nim/nvidia/nemotron-ocr-v1`) |
+| `nimOperator.ocr.image.repository` | NIM image (default `nvcr.io/nim/nvidia/nemotron-ocr-v2`) |
 | `nimOperator.ocr.image.tag` | Pin the image tag for reproducible upgrades |
 
 Override the auto-wired in-cluster URL with `serviceConfig.nimEndpoints.ocrInvokeUrl`
@@ -1035,6 +1035,92 @@ sanity check before opening Grafana.
 
 ---
 
+## Tracing and Zipkin
+
+Helm installs the chart-owned OpenTelemetry Collector and Zipkin backend on by
+default. This is intentional: the legacy 26.1.2 Helm chart shipped with a
+managed Zipkin deployment enabled, so the new chart keeps a default trace
+backend available for functional parity. Pod trace export is also enabled by
+default for retriever service pods and chart-managed NIMs:
+
+```yaml
+topology:
+  otel:
+    enabled: true
+  zipkin:
+    enabled: true
+
+service:
+  otel:
+    enabled: true
+
+nimOperator:
+  otel:
+    enabled: true
+```
+
+Because Zipkin is chart-owned by default, an upgrade with default values can
+create a Zipkin Deployment and Service. Set `topology.zipkin.enabled=false`
+before upgrading if your deployment uses an external backend or should not run
+chart-owned Zipkin.
+
+With default values, retriever service pods and chart-managed NIMs emit OTLP to
+the chart's OpenTelemetry Collector, which exports traces to the chart-owned
+Zipkin service. Set `service.otel.enabled=false` or
+`nimOperator.otel.enabled=false` to opt out by surface. Open a job and read the
+Zipkin lookup key from either the JSON body or the `x-trace-id` response header:
+
+```bash
+kubectl port-forward svc/tracing-smoke-nemo-retriever 7670:80
+
+curl -s -D headers.txt -o job.json \
+  -X POST http://localhost:7670/v1/ingest/job \
+  -H 'content-type: application/json' \
+  -d '{"expected_documents":1}'
+
+TRACE_ID=$(jq -r .trace_id job.json)
+grep -i x-trace-id headers.txt
+```
+
+Port-forward Zipkin and query the trace directly:
+
+```bash
+kubectl port-forward svc/tracing-smoke-nemo-retriever-zipkin 9411:9411
+curl "http://localhost:9411/api/v2/trace/${TRACE_ID}"
+```
+
+Common opt-out and override knobs:
+
+```yaml
+topology:
+  zipkin:
+    enabled: false                 # do not deploy chart-owned Zipkin
+    exporter:
+      enabled: false               # keep Zipkin deployed, but do not export traces to it
+      endpoint: http://external-zipkin:9411/api/v2/spans
+
+service:
+  otel:
+    enabled: false                 # do not inject service pod instrumentation env
+
+nimOperator:
+  otel:
+    enabled: false                 # do not inject inherited NIM OTLP env
+  page_elements:
+    otel:
+      enabled: false               # per-NIM opt-out
+  ocr:
+    otel:
+      env:
+        TRITON_OTEL_RATE: "10"     # per-NIM Triton OTel override
+```
+
+Set `topology.zipkin.exporter.endpoint` when you run your own Zipkin-compatible
+collector. Set `topology.otel.enabled=false` to disable the chart-owned collector
+and all chart-rendered collector wiring.
+
+---
+
 ## OpenShift deployment { #openshift-deployment }
 
 OpenShift install procedures, **restricted-v2** / PSA **restricted** value overrides, prebuilt `ffmpeg` images, internal registry pull secrets, optional NIM `LD_LIBRARY_PATH` tuning, and install examples are in **[OpenShift deployment](./openshift.md)**. Pass `-f openshift-restricted.yaml` from that guide when you install on OpenShift.
@@ -1056,7 +1142,7 @@ Verify tags on the Git branch or tag you ship (for example `26.05` or
 | Retriever service | — | `service.image.repository`:`service.image.tag` (override for production) |
 | Page elements | `page_elements` | `nvcr.io/nim/nvidia/nemotron-page-elements-v3:1.8.0` |
 | Table structure | `table_structure` | `nvcr.io/nim/nvidia/nemotron-table-structure-v1:1.8.0` |
-| OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0` |
+| OCR | `ocr` | `nvcr.io/nim/nvidia/nemotron-ocr-v2:1.4.0` |
 | VL embed | `vlm_embed` | `nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2:1.12.0` |
 | VL reranker (optional) | `rerankqa` | `nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2:1.10.0` |
 | Nemotron Parse (optional) | `nemotron_parse` | `nvcr.io/nim/nvidia/nemotron-parse-v1.2:1.7.0-variant` |
