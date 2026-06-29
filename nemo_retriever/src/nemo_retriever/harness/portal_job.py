@@ -157,10 +157,13 @@ def _legacy_result(
     success = bool(results.get("success"))
 
     test_config = {
+        "benchmark": results.get("benchmark"),
         "dataset_label": dataset_label,
         "dataset_dir": overrides.get("dataset_dir") or dataset_spec.get("path"),
         "preset": preset,
         "run_mode": overrides.get("run_mode") or ingest.get("run_mode"),
+        "service_url": overrides.get("service_url"),
+        "service_max_concurrency": overrides.get("service_max_concurrency"),
         "query_csv": overrides.get("query_csv") or dataset_spec.get("query_file"),
         "input_type": overrides.get("input_type") or dataset_spec.get("input_type"),
         "recall_required": overrides.get("recall_required"),
@@ -184,6 +187,10 @@ def _legacy_result(
         except (OSError, ValueError):
             env_payload = {}
 
+    artifacts = dict(results.get("artifacts") or {})
+    if results.get("replay_command"):
+        artifacts.setdefault("replay_command", results["replay_command"])
+
     return {
         "timestamp": now_timestr(),
         "latest_commit": last_commit(),
@@ -197,8 +204,9 @@ def _legacy_result(
             "host": host,
             "gpu_type": env_payload.get("gpu_type"),
         },
-        "artifacts": results.get("artifacts") or {},
+        "artifacts": artifacts,
         "artifact_dir": str(outcome.artifact_dir),
+        "replay_command": results.get("replay_command") or artifacts.get("replay_command"),
         "tags": tags,
     }
 
@@ -236,13 +244,24 @@ def run_portal_job_entry(
         overrides["preset"] = preset
 
     run_mode = str(overrides.get("run_mode") or "batch")
+
     if run_mode == "service":
-        return {
-            "success": False,
-            "return_code": 2,
-            "failure_reason": "Service-mode portal jobs are not supported by the revamped harness yet.",
-            "timestamp": now_timestr(),
-        }
+        from nemo_retriever.harness.service_execution import run_service_portal_job
+
+        outcome = run_service_portal_job(
+            dataset=dataset,
+            preset=preset,
+            overrides=overrides,
+            run_name=run_name,
+            session_dir=session_dir,
+        )
+        return _legacy_result(
+            outcome,
+            dataset_label=_dataset_label(dataset, overrides),
+            preset=preset,
+            overrides=overrides,
+            tags=tags,
+        )
 
     try:
         benchmark = _resolve_portal_benchmark(dataset, overrides)
@@ -255,7 +274,6 @@ def run_portal_job_entry(
         }
 
     set_args = _portal_overrides_to_set_args(overrides)
-    dataset_label = _dataset_label(dataset, overrides)
     effective_run_id = run_name or make_run_id(benchmark)
     if session_dir is not None:
         output_dir = str((session_dir / effective_run_id).resolve())

@@ -40,7 +40,7 @@ from nemo_retriever.harness.resolution import (
     resolve_benchmark,
     validate_dataset_inputs,
 )
-from nemo_retriever.ingest.plan import resolve_ingest_plan
+from nemo_retriever.harness.replay_command import build_harness_run_command, persist_replay_command
 from nemo_retriever.query.workflow import resolve_query_plan
 
 
@@ -115,6 +115,14 @@ def _mark_dry_run_metrics_unavailable(summary_metrics: dict[str, Any]) -> None:
             summary_metrics[key] = None
 
 
+def _merge_replay_metadata(result: dict[str, Any], replay_meta: dict[str, str]) -> dict[str, Any]:
+    result["replay_command"] = replay_meta["replay_command"]
+    artifacts = dict(result.get("artifacts") or {})
+    artifacts.update(replay_meta)
+    result["artifacts"] = artifacts
+    return result
+
+
 def run_benchmark(
     benchmark: str,
     *,
@@ -132,6 +140,18 @@ def run_benchmark(
         artifact_dir=resolve_artifact_dir(benchmark, effective_run_id, output_dir),
         run_id=effective_run_id,
         benchmark=benchmark,
+    )
+    replay_meta = persist_replay_command(
+        writer.artifact_dir,
+        build_harness_run_command(
+            benchmark,
+            output_dir=writer.artifact_dir,
+            run_id=effective_run_id,
+            mode=mode,
+            overrides=overrides,
+            requirements=requirements,
+            dry_run=dry_run,
+        ),
     )
     silence_noisy_libraries()
     resolved: dict[str, Any] | None = None
@@ -249,6 +269,7 @@ def run_benchmark(
             skipped_metric_gates=list(skipped_metric_gates),
             runfile={"source_path": runfile_path, "payload": runfile_payload} if runfile_payload is not None else None,
         )
+        _merge_replay_metadata(result, replay_meta)
         write_json(writer.path("results.json"), result)
         writer.status(
             status="complete",
@@ -265,6 +286,8 @@ def run_benchmark(
             resolved=resolved,
             summary_metrics=summary_metrics,
         )
+        _merge_replay_metadata(result, replay_meta)
+        write_json(writer.path("results.json"), result)
         return RunOutcome(exit_code=exc.exit_code, artifact_dir=writer.artifact_dir, results=result)
     except Exception as exc:
         failure = FailurePayload(
@@ -282,4 +305,6 @@ def run_benchmark(
             resolved=resolved,
             summary_metrics=summary_metrics,
         )
+        _merge_replay_metadata(result, replay_meta)
+        write_json(writer.path("results.json"), result)
         return RunOutcome(exit_code=EXIT_INTERNAL_ERROR, artifact_dir=writer.artifact_dir, results=result)

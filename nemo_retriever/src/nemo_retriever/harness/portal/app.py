@@ -709,10 +709,16 @@ async def upload_run_artifacts(run_id: int, file: UploadFile = File(...)):
 @app.get("/api/runs/{run_id}/command")
 async def get_run_command(run_id: int):
     """Return the shell command that was executed for this run."""
+    from nemo_retriever.harness.replay_command import reconstruct_command_from_record
+
     row = history.get_run_by_id(run_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Run not found")
     raw = row.get("raw_json") or {}
+
+    replay = raw.get("replay_command")
+    if isinstance(replay, str) and replay.strip():
+        return {"command": replay.strip()}
 
     # Try explicit command_file path from artifacts
     command_file = (raw.get("artifacts") or {}).get("command_file")
@@ -728,29 +734,10 @@ async def get_run_command(run_id: int):
         if p.is_file():
             return {"command": p.read_text(encoding="utf-8").strip()}
 
-    # Last resort for service-mode: reconstruct from test_config
-    tc = raw.get("test_config") or {}
-    if tc.get("run_mode") == "service" and tc.get("service_url"):
-        import shlex as _shlex
-
-        parts = [
-            "python -m nemo_retriever.harness.run",
-            "--run-mode service",
-            f"--service-url {_shlex.quote(tc['service_url'])}",
-        ]
-        if tc.get("dataset_dir"):
-            parts.append(f"--dataset {_shlex.quote(tc['dataset_dir'])}")
-        if tc.get("service_max_concurrency"):
-            parts.append(f"--service-max-concurrency {tc['service_max_concurrency']}")
-        if tc.get("input_type"):
-            parts.append(f"--input-type {tc['input_type']}")
-        if tc.get("preset"):
-            parts.append(f"--preset {_shlex.quote(tc['preset'])}")
-        if tc.get("evaluation_mode") and tc["evaluation_mode"] != "none":
-            parts.append(f"--evaluation-mode {tc['evaluation_mode']}")
-        if tc.get("api_key"):
-            parts.append("--api-key $NVIDIA_API_KEY")
-        return {"command": " ".join(parts)}
+    job = history.get_job_by_id(row.get("job_id")) if row.get("job_id") else None
+    reconstructed = reconstruct_command_from_record(raw, job)
+    if reconstructed:
+        return {"command": reconstructed}
 
     return {"command": None}
 
@@ -2699,6 +2686,14 @@ def _normalize_runner_result(
         run_result["artifacts"] = {
             "runtime_metrics_dir": str(Path(art) / "runtime_metrics"),
         }
+
+    if result.get("replay_command"):
+        run_result["replay_command"] = result["replay_command"]
+        artifacts = dict(run_result.get("artifacts") or {})
+        result_artifacts = result.get("artifacts") or {}
+        if result_artifacts.get("command_file"):
+            artifacts["command_file"] = result_artifacts["command_file"]
+        run_result["artifacts"] = artifacts
 
     run_result.setdefault("tags", job.get("tags"))
     return run_result

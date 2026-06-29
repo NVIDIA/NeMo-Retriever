@@ -177,4 +177,8 @@ def artifact_paths(writer: ArtifactWriter) -> dict[str, str]:
         "beir_run.trec",
         "query_results.jsonl",
     )
-    return {name: str(writer.path(name)) for name in names if writer.path(name).exists() or name == "results.json"}
+    paths = {name: str(writer.path(name)) for name in names if writer.path(name).exists() or name == "results.json"}
+    command_path = writer.path("command.txt")
+    if command_path.is_file():
+        paths["command_file"] = str(command_path.resolve())
+    return paths
