@@ -220,7 +220,7 @@ def warmup_process_pool_workers() -> dict[str, Any]:
         for executor, num_workers in _executor_warmup_targets:
             futures = [executor.submit(_pool_worker_ping, i) for i in range(num_workers)]
             for future in futures:
-                if future.result():
+                if future.result(timeout=300):
                     workers_warm += 1
         _service_warmup_state["workers_warm"] = workers_warm
         _service_warmup_state["complete"] = workers_warm == workers_expected
