@@ -5,8 +5,10 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
+from unittest import SkipTest
 
 import yaml
 
@@ -15,8 +17,12 @@ CHART = Path(__file__).resolve().parents[1] / "helm"
 
 
 def _render(*extra_args: str) -> list[dict]:
+    helm = shutil.which("helm")
+    if helm is None:
+        raise SkipTest("`helm` binary not available in this environment.")
+
     command = [
-        "helm",
+        helm,
         "template",
         "shared-results-test",
         str(CHART),
