@@ -78,8 +78,37 @@ class TestStoreOperatorInGraph:
         assert result.iloc[0]["_image_b64"] is None
         assert result.iloc[0]["page_image"]["image_b64"] is None
         assert result.iloc[0]["page_image"]["stored_image_uri"] == result.iloc[0]["_stored_image_uri"]
-        assert result.iloc[0]["table"][0]["image_b64"] == b64
+        assert result.iloc[0]["table"][0]["image_b64"] is None
         assert result.iloc[0]["table"][0]["stored_image_uri"] == "file:///old/table.png"
+
+    def test_store_operator_writes_nested_image_payloads(self, tmp_path: Path):
+        b64 = _make_tiny_png_b64(color=(0, 255, 0))
+        df = pd.DataFrame(
+            [
+                {
+                    "path": "/docs/test.pdf",
+                    "page_number": 1,
+                    "images": [
+                        {
+                            "text": "figure",
+                            "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4],
+                            "image_b64": b64,
+                        }
+                    ],
+                }
+            ]
+        )
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        files = list(tmp_path.rglob("*.png"))
+        assert len(files) == 1
+        assert files[0].read_bytes() == base64.b64decode(b64)
+        nested = result.iloc[0]["images"][0]
+        assert nested["image_b64"] is None
+        assert nested["stored_image_uri"].startswith("file://")
+        assert Path(urlparse(nested["stored_image_uri"]).path).exists()
+        assert "_stored_image_uri" not in result.columns
 
     def test_store_operator_does_not_overwrite_page_uri_for_element_rows(self, tmp_path: Path):
         page_b64 = _make_tiny_png_b64(color=(255, 0, 0))

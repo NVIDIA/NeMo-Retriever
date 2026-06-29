@@ -138,11 +138,11 @@ class ServiceIngestResult(list):
     dataframe
         When :meth:`ServiceIngestor.ingest` is called with
         ``return_results=True`` (the default), a ``pandas.DataFrame``
-        of all successfully ingested rows fetched from the service via
+        of compact rows fetched from the service via
         ``GET /v1/ingest/status/{document_id}``, concatenated in upload
-        order with the same column layout as ``GraphIngestor.ingest()``
-        in ``inprocess`` / ``batch`` run modes. ``None`` when
-        ``return_results=False``.
+        order. Service results intentionally expose only extracted text,
+        source provenance, element type, media timings, optional stored
+        image URIs, and optional errors. ``None`` when ``return_results=False``.
     """
 
     def __init__(self, items: list[dict[str, Any]] | None = None) -> None:

@@ -73,6 +73,84 @@ def _stored_uri(dest_uri: str) -> str:
     return Path(dest_uri).resolve().as_uri()
 
 
+def _write_image_b64(
+    value: Any,
+    *,
+    storage_uri: str,
+    storage_options: dict[str, Any],
+    fallback_format: str,
+) -> str | None:
+    raw = _decode_image_b64(value)
+    if raw is None:
+        return None
+
+    extension = _sniff_image_format(raw) or fallback_format
+    object_key = _build_object_key(raw=raw, extension=extension)
+    dest_uri = _join_storage_uri(storage_uri, object_key)
+
+    try:
+        with fsspec.open(dest_uri, mode="wb", **storage_options) as f:
+            f.write(raw)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to store image to {dest_uri!r}: {exc}") from exc
+
+    return _stored_uri(dest_uri)
+
+
+def _store_nested_image_payloads(
+    value: Any,
+    *,
+    storage_uri: str,
+    storage_options: dict[str, Any],
+    fallback_format: str,
+    strip_base64: bool,
+) -> Any:
+    """Persist nested ``image_b64`` values and replace them with URIs."""
+    if isinstance(value, list):
+        return [
+            _store_nested_image_payloads(
+                item,
+                storage_uri=storage_uri,
+                storage_options=storage_options,
+                fallback_format=fallback_format,
+                strip_base64=strip_base64,
+            )
+            for item in value
+        ]
+
+    if not isinstance(value, dict):
+        return value
+
+    out = dict(value)
+    image_b64 = out.get("image_b64")
+    stored_uri = out.get("stored_image_uri")
+    if isinstance(image_b64, str) and image_b64.strip():
+        if not stored_uri:
+            stored_uri = _write_image_b64(
+                image_b64,
+                storage_uri=storage_uri,
+                storage_options=storage_options,
+                fallback_format=fallback_format,
+            )
+            if stored_uri:
+                out["stored_image_uri"] = stored_uri
+        if strip_base64:
+            out["image_b64"] = None
+
+    for key, child in list(out.items()):
+        if key in {"image_b64", "stored_image_uri"}:
+            continue
+        out[key] = _store_nested_image_payloads(
+            child,
+            storage_uri=storage_uri,
+            storage_options=storage_options,
+            fallback_format=fallback_format,
+            strip_base64=strip_base64,
+        )
+
+    return out
+
+
 def _row_image_b64_with_source(row: pd.Series) -> tuple[Any, bool]:
     value = row.get("_image_b64")
     if isinstance(value, str) and value.strip():
@@ -104,7 +182,8 @@ def _store_row_images(
     strip_base64: bool = True,
 ) -> pd.DataFrame:
     """Return a copy of *df* with ``_stored_image_uri`` set for stored rows."""
-    if df.empty or ("_image_b64" not in df.columns and "page_image" not in df.columns):
+    image_columns = ("page_image", "images", "tables", "charts", "infographics", "table", "chart", "infographic")
+    if df.empty or ("_image_b64" not in df.columns and not any(column in df.columns for column in image_columns)):
         return df
 
     out = df.copy()
@@ -114,32 +193,37 @@ def _store_row_images(
     for idx, row in out.iterrows():
         image_b64, from_page_image = _row_image_b64_with_source(row)
         raw = _decode_image_b64(image_b64)
-        if raw is None:
-            continue
+        if raw is not None:
+            stored_uri = _write_image_b64(
+                image_b64,
+                storage_uri=storage_uri,
+                storage_options=fsspec_options,
+                fallback_format=fallback_format,
+            )
+            if stored_uri is not None:
+                out.at[idx, "_stored_image_uri"] = stored_uri
 
-        extension = _sniff_image_format(raw) or fallback_format
-        object_key = _build_object_key(raw=raw, extension=extension)
-        dest_uri = _join_storage_uri(storage_uri, object_key)
+                if strip_base64:
+                    if "_image_b64" in out.columns:
+                        out.at[idx, "_image_b64"] = None
+                    page_image = row.get("page_image")
+                    if isinstance(page_image, dict):
+                        updated_page_image = dict(page_image)
+                        if _row_image_represents_page(row, from_page_image=from_page_image):
+                            updated_page_image["image_b64"] = None
+                            updated_page_image["stored_image_uri"] = stored_uri
+                        out.at[idx, "page_image"] = updated_page_image
 
-        try:
-            with fsspec.open(dest_uri, mode="wb", **fsspec_options) as f:
-                f.write(raw)
-        except Exception as exc:
-            raise RuntimeError(f"Failed to store image for row {idx!r} to {dest_uri!r}: {exc}") from exc
-
-        stored_uri = _stored_uri(dest_uri)
-        out.at[idx, "_stored_image_uri"] = stored_uri
-
-        if strip_base64:
-            if "_image_b64" in out.columns:
-                out.at[idx, "_image_b64"] = None
-            page_image = row.get("page_image")
-            if isinstance(page_image, dict):
-                updated_page_image = dict(page_image)
-                updated_page_image["image_b64"] = None
-                if _row_image_represents_page(row, from_page_image=from_page_image):
-                    updated_page_image["stored_image_uri"] = stored_uri
-                out.at[idx, "page_image"] = updated_page_image
+        for column in image_columns:
+            if column not in out.columns:
+                continue
+            out.at[idx, column] = _store_nested_image_payloads(
+                out.at[idx, column],
+                storage_uri=storage_uri,
+                storage_options=fsspec_options,
+                fallback_format=fallback_format,
+                strip_base64=strip_base64,
+            )
 
     return out
 

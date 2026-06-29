@@ -1,27 +1,53 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Serialize and deserialize ingest pipeline DataFrames for service transport.
+"""Serialize and deserialize compact ingest results for service transport.
 
-The retriever service returns per-document rows over HTTP; these helpers
-keep the wire format aligned with the ``pandas.DataFrame`` produced by
-:meth:`nemo_retriever.graph_ingestor.GraphIngestor.ingest` in
-``inprocess`` and ``batch`` run modes (same column names and row shape,
-with large/binary cell values replaced by compact placeholders).
+The worker pipeline still produces the full graph DataFrame internally so
+embedding, store, and VDB upload stages keep their existing inputs. At the
+HTTP status boundary, these helpers project each row down to the small
+user-facing result shape returned by service ``return_results`` and
+``save_to_disk``.
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import numpy as np
 
 _MAX_STR_LEN = 500
+_RAW_IMAGE_FIELD_NAMES = frozenset({"image_b64", "_image_b64"})
+_EMBEDDING_FIELD_NAMES = frozenset({"embedding", "embeddings"})
+_EMBEDDING_PAYLOAD_COLUMNS = frozenset({"text_embeddings_1b_v2"})
+_ELEMENT_TYPE_ALIASES = {
+    "chart_caption": "chart",
+    "image_caption": "image",
+    "images": "image",
+    "infographic_caption": "infographic",
+    "table_caption": "table",
+    "text/page": "text",
+}
+_MEDIA_ELEMENT_TYPES = frozenset({"audio", "video", "video_frame"})
+
+
+def _is_missing(val: Any) -> bool:
+    if val is None:
+        return True
+    if isinstance(val, (dict, list, tuple, bytes, bytearray, memoryview, np.ndarray)):
+        return False
+    try:
+        import pandas as pd
+
+        return bool(pd.isna(val))
+    except (TypeError, ValueError):
+        return False
 
 
 def sanitize_cell_value(val: Any) -> Any:
     """Convert a single cell value to a JSON-safe, memory-friendly form."""
-    if val is None:
+    if _is_missing(val):
         return None
     if isinstance(val, (np.integer,)):
         return int(val)
@@ -38,23 +64,250 @@ def sanitize_cell_value(val: Any) -> Any:
     return val
 
 
-def dataframe_to_transport_records(df: Any) -> list[dict[str, Any]]:
-    """Serialize a pipeline DataFrame to JSON-safe row dicts.
+def _mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
-    All columns are retained so the reconstructed frame matches the
-    column layout of ``GraphIngestor.ingest()`` output; only cell values
-    are sanitized to stay within service memory/transport limits.
+
+def _content_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    return _mapping(metadata.get("content_metadata"))
+
+
+def _coerce_str(value: Any) -> str | None:
+    if _is_missing(value):
+        return None
+    text = str(value)
+    return text if text.strip() else None
+
+
+def _coerce_int(value: Any) -> int | None:
+    if _is_missing(value):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_float(value: Any) -> float | None:
+    if _is_missing(value):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_str(*values: Any) -> str | None:
+    for value in values:
+        text = _coerce_str(value)
+        if text is not None:
+            return text
+    return None
+
+
+def _first_int(*values: Any) -> int | None:
+    for value in values:
+        number = _coerce_int(value)
+        if number is not None:
+            return number
+    return None
+
+
+def _first_float(*values: Any) -> float | None:
+    for value in values:
+        number = _coerce_float(value)
+        if number is not None:
+            return number
+    return None
+
+
+def _normalize_element_type(value: Any) -> str | None:
+    raw = _coerce_str(value)
+    if raw is None:
+        return None
+    normalized = raw.strip().lower()
+    return _ELEMENT_TYPE_ALIASES.get(normalized, normalized)
+
+
+def _extract_text(row: dict[str, Any], metadata: dict[str, Any]) -> str:
+    return _first_str(row.get("text"), row.get("content"), metadata.get("content")) or ""
+
+
+def _extract_source_id(row: dict[str, Any], metadata: dict[str, Any]) -> str:
+    source = _mapping(row.get("source"))
+    return (
+        _first_str(
+            row.get("source_id"),
+            row.get("source_path"),
+            metadata.get("source_id"),
+            metadata.get("source_path"),
+            source.get("source_id"),
+            row.get("path"),
+            row.get("source"),
+        )
+        or ""
+    )
+
+
+def _extract_element_type(row: dict[str, Any], metadata: dict[str, Any]) -> str:
+    content_metadata = _content_metadata(metadata)
+    return (
+        _normalize_element_type(
+            row.get("element_type")
+            or row.get("_content_type")
+            or row.get("content_type")
+            or row.get("document_type")
+            or metadata.get("_content_type")
+            or metadata.get("content_type")
+            or metadata.get("document_type")
+            or content_metadata.get("type")
+        )
+        or "text"
+    )
+
+
+def _extract_page_number(row: dict[str, Any], metadata: dict[str, Any]) -> int | None:
+    content_metadata = _content_metadata(metadata)
+    return _first_int(row.get("page_number"), metadata.get("page_number"), content_metadata.get("page_number"))
+
+
+def _extract_time_bounds(row: dict[str, Any], metadata: dict[str, Any]) -> tuple[float | None, float | None]:
+    content_metadata = _content_metadata(metadata)
+    start = _first_float(
+        row.get("start_time_seconds"),
+        row.get("segment_start_seconds"),
+        row.get("frame_timestamp_seconds"),
+        metadata.get("start_time_seconds"),
+        metadata.get("segment_start_seconds"),
+        metadata.get("frame_timestamp_seconds"),
+        content_metadata.get("start_time_seconds"),
+        content_metadata.get("start_time"),
+    )
+    end = _first_float(
+        row.get("end_time_seconds"),
+        row.get("segment_end_seconds"),
+        metadata.get("end_time_seconds"),
+        metadata.get("segment_end_seconds"),
+        content_metadata.get("end_time_seconds"),
+        content_metadata.get("end_time"),
+    )
+    return start, end
+
+
+def _extract_duration(
+    row: dict[str, Any], metadata: dict[str, Any], start: float | None, end: float | None
+) -> float | None:
+    if start is not None and end is not None:
+        return max(0.0, float(end) - float(start))
+    return _first_float(
+        row.get("duration_seconds"), row.get("duration"), metadata.get("duration_seconds"), metadata.get("duration")
+    )
+
+
+def _extract_stored_image_uri(row: dict[str, Any]) -> str | None:
+    page_image = row.get("page_image")
+    page_uri = page_image.get("stored_image_uri") if isinstance(page_image, dict) else None
+    return _first_str(row.get("_stored_image_uri"), row.get("stored_image_uri"), page_uri)
+
+
+def _compact_error(value: Any) -> Any:
+    if _is_missing(value):
+        return None
+    if isinstance(value, dict):
+        out = {
+            str(key): sanitize_cell_value(value[key])
+            for key in ("stage", "type", "message")
+            if key in value and not _is_missing(value[key])
+        }
+        return out or None
+    return sanitize_cell_value(value)
+
+
+def compact_result_record(row: dict[str, Any]) -> dict[str, Any]:
+    """Project a full pipeline row into the compact public result shape."""
+    metadata = _mapping(row.get("metadata"))
+    element_type = _extract_element_type(row, metadata)
+    start, end = _extract_time_bounds(row, metadata)
+    duration = _extract_duration(row, metadata, start, end)
+    is_media = element_type in _MEDIA_ELEMENT_TYPES or start is not None or end is not None
+
+    record: dict[str, Any] = {
+        "text": _extract_text(row, metadata),
+        "source_id": _extract_source_id(row, metadata),
+        "element_type": element_type,
+    }
+
+    if is_media:
+        if start is not None:
+            record["start_time_seconds"] = start
+        if end is not None:
+            record["end_time_seconds"] = end
+        if duration is not None:
+            record["duration_seconds"] = duration
+    else:
+        page_number = _extract_page_number(row, metadata)
+        if page_number is not None:
+            record["page_number"] = page_number
+
+    stored_image_uri = _extract_stored_image_uri(row)
+    if stored_image_uri is not None:
+        record["stored_image_uri"] = stored_image_uri
+
+    error = _compact_error(row.get("error") if "error" in row else metadata.get("error"))
+    if error is not None:
+        record["error"] = error
+
+    return record
+
+
+def sanitize_result_value(key: str, val: Any) -> Any:
+    """Convert a result value to JSON-safe transport form.
+
+    Raw image and embedding payloads are useful inside the pipeline for
+    visual embedding, OCR, image storage, and vector DB upload, but returning
+    them in service results dominates memory use. Keep the surrounding
+    keys/columns stable and null only the bulky payload values.
+    """
+    if key in _RAW_IMAGE_FIELD_NAMES:
+        return None
+    if key in _EMBEDDING_FIELD_NAMES:
+        return None
+    if key in _EMBEDDING_PAYLOAD_COLUMNS and not isinstance(val, dict):
+        return None
+    if isinstance(val, dict):
+        return {str(k): sanitize_result_value(str(k), v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [sanitize_result_value("", item) for item in val]
+    if isinstance(val, tuple):
+        return [sanitize_result_value("", item) for item in val]
+    return sanitize_cell_value(val)
+
+
+def dataframe_to_transport_records(df: Any) -> list[dict[str, Any]]:
+    """Serialize a pipeline DataFrame to compact JSON-safe row dicts.
+
+    The transport response intentionally does not mirror the internal
+    pipeline DataFrame. It returns only extracted text, provenance, media
+    timings, optional stored-image URIs, and optional errors.
     """
     import pandas as pd
 
     if not isinstance(df, pd.DataFrame):
         raise TypeError(f"expected pandas.DataFrame, got {type(df).__name__}")
     records = df.to_dict(orient="records")
-    return [{k: sanitize_cell_value(v) for k, v in row.items()} for row in records]
+    return [compact_result_record(row) for row in records]
 
 
 def dataframe_from_transport_records(records: list[dict[str, Any]]) -> Any:
-    """Rebuild a pipeline DataFrame from transport row dicts."""
+    """Rebuild a compact results DataFrame from transport row dicts."""
     import pandas as pd
 
     if not records:
@@ -66,11 +319,7 @@ def concat_ingest_results(
     rows_by_document: dict[str, list[dict[str, Any]]],
     document_order: list[str],
 ) -> Any:
-    """Concatenate per-document transport rows in upload order.
-
-    Mirrors how :class:`~nemo_retriever.graph.executor.InprocessExecutor`
-    processes a list of input paths as one combined result frame.
-    """
+    """Concatenate per-document compact transport rows in upload order."""
     import pandas as pd
 
     frames: list[pd.DataFrame] = []

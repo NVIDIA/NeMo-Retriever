@@ -66,10 +66,10 @@ def _fake_materialize_completed_document(
         return None
     rows = [
         {
-            "path": f"/uploads/{document_id}.pdf",
+            "source_id": f"/uploads/{document_id}.pdf",
             "page_number": 1,
             "text": f"content-{document_id}",
-            "metadata": {"source_id": document_id},
+            "element_type": "text",
         }
     ]
     if self._save_to_disk_dir is not None:
@@ -115,6 +115,7 @@ def test_ingest_default_returns_service_ingest_result(stub_ingestor: ServiceInge
     assert result.dataframe is not None
     assert len(result.dataframe) == 1
     assert "document_id" not in result.dataframe.columns
+    assert list(result.dataframe.columns) == ["source_id", "page_number", "text", "element_type"]
     assert result.dataframe.iloc[0]["text"] == "content-doc-a"
 
 
