@@ -197,6 +197,10 @@ class _MCPGuardMiddleware:
         self._app = app
         self._request_timestamps: list[float] = []
 
+    @property
+    def lifespan(self):
+        return self._app.lifespan
+
     def _allowed_origins(self) -> set[str] | None:
         raw = history.get_portal_setting("mcp_allowed_origins")
         if not raw or raw.strip() == "*":
