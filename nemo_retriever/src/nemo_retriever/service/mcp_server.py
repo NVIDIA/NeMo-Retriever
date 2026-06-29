@@ -26,6 +26,7 @@ from fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from nemo_retriever.service.config import ServiceConfig
+from nemo_retriever.service.query_schema import QueryFormat
 
 logger = logging.getLogger(__name__)
 
@@ -194,10 +195,18 @@ class ServiceMCPClient:
         self._raise_for_status(resp)
         return dict(self._json_or_text(resp))
 
-    async def query(self, query: str, *, top_k: int = 5, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def query(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        format: str = "hits",
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         body = dict(payload or {})
         body.setdefault("query", query)
         body.setdefault("top_k", top_k)
+        body.setdefault("format", format)
         async with self._client() as client:
             resp = await client.post("/v1/query", json=body)
         self._raise_for_status(resp)
@@ -479,10 +488,19 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
 
     @mcp.tool(
         name="query",
-        description="Search ingested documents through the service VectorDB endpoint.",
+        description=(
+            "Search ingested documents through the service VectorDB endpoint. "
+            "format='hits' (default) returns raw retrieval hits; format='evidence' "
+            "returns the fidelity-tagged, citation-ready {evidence, coverage} shape."
+        ),
     )
-    async def query(query: str, top_k: int = 5, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        return await service.query(query, top_k=top_k, payload=payload)
+    async def query(
+        query: str,
+        top_k: int = 5,
+        format: QueryFormat = "hits",
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return await service.query(query, top_k=top_k, format=format, payload=payload)
 
     @mcp.tool(name="answer", description="Search ingested documents and generate an answer.")
     async def answer(

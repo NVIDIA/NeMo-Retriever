@@ -140,8 +140,6 @@ def start(
 def ingest(
     files: list[Path] = typer.Argument(..., help="One or more document files to ingest."),
     server_url: str = typer.Option("http://localhost:7670", "--server-url", "-s", help="Retriever service base URL."),
-    use_sse: bool = typer.Option(True, "--sse/--no-sse", help="Use SSE streaming (default) or poll."),
-    poll_interval: float = typer.Option(2.0, "--poll-interval", help="Seconds between status polls (no-SSE mode)."),
     concurrency: int = typer.Option(8, "--concurrency", help="Max concurrent uploads."),
     api_token: Optional[str] = typer.Option(
         None,
@@ -159,11 +157,9 @@ def ingest(
             max_concurrency=concurrency,
             api_token=api_token,
         )
-        await client.ingest_documents(
-            files=files,
-            use_sse=use_sse,
-            poll_interval=poll_interval,
-        )
+        # The client always streams via SSE with an automatic bulk-poll fallback,
+        # so there are no SSE/poll knobs to forward here.
+        await client.ingest_documents(files=files)
 
     asyncio.run(_run())
 

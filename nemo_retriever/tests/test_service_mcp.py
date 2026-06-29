@@ -74,6 +74,7 @@ def test_query_tool_client_posts_payload_and_auth_header() -> None:
             "filters": {"source": "a.pdf"},
             "query": "What is indexed?",
             "top_k": 2,
+            "format": "hits",
         },
     }
     assert result["results"][0]["hits"][0]["text"] == "match"

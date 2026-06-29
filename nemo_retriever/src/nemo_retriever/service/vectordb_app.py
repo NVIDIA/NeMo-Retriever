@@ -41,7 +41,17 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from nemo_retriever.service.query_schema import QueryRequest, QueryResponse, QueryResult
+from nemo_retriever.query.evidence import build_evidence_result
+from nemo_retriever.service.query_schema import (
+    EvidenceQueryResponse,
+    EvidenceResult,
+    QueryRequest,
+    QueryResponse,
+    QueryResult,
+)
+
+# /v1/query is dense vector search only; report that honestly in coverage.
+_QUERY_STRATEGIES = ["dense"]
 
 logger = logging.getLogger(__name__)
 
@@ -327,8 +337,8 @@ def create_vectordb_app(
         written = await asyncio.to_thread(_state.write_rows, req.rows)
         return WriteResponse(written=written, total_rows=_state.total_rows())
 
-    @app.post("/v1/query", response_model=QueryResponse, tags=["query"])
-    async def query(req: QueryRequest) -> QueryResponse:
+    @app.post("/v1/query", response_model=None, tags=["query"])
+    async def query(req: QueryRequest) -> QueryResponse | EvidenceQueryResponse:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
 
@@ -347,14 +357,20 @@ def create_vectordb_app(
 
         queries = req.query if isinstance(req.query, list) else [req.query]
         if not queries:
+            if req.format == "evidence":
+                return EvidenceQueryResponse(results=[])
             return QueryResponse(results=[])
 
         async with _query_semaphore:
             vectors = await asyncio.to_thread(_state.embed_queries, queries)
             hits_per_query = await asyncio.to_thread(_state.search, vectors, req.top_k)
 
-        results = [QueryResult(hits=hits) for hits in hits_per_query]
-        return QueryResponse(results=results)
+        if req.format == "evidence":
+            return EvidenceQueryResponse(
+                results=[EvidenceResult(**build_evidence_result(hits, _QUERY_STRATEGIES)) for hits in hits_per_query]
+            )
+
+        return QueryResponse(results=[QueryResult(hits=hits) for hits in hits_per_query])
 
     return app
 
