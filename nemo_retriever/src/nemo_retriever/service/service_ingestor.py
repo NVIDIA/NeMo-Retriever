@@ -515,8 +515,7 @@ class ServiceIngestor(ingestor):
         so the worker can short-circuit identically.
         """
         spec = dict(self._pipeline_spec)
-        if result_schema != "legacy":
-            spec["result_schema"] = result_schema
+        spec["result_schema"] = result_schema
         is_empty = (
             spec.get("extraction_mode", "auto") in ("pdf", "auto")
             and not spec.get("stage_order")

@@ -73,6 +73,12 @@ def test_compact_result_schema_populates_pipeline_payload() -> None:
     assert PipelineSpec.model_validate(payload).result_schema == "compact"
 
 
+def test_execute_time_result_schema_overrides_stored_spec_value() -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing._pipeline_spec["result_schema"] = "compact"
+    assert ing._pipeline_payload(result_schema="legacy") is None
+
+
 def test_extract_mode_only_omits_extract_params() -> None:
     """``.extract(extraction_mode='pdf')`` must not send client model defaults."""
     ing = ServiceIngestor(base_url="http://example:7670")
