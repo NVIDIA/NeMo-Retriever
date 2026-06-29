@@ -226,5 +226,24 @@ def diff_command(
         typer.echo(f"{key}: {delta['left']} -> {delta['right']}")
 
 
+runner_app = typer.Typer(help="Runner agent commands.")
+from nemo_retriever.harness.runner import runner_start_command  # noqa: E402
+
+runner_app.command("start")(runner_start_command)
+app.add_typer(runner_app, name="runner")
+
+
+@app.command("portal")
+def portal_command(
+    host: Annotated[str, typer.Option("--host", help="Bind address.")] = "0.0.0.0",
+    port: Annotated[int, typer.Option("--port", help="Bind port.")] = 8100,
+) -> None:
+    """Launch the harness web portal."""
+    import uvicorn
+
+    typer.echo(f"Starting harness portal at http://{host}:{port}")
+    uvicorn.run("nemo_retriever.harness.portal.app:app", host=host, port=port, log_level="info")
+
+
 def main() -> None:
     app()

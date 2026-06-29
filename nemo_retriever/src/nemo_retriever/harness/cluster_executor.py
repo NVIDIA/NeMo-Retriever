@@ -111,50 +111,24 @@ def _build_job_manifest(
     run_mode = job.get("run_mode") or cluster.get("default_run_mode", "batch")
     image = cluster.get("default_image") or DEFAULT_JOB_IMAGE
 
-    cmd_parts = [
-        "retriever", "harness", "run",
-        "--dataset", job.get("dataset_path") or dataset,
-    ]
-    if preset:
-        cmd_parts += ["--preset", preset]
-    cmd_parts += ["--run-mode", run_mode]
-
     overrides = job.get("dataset_overrides") or {}
     if isinstance(overrides, str):
         try:
             overrides = json.loads(overrides)
         except (json.JSONDecodeError, TypeError):
             overrides = {}
-    for key, value in overrides.items():
-        if key not in ("run_mode", "dataset_dir"):
-            cmd_parts += ["--override", f"{key}={value}"]
+
+    container_command = ["python", "-m", "nemo_retriever.harness.portal_job"]
 
     env_vars = [
         {"name": "HARNESS_JOB_ID", "value": job_id},
+        {"name": "HARNESS_JOB_JSON", "value": json.dumps(job)},
         {"name": "HARNESS_SKIP_LOCAL_HISTORY", "value": "1"},
     ]
 
     actual_portal_url = portal_url or os.environ.get("RETRIEVER_HARNESS_PORTAL_URL", "")
     if actual_portal_url:
         env_vars.append({"name": "HARNESS_PORTAL_URL", "value": actual_portal_url})
-
-    callback_script = (
-        f'retriever harness run --dataset "{job.get("dataset_path") or dataset}"'
-        + (f' --preset "{preset}"' if preset else "")
-        + f" --run-mode {run_mode}"
-        + " --skip-local-history"
-    )
-    if actual_portal_url:
-        callback_script += (
-            f" && python -c \""
-            f"import json, urllib.request; "
-            f"urllib.request.urlopen(urllib.request.Request("
-            f"'{actual_portal_url}/api/jobs/{job_id}/complete', "
-            f"data=json.dumps({{'success': True}}).encode(), "
-            f"headers={{'Content-Type': 'application/json'}}, method='POST'))\""
-        )
-
-    container_command = ["/bin/bash", "-c", callback_script]
 
     resource_requests = {}
     resource_limits = {}

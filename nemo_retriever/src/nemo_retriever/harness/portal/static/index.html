@@ -272,7 +272,7 @@
       const res = await fetch(file + "?" + cacheBust);
       if (!res.ok) { console.error("Failed to load", file, res.status); continue; }
       const jsx = await res.text();
-      const js = Babel.transform(jsx, { presets: ["react"] }).code;
+      const js = Babel.transform(jsx, { presets: [["react", { runtime: "classic" }]] }).code;
       const el = document.createElement("script");
       el.textContent = js;
       document.head.appendChild(el);
