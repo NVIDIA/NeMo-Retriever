@@ -1,21 +1,24 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Serialize and deserialize compact ingest results for service transport.
+"""Serialize and deserialize ingest pipeline DataFrames for service transport.
 
-The worker pipeline still produces the full graph DataFrame internally so
-embedding, store, and VDB upload stages keep their existing inputs. At the
-HTTP status boundary, these helpers project each row down to the small
-user-facing result shape returned by service ``return_results`` and
-``save_to_disk``.
+The retriever service returns per-document rows over HTTP; these helpers
+keep the wire format aligned with the ``pandas.DataFrame`` produced by
+:meth:`nemo_retriever.ingestor.graph_ingestor.GraphIngestor.ingest` in
+``inprocess`` and ``batch`` run modes (same column names and row shape),
+while stripping bulky raw images and embeddings from cell values. Callers
+can opt into the future compact result schema with ``result_schema="compact"``.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
+
+ResultSchema = Literal["legacy", "compact"]
 
 _MAX_STR_LEN = 500
 _RAW_IMAGE_FIELD_NAMES = frozenset({"image_b64", "_image_b64"})
@@ -62,6 +65,29 @@ def sanitize_cell_value(val: Any) -> Any:
     if isinstance(val, str) and len(val) > _MAX_STR_LEN:
         return val[:_MAX_STR_LEN] + f"…[{len(val)} chars total]"
     return val
+
+
+def _sanitize_result_value(key: str, val: Any) -> Any:
+    """Convert a result value to JSON-safe transport form.
+
+    Raw image and embedding payloads are useful inside the pipeline for
+    visual embedding, OCR, image storage, and vector DB upload, but returning
+    them in service results dominates memory use. Keep the surrounding
+    keys/columns stable and null only the bulky payload values.
+    """
+    if key in _RAW_IMAGE_FIELD_NAMES:
+        return None
+    if key in _EMBEDDING_FIELD_NAMES:
+        return None
+    if key in _EMBEDDING_PAYLOAD_COLUMNS and not isinstance(val, dict):
+        return None
+    if isinstance(val, dict):
+        return {str(k): _sanitize_result_value(str(k), v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_sanitize_result_value("", item) for item in val]
+    if isinstance(val, tuple):
+        return [_sanitize_result_value("", item) for item in val]
+    return sanitize_cell_value(val)
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -268,46 +294,31 @@ def compact_result_record(row: dict[str, Any]) -> dict[str, Any]:
     return record
 
 
-def sanitize_result_value(key: str, val: Any) -> Any:
-    """Convert a result value to JSON-safe transport form.
+def dataframe_to_transport_records(df: Any, *, result_schema: ResultSchema = "legacy") -> list[dict[str, Any]]:
+    """Serialize a pipeline DataFrame to JSON-safe row dicts.
 
-    Raw image and embedding payloads are useful inside the pipeline for
-    visual embedding, OCR, image storage, and vector DB upload, but returning
-    them in service results dominates memory use. Keep the surrounding
-    keys/columns stable and null only the bulky payload values.
-    """
-    if key in _RAW_IMAGE_FIELD_NAMES:
-        return None
-    if key in _EMBEDDING_FIELD_NAMES:
-        return None
-    if key in _EMBEDDING_PAYLOAD_COLUMNS and not isinstance(val, dict):
-        return None
-    if isinstance(val, dict):
-        return {str(k): sanitize_result_value(str(k), v) for k, v in val.items()}
-    if isinstance(val, list):
-        return [sanitize_result_value("", item) for item in val]
-    if isinstance(val, tuple):
-        return [sanitize_result_value("", item) for item in val]
-    return sanitize_cell_value(val)
+    ``result_schema="legacy"`` retains all columns so the reconstructed
+    frame matches ``GraphIngestor.ingest()`` output; only cell values are
+    sanitized to stay within service memory/transport limits.
 
-
-def dataframe_to_transport_records(df: Any) -> list[dict[str, Any]]:
-    """Serialize a pipeline DataFrame to compact JSON-safe row dicts.
-
-    The transport response intentionally does not mirror the internal
-    pipeline DataFrame. It returns only extracted text, provenance, media
+    ``result_schema="compact"`` returns the future compact public schema:
+    extracted text, source provenance, element type, page number or media
     timings, optional stored-image URIs, and optional errors.
     """
     import pandas as pd
 
+    if result_schema not in ("legacy", "compact"):
+        raise ValueError(f"unknown result_schema: {result_schema!r}")
     if not isinstance(df, pd.DataFrame):
         raise TypeError(f"expected pandas.DataFrame, got {type(df).__name__}")
     records = df.to_dict(orient="records")
-    return [compact_result_record(row) for row in records]
+    if result_schema == "compact":
+        return [compact_result_record(row) for row in records]
+    return [{k: _sanitize_result_value(str(k), v) for k, v in row.items()} for row in records]
 
 
 def dataframe_from_transport_records(records: list[dict[str, Any]]) -> Any:
-    """Rebuild a compact results DataFrame from transport row dicts."""
+    """Rebuild a pipeline DataFrame from transport row dicts."""
     import pandas as pd
 
     if not records:
@@ -319,7 +330,11 @@ def concat_ingest_results(
     rows_by_document: dict[str, list[dict[str, Any]]],
     document_order: list[str],
 ) -> Any:
-    """Concatenate per-document compact transport rows in upload order."""
+    """Concatenate per-document transport rows in upload order.
+
+    Mirrors how :class:`~nemo_retriever.graph.executor.InprocessExecutor`
+    processes a list of input paths as one combined result frame.
+    """
     import pandas as pd
 
     frames: list[pd.DataFrame] = []

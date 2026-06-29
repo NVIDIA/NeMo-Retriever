@@ -78,16 +78,16 @@ def get_pipeline_configs() -> dict[str, dict[str, Any]]:
     return _pipeline_configs
 
 
-def _sanitize_result_data(df: Any) -> list[dict[str, Any]]:
+def _sanitize_result_data(df: Any, *, result_schema: str = "legacy") -> list[dict[str, Any]]:
     """Convert a pipeline DataFrame to JSON-safe dicts for the status API.
 
-    Column layout matches the in-process ``GraphIngestor.ingest()``
-    frame; cell values are sanitized for transport (see
-    :mod:`nemo_retriever.ingest_results`).
+    ``result_schema="legacy"`` preserves the in-process
+    ``GraphIngestor.ingest()`` column layout with bulky values stripped.
+    ``result_schema="compact"`` emits the opt-in compact public shape.
     """
     from nemo_retriever.ingestor.results import dataframe_to_transport_records
 
-    return dataframe_to_transport_records(df)
+    return dataframe_to_transport_records(df, result_schema=result_schema)
 
 
 def _pipeline_tracing() -> Any | None:
@@ -602,7 +602,8 @@ def _run_pipeline_in_process(
         lancedb_rows = build_lancedb_rows(result_df)
         _post_rows_to_vectordb(lancedb_rows, vectordb_url, filename)
 
-    result_data = _sanitize_result_data(result_df)
+    result_schema = (pipeline_spec or {}).get("result_schema", "legacy")
+    result_data = _sanitize_result_data(result_df, result_schema=result_schema)
     return row_count, result_data, elapsed
 
 

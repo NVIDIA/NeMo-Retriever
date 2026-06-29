@@ -82,6 +82,14 @@ class PipelineSpec(RichModel):
     pdf_split: Optional[PdfSplitSpec] = None
 
     stage_order: list[StageName] = Field(default_factory=list)
+    result_schema: Literal["legacy", "compact"] = Field(
+        default="legacy",
+        description=(
+            "Result row schema for service return_results/save_to_disk. "
+            "'legacy' preserves GraphIngestor.ingest() columns with bulky values stripped; "
+            "'compact' returns the future compact public schema."
+        ),
+    )
 
     def is_empty(self) -> bool:
         """``True`` when the client supplied no overrides and no stage_order.
@@ -101,4 +109,5 @@ class PipelineSpec(RichModel):
             and self.split_config is None
             and self.pdf_split is None
             and not self.stage_order
+            and self.result_schema == "legacy"
         )

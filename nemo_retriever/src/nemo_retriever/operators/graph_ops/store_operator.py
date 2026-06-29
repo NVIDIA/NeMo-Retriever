@@ -203,16 +203,17 @@ def _store_row_images(
             if stored_uri is not None:
                 out.at[idx, "_stored_image_uri"] = stored_uri
 
+                page_image = row.get("page_image")
+                if isinstance(page_image, dict) and _row_image_represents_page(row, from_page_image=from_page_image):
+                    updated_page_image = dict(page_image)
+                    updated_page_image["stored_image_uri"] = stored_uri
+                    if strip_base64:
+                        updated_page_image["image_b64"] = None
+                    out.at[idx, "page_image"] = updated_page_image
+
                 if strip_base64:
                     if "_image_b64" in out.columns:
                         out.at[idx, "_image_b64"] = None
-                    page_image = row.get("page_image")
-                    if isinstance(page_image, dict):
-                        updated_page_image = dict(page_image)
-                        if _row_image_represents_page(row, from_page_image=from_page_image):
-                            updated_page_image["image_b64"] = None
-                            updated_page_image["stored_image_uri"] = stored_uri
-                        out.at[idx, "page_image"] = updated_page_image
 
         for column in image_columns:
             if column not in out.columns:

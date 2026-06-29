@@ -146,6 +146,34 @@ class TestStoreOperatorInGraph:
         assert result.iloc[0]["page_image"]["image_b64"] is None
         assert result.iloc[0]["page_image"]["stored_image_uri"] == result.iloc[0]["_stored_image_uri"]
 
+    def test_store_operator_does_not_rewrite_page_image_when_strip_false(self, monkeypatch):
+        b64 = _make_tiny_png_b64()
+        df = _make_embedded_df(b64).drop(columns=["_image_b64"])
+        calls: list[str] = []
+
+        class _Writer:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def write(self, data: bytes) -> int:
+                return len(data)
+
+        def _fake_open(path: str, mode: str = "rb", **kwargs):
+            calls.append(path)
+            return _Writer()
+
+        monkeypatch.setattr("nemo_retriever.operators.graph_ops.store_operator.fsspec.open", _fake_open)
+
+        result = StoreOperator(params=StoreParams(storage_uri="memory://stored", strip_base64=False)).process(df)
+
+        assert len(calls) == 1
+        assert result.iloc[0]["_stored_image_uri"].startswith("memory://stored/")
+        assert result.iloc[0]["page_image"]["stored_image_uri"] == result.iloc[0]["_stored_image_uri"]
+        assert result.iloc[0]["page_image"]["image_b64"] == b64
+
     def test_store_operator_forwards_storage_options(self, monkeypatch):
         b64 = _make_tiny_png_b64()
         df = _make_embedded_df(b64)

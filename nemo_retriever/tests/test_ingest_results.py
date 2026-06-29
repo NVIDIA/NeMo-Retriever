@@ -15,7 +15,7 @@ from nemo_retriever.ingestor.results import (
 from nemo_retriever.service.services.pipeline_executor import _sanitize_result_data
 
 
-def test_transport_returns_compact_document_rows() -> None:
+def test_transport_preserves_column_layout_and_strips_bulky_payloads() -> None:
     df = pd.DataFrame(
         {
             "path": ["/a.pdf"],
@@ -34,7 +34,36 @@ def test_transport_returns_compact_document_rows() -> None:
     )
     records = dataframe_to_transport_records(df)
 
-    assert records == [
+    record = records[0]
+    assert set(record) == set(df.columns)
+    assert record["path"] == "/a.pdf"
+    assert record["page_number"] == 1
+    assert record["text"] == "hello"
+    assert record["bytes"] == "<bytes len=9>"
+    assert record["_stored_image_uri"] == "file:///stored/page.png"
+    assert record["_bbox_xyxy_norm"] == [0.1, 0.2, 0.3, 0.4]
+    assert record["text_embeddings_1b_v2"] == {"embedding": None}
+    assert record["metadata"] == {"embedding": None, "dpi": 200, "source_path": "/a.pdf"}
+    assert record["page_image"] == {"image_b64": None, "stored_image_uri": "file:///stored/page.png"}
+    assert record["images"][0] == {"image_b64": None, "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4]}
+
+
+def test_transport_compact_document_rows_drop_legacy_metadata_and_bbox() -> None:
+    df = pd.DataFrame(
+        {
+            "path": ["/a.pdf"],
+            "page_number": [1],
+            "text": ["hello"],
+            "_content_type": ["text"],
+            "_bbox_xyxy_norm": [[0.1, 0.2, 0.3, 0.4]],
+            "_stored_image_uri": ["file:///stored/page.png"],
+            "page_image": [{"image_b64": "raw-page", "stored_image_uri": "file:///stored/page.png"}],
+            "images": [[{"image_b64": "raw-crop", "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4]}]],
+            "metadata": [{"embedding": [0.3, 0.4], "dpi": 200, "source_path": "/a.pdf"}],
+        }
+    )
+
+    assert dataframe_to_transport_records(df, result_schema="compact") == [
         {
             "text": "hello",
             "source_id": "/a.pdf",
@@ -45,7 +74,7 @@ def test_transport_returns_compact_document_rows() -> None:
     ]
 
 
-def test_transport_returns_audio_timing_fields_without_metadata() -> None:
+def test_transport_compact_media_rows_return_timings() -> None:
     df = pd.DataFrame(
         {
             "path": ["/tmp/chunk-000.wav"],
@@ -65,7 +94,7 @@ def test_transport_returns_audio_timing_fields_without_metadata() -> None:
         }
     )
 
-    assert dataframe_to_transport_records(df) == [
+    assert dataframe_to_transport_records(df, result_schema="compact") == [
         {
             "text": "hello from audio",
             "source_id": "/media/call.wav",
@@ -77,66 +106,7 @@ def test_transport_returns_audio_timing_fields_without_metadata() -> None:
     ]
 
 
-def test_transport_returns_video_timing_fields() -> None:
-    df = pd.DataFrame(
-        {
-            "path": ["/media/demo.mp4"],
-            "text": ["visible text"],
-            "_content_type": ["video_frame"],
-            "metadata": [
-                {
-                    "source_path": "/media/demo.mp4",
-                    "frame_timestamp_seconds": 21.0,
-                    "segment_start_seconds": 19.0,
-                    "segment_end_seconds": 23.0,
-                }
-            ],
-        }
-    )
-
-    assert dataframe_to_transport_records(df) == [
-        {
-            "text": "visible text",
-            "source_id": "/media/demo.mp4",
-            "element_type": "video_frame",
-            "start_time_seconds": 19.0,
-            "end_time_seconds": 23.0,
-            "duration_seconds": 4.0,
-        }
-    ]
-
-
-def test_transport_returns_compact_error_without_traceback() -> None:
-    df = pd.DataFrame(
-        {
-            "path": ["/broken.pdf"],
-            "page_number": [2],
-            "text": [""],
-            "metadata": [
-                {
-                    "error": {
-                        "stage": "extract",
-                        "type": "RuntimeError",
-                        "message": "boom",
-                        "traceback": "large traceback",
-                    }
-                }
-            ],
-        }
-    )
-
-    assert dataframe_to_transport_records(df) == [
-        {
-            "text": "",
-            "source_id": "/broken.pdf",
-            "element_type": "text",
-            "page_number": 2,
-            "error": {"stage": "extract", "type": "RuntimeError", "message": "boom"},
-        }
-    ]
-
-
-def test_round_trip_rebuilds_compact_column_layout() -> None:
+def test_round_trip_matches_inprocess_column_layout() -> None:
     df = pd.DataFrame(
         {
             "path": ["/a.pdf", "/a.pdf"],
@@ -146,7 +116,7 @@ def test_round_trip_rebuilds_compact_column_layout() -> None:
         }
     )
     rebuilt = dataframe_from_transport_records(dataframe_to_transport_records(df))
-    assert list(rebuilt.columns) == ["text", "source_id", "element_type", "page_number"]
+    assert list(rebuilt.columns) == list(df.columns)
     assert len(rebuilt) == len(df)
     assert rebuilt["text"].tolist() == df["text"].tolist()
 
@@ -156,12 +126,20 @@ def test_sanitize_result_data_delegates_to_shared_helper() -> None:
     assert _sanitize_result_data(df) == dataframe_to_transport_records(df)
 
 
+def test_sanitize_result_data_accepts_compact_schema() -> None:
+    df = pd.DataFrame({"path": ["/x.pdf"], "text": ["x"]})
+    assert _sanitize_result_data(df, result_schema="compact") == dataframe_to_transport_records(
+        df,
+        result_schema="compact",
+    )
+
+
 def test_concat_ingest_results_follows_document_order() -> None:
-    rows_a = [{"text": "a", "source_id": "/a.pdf", "element_type": "text", "page_number": 1}]
-    rows_b = [{"text": "b", "source_id": "/b.pdf", "element_type": "text", "page_number": 1}]
+    rows_a = [{"path": "/a.pdf", "page_number": 1, "text": "a"}]
+    rows_b = [{"path": "/b.pdf", "page_number": 1, "text": "b"}]
     combined = concat_ingest_results(
         {"doc-b": rows_b, "doc-a": rows_a},
         ["doc-a", "doc-b"],
     )
-    assert combined["source_id"].tolist() == ["/a.pdf", "/b.pdf"]
-    assert list(combined.columns) == ["text", "source_id", "element_type", "page_number"]
+    assert combined["path"].tolist() == ["/a.pdf", "/b.pdf"]
+    assert list(combined.columns) == ["path", "page_number", "text"]

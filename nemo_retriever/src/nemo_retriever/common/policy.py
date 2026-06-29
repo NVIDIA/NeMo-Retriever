@@ -604,6 +604,23 @@ def validate_pipeline_spec(
     if spec is None or spec.is_empty():
         return None
 
+    result_schema_only = (
+        spec.result_schema != "legacy"
+        and spec.extraction_mode in ("pdf", "auto")
+        and spec.extract_params is None
+        and spec.embed_params is None
+        and spec.dedup_params is None
+        and spec.caption_params is None
+        and spec.store_params is None
+        and spec.vdb_upload_params is None
+        and spec.webhook_params is None
+        and spec.split_config is None
+        and spec.pdf_split is None
+        and not spec.stage_order
+    )
+    if result_schema_only:
+        return spec
+
     if policy.mode == "reject":
         raise PolicyError(
             "Per-request pipeline overrides are disabled on this service "
