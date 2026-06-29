@@ -39,7 +39,9 @@ from typing import Any, AsyncIterator
 import lancedb
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+
+from nemo_retriever.service.query_schema import QueryRequest, QueryResponse, QueryResult
 
 logger = logging.getLogger(__name__)
 
@@ -53,15 +55,6 @@ class WriteRequest(BaseModel):
 class WriteResponse(BaseModel):
     written: int
     total_rows: int
-
-
-class QueryRequest(BaseModel):
-    query: str | list[str]
-    top_k: int = Field(default=10, ge=1, le=1000)
-
-
-class QueryResponse(BaseModel):
-    results: list[dict[str, Any]]
 
 
 # ── Embedding helpers ────────────────────────────────────────────────
@@ -98,7 +91,6 @@ def _embed_queries_remote(
         input_type="query",
         grpc=False,
     )
-
 
 # ── VectorDB state ───────────────────────────────────────────────────
 
@@ -360,10 +352,7 @@ def create_vectordb_app(
             vectors = await asyncio.to_thread(_state.embed_queries, queries)
             hits_per_query = await asyncio.to_thread(_state.search, vectors, req.top_k)
 
-        results = []
-        for hits in hits_per_query:
-            results.append({"hits": hits})
-
+        results = [QueryResult(hits=hits) for hits in hits_per_query]
         return QueryResponse(results=results)
 
     return app

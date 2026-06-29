@@ -16,7 +16,7 @@ Three execution surfaces are exposed:
    finished, returns a :class:`ServiceIngestResult` (a ``list`` subclass
    holding per-document completion events, plus ``job_id`` / ``failures``
    / ``document_ids`` / ``document_filenames`` / ``elapsed_s`` /
-   ``job_status`` / ``dataframe``
+   ``job_status`` / ``trace_id`` / ``dataframe``
    attributes). By default ``return_results=True`` fetches each
    completed document's rows from the status endpoint into
    ``result.dataframe``. Each
@@ -131,6 +131,10 @@ class ServiceIngestResult(list):
         lifecycle event was observed during the run. ``None`` if the
         stream closed without a terminal job event (e.g. SSE fallback
         only delivered per-document completions).
+    trace_id
+        Trace id returned by the server on the ``job_created`` event.
+        ``None`` when tracing is disabled or the service does not include
+        a trace id in the job creation event.
     dataframe
         When :meth:`ServiceIngestor.ingest` is called with
         ``return_results=True`` (the default), a ``pandas.DataFrame``
@@ -149,6 +153,7 @@ class ServiceIngestResult(list):
         self.document_filenames: dict[str, str] = {}
         self.elapsed_s: float = 0.0
         self.job_status: str | None = None
+        self.trace_id: str | None = None
         self.dataframe: Any = None
 
     def __repr__(self) -> str:
@@ -1087,6 +1092,7 @@ class ServiceIngestor(ingestor):
 
             if event_type == "job_created":
                 result.job_id = evt.get("job_id") or result.job_id
+                result.trace_id = evt.get("trace_id") or result.trace_id
                 continue
 
             if event_type in ("job_finalized", "job_partial", "job_failed"):

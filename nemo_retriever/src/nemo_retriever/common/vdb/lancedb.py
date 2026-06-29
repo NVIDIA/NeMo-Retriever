@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_VECTOR_DIM: Final[int] = 2048
 _VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset({"drop", "fill", "null", "error"})
+_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"retrieval_mode"
+_NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"nemo_retriever.retrieval_mode"
 
 
 def _normalize_on_bad_vectors(value: str) -> str:
@@ -114,8 +116,18 @@ def _effective_ivf_num_partitions(num_rows: int, requested: int) -> int | None:
     return min(int(requested), max(1, cap))
 
 
-def _lancedb_arrow_schema(vector_dim: int) -> pa.Schema:
-    return pa.schema(
+def _with_retrieval_mode_metadata(schema: pa.Schema, retrieval_mode: str | None) -> pa.Schema:
+    if retrieval_mode is None:
+        return schema
+    metadata = dict(schema.metadata or {})
+    encoded_mode = str(retrieval_mode).encode("utf-8")
+    metadata[_RETRIEVAL_MODE_METADATA_KEY] = encoded_mode
+    metadata[_NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY] = encoded_mode
+    return schema.with_metadata(metadata)
+
+
+def _lancedb_arrow_schema(vector_dim: int, *, retrieval_mode: str | None = None) -> pa.Schema:
+    schema = pa.schema(
         [
             pa.field("vector", pa.list_(pa.float32(), int(vector_dim))),
             pa.field("text", pa.string()),
@@ -124,6 +136,19 @@ def _lancedb_arrow_schema(vector_dim: int) -> pa.Schema:
             pa.field("id", pa.string()),
         ]
     )
+    return _with_retrieval_mode_metadata(schema, retrieval_mode)
+
+
+def _sparse_lancedb_arrow_schema(*, retrieval_mode: str | None = "sparse") -> pa.Schema:
+    schema = pa.schema(
+        [
+            pa.field("text", pa.string()),
+            pa.field("metadata", pa.string()),
+            pa.field("source", pa.string()),
+            pa.field("id", pa.string()),
+        ]
+    )
+    return _with_retrieval_mode_metadata(schema, retrieval_mode)
 
 
 def _table_schema(table: Any) -> pa.Schema:
@@ -316,6 +341,49 @@ def _create_lancedb_results(
     return lancedb_rows, counts
 
 
+def _create_sparse_lancedb_results(results) -> tuple[list, dict[str, int]]:
+    """Transform NRL records into LanceDB rows for FTS-only sparse retrieval."""
+    lancedb_rows: list = []
+    accepted = 0
+    dropped_no_text = 0
+
+    for result in results:
+        for element in result:
+            metadata = element.get("metadata", {})
+            content_meta = metadata.get("content_metadata", {})
+            text = _get_text_for_element(element)
+
+            if not text:
+                dropped_no_text += 1
+                source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
+                pg_num = content_meta.get("page_number") if isinstance(content_meta, dict) else None
+                logger.debug("No text found for sparse entity: %s page: %s", source_name, pg_num)
+                continue
+
+            row_id = content_meta.get("id") if isinstance(content_meta, dict) else None
+            if row_id is None and isinstance(metadata, dict):
+                row_id = metadata.get("id")
+            row_id_str = str(row_id) if row_id is not None else ""
+
+            lancedb_rows.append(
+                {
+                    "text": text,
+                    "metadata": _json_str(content_meta),
+                    "source": _json_str(metadata.get("source_metadata", {})),
+                    "id": row_id_str,
+                }
+            )
+            accepted += 1
+
+    counts: dict[str, int] = {
+        "accepted": accepted,
+        "dropped_no_text": dropped_no_text,
+    }
+    if dropped_no_text:
+        logger.warning("_create_sparse_lancedb_results: accepted=%d dropped_no_text=%d", accepted, dropped_no_text)
+    return lancedb_rows, counts
+
+
 class LanceDB(VDB):
     """LanceDB operator implementing the VDB interface."""
 
@@ -329,6 +397,7 @@ class LanceDB(VDB):
         num_partitions: int = 16,
         num_sub_vectors: int = 256,
         hybrid: bool = False,
+        sparse: bool = False,
         fts_language: str = "English",
         vector_dim: int = _DEFAULT_VECTOR_DIM,
         on_bad_vectors: str = "drop",
@@ -345,6 +414,8 @@ class LanceDB(VDB):
 
         if int(vector_dim) <= 0:
             raise ValueError(f"vector_dim must be positive; got {vector_dim}")
+        if sparse and hybrid:
+            raise ValueError("LanceDB sparse ingest cannot also be hybrid; pass only one retrieval mode.")
         self.uri = uri or "lancedb"
         self.overwrite = bool(overwrite)
         self.table_name = table_name
@@ -354,6 +425,7 @@ class LanceDB(VDB):
         self.num_partitions = num_partitions
         self.num_sub_vectors = num_sub_vectors
         self.hybrid = hybrid
+        self.sparse = bool(sparse)
         self.fts_language = fts_language
         self.vector_dim = int(vector_dim)
         self.on_bad_vectors = _normalize_on_bad_vectors(on_bad_vectors)
@@ -377,19 +449,24 @@ class LanceDB(VDB):
         db = lancedb.connect(uri=self.uri)
         _record_timing("lancedb.connect", time.perf_counter() - connect_start)
 
-        if self.validate_vector_length and self.on_bad_vectors != "error":
-            expected_dim: int | None = self.vector_dim
+        if self.sparse:
+            results, counts = _create_sparse_lancedb_results(records or [])
+            schema = _sparse_lancedb_arrow_schema()
+            write_kwargs: dict[str, Any] = {}
         else:
-            expected_dim = None
+            if self.validate_vector_length and self.on_bad_vectors != "error":
+                expected_dim: int | None = self.vector_dim
+            else:
+                expected_dim = None
 
-        results, counts = _create_lancedb_results(records or [], expected_dim=expected_dim)
-        schema = _lancedb_arrow_schema(self.vector_dim)
+            results, counts = _create_lancedb_results(records or [], expected_dim=expected_dim)
+            schema = _lancedb_arrow_schema(self.vector_dim, retrieval_mode="hybrid" if self.hybrid else "dense")
 
-        write_kwargs: dict[str, Any] = {
-            "on_bad_vectors": self.on_bad_vectors,
-        }
-        if self.on_bad_vectors == "fill":
-            write_kwargs["fill_value"] = self.fill_value
+            write_kwargs = {
+                "on_bad_vectors": self.on_bad_vectors,
+            }
+            if self.on_bad_vectors == "fill":
+                write_kwargs["fill_value"] = self.fill_value
 
         create_kwargs: dict[str, Any] = {
             "schema": schema,
@@ -454,8 +531,9 @@ class LanceDB(VDB):
         metric="l2",
         num_partitions=16,
         num_sub_vectors=256,
-        hybrid: bool = None,
-        fts_language: str = None,
+        hybrid: bool | None = None,
+        sparse: bool | None = None,
+        fts_language: str | None = None,
         **kwargs,
     ):
         """Create vector and optionally FTS indexes on the LanceDB table.
@@ -465,7 +543,17 @@ class LanceDB(VDB):
         single-row tables skip the vector index; hybrid FTS may still be built.
         """
         hybrid = hybrid if hybrid is not None else self.hybrid
+        sparse = sparse if sparse is not None else self.sparse
         fts_language = fts_language or self.fts_language
+
+        if sparse:
+            fts_index_start = time.perf_counter()
+            table.create_fts_index("text", language=fts_language, replace=True)
+            for index_stub in table.list_indices():
+                if "text" in index_stub.name.lower() or "fts" in index_stub.name.lower():
+                    table.wait_for_index([index_stub.name], timeout=timedelta(seconds=600))
+            _record_timing("lancedb.fts_index_ready", time.perf_counter() - fts_index_start)
+            return
 
         num_rows = int(table.count_rows())
         requested_partitions = int(num_partitions)
@@ -532,6 +620,7 @@ class LanceDB(VDB):
                 num_partitions=self.num_partitions,
                 num_sub_vectors=self.num_sub_vectors,
                 hybrid=self.hybrid,
+                sparse=self.sparse,
                 fts_language=self.fts_language,
             )
         else:
@@ -626,6 +715,57 @@ class LanceDB(VDB):
 
         counts["put"] = len(rows)
         return counts
+
+    def sparse_retrieval(self, query_texts: Iterable[str], **kwargs: Any) -> list[list[dict[str, Any]]]:
+        """Search a LanceDB FTS-only table without query embeddings."""
+        table_path = kwargs.pop("table_path", self.uri)
+        table_name = kwargs.pop("table_name", self.table_name)
+        result_fields = kwargs.pop("result_fields", None)
+        top_k = int(kwargs.pop("top_k", 10))
+        text_column_value = kwargs.pop("text_column_name", kwargs.pop("fts_columns", "text"))
+        if isinstance(text_column_value, (list, tuple)):
+            text_column_name = str(text_column_value[0] if text_column_value else "text")
+        else:
+            text_column_name = str(text_column_value)
+
+        search_kwargs_raw = kwargs.pop("search_kwargs", None)
+        if search_kwargs_raw is None:
+            search_kwargs: dict[str, Any] = {}
+        elif not isinstance(search_kwargs_raw, dict):
+            raise TypeError(f"search_kwargs must be a dict or None; got {type(search_kwargs_raw).__name__}")
+        else:
+            search_kwargs = dict(search_kwargs_raw)
+
+        query_type = search_kwargs.get("query_type")
+        if query_type is not None:
+            query_type_value = getattr(query_type, "value", query_type)
+            if str(query_type_value).lower() != "fts":
+                raise ValueError(
+                    "LanceDB sparse retrieval requires search_kwargs['query_type']='fts'; " f"got {query_type!r}."
+                )
+        search_kwargs["query_type"] = "fts"
+        search_kwargs.setdefault("fts_columns", text_column_name)
+
+        where_clause = kwargs.pop("where", None)
+        _filter_fallback = kwargs.pop("_filter", None)
+        if where_clause is None:
+            where_clause = _filter_fallback
+        if where_clause is not None:
+            where_clause = str(where_clause).strip() or None
+
+        table = lancedb.connect(uri=table_path).open_table(table_name)
+
+        search_results = []
+        for query_text in query_texts:
+            query = table.search(str(query_text), **search_kwargs)
+            if where_clause is not None:
+                query = query.where(where_clause)
+            query = query.limit(top_k)
+            if result_fields is not None:
+                query = query.select(result_fields)
+            search_results.append(query.to_list())
+
+        return search_results
 
     def retrieval(self, vectors: Iterable[Sequence[float]], **kwargs: Any) -> list[list[dict[str, Any]]]:
         """Search LanceDB with precomputed query vectors.

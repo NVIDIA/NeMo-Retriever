@@ -4,15 +4,32 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from nemo_retriever.common.params import build_embed_option_kwargs
-from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
-from nemo_retriever.graph.retriever import Retriever
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
+from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
 from nemo_retriever.common.vdb.records import RetrievalHit
+from nemo_retriever.graph.retriever import Retriever
+from nemo_retriever.models import VL_RERANK_MODEL
+from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
 
-_LOCAL_VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+_LOCAL_VL_RERANK_MODEL = VL_RERANK_MODEL
+
+
+@dataclass(frozen=True)
+class QueryDocumentsResult:
+    hits: list[RetrievalHit]
+    strategies: list[str]
+
+
+def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | None) -> list[str]:
+    if mode == "hybrid":
+        return ["semantic", "lexical"]
+    if mode == "sparse":
+        return ["lexical"]
+    return ["semantic"]
 
 
 def _build_rerank_kwargs(options: QueryRerankOptions) -> dict[str, str]:
@@ -34,34 +51,155 @@ def _build_rerank_kwargs(options: QueryRerankOptions) -> dict[str, str]:
 
 
 def _build_retriever_kwargs(request: QueryRequest) -> dict[str, Any]:
+    return resolve_query_plan(request).retriever_kwargs()
+
+
+@dataclass(frozen=True)
+class ResolvedQueryPlan:
+    """Resolved Retriever query configuration reusable across many queries."""
+
+    top_k: int
+    candidate_k: int | None
+    page_dedup: bool
+    content_types: str | None
+    lancedb_uri: str
+    table_name: str
+    retrieval_mode: str
+    embed_kwargs: dict[str, Any]
+    rerank: bool
+    rerank_kwargs: dict[str, Any]
+
+    def retriever_kwargs(self) -> dict[str, Any]:
+        vdb_kwargs: dict[str, Any] = {
+            "uri": self.lancedb_uri,
+            "table_name": self.table_name,
+        }
+        if self.retrieval_mode != "auto":
+            vdb_kwargs["retrieval_mode"] = self.retrieval_mode
+
+        kwargs: dict[str, Any] = {
+            "top_k": self.top_k,
+            "vdb_kwargs": vdb_kwargs,
+        }
+        if self.embed_kwargs:
+            kwargs["embed_kwargs"] = dict(self.embed_kwargs)
+        if self.rerank:
+            kwargs["rerank"] = True
+            if self.rerank_kwargs:
+                kwargs["rerank_kwargs"] = dict(self.rerank_kwargs)
+        return kwargs
+
+    def create_retriever(self) -> Retriever:
+        return Retriever(**self.retriever_kwargs())
+
+    def query_kwargs(self) -> dict[str, Any]:
+        return {
+            "candidate_k": self.candidate_k,
+            "page_dedup": self.page_dedup,
+            "content_types": self.content_types,
+        }
+
+
+def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
+    """Resolve root query options once so callers can reuse a Retriever."""
     embed_kwargs = build_embed_option_kwargs(request.embed.embed_invoke_url, request.embed.embed_model_name)
-    vdb_kwargs: dict[str, Any] = {
-        "uri": request.storage.lancedb_uri,
-        "table_name": request.storage.table_name,
-    }
-    # Only inject hybrid when opted in, so the vector-only path stays byte-for-byte legacy.
-    if request.retrieval.hybrid:
-        vdb_kwargs["hybrid"] = True
-    retriever_kwargs: dict[str, Any] = {
-        "top_k": request.retrieval.top_k,
-        "vdb_kwargs": vdb_kwargs,
-    }
-    if embed_kwargs:
-        retriever_kwargs["embed_kwargs"] = embed_kwargs
-    if request.rerank.enabled:
-        rerank_kwargs = _build_rerank_kwargs(request.rerank)
-        retriever_kwargs["rerank"] = True
-        if rerank_kwargs:
-            retriever_kwargs["rerank_kwargs"] = rerank_kwargs
-    return retriever_kwargs
+    rerank_kwargs = _build_rerank_kwargs(request.rerank) if request.rerank.enabled else {}
+    content_types = request.retrieval.content_types
+    if content_types is not None and not isinstance(content_types, str):
+        content_types = ",".join(str(value) for value in content_types)
+    return ResolvedQueryPlan(
+        top_k=int(request.retrieval.top_k),
+        candidate_k=request.retrieval.candidate_k,
+        page_dedup=bool(request.retrieval.page_dedup),
+        content_types=content_types,
+        lancedb_uri=str(request.storage.lancedb_uri),
+        table_name=str(request.storage.table_name),
+        retrieval_mode=str(request.retrieval.retrieval_mode),
+        embed_kwargs=embed_kwargs,
+        rerank=bool(request.rerank.enabled),
+        rerank_kwargs=rerank_kwargs,
+    )
+
+
+def query_documents_with_metadata(request: QueryRequest) -> QueryDocumentsResult:
+    """Run the SDK query path and return hits plus resolved retrieval strategy metadata."""
+    plan = resolve_query_plan(request)
+    retriever = plan.create_retriever()
+    mode: LanceRetrievalMode | None = None
+    resolve_mode = getattr(retriever, "_resolve_lancedb_query_mode", None)
+    if callable(resolve_mode):
+        lancedb_mode = resolve_mode(None)
+        if lancedb_mode is not None:
+            mode = lancedb_mode[0]
+    hits = retriever.query(
+        request.query,
+        **plan.query_kwargs(),
+    )
+    return QueryDocumentsResult(hits=hits, strategies=_strategies_for_retrieval_mode(mode))
 
 
 def query_documents(request: QueryRequest) -> list[RetrievalHit]:
     """Run the SDK query path used by the root CLI."""
-    retriever = Retriever(**_build_retriever_kwargs(request))
-    return retriever.query(
-        request.query,
-        candidate_k=request.retrieval.candidate_k,
-        page_dedup=request.retrieval.page_dedup,
-        content_types=request.retrieval.content_types,
-    )
+    return query_documents_with_metadata(request).hits
+
+
+def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
+    """Run agentic (ReAct) retrieval for a single query and return the agent's
+    ranked document IDs.
+
+    Unlike the dense ``query_documents`` path (which returns enriched hits with
+    text), the agent operates at the document-ID granularity of the configured
+    index, so the result is the ranked ``doc_id`` list the agent selected,
+    annotated with the source that produced it (``final_results`` / ``rrf`` /
+    ``selection_agent``). The LanceDB ``uri``/``table_name``, embedding config,
+    and (when ``--rerank`` is enabled) reranker config are passed straight
+    through to the wrapped ``Retriever`` that backs the agent's ``retrieve``
+    tool. Reranking therefore applies per agent retrieval hop.
+    """
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    api_key = resolve_remote_api_key()
+    vdb_kwargs: dict[str, Any] = {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name}
+    if request.retrieval.retrieval_mode != "auto":
+        vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
+    cfg_kwargs: dict[str, Any] = {
+        "vdb_op": "lancedb",
+        "vdb_kwargs": vdb_kwargs,
+        "top_k": int(request.retrieval.top_k),
+        "embedding_endpoint": request.embed.embed_invoke_url,
+        "embedding_api_key": api_key or "",
+        "llm_model": request.agentic.llm_model,
+        "invoke_url": request.agentic.invoke_url,
+        "api_key": api_key,
+        "reasoning_effort": request.agentic.reasoning_effort,
+        "backend_top_k": int(request.agentic.backend_top_k),
+        "react_max_steps": int(request.agentic.react_max_steps),
+        "text_truncation": int(request.agentic.text_truncation),
+        "temperature": float(request.agentic.temperature),
+    }
+    if request.embed.embed_model_name:
+        cfg_kwargs["query_embedder"] = request.embed.embed_model_name
+    if request.rerank.enabled:
+        # `reranker` doubles as the on/off gate (rerank=bool(cfg.reranker)) and the
+        # model name, so fall back to the default model when only --rerank is given.
+        cfg_kwargs["reranker"] = request.rerank.reranker_model_name or _LOCAL_VL_RERANK_MODEL
+        cfg_kwargs["reranker_endpoint"] = request.rerank.reranker_invoke_url
+        cfg_kwargs["reranker_api_key"] = resolve_remote_api_key(request.rerank.reranker_api_key) or ""
+        if request.rerank.reranker_backend:
+            cfg_kwargs["local_reranker_backend"] = request.rerank.reranker_backend
+
+    result = AgenticRetriever(AgenticRetrievalConfig(**cfg_kwargs)).retrieve(["0"], [str(request.query)])
+    if "rank" in result.columns:
+        result = result.sort_values("rank")
+    ranked: list[dict[str, Any]] = []
+    for _, row in result.iterrows():
+        ranked.append(
+            {
+                "rank": int(row.get("rank", len(ranked) + 1)),
+                "doc_id": str(row.get("doc_id", "")),
+                "result_source": str(row.get("result_source", "")),
+            }
+        )
+        if len(ranked) >= request.retrieval.top_k:
+            break
+    return ranked

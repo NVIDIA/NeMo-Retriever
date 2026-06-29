@@ -134,6 +134,9 @@ jobs:
               EMAILS="${NOTIFY_INPUT}"
             fi
           fi
+          if [[ -z "${EMAILS}" ]]; then
+            EMAILS="kheiss@nvidia.com"
+          fi
           echo "emails_csv=${EMAILS}" >> "$GITHUB_OUTPUT"
 
   build:

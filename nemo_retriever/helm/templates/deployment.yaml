@@ -124,6 +124,7 @@ spec:
             - name: INSTALL_FFMPEG
               value: "true"
             {{- end }}
+            {{ include "nemo-retriever.serviceOtelEnv" (dict "context" $ "role" "standalone") | nindent 12 }}
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -295,6 +296,7 @@ spec:
             - name: INSTALL_FFMPEG
               value: "true"
             {{- end }}
+            {{ include "nemo-retriever.serviceOtelEnv" (dict "context" $ "role" $role) | nindent 12 }}
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

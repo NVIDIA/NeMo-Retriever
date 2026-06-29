@@ -188,6 +188,12 @@ service:
   # Do not also set INSTALL_FFMPEG manually in service.env.
   installFfmpeg: true
 
+  # OpenTelemetry env defaults for the retriever service container.
+  otel:
+    enabled: true
+    serviceName: nemo-retriever-service
+    env: {}
+
   # Extra env vars (after the chart-managed ones). Use `envFrom` to pull
   # whole Secrets/ConfigMaps in.
   env: []
@@ -458,6 +464,59 @@ topology:
             processors: [batch]
             exporters: [debug]
 
+  # ---------------------------------------------------------------------------
+  # Zipkin
+  # ---------------------------------------------------------------------------
+  # Enabled by default to preserve managed trace-backend parity with the legacy
+  # 26.1.2 Helm chart. Set false to avoid deploying chart-owned Zipkin.
+  zipkin:
+    enabled: true
+    image:
+      repository: openzipkin/zipkin
+      tag: "3.5.0"
+      pullPolicy: IfNotPresent
+    port: 9411
+    javaOpts: "-Xms128m -Xmx512m -XX:+ExitOnOutOfMemoryError"
+    livenessProbe:
+      enabled: true
+      tcpSocket:
+        port: http
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 6
+    readinessProbe:
+      enabled: true
+      tcpSocket:
+        port: http
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+    startupProbe:
+      enabled: true
+      tcpSocket:
+        port: http
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 60
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+      limits:
+        cpu: "1"
+        memory: "1Gi"
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    podSecurityContext: {}
+    securityContext: {}
+    exporter:
+      enabled: true
+      endpoint: ""
+
 # =============================================================================
 # retriever-service.yaml configuration
 # =============================================================================
@@ -528,6 +587,17 @@ serviceConfig:
       gpuMemoryUtilization: 0.45
     asr:
       enabled: true
+
+  # FastMCP agent integration mounted at serviceConfig.mcp.path (default /mcp).
+  mcp:
+    enabled: false
+    path: "/mcp"
+    baseUrl: ""
+    enableWriteTools: true
+    maxConcurrency: 8
+    requestTimeoutS: 60.0
+    ingestTimeoutS: 1800.0
+    pollIntervalS: 2.0
 
   # Remote LLM endpoint used by POST /v1/answer. When the generic
   # `nimOperator.answer_llm.enabled` block is enabled (and the NIM
@@ -810,7 +880,7 @@ nimOperator:
     # NIMCache/NIMService names retired from the chart. deploy.sh deletes these
     # after each successful helm reconcile so they do not linger with keep-on-uninstall.
     pruneRetiredNimResources:
-      - nemotron-ocr-v2
+      - nemotron-ocr-v1
     pvc:
       create: true
       # If set, applies to every per-NIM PVC that doesn't override
@@ -863,6 +933,17 @@ nimOperator:
   # rely on operator reconciliation only (see helm/README.md). Per-NIM
   # ``resources`` overrides the entire block when non-empty.
   nimServiceGpuLimit: 1
+
+  # OpenTelemetry defaults applied to NIMService env blocks.
+  otel:
+    enabled: true
+    endpoint: ""
+    tritonPath: "/v1/traces"
+    env:
+      NIM_ENABLE_OTEL: "true"
+      NIM_OTEL_TRACES_EXPORTER: "otlp"
+      NIM_OTEL_METRICS_EXPORTER: "console"
+      TRITON_OTEL_RATE: "1"
 
   # ---------------------------------------------------------------------------
   # Per-NIM defaults
@@ -933,6 +1014,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -977,6 +1063,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -991,14 +1082,14 @@ nimOperator:
       - name: OMP_NUM_THREADS
         value: "1"
 
-  # Nemotron OCR v1. Used by the OCR stage of the pipeline.
+  # Nemotron OCR v2. Used by the OCR stage of the pipeline.
   ocr:
     enabled: true
     # NIMService / NIMCache resource name and in-cluster Service DNS label.
-    nimServiceName: nemotron-ocr-v1
+    nimServiceName: nemotron-ocr-v2
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-ocr-v1
-      tag: "1.3.0"
+      repository: nvcr.io/nim/nvidia/nemotron-ocr-v2
+      tag: "1.4.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1023,6 +1114,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: OMP_NUM_THREADS
         value: "8"
@@ -1066,6 +1162,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -1197,6 +1298,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -1249,6 +1355,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -1307,6 +1418,11 @@ nimOperator:
         type: ClusterIP
         port: 8000
         grpcPort: 8001
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_HTTP_API_PORT
         value: "8000"
@@ -1343,6 +1459,11 @@ nimOperator:
         type: ClusterIP
         port: 9000
         grpcPort: 50051
+    otel:
+      enabled: null
+      serviceName: ""
+      endpoint: ""
+      env: {}
     env:
       - name: NIM_TAGS_SELECTOR
         value: "name=parakeet-1-1b-ctc-en-us,mode=ofl,vad=default,diarizer=disabled"

@@ -139,9 +139,6 @@ class ServiceMCPClient:
 
     @staticmethod
     def _json_or_text(resp: httpx.Response) -> Any:
-        content_type = resp.headers.get("content-type", "")
-        if "application/json" in content_type:
-            return resp.json()
         try:
             return resp.json()
         except ValueError:
@@ -518,6 +515,6 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
     return mcp
 
 
-def build_mcp_app(settings: ServiceMCPSettings | None = None):
+def build_mcp_app(settings: ServiceMCPSettings | None = None) -> Any:
     """Create the ASGI app mounted by ``retriever service start``."""
     return build_mcp(settings).http_app(path="/")

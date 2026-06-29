@@ -28,7 +28,6 @@ The `ingest_documents` MCP tool accepts either paths visible to the MCP server p
 
 Use these pages together with your orchestration layer:
 
-- [Semantic retrieval](vdbs.md#semantic-retrieval), [Custom metadata and filtering](custom-metadata.md), and [Evaluate on your data](evaluate-on-your-data.md) for retrieval quality and reranking notes
+- [Semantic retrieval](vdbs.md#semantic-retrieval), [Metadata and filtering](vdbs.md#metadata-and-filtering), and [Evaluate on your data](evaluate-on-your-data.md) for retrieval quality, reranking, and evaluation guidance
 - [Agentic retrieval (concept)](agentic-retrieval-concept.md)
-- [Evaluate on your data](evaluate-on-your-data.md), which includes retrieval evaluation guidance
 - [Release notes](releasenotes.md), which may mention agentic retrieval updates

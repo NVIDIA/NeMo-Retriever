@@ -266,9 +266,16 @@ def create_app(config: ServiceConfig) -> FastAPI:
 
             mcp_asgi_app = build_mcp_app(settings_from_service_config(config))
             lifespan = combine_lifespans(_lifespan, mcp_asgi_app.lifespan)
-        except Exception:
+        except ImportError as exc:
             mcp_asgi_app = None
-            logger.warning("FastMCP service integration failed to initialise; /mcp will not be mounted", exc_info=True)
+            logger.warning(
+                "FastMCP service integration failed to initialise; /mcp will not be mounted: %s",
+                exc,
+            )
+
+    from nemo_retriever.service.tracing import configure_tracing
+
+    configure_tracing(service_role=config.mode)
 
     app = FastAPI(
         title="Retriever Service",

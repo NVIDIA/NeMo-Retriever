@@ -39,8 +39,8 @@ def start(
     gpu_devices: Optional[str] = typer.Option(
         None, "--gpu-devices", help="Comma-separated GPU device IDs (overrides YAML)."
     ),
-    local_models: bool = typer.Option(
-        False,
+    local_models: Optional[bool] = typer.Option(
+        None,
         "--local-models/--no-local-models",
         help="Load Hugging Face models in-pod instead of remote NIMs (overrides YAML).",
     ),
@@ -100,8 +100,8 @@ def start(
         overrides["llm.api_key"] = llm_api_key
     if gpu_devices is not None:
         overrides["resources.gpu_devices"] = [d.strip() for d in gpu_devices.split(",") if d.strip()]
-    if local_models:
-        overrides["local_models.enabled"] = True
+    if local_models is not None:
+        overrides["local_models.enabled"] = local_models
     if local_embed_backend is not None:
         overrides["local_models.embed.local_ingest_embed_backend"] = local_embed_backend
     if local_embed_model is not None:
