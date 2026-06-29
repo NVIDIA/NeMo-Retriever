@@ -78,12 +78,14 @@ def store_sample_values(connector, database_name: str, schemas: dict) -> None:
             schema_name = row.get("table_schema") or row.get("schema_name", "")
             if not table_name:
                 continue
-            qualified = f'"{schema_name}"."{table_name}"' if schema_name else f'"{table_name}"'
+            esc_table = table_name.replace('"', '""')
+            esc_schema = schema_name.replace('"', '""') if schema_name else ""
+            qualified = f'"{esc_schema}"."{esc_table}"' if esc_schema else f'"{esc_table}"'
             try:
                 df = connector.execute(f"SELECT * FROM {qualified} LIMIT 5")
                 rows = df.to_dict(orient="records")
-            except Exception:
-                logger.warning("Could not fetch sample rows for %s", qualified)
+            except Exception as exc:
+                logger.warning("Could not fetch sample rows for %s: %s", qualified, exc, exc_info=True)
                 continue
             for col_name in df.columns:
                 raw_values = [r.get(col_name) for r in rows]
