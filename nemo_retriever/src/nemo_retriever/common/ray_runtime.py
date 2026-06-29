@@ -39,7 +39,10 @@ def without_uv_run_env() -> Iterator[None]:
 def disable_ray_uv_runtime_env_hook(ray: object) -> None:
     """Disable Ray's parent-process uv hook when Ray was imported earlier."""
 
-    ray._private.ray_constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV = False
+    private = getattr(ray, "_private", None)
+    constants = getattr(private, "ray_constants", None)
+    if constants is not None:
+        constants.RAY_ENABLE_UV_RUN_RUNTIME_ENV = False
 
 
 def build_local_ray_runtime_env() -> dict[str, Any]:

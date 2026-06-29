@@ -151,7 +151,7 @@ as `files` and `pages`.
 
 ## Current validated smoke
 
-Validated in `/raid/jioffe/nv-ingest-harness-revamp`:
+Validated in the dedicated Retriever harness worktree:
 
 - `retriever harness list --json` exits `0`.
 - `retriever harness show jp20_beir --json` exits `0`.

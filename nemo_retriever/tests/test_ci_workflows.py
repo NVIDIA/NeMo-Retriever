@@ -35,7 +35,8 @@ IGNORED_SCAN_PREFIXES = ("lancedb_",)
 def _is_ignored_scan_path(relative: Path) -> bool:
     directory_parts = relative.parts[:-1]
     return (
-        any(part in IGNORED_SCAN_DIRS for part in directory_parts)
+        relative.name in IGNORED_SCAN_DIRS
+        or any(part in IGNORED_SCAN_DIRS for part in directory_parts)
         or any(part.endswith(IGNORED_SCAN_SUFFIXES) for part in directory_parts)
         or any(part.startswith(IGNORED_SCAN_PREFIXES) for part in directory_parts)
     )
@@ -75,6 +76,7 @@ def _legacy_text_offenders(tokens: tuple[str, ...], ignored_files: set[Path]) ->
 
 
 def test_legacy_text_scan_skips_generated_output_dirs():
+    assert _is_ignored_scan_path(Path(".git"))
     assert _is_ignored_scan_path(Path("nemo_retriever/artifacts/run/output.json"))
     assert _is_ignored_scan_path(Path("lancedb/session.arrow"))
     assert _is_ignored_scan_path(Path("lancedb_session/data.arrow"))

@@ -622,17 +622,6 @@ def load_beir_dataset(
     except Exception as exc:
         logger.debug("load_dataset config='queries' failed (%s); retrying with data_dir", exc)
         queries_rows = load_dataset(ds_repo, data_dir="queries", split=split)
-    try:
-        qrels_rows = load_dataset(ds_repo, "qrels", split=split)
-    except Exception as exc:
-        logger.debug("load_dataset config='qrels' failed (%s); retrying with data_dir", exc)
-        qrels_rows = load_dataset(ds_repo, data_dir="qrels", split=split)
-    try:
-        corpus_rows = load_dataset(ds_repo, "corpus", split=split)
-    except Exception as exc:
-        logger.debug("load_dataset config='corpus' failed (%s); retrying with data_dir", exc)
-        corpus_rows = load_dataset(ds_repo, data_dir="corpus", split=split)
-
     query_ids, queries = build_queries_by_id(queries_rows, query_language=query_language)
     if not query_ids:
         try:
@@ -644,6 +633,17 @@ def load_beir_dataset(
             f"query_language={query_language!r}. "
             f"Loaded {raw_query_count} raw rows from HuggingFace."
         )
+
+    try:
+        qrels_rows = load_dataset(ds_repo, "qrels", split=split)
+    except Exception as exc:
+        logger.debug("load_dataset config='qrels' failed (%s); retrying with data_dir", exc)
+        qrels_rows = load_dataset(ds_repo, data_dir="qrels", split=split)
+    try:
+        corpus_rows = load_dataset(ds_repo, "corpus", split=split)
+    except Exception as exc:
+        logger.debug("load_dataset config='corpus' failed (%s); retrying with data_dir", exc)
+        corpus_rows = load_dataset(ds_repo, data_dir="corpus", split=split)
 
     allowed_query_ids = set(query_ids)
     corpus_id_map = _build_vidore_corpus_id_map(corpus_rows, doc_id_field=doc_id_field)
