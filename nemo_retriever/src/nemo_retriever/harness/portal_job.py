@@ -289,7 +289,7 @@ def run_portal_job_entry(
     )
     return _legacy_result(
         outcome,
-        dataset_label=dataset_label,
+        dataset_label=_dataset_label(dataset, overrides),
         preset=preset,
         overrides=overrides,
         tags=tags,
