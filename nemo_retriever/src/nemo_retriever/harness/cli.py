@@ -225,5 +225,6 @@ def diff_command(
             continue
         typer.echo(f"{key}: {delta['left']} -> {delta['right']}")
 
+
 def main() -> None:
     app()

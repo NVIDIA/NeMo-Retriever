@@ -362,7 +362,9 @@ def build_ingest_request(resolved: dict[str, Any], dataset_path: Path, artifact_
             batch=extract_batch,
         ),
         media=IngestMediaOptions(**_dataclass_kwargs("ingest.media", IngestMediaOptions, ingest.get("media"))),
-        caption=IngestCaptionOptions(**_dataclass_kwargs("ingest.caption", IngestCaptionOptions, ingest.get("caption"))),
+        caption=IngestCaptionOptions(
+            **_dataclass_kwargs("ingest.caption", IngestCaptionOptions, ingest.get("caption"))
+        ),
         dedup=IngestDedupOptions(**_dataclass_kwargs("ingest.dedup", IngestDedupOptions, ingest.get("dedup"))),
         chunk=IngestChunkOptions(**_dataclass_kwargs("ingest.chunk", IngestChunkOptions, ingest.get("chunk"))),
         embed=IngestEmbedOptions(
