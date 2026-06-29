@@ -6,8 +6,6 @@
 
 from __future__ import annotations
 
-import os
-import sys
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 import pandas as pd
@@ -15,13 +13,12 @@ import pandas as pd
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.graph.pipeline_graph import Graph, Node
 from nemo_retriever.graph.operator_resolution import resolve_graph
-from nemo_retriever.models.hf_cache import collect_hf_runtime_env
 from nemo_retriever.common.input_files import (
     _is_explicit_glob_path,
     expand_input_file_patterns,
     raise_input_path_not_found,
 )
-from nemo_retriever.common.remote_auth import collect_remote_auth_runtime_env
+from nemo_retriever.common.ray_runtime import ensure_local_ray_runtime
 from nemo_retriever.common import ray_resource_hueristics as _rrh
 from nemo_retriever.common.ray_resource_hueristics import (
     gather_cluster_resources,
@@ -231,7 +228,7 @@ class RayDataExecutor(AbstractExecutor):
         ray.data.Dataset
             The lazy Ray dataset with all graph stages appended.
         """
-        import ray
+        ray = ensure_local_ray_runtime(self._ray_address)
         import ray.data as rd
 
         if not isinstance(data, (rd.Dataset, str, list)):
@@ -242,25 +239,6 @@ class RayDataExecutor(AbstractExecutor):
         input_paths: Optional[List[str]] = None
         if isinstance(data, (str, list)):
             input_paths = expand_input_file_patterns(data)
-
-        if self._ray_address or not ray.is_initialized():
-            venv = os.path.dirname(os.path.dirname(sys.executable))
-            venv_bin = os.path.join(venv, "bin")
-            pypath = os.pathsep.join(p for p in sys.path if p)
-            ray_env_vars: dict[str, str] = {
-                "VIRTUAL_ENV": venv,
-                "PATH": venv_bin + os.pathsep + os.environ.get("PATH", ""),
-                "PYTHONPATH": pypath,
-            }
-            ray_env_vars.update(collect_hf_runtime_env())
-            ray_env_vars.update(collect_remote_auth_runtime_env())
-            os.environ["HF_HUB_OFFLINE"] = ray_env_vars["HF_HUB_OFFLINE"]
-            runtime_env = {"env_vars": ray_env_vars}
-            ray.init(
-                address=self._ray_address,
-                ignore_reinit_error=True,
-                runtime_env=runtime_env,
-            )
 
         ctx = rd.DataContext.get_current()
         ctx.enable_rich_progress_bars = True
