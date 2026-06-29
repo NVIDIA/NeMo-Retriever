@@ -100,9 +100,7 @@ def _pipeline_tracing() -> Any | None:
     try:
         from nemo_retriever.service import tracing
     except Exception:
-        logger.debug(
-            "Service tracing helper unavailable for pipeline execution", exc_info=True
-        )
+        logger.debug("Service tracing helper unavailable for pipeline execution", exc_info=True)
         return None
     return tracing
 
@@ -114,9 +112,7 @@ def _capture_trace_context_for_pipeline() -> dict[str, str]:
     try:
         return dict(tracing.inject_trace_context())
     except Exception as exc:
-        logger.warning(
-            "OpenTelemetry trace context capture failed for pipeline execution: %s", exc
-        )
+        logger.warning("OpenTelemetry trace context capture failed for pipeline execution: %s", exc)
         return {}
 
 
@@ -222,18 +218,14 @@ def warmup_process_pool_workers() -> dict[str, Any]:
     workers_warm = 0
     try:
         for executor, num_workers in _executor_warmup_targets:
-            futures = [
-                executor.submit(_pool_worker_ping, i) for i in range(num_workers)
-            ]
+            futures = [executor.submit(_pool_worker_ping, i) for i in range(num_workers)]
             for future in futures:
                 if future.result():
                     workers_warm += 1
         _service_warmup_state["workers_warm"] = workers_warm
         _service_warmup_state["complete"] = workers_warm == workers_expected
         if not _service_warmup_state["complete"]:
-            _service_warmup_state["error"] = (
-                f"only {workers_warm}/{workers_expected} workers reported warmed models"
-            )
+            _service_warmup_state["error"] = f"only {workers_warm}/{workers_expected} workers reported warmed models"
     except Exception as exc:
         _service_warmup_state["error"] = f"{type(exc).__name__}: {exc}"
         logger.exception("Local model warmup failed")
@@ -276,9 +268,7 @@ def shutdown_process_executors() -> None:
     logger.info("All pipeline process executors shut down")
 
 
-def _post_rows_to_vectordb(
-    rows: list[dict[str, Any]], vectordb_url: str, filename: str
-) -> None:
+def _post_rows_to_vectordb(rows: list[dict[str, Any]], vectordb_url: str, filename: str) -> None:
     """Fire-and-forget POST of LanceDB rows to the vectordb service."""
     import json
     import urllib.request
@@ -384,8 +374,7 @@ def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | No
     store = get_sidecar_store()
     if store is None:
         raise RuntimeError(
-            "vdb_upload_params.meta_dataframe_id was set but the SidecarStore "
-            "is not initialised on this pod."
+            "vdb_upload_params.meta_dataframe_id was set but the SidecarStore " "is not initialised on this pod."
         )
     entry = store.consume(sidecar_id)
     if entry is None:
@@ -486,17 +475,9 @@ def _materialize_sidecar_bytes(vdb_kwargs: dict[str, Any]) -> dict[str, Any]:
 
     ct_lower = content_type.lower()
     fname_lower = filename.lower()
-    if (
-        "parquet" in ct_lower
-        or fname_lower.endswith(".parquet")
-        or fname_lower.endswith(".pq")
-    ):
+    if "parquet" in ct_lower or fname_lower.endswith(".parquet") or fname_lower.endswith(".pq"):
         df = pd.read_parquet(BytesIO(payload))
-    elif (
-        "json" in ct_lower
-        or fname_lower.endswith(".json")
-        or fname_lower.endswith(".jsonl")
-    ):
+    elif "json" in ct_lower or fname_lower.endswith(".json") or fname_lower.endswith(".jsonl"):
         df = pd.read_json(BytesIO(payload), lines=fname_lower.endswith(".jsonl"))
     else:
         df = pd.read_csv(BytesIO(payload))
@@ -532,14 +513,10 @@ def _build_graph_ingestor_from_spec(
     )
 
     spec = spec or {}
-    extraction_mode = _resolve_service_extraction_mode(
-        spec.get("extraction_mode", "auto"), filename
-    )
+    extraction_mode = _resolve_service_extraction_mode(spec.get("extraction_mode", "auto"), filename)
     split_config = spec.get("split_config")
 
-    extract_kwargs = _merge_server_owned(
-        base_extract, spec.get("extract_params"), _TRUST_OWNED_EXTRACT_KEYS
-    )
+    extract_kwargs = _merge_server_owned(base_extract, spec.get("extract_params"), _TRUST_OWNED_EXTRACT_KEYS)
     extract_params = ExtractParams(**extract_kwargs)
 
     embed_override = spec.get("embed_params")
@@ -557,14 +534,8 @@ def _build_graph_ingestor_from_spec(
             "this worker. The policy layer should have rejected this earlier."
         )
     else:
-        caption_kwargs = _merge_server_owned(
-            base_caption or {}, caption_override, _TRUST_OWNED_CAPTION_KEYS
-        )
-        caption_params = (
-            CaptionParams(**caption_kwargs)
-            if caption_kwargs.get("endpoint_url")
-            else None
-        )
+        caption_kwargs = _merge_server_owned(base_caption or {}, caption_override, _TRUST_OWNED_CAPTION_KEYS)
+        caption_params = CaptionParams(**caption_kwargs) if caption_kwargs.get("endpoint_url") else None
 
     asr_params = ASRParams(**base_asr) if base_asr else None
 
@@ -572,9 +543,7 @@ def _build_graph_ingestor_from_spec(
     ingestor = ingestor.buffers([(filename, BytesIO(payload))])
 
     if extraction_mode == "image":
-        ingestor = ingestor.extract_image_files(
-            extract_params, split_config=split_config
-        )
+        ingestor = ingestor.extract_image_files(extract_params, split_config=split_config)
     elif extraction_mode == "text" and split_config is None:
         ingestor = ingestor.extract_txt()
     elif extraction_mode == "html" and split_config is None:
@@ -594,9 +563,7 @@ def _build_graph_ingestor_from_spec(
         # and crashes inside ``MediaChunkActor`` when ffmpeg/ffprobe are
         # absent. The graph builder also gates on extraction_mode now, so
         # this is defence in depth.
-        if asr_params is not None and _request_needs_asr_params(
-            extraction_mode, filename
-        ):
+        if asr_params is not None and _request_needs_asr_params(extraction_mode, filename):
             ingestor._asr_params = asr_params
 
     stage_order = spec.get("stage_order") or []
@@ -707,19 +674,15 @@ def _run_pipeline_in_process(
         "document.filename": filename,
     }
     try:
-        with tracing.start_span(
-            "pipeline.ingest", context=span_context, attributes=span_attributes
-        ):
-            ingestor, _extraction_mode, has_per_request_vdb = (
-                _build_graph_ingestor_from_spec(
-                    filename,
-                    payload,
-                    extract_params_dict,
-                    embed_params_dict,
-                    pipeline_spec,
-                    caption_params_dict,
-                    asr_params_dict,
-                )
+        with tracing.start_span("pipeline.ingest", context=span_context, attributes=span_attributes):
+            ingestor, _extraction_mode, has_per_request_vdb = _build_graph_ingestor_from_spec(
+                filename,
+                payload,
+                extract_params_dict,
+                embed_params_dict,
+                pipeline_spec,
+                caption_params_dict,
+                asr_params_dict,
             )
 
             result_df = ingestor.ingest()
@@ -780,9 +743,7 @@ def _resolve_embed_params(
     if base_embed is None and embed_override is None:
         return None
     embed_base = base_embed or {}
-    embed_kwargs = _merge_server_owned(
-        embed_base, embed_override, _TRUST_OWNED_EMBED_KEYS
-    )
+    embed_kwargs = _merge_server_owned(embed_base, embed_override, _TRUST_OWNED_EMBED_KEYS)
     if not _embed_params_enabled(embed_kwargs):
         return None
     from nemo_retriever.common.params import EmbedParams
@@ -790,9 +751,7 @@ def _resolve_embed_params(
     return EmbedParams(**embed_kwargs)
 
 
-def build_extract_params(
-    nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None
-) -> Any:
+def build_extract_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None) -> Any:
     """Derive :class:`ExtractParams` from service NIM and local-model config.
 
     The ``ExtractParams`` model validator auto-enables
@@ -854,9 +813,7 @@ def build_caption_params(nim: "NimEndpointsConfig") -> Any | None:
     return CaptionParams(**kwargs)
 
 
-def build_asr_params(
-    nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None
-) -> Any | None:
+def build_asr_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None) -> Any | None:
     """Derive :class:`ASRParams` from service NIM and local-model config.
 
     Returns ``None`` when neither a Parakeet NIM gRPC endpoint nor local
@@ -878,9 +835,7 @@ def build_asr_params(
     return None
 
 
-def build_embed_params(
-    nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None
-) -> Any | None:
+def build_embed_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None) -> Any | None:
     """Derive :class:`EmbedParams` from service NIM and local-model config.
 
     Remote ``embed_invoke_url`` wins when set. Otherwise, when
@@ -907,9 +862,7 @@ def build_embed_params(
         }
         runtime_kwargs = _local_model_runtime_kwargs(local)
         if local.embed.gpu_memory_utilization != 0.45:
-            runtime_kwargs["gpu_memory_utilization"] = (
-                local.embed.gpu_memory_utilization
-            )
+            runtime_kwargs["gpu_memory_utilization"] = local.embed.gpu_memory_utilization
         if runtime_kwargs:
             kwargs["runtime"] = ModelRuntimeParams(**runtime_kwargs)
         return EmbedParams(**kwargs)
@@ -939,11 +892,7 @@ def _make_work_fn(
         vectordb_url = config.vectordb.vectordb_url
         logger.info("VectorDB write enabled for %s workers → %s", label, vectordb_url)
 
-    num_workers = (
-        config.pipeline.realtime_workers
-        if label.lower() == "realtime"
-        else config.pipeline.batch_workers
-    )
+    num_workers = config.pipeline.realtime_workers if label.lower() == "realtime" else config.pipeline.batch_workers
     max_tasks_per_child = _resolve_max_tasks_per_child(config.local_models)
     warmup_spec_json = _build_pool_warmup_spec_json(
         config.local_models,
@@ -966,9 +915,7 @@ def _make_work_fn(
 
     extract_params_dict = extract_params.model_dump(mode="json")
     embed_params_dict = embed_params.model_dump(mode="json") if embed_params else None
-    caption_params_dict = (
-        caption_params.model_dump(mode="json") if caption_params else None
-    )
+    caption_params_dict = caption_params.model_dump(mode="json") if caption_params else None
     asr_params_dict = asr_params.model_dump(mode="json") if asr_params else None
 
     _pipeline_configs[label.lower()] = {
@@ -979,18 +926,14 @@ def _make_work_fn(
         "extract_params": _params_to_dict(extract_params),
         "embed_params": _params_to_dict(embed_params) if embed_params else None,
         "embed_enabled": embed_params is not None,
-        "caption_params": (
-            _redact_dict(_params_to_dict(caption_params)) if caption_params else None
-        ),
+        "caption_params": (_redact_dict(_params_to_dict(caption_params)) if caption_params else None),
         "caption_enabled": caption_params is not None,
         "asr_params": _redact_dict(_params_to_dict(asr_params)) if asr_params else None,
         "asr_enabled": asr_params is not None,
         "pool": {
             "workers": num_workers,
             "queue_size": (
-                config.pipeline.realtime_queue_size
-                if label.lower() == "realtime"
-                else config.pipeline.batch_queue_size
+                config.pipeline.realtime_queue_size if label.lower() == "realtime" else config.pipeline.batch_queue_size
             ),
             "max_tasks_per_child": max_tasks_per_child,
         },
@@ -1039,8 +982,7 @@ def _make_work_fn(
             )
         except BrokenProcessPool:
             logger.error(
-                "%s process pool broken (worker crash) while processing "
-                "id=%s file=%s — recreating pool",
+                "%s process pool broken (worker crash) while processing " "id=%s file=%s — recreating pool",
                 label,
                 item.id,
                 filename,

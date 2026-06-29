@@ -129,9 +129,7 @@ class ServiceMCPClient:
         self._transport = transport
 
     def _client(self, *, timeout_s: float | None = None) -> httpx.AsyncClient:
-        timeout_value = (
-            timeout_s if timeout_s is not None else self._settings.request_timeout_s
-        )
+        timeout_value = timeout_s if timeout_s is not None else self._settings.request_timeout_s
         return httpx.AsyncClient(
             base_url=self._settings.normalized_base_url,
             headers=self._settings.auth_headers,
@@ -151,9 +149,7 @@ class ServiceMCPClient:
         if resp.status_code < 400:
             return
         detail = resp.text[:1000] if resp.text else "(empty)"
-        raise RuntimeError(
-            f"Retriever service returned HTTP {resp.status_code}: {detail}"
-        )
+        raise RuntimeError(f"Retriever service returned HTTP {resp.status_code}: {detail}")
 
     async def health(self) -> dict[str, Any]:
         async with self._client() as client:
@@ -167,9 +163,7 @@ class ServiceMCPClient:
         self._raise_for_status(resp)
         return dict(self._json_or_text(resp))
 
-    async def get_job(
-        self, job_id: str, *, include_documents: bool = False
-    ) -> dict[str, Any]:
+    async def get_job(self, job_id: str, *, include_documents: bool = False) -> dict[str, Any]:
         async with self._client() as client:
             resp = await client.get(
                 f"/v1/ingest/job/{job_id}",
@@ -200,9 +194,7 @@ class ServiceMCPClient:
         self._raise_for_status(resp)
         return dict(self._json_or_text(resp))
 
-    async def query(
-        self, query: str, *, top_k: int = 5, payload: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def query(self, query: str, *, top_k: int = 5, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         body = dict(payload or {})
         body.setdefault("query", query)
         body.setdefault("top_k", top_k)
@@ -275,9 +267,7 @@ class ServiceMCPClient:
                 pipeline_spec=pipeline_spec,
             )
             document_ids = [
-                item["document_id"]
-                for item in upload_results
-                if item.get("ok") and item.get("document_id")
+                item["document_id"] for item in upload_results if item.get("ok") and item.get("document_id")
             ]
             documents_page = await self._poll_documents_until_terminal(
                 client,
@@ -289,9 +279,7 @@ class ServiceMCPClient:
             if include_result_data:
                 for item in documents_page.get("items", []):
                     if item.get("status") in {"completed", "failed"}:
-                        detail = await self._get_document_with_client(
-                            client, job_id, item["document_id"]
-                        )
+                        detail = await self._get_document_with_client(client, job_id, item["document_id"])
                         item["result_data"] = detail.get("result_data")
 
         upload_errors = [item for item in upload_results if not item.get("ok")]
@@ -339,13 +327,9 @@ class ServiceMCPClient:
                     self._raise_for_status(resp)
                     body = dict(self._json_or_text(resp))
                     return {"ok": True, "filename": filename, **body}
-                except (
-                    Exception
-                ) as exc:  # noqa: BLE001 - MCP response should include every upload failure.
+                except Exception as exc:  # noqa: BLE001 - MCP response should include every upload failure.
                     filename = doc.filename or (Path(doc.path).name if doc.path else "")
-                    logger.warning(
-                        "MCP upload failed for %s: %s", filename or "<unknown>", exc
-                    )
+                    logger.warning("MCP upload failed for %s: %s", filename or "<unknown>", exc)
                     return {"ok": False, "filename": filename, "error": str(exc)}
 
         return await asyncio.gather(*(_upload_one(doc) for doc in documents))
@@ -375,11 +359,7 @@ class ServiceMCPClient:
             latest = await self._list_all_job_documents(client, job_id)
             items = latest.get("items", [])
             seen = {str(item.get("document_id")): item for item in items}
-            terminal = {
-                doc_id
-                for doc_id in wanted
-                if seen.get(doc_id, {}).get("status") in {"completed", "failed"}
-            }
+            terminal = {doc_id for doc_id in wanted if seen.get(doc_id, {}).get("status") in {"completed", "failed"}}
             if terminal == wanted:
                 latest["timed_out"] = False
                 return latest
@@ -388,9 +368,7 @@ class ServiceMCPClient:
                 return latest
             await asyncio.sleep(self._settings.poll_interval_s)
 
-    async def _list_all_job_documents(
-        self, client: httpx.AsyncClient, job_id: str
-    ) -> dict[str, Any]:
+    async def _list_all_job_documents(self, client: httpx.AsyncClient, job_id: str) -> dict[str, Any]:
         limit = 1000
         offset = 0
         all_items: list[dict[str, Any]] = []
@@ -437,9 +415,7 @@ def _document_bytes(doc: MCPDocumentInput) -> tuple[str, bytes]:
     if doc.path:
         path = Path(doc.path).expanduser()
         if not path.is_file():
-            raise FileNotFoundError(
-                f"Document path does not exist or is not a file: {path}"
-            )
+            raise FileNotFoundError(f"Document path does not exist or is not a file: {path}")
         return doc.filename or path.name, path.read_bytes()
 
     raw = doc.content_base64 or ""
@@ -492,9 +468,7 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
         offset: int = 0,
         limit: int = 100,
     ) -> dict[str, Any]:
-        return await service.list_job_documents(
-            job_id, status=status, offset=offset, limit=limit
-        )
+        return await service.list_job_documents(job_id, status=status, offset=offset, limit=limit)
 
     @mcp.tool(
         name="get_document",
@@ -507,14 +481,10 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
         name="query",
         description="Search ingested documents through the service VectorDB endpoint.",
     )
-    async def query(
-        query: str, top_k: int = 5, payload: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    async def query(query: str, top_k: int = 5, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         return await service.query(query, top_k=top_k, payload=payload)
 
-    @mcp.tool(
-        name="answer", description="Search ingested documents and generate an answer."
-    )
+    @mcp.tool(name="answer", description="Search ingested documents and generate an answer.")
     async def answer(
         query: str,
         top_k: int = 5,

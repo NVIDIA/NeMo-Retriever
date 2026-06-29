@@ -58,9 +58,7 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
             from nemo_retriever.models.warmup_registry import get_warmed_model
 
             warmed = get_warmed_model("graphic_elements")
-            self._graphic_elements_model = (
-                warmed if warmed is not None else NemotronGraphicElementsV1()
-            )
+            self._graphic_elements_model = warmed if warmed is not None else NemotronGraphicElementsV1()
 
         if self._ocr_invoke_url:
             self._ocr_model = None

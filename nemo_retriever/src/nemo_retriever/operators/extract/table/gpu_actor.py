@@ -40,9 +40,7 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         remote_max_429_retries: int = 5,
     ) -> None:
         super().__init__()
-        self._table_structure_invoke_url = (
-            table_structure_invoke_url or invoke_url or ""
-        ).strip()
+        self._table_structure_invoke_url = (table_structure_invoke_url or invoke_url or "").strip()
         self._ocr_invoke_url = (ocr_invoke_url or "").strip()
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)
@@ -60,9 +58,7 @@ class TableStructureActor(AbstractOperator, GPUOperator):
             from nemo_retriever.models.warmup_registry import get_warmed_model
 
             warmed = get_warmed_model("table_structure")
-            self._table_structure_model = (
-                warmed if warmed is not None else NemotronTableStructureV1()
-            )
+            self._table_structure_model = warmed if warmed is not None else NemotronTableStructureV1()
 
         if self._ocr_invoke_url:
             self._ocr_model = None

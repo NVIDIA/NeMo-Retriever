@@ -131,13 +131,9 @@ class VectorDBState:
         try:
             self._db.open_table(table_name)
             self._table_exists = True
-            logger.info(
-                "Opened existing LanceDB table '%s' at %s", table_name, lancedb_uri
-            )
+            logger.info("Opened existing LanceDB table '%s' at %s", table_name, lancedb_uri)
         except Exception:
-            logger.info(
-                "LanceDB table '%s' does not exist yet at %s", table_name, lancedb_uri
-            )
+            logger.info("LanceDB table '%s' does not exist yet at %s", table_name, lancedb_uri)
 
     @property
     def embed_mode(self) -> str:
@@ -166,9 +162,7 @@ class VectorDBState:
             if not self._table_exists:
                 dim = infer_vector_dim(rows)
                 if dim == 0:
-                    logger.warning(
-                        "Cannot infer vector dimension from rows; skipping write"
-                    )
+                    logger.warning("Cannot infer vector dimension from rows; skipping write")
                     return 0
                 schema = lancedb_schema(vector_dim=dim)
                 create_or_append_lancedb_table(
@@ -188,9 +182,7 @@ class VectorDBState:
             else:
                 table = self._db.open_table(self.table_name)
                 table.add(rows)
-                logger.info(
-                    "Appended %d rows to table '%s'", len(rows), self.table_name
-                )
+                logger.info("Appended %d rows to table '%s'", len(rows), self.table_name)
 
         return len(rows)
 
@@ -203,9 +195,7 @@ class VectorDBState:
         except Exception:
             return 0
 
-    def search(
-        self, vectors: list[list[float]], top_k: int
-    ) -> list[list[dict[str, Any]]]:
+    def search(self, vectors: list[list[float]], top_k: int) -> list[list[dict[str, Any]]]:
         """Search the LanceDB table with precomputed query vectors."""
         if not self._table_exists:
             return [[] for _ in vectors]
@@ -252,9 +242,7 @@ class VectorDBState:
                 embedder = self._get_local_embedder()
                 tensor = embedder.embed_queries(texts)
             return _tensor_to_embedding_rows(tensor)
-        raise RuntimeError(
-            "No embedding backend configured (remote endpoint or --local-embed)."
-        )
+        raise RuntimeError("No embedding backend configured (remote endpoint or --local-embed).")
 
 
 # ── FastAPI app ──────────────────────────────────────────────────────
@@ -332,9 +320,7 @@ def create_vectordb_app(
             "embed_mode": _state.embed_mode if _state else "none",
         }
 
-    @app.post(
-        "/internal/vectordb/write", response_model=WriteResponse, tags=["internal"]
-    )
+    @app.post("/internal/vectordb/write", response_model=WriteResponse, tags=["internal"])
     async def write(req: WriteRequest) -> WriteResponse:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
@@ -378,15 +364,9 @@ def create_vectordb_app(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="NeMo Retriever VectorDB service")
-    parser.add_argument(
-        "--lancedb-uri", default="/data/vectordb", help="LanceDB directory"
-    )
-    parser.add_argument(
-        "--table-name", default="nemo_retriever", help="LanceDB table name"
-    )
-    parser.add_argument(
-        "--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL"
-    )
+    parser.add_argument("--lancedb-uri", default="/data/vectordb", help="LanceDB directory")
+    parser.add_argument("--table-name", default="nemo_retriever", help="LanceDB table name")
+    parser.add_argument("--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL")
     parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-vl-1b-v2")
     parser.add_argument("--embed-api-key", default="")
     parser.add_argument(
@@ -400,12 +380,8 @@ def main() -> None:
         choices=("hf", "vllm"),
         help="Backend for --local-embed (default: hf).",
     )
-    parser.add_argument(
-        "--hf-cache-dir", default="", help="Hugging Face model cache directory"
-    )
-    parser.add_argument(
-        "--device", default="", help="Torch device for --local-embed (e.g. cuda:0)"
-    )
+    parser.add_argument("--hf-cache-dir", default="", help="Hugging Face model cache directory")
+    parser.add_argument("--device", default="", help="Torch device for --local-embed (e.g. cuda:0)")
     parser.add_argument(
         "--gpu-memory-utilization",
         type=float,
