@@ -41,6 +41,7 @@ from nemo_retriever.harness.resolution import (
     validate_dataset_inputs,
 )
 from nemo_retriever.harness.replay_command import build_harness_run_command, persist_replay_command
+from nemo_retriever.ingest.plan import resolve_ingest_plan
 from nemo_retriever.query.workflow import resolve_query_plan
 
 
