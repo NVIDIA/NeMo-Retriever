@@ -39,6 +39,7 @@ translation, not the server route shape (that is covered separately in
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from pathlib import Path
 from typing import Iterator
 
@@ -201,15 +202,44 @@ def test_create_job_success_returns_job_id() -> None:
     """Smoke test: a healthy 201 response is unaffected by the compat logic."""
 
     def _handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(201, json={"job_id": "JOB-1"})
+        return httpx.Response(201, json={"job_id": "JOB-1", "trace_id": "trace-123"})
 
     rc = RetrieverServiceClient(base_url="http://nrl:7670")
 
-    async def _call() -> str:
+    async def _call():
         async with httpx.AsyncClient(transport=_make_transport(_handler)) as client:
             return await rc._create_job(client, expected_documents=1)
 
-    assert _run_async(_call()) == "JOB-1"
+    created = _run_async(_call())
+    assert created.job_id == "JOB-1"
+    assert created.trace_id == "trace-123"
+
+
+def test_stream_job_created_event_includes_trace_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The public streaming path preserves the trace id returned by job creation."""
+
+    rc = RetrieverServiceClient(base_url="http://nrl:7670")
+
+    async def _create_job(*args, **kwargs):
+        return SimpleNamespace(job_id="JOB-1", trace_id="trace-123")
+
+    async def _consume_sse(_client, _pending, uploads_done, _tracker, **_kwargs):
+        uploads_done.set()
+
+    monkeypatch.setattr(rc, "_create_job", _create_job)
+    monkeypatch.setattr(rc, "_consume_sse", _consume_sse)
+
+    async def _first_event() -> dict[str, object]:
+        async for event in rc.aingest_documents_stream([]):
+            return event
+        raise AssertionError("stream produced no events")
+
+    assert _run_async(_first_event()) == {
+        "event": "job_created",
+        "job_id": "JOB-1",
+        "expected_documents": 0,
+        "trace_id": "trace-123",
+    }
 
 
 # ----------------------------------------------------------------------

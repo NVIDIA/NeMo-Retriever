@@ -128,7 +128,6 @@ def main():
                 "evidence",
                 "--top-k",
                 "3",
-                "--no-hybrid",
                 "--table-name",
                 table,
                 "--lancedb-uri",

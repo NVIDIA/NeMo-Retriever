@@ -10,9 +10,10 @@ apps.nvidia.com/v1alpha1 CRDs are present and the corresponding
 inherits the NIMService resource name, so the mapping is fixed:
   page_elements                          -> nemotron-page-elements-v3                /v1/infer
   table_structure                        -> nemotron-table-structure-v1              /v1/infer
-  ocr                                    -> nemotron-ocr-v1                          /v1/infer
+  ocr                                    -> nemotron-ocr-v2                          /v1/infer
   vlm_embed                              -> llama-nemotron-embed-vl-1b-v2            /v1/embeddings
   nemotron_3_nano_omni_30b_a3b_reasoning -> nemotron-3-nano-omni-30b-a3b-reasoning   /v1/chat/completions
+  answer_llm                             -> Values.nimOperator.answer_llm.nimServiceName /v1
 */}}
 {{- $ctx := . -}}
 {{- $pageElementsURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "page_elements" "serviceName" "nemotron-page-elements-v3" "configKey" "pageElementsInvokeUrl" "invokePath" "/v1/infer") -}}
@@ -34,6 +35,21 @@ inherits the NIMService resource name, so the mapping is fixed:
 {{- $captionModelName = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning" -}}
 {{- end -}}
 {{- $audioGrpcEndpoint := $ctx.Values.serviceConfig.nimEndpoints.audioGrpcEndpoint | default "" -}}
+{{- $llmAPIBase := $ctx.Values.serviceConfig.llm.apiBase | default "" -}}
+{{- $llmOperatorAPIBase := "" -}}
+{{- if not $llmAPIBase -}}
+{{- $llmOperatorAPIBase = include "nemo-retriever.nimOperator.url" (dict "context" $ctx "key" "answer_llm" "serviceName" $ctx.Values.nimOperator.answer_llm.nimServiceName "invokePath" "/v1") -}}
+{{- $llmAPIBase = $llmOperatorAPIBase -}}
+{{- end -}}
+{{- $llmModel := $ctx.Values.serviceConfig.llm.model | default "" -}}
+{{- if and (not $llmModel) $llmOperatorAPIBase -}}
+{{- $llmModel = $ctx.Values.nimOperator.answer_llm.model | default "" -}}
+{{- end -}}
+{{- $llmEnabled := or $ctx.Values.serviceConfig.llm.enabled $llmAPIBase -}}
+{{- $llmRagSystemPromptPrefix := $ctx.Values.serviceConfig.llm.ragSystemPromptPrefix | default "" -}}
+{{- if and (not $llmRagSystemPromptPrefix) $llmOperatorAPIBase -}}
+{{- $llmRagSystemPromptPrefix = $ctx.Values.nimOperator.answer_llm.ragSystemPromptPrefix | default "" -}}
+{{- end -}}
 
 {{- define "nemo-retriever.configBody" -}}
 server:
@@ -55,6 +71,21 @@ nim_endpoints:
   caption_model_name: {{ if .captionModelName }}{{ .captionModelName | quote }}{{ else }}null{{ end }}
   audio_grpc_endpoint: {{ if .audioGrpcEndpoint }}{{ .audioGrpcEndpoint | quote }}{{ else }}null{{ end }}
   api_key: null
+
+llm:
+  enabled: {{ if .llmEnabled }}true{{ else }}false{{ end }}
+  model: {{ .llmModel | quote }}
+  api_base: {{ if .llmAPIBase }}{{ .llmAPIBase | quote }}{{ else }}null{{ end }}
+  api_key: null
+  temperature: {{ .Values.serviceConfig.llm.temperature }}
+  top_p: {{ if eq .Values.serviceConfig.llm.topP nil }}null{{ else }}{{ .Values.serviceConfig.llm.topP }}{{ end }}
+  max_tokens: {{ .Values.serviceConfig.llm.maxTokens }}
+  extra_params: {{ toJson .Values.serviceConfig.llm.extraParams }}
+  num_retries: {{ .Values.serviceConfig.llm.numRetries }}
+  timeout: {{ .Values.serviceConfig.llm.timeout }}
+  rag_system_prompt: {{ if .Values.serviceConfig.llm.ragSystemPrompt }}{{ .Values.serviceConfig.llm.ragSystemPrompt | quote }}{{ else }}null{{ end }}
+  rag_system_prompt_prefix: {{ if .llmRagSystemPromptPrefix }}{{ .llmRagSystemPromptPrefix | quote }}{{ else }}null{{ end }}
+  reasoning_enabled: {{ .Values.serviceConfig.llm.reasoningEnabled }}
 
 pipeline:
   realtime_workers: {{ .Values.serviceConfig.pipeline.realtimeWorkers }}
@@ -100,7 +131,7 @@ metadata:
 data:
   retriever-service.yaml: |
     mode: standalone
-{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- else }}
 # =========================================================================
 # Split mode — one ConfigMap per role with the appropriate mode + gateway
@@ -128,6 +159,6 @@ data:
       timeout_s: 300.0
       max_connections: 100
     {{- end }}
-{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- end }}
 {{- end }}

@@ -42,5 +42,6 @@ spec:
   expose:
 {{ toYaml .Values.nimOperator.nemotron_parse.expose | indent 4 }}
   env:
+{{ include "nemo-retriever.nimServiceOtelEnv" (dict "context" $ "key" "nemotron_parse" "name" "nemotron-parse") | nindent 4 }}
 {{ toYaml .Values.nimOperator.nemotron_parse.env | indent 4 }}
 {{- end }}

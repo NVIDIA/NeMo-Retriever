@@ -264,6 +264,7 @@ def _serialize_job(agg) -> dict:
         "finalized_at": agg.finalized_at,
         "elapsed_s": agg.elapsed_s,
         "label": agg.label,
+        "trace_id": agg.trace_id,
         "document_ids": list(agg.document_ids),
     }
 

@@ -16,12 +16,18 @@ from nemo_retriever.graph.retriever_utils import (
     filter_retrieval_kwargs,
     rerank_long_dataframe_to_hits,
 )
-from nemo_retriever.common.vdb.lancedb_schema import normalize_content_type
+from nemo_retriever.common.vdb.lancedb_capabilities import (
+    LanceRetrievalMode,
+    LanceTableCapabilities,
+    inspect_lancedb_table,
+)
+from nemo_retriever.common.vdb.records import RetrievalHit, normalize_retrieval_results
+from nemo_retriever.query.shaping import shape_query_hits
 from nemo_retriever.operators.vdb import RetrieveVdbOperator
-from nemo_retriever.common.vdb.records import RetrievalHit
-from nemo_retriever.common.vdb.sidecar_metadata import parse_hit_content_metadata
 
 logger = logging.getLogger(__name__)
+
+_QUERY_ROUTING_VDB_KWARGS = frozenset({"retrieval_mode"})
 
 if TYPE_CHECKING:
     from nemo_retriever.models.llm.types import (
@@ -32,114 +38,17 @@ if TYPE_CHECKING:
     )
 
 
-def _normalize_content_type_allowlist(content_types: str | Sequence[str] | None) -> set[str] | None:
-    """Normalize query-time ``content_types`` filters to stored hit metadata values.
-
-    ``Retriever.query`` and ``Retriever.queries`` accept user-facing values such
-    as ``"text,table"`` and aliases such as ``"images"``. Retrieved hit metadata
-    uses canonical content types, so normalize the allowlist once before shaping
-    query results.
-    """
-    if content_types is None:
-        return None
-    raw_values: list[str]
-    if isinstance(content_types, str):
-        raw_values = content_types.split(",")
-    else:
-        raw_values = []
-        for value in content_types:
-            raw_values.extend(str(value).split(","))
-
-    normalized = {content_type for value in raw_values if (content_type := normalize_content_type(value)) is not None}
-    if not normalized:
-        raise ValueError("content_types must include at least one non-empty content type.")
-    return normalized
-
-
-def _hit_content_type(hit: dict[str, Any]) -> str | None:
-    metadata = parse_hit_content_metadata(hit)
-    for value in (
-        metadata.get("type"),
-        metadata.get("_content_type"),
-        hit.get("content_type"),
-        hit.get("_content_type"),
-    ):
-        normalized = normalize_content_type(value)
-        if normalized is not None:
-            return normalized
-    return None
-
-
-def _coerce_int_or_none(value: Any) -> int | None:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _hit_page_key(hit: dict[str, Any]) -> tuple[str, int] | None:
-    metadata = parse_hit_content_metadata(hit)
-    page_number = _coerce_int_or_none(hit.get("page_number"))
-    if page_number is None:
-        page_number = _coerce_int_or_none(metadata.get("page_number"))
-    if page_number is None:
-        return None
-
-    for value in (hit.get("pdf_basename"), metadata.get("pdf_basename")):
-        if isinstance(value, str) and value.strip():
-            return (value.strip(), page_number)
-
-    raw_doc = (
-        hit.get("source_id")
-        or hit.get("source")
-        or hit.get("path")
-        or metadata.get("source_id")
-        or metadata.get("source_name")
-    )
-    if not isinstance(raw_doc, str) or not raw_doc.strip():
-        return None
-    return (raw_doc.strip(), page_number)
-
-
-def _shape_query_hits(
-    hits: Sequence[dict[str, Any]],
-    *,
-    top_k: int,
-    page_dedup: bool = False,
-    content_types: str | Sequence[str] | None = None,
-) -> list[RetrievalHit]:
-    """Apply query-time filtering, page deduplication, and final truncation.
-
-    When ``content_types`` is set, hits without a recognizable content type are
-    excluded because they cannot be matched against the allowlist.
-    """
-    allowed_types = _normalize_content_type_allowlist(content_types)
-    shaped: list[RetrievalHit] = []
-    seen_pages: set[tuple[str, int]] = set()
-
-    for hit in hits:
-        if allowed_types is not None:
-            hit_type = _hit_content_type(hit)
-            if hit_type not in allowed_types:
-                continue
-        if page_dedup:
-            page_key = _hit_page_key(hit)
-            if page_key is not None:
-                if page_key in seen_pages:
-                    continue
-                seen_pages.add(page_key)
-        shaped.append(cast(RetrievalHit, dict(hit)))
-        if len(shaped) >= top_k:
-            break
-    return shaped
-
-
 def _coerce_vdb_init(user: dict[str, Any]) -> dict[str, Any]:
     """Normalize ``vdb_kwargs`` into :class:`RetrieveVdbOperator` constructor kwargs."""
     u = dict(user or {})
+    for key in _QUERY_ROUTING_VDB_KWARGS:
+        u.pop(key, None)
     if "vdb" in u or "vdb_op" in u:
+        if isinstance(u.get("vdb_kwargs"), dict):
+            nested = dict(u["vdb_kwargs"])
+            for key in _QUERY_ROUTING_VDB_KWARGS:
+                nested.pop(key, None)
+            u["vdb_kwargs"] = nested
         return u
     return {"vdb_op": "lancedb", "vdb_kwargs": u}
 
@@ -185,6 +94,9 @@ class Retriever:
 
     _cached_graph: Any = field(default=None, init=False, repr=False, compare=False)
     _cache_key: Any = field(default=None, init=False, repr=False, compare=False)
+    _lancedb_capabilities_cache: dict[tuple[str, str], LanceTableCapabilities] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if self.run_mode not in ("local", "service"):
@@ -321,6 +233,92 @@ class Retriever:
             raise TypeError(f"Unexpected query graph output type: {type(out).__name__}")
         return out
 
+    def _inspect_lancedb_capabilities(self, uri: str, table_name: str) -> LanceTableCapabilities:
+        key = (uri, table_name)
+        caps = self._lancedb_capabilities_cache.get(key)
+        if caps is None:
+            caps = inspect_lancedb_table(uri, table_name)
+            self._lancedb_capabilities_cache[key] = caps
+        return caps
+
+    def _resolve_lancedb_query_mode(
+        self,
+        runtime_vdb_kwargs: Optional[dict[str, Any]],
+    ) -> tuple[str, LanceTableCapabilities, str, str, bool] | None:
+        if self.graph is not None:
+            return None
+
+        lancedb_kwargs = dict(self.vdb_kwargs or {})
+        if "vdb" in lancedb_kwargs:
+            return None
+        if "vdb_op" in lancedb_kwargs:
+            if str(lancedb_kwargs.get("vdb_op") or "").strip().lower() != "lancedb":
+                return None
+            lancedb_kwargs = dict(lancedb_kwargs.get("vdb_kwargs") or {})
+        lancedb_kwargs.update(dict(runtime_vdb_kwargs or {}))
+
+        uri = str(
+            lancedb_kwargs.get("table_path")
+            or lancedb_kwargs.get("uri")
+            or lancedb_kwargs.get("lancedb_uri")
+            or "lancedb"
+        )
+        table_name = str(lancedb_kwargs.get("table_name") or lancedb_kwargs.get("lancedb_table") or "nv-ingest")
+        caps = self._inspect_lancedb_capabilities(uri, table_name)
+
+        mode_override = str(lancedb_kwargs.get("retrieval_mode") or "auto").strip().lower()
+        if mode_override not in {"auto", "dense", "hybrid", "sparse"}:
+            raise ValueError(
+                f"Unsupported LanceDB retrieval mode {mode_override!r}; " "use 'auto', 'dense', 'hybrid', or 'sparse'."
+            )
+        if "hybrid" in lancedb_kwargs:
+            mode_override = "hybrid" if bool(lancedb_kwargs["hybrid"]) else "dense"
+        mode = caps.retrieval_mode if mode_override == "auto" else cast(LanceRetrievalMode, mode_override)
+
+        if mode == "unknown":
+            raise ValueError(
+                f"LanceDB table {table_name!r} at {uri!r} is not queryable: "
+                "no vector column or FTS index was detected."
+            )
+        if mode == "dense" and not caps.has_vector:
+            raise ValueError(
+                f"LanceDB table {table_name!r} at {uri!r} cannot run dense retrieval: " "no vector column was detected."
+            )
+        if mode == "hybrid" and (not caps.has_vector or not caps.has_fts):
+            raise ValueError(
+                f"LanceDB table {table_name!r} at {uri!r} cannot run hybrid retrieval: "
+                "both a vector column and FTS index are required."
+            )
+        if mode == "sparse" and not caps.has_fts:
+            raise ValueError(
+                f"LanceDB table {table_name!r} at {uri!r} cannot run sparse retrieval: " "no FTS index was detected."
+            )
+
+        return mode, caps, uri, table_name, mode_override != "auto"
+
+    def _execute_sparse_lancedb_queries(
+        self,
+        query_texts: list[str],
+        *,
+        retrieval_top_k: int,
+        vdb_call_kwargs: Optional[dict[str, Any]],
+        caps: LanceTableCapabilities,
+        uri: str,
+        table_name: str,
+    ) -> list[list[dict[str, Any]]]:
+        from nemo_retriever.common.vdb.lancedb import LanceDB
+
+        text_column = caps.text_column or "text"
+        retrieval_kwargs = {
+            **filter_retrieval_kwargs(dict(vdb_call_kwargs or {})),
+            "top_k": int(retrieval_top_k),
+            "table_path": uri,
+            "table_name": table_name,
+            "text_column_name": text_column,
+        }
+        vdb = LanceDB(uri=uri, table_name=table_name, overwrite=False, sparse=True)
+        return normalize_retrieval_results(vdb.sparse_retrieval(query_texts, **retrieval_kwargs))
+
     def query(
         self,
         query: str,
@@ -394,15 +392,46 @@ class Retriever:
         refine = self._refine_factor()
         retrieval_top_k = candidate_top_k * refine if self.rerank else candidate_top_k
 
+        vdb_call_kwargs = dict(vdb_kwargs or {})
+        lancedb_mode = self._resolve_lancedb_query_mode(vdb_call_kwargs)
+        for key in _QUERY_ROUTING_VDB_KWARGS:
+            vdb_call_kwargs.pop(key, None)
+        if lancedb_mode is not None:
+            mode, caps, uri, table_name, has_mode_override = lancedb_mode
+            if mode == "sparse":
+                raw_hits = self._execute_sparse_lancedb_queries(
+                    query_texts,
+                    retrieval_top_k=retrieval_top_k,
+                    vdb_call_kwargs=vdb_call_kwargs,
+                    caps=caps,
+                    uri=uri,
+                    table_name=table_name,
+                )
+                return [
+                    shape_query_hits(
+                        hits,
+                        top_k=effective_top_k,
+                        page_dedup=page_dedup,
+                        content_types=content_types,
+                    )
+                    for hits in raw_hits
+                ]
+            if mode == "hybrid":
+                vdb_call_kwargs["hybrid"] = True
+            elif mode == "dense" and has_mode_override:
+                vdb_call_kwargs["hybrid"] = False
+            if caps.vector_column and caps.vector_column != "vector":
+                vdb_call_kwargs.setdefault("vector_column_name", caps.vector_column)
+
         raw_hits = self._execute_queries_graph(
             query_texts,
             effective_top_k=candidate_top_k,
             retrieval_top_k=retrieval_top_k,
-            vdb_call_kwargs=vdb_kwargs,
+            vdb_call_kwargs=vdb_call_kwargs,
             embed_extra=embed_kwargs,
         )
         return [
-            _shape_query_hits(
+            shape_query_hits(
                 hits,
                 top_k=effective_top_k,
                 page_dedup=page_dedup,
@@ -461,93 +490,44 @@ class Retriever:
         judge: Optional["AnswerJudge"] = None,
         reference: Optional[str] = None,
         top_k: Optional[int] = None,
+        reasoning_enabled: Optional[bool] = None,
         vdb_kwargs: Optional[dict[str, Any]] = None,
         embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> "AnswerResult":
-        from nemo_retriever.models.llm.types import AnswerResult
+        from nemo_retriever.models.llm.types import (
+            AnswerRequest,
+            build_answer_result,
+        )
 
         if judge is not None and reference is None:
             raise ValueError("judge requires reference")
 
-        retrieved = self.retrieve(query, top_k=top_k, vdb_kwargs=vdb_kwargs, embed_kwargs=embed_kwargs)
-
-        gen = llm.generate(query, retrieved.chunks)
-
-        result = AnswerResult(
+        answer_req = AnswerRequest(
             query=query,
-            answer=gen.answer,
-            chunks=retrieved.chunks,
-            metadata=retrieved.metadata,
-            model=gen.model,
-            latency_s=gen.latency_s,
-            error=gen.error,
-        )
-
-        if gen.error is not None:
-            return result
-
-        if reference is None and judge is None:
-            return result
-
-        self._populate_scores(
-            result,
-            query=query,
+            top_k=int(top_k) if top_k is not None else int(self.top_k),
+            reasoning_enabled=reasoning_enabled,
             reference=reference,
-            judge=judge,
-            gen_error=gen.error,
+            judge_enabled=judge is not None,
         )
-        return result
-
-    def _populate_scores(
-        self,
-        result: "AnswerResult",
-        *,
-        query: str,
-        reference: Optional[str],
-        judge: Optional["AnswerJudge"],
-        gen_error: Optional[str],
-    ) -> None:
-        from concurrent.futures import ThreadPoolExecutor
-
-        from nemo_retriever.tools.evaluation.scoring import (
-            answer_in_context,
-            classify_failure,
-            token_f1,
+        retrieved = self.retrieve(
+            answer_req.query,
+            top_k=answer_req.top_k,
+            vdb_kwargs=vdb_kwargs,
+            embed_kwargs=embed_kwargs,
         )
 
-        def _scoring() -> tuple[Optional[bool], Optional[float], Optional[bool]]:
-            if reference is None:
-                return None, None, None
-            aic = answer_in_context(reference, result.chunks)
-            f1 = token_f1(reference, result.answer)
-            return aic, float(f1.get("f1", 0.0)), bool(f1.get("exact_match", False))
+        generate_kwargs: dict[str, Any] = {}
+        if answer_req.reasoning_enabled is not None:
+            generate_kwargs["reasoning_enabled"] = answer_req.reasoning_enabled
+        gen = llm.generate(answer_req.query, retrieved.chunks, **generate_kwargs)
 
-        def _judging() -> tuple[Optional[float], Optional[str], Optional[str]]:
-            if judge is None or reference is None:
-                return None, None, None
-            jr = judge.judge(query, reference, result.answer)
-            return jr.score, jr.reasoning, jr.error
-
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            scoring_future = pool.submit(_scoring)
-            judge_future = pool.submit(_judging)
-            aic, f1, em = scoring_future.result()
-            judge_score, judge_reasoning, judge_error = judge_future.result()
-
-        result.answer_in_context = aic
-        result.token_f1 = f1
-        result.exact_match = em
-        result.judge_score = judge_score
-        result.judge_reasoning = judge_reasoning
-        result.judge_error = judge_error
-
-        if reference is not None and aic is not None:
-            result.failure_mode = classify_failure(
-                ref_in_chunks=aic,
-                judge_score=judge_score,
-                gen_error=gen_error,
-                candidate=result.answer,
-            )
+        return build_answer_result(
+            query=answer_req.query,
+            retrieval=retrieved,
+            generation=gen,
+            reference=answer_req.reference,
+            judge=judge if answer_req.judge_enabled else None,
+        )
 
     def pipeline(self, *, top_k: Optional[int] = None) -> "RetrieverPipelineBuilder":
         effective_top_k = int(top_k) if top_k is not None else int(self.top_k)
@@ -623,6 +603,9 @@ class RetrieverPipelineBuilder:
                 extra_params=dict(transport.extra_params) if transport.extra_params else None,
                 num_retries=transport.num_retries,
                 timeout=transport.timeout,
+                rag_system_prompt=transport.rag_system_prompt,
+                rag_system_prompt_prefix=transport.rag_system_prompt_prefix,
+                reasoning_enabled=getattr(transport, "reasoning_enabled", True),
             )
         else:
             operator = QAGenerationOperator(model=model, **kwargs)

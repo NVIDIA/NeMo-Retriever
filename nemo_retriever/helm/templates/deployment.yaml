@@ -1,3 +1,22 @@
+{{- define "nemo-retriever.llmApiKeyEnv" -}}
+{{- $root := . -}}
+{{- $secret := $root.Values.serviceConfig.llm.apiKeySecret -}}
+{{- if $secret.name -}}
+- name: NEMO_RETRIEVER_LLM_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secret.name | quote }}
+      key: {{ $secret.key | default "api_key" | quote }}
+      optional: {{ $secret.optional | default false }}
+{{- else if and $root.Values.nims.enabled $root.Values.nimOperator.answer_llm.enabled -}}
+- name: NEMO_RETRIEVER_LLM_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ $root.Values.nimOperator.answer_llm.authSecret | quote }}
+      key: "NGC_API_KEY"
+      optional: false
+{{- end -}}
+{{- end -}}
 {{- $svc := .Values.service -}}
 {{- if and $svc.installFfmpeg $svc.env -}}
 {{- range $env := $svc.env }}
@@ -97,10 +116,15 @@ spec:
                   name: {{ .Values.ngcApiSecret.name }}
                   key: NGC_API_KEY
                   optional: true
+            {{- $llmApiKeyEnv := include "nemo-retriever.llmApiKeyEnv" . }}
+            {{- if $llmApiKeyEnv }}
+{{ $llmApiKeyEnv | nindent 12 }}
+            {{- end }}
             {{- if $svc.installFfmpeg }}
             - name: INSTALL_FFMPEG
               value: "true"
             {{- end }}
+            {{ include "nemo-retriever.serviceOtelEnv" (dict "context" $ "role" "standalone") | nindent 12 }}
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -261,10 +285,15 @@ spec:
                   name: {{ $.Values.ngcApiSecret.name }}
                   key: NGC_API_KEY
                   optional: true
+            {{- $llmApiKeyEnv := include "nemo-retriever.llmApiKeyEnv" $ }}
+            {{- if $llmApiKeyEnv }}
+{{ $llmApiKeyEnv | nindent 12 }}
+            {{- end }}
             {{- if $svc.installFfmpeg }}
             - name: INSTALL_FFMPEG
               value: "true"
             {{- end }}
+            {{ include "nemo-retriever.serviceOtelEnv" (dict "context" $ "role" $role) | nindent 12 }}
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

@@ -84,6 +84,7 @@ nav:
       - "Authentication and API keys": extraction/api-keys.md
   - "3. Deployment options":
       - "Compare deployment options": extraction/deployment-options.md
+      - "OpenShift deployment (Helm)": https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/openshift.md
       - "Helm chart (Kubernetes)": https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm
       - "Docker service image": https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docker.md
   - "4. Core workflows":
@@ -95,26 +96,23 @@ nav:
       # Single vector-DB page (vdbs.md). Deep links: in-page "On this page" TOC and redirects
       # (for example extraction/vector-db-partners.md → vdbs.md#vector-database-partners).
       - "Vector databases": extraction/vdbs.md
-  - "7. Retrieval & ranking":
-      - "Custom metadata and filtering": extraction/custom-metadata.md
-  - "8. Deployment & operations":
+  - "7. Deployment & operations":
       - "Ray and distributed ingest": extraction/ray-logging.md
-  - "9. Customize & extend":
+  - "8. Customize & extend":
       - Extending/Customizing NeMo Retriever Library with custom code: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph
       - "NimClient and custom NIM endpoints": extraction/nimclient.md
-  - "10. Integrations & ecosystem":
-      - "Framework integrations": extraction/integrations-langchain-llamaindex-haystack.md
-      - "Starter kits": extraction/notebooks/index.md
-  - "11. Evaluation & benchmarks":
+  - "9. Integrations & ecosystem":
+      - "Starter kits": extraction/starter-kits.md
+  - "10. Evaluation & benchmarks":
       - "Evaluate on your own documents": extraction/evaluate-on-your-data.md
-  - "12. Reference":
+  - "11. Reference":
       - "API guide": extraction/nemo-retriever-api-reference.md
       # TODO: after nv-ingest code removal, update this link when CLI docs are relocated.
       - "CLI reference": https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/docs/cli
       - "Quickstart: retriever CLI": reference/retriever-cli-quickstart.md
       - Environment variables: extraction/environment-config.md
       - "Metadata reference": extraction/content-metadata.md
-  - "13. Support & community":
+  - "12. Support & community":
       - Troubleshooting: extraction/troubleshoot.md
       - FAQ: extraction/faq.md
       - Contributing: extraction/contributing.md
@@ -159,8 +157,11 @@ plugins:
         extraction/hosted-nims-when-to-use.md: extraction/deployment-options.md
         extraction/releasenotes-nv-ingest.md: extraction/releasenotes.md
         extraction/ngc-api-key.md: extraction/api-keys.md
-        extraction/notebooks.md: extraction/notebooks/index.md
+        extraction/notebooks/index.md: extraction/starter-kits.md
+        extraction/notebooks.md: extraction/starter-kits.md
         extraction/data-store.md: extraction/vdbs.md
+        extraction/custom-metadata.md: extraction/vdbs.md#metadata-and-filtering
+        extraction/integrations-langchain-llamaindex-haystack.md: extraction/starter-kits.md
         extraction/nemoretriever-parse.md: extraction/multimodal-extraction.md#text-and-layout-extraction
         extraction/supported-file-types.md: extraction/multimodal-extraction.md#supported-file-types-and-formats
         extraction/text-layout-extraction.md: extraction/multimodal-extraction.md#text-and-layout-extraction
@@ -209,7 +210,7 @@ markdown_extensions:
 
 # MkDocs 1.6+: exclude suite landing and legacy duplicate pages (still in repo for parity).
 # extraction/chunking.md — removed from nav; content is under concepts.md (redirect_maps keeps old URLs).
-# Use /index.md (docs root only); bare index.md would exclude every index.md (e.g. extraction/notebooks/index.md).
+# Use /index.md (docs root only); bare index.md would exclude every index.md (e.g. under subfolders).
 exclude_docs: |
   /index.md
   extraction/chunking.md

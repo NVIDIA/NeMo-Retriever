@@ -103,7 +103,7 @@ The examples below use default local GPU inference (no `invoke_url` specified) a
 ### Ingest a test pdf
 ```python
 from nemo_retriever import create_ingestor
-from nemo_retriever.io import to_markdown, to_markdown_by_page
+from nemo_retriever.common.io import to_markdown, to_markdown_by_page
 from pathlib import Path
 
 documents = [str(Path("../data/multimodal_test.pdf"))]
@@ -225,7 +225,7 @@ Since the ingestion job automatically populated a lancedb table with all these c
 ### Run a recall query
 
 ```python
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.graph.retriever import Retriever
 
 retriever = Retriever(
   # values used by the graph_pipeline example above
@@ -330,7 +330,7 @@ embedding model in `embed_kwargs` must match the one used during ingestion so
 query vectors land in the same embedding space as the stored chunks.
 
 ```python
-from nemo_retriever.retriever import Retriever
+from nemo_retriever.graph.retriever import Retriever
 from nemo_retriever.llm import LiteLLMClient
 
 retriever = Retriever(
@@ -435,7 +435,7 @@ ingestor = (
 ### Render results as markdown
 
 If you want a readable markdown view of extracted results, pass a single document's extraction
-records to `nemo_retriever.io.to_markdown`. The helper returns one markdown string (or `None`
+records to `nemo_retriever.common.io.to_markdown`. The helper returns one markdown string (or `None`
 if there is no content), with per-page sections joined under a single document heading.
 
 For multi-document runs, pass one document at a time—for example, `to_markdown(results[0])`.
@@ -634,26 +634,11 @@ sudo apt install python3.12-dev
 
 After installing the headers, restart the pipeline.
 
-## ViDoRe Harness Sweep
+## Retriever Harness
 
-The harness includes BEIR-style ViDoRe dataset presets in `nemo_retriever/harness/test_configs.yaml` and a ready-made sweep definition in `nemo_retriever/harness/vidore_sweep.yaml`.
-
-The ViDoRe harness datasets are configured to:
-
-- read PDFs from `/datasets/retrieval-eval/vidore_v3_corpus_pdf/...`
-- ingest with `embed_modality: text_image`
-- embed at `embed_granularity: page`
-- enable `extract_page_as_image: true` and `extract_infographics: true`
-- evaluate with BEIR-style `ndcg` and `recall` metrics
-
-To run the full ViDoRe sweep:
-
-```bash
-cd ~/NeMo-Retriever/nemo_retriever
-retriever-harness sweep --runs-config harness/vidore_sweep.yaml
-```
-
-The same commands also work under the main CLI as `retriever harness ...` if you prefer a single top-level command namespace.
+The developer harness runs code-owned benchmarks through `retriever harness`.
+Use `retriever harness list --runsets` to see available benchmark names and
+runsets, then run one benchmark with `retriever harness run <benchmark>`.
 
 ### Ingest image storage
 
@@ -667,6 +652,4 @@ retriever ingest ./data \
 
 The store stage writes the image payloads produced by ingest. With
 `--embed-granularity page`, stored assets are page images. With
-`--embed-granularity element`, stored assets are element images. Store is not
-currently configured through the harness; use `retriever pipeline run` only when
-you also need pipeline-specific compatibility artifacts.
+`--embed-granularity element`, stored assets are element images.
