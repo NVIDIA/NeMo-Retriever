@@ -46,6 +46,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
+from pydantic import Field
+
 from nemo_retriever.common.schemas.base import RichModel
 
 logger = logging.getLogger(__name__)
@@ -174,6 +176,8 @@ class JobAggregate(RichModel):
     label: str | None = None
     """Optional client-supplied tag, e.g. ``"Q4-2026-corpus"``."""
     metadata: dict[str, Any] = {}
+    trace_id: str | None = None
+    trace_context: dict[str, str] = Field(default_factory=dict)
     retain_results: bool = False
     """When false, :meth:`JobTracker.mark_completed` drops bulky ``result_data``."""
 
@@ -276,6 +280,8 @@ class JobTracker:
         label: str | None = None,
         metadata: dict[str, Any] | None = None,
         retain_results: bool = False,
+        trace_id: str | None = None,
+        trace_context: dict[str, str] | None = None,
     ) -> JobAggregate:
         """Create a new :class:`JobAggregate` in ``pending`` state."""
         if expected_documents <= 0:
@@ -298,6 +304,8 @@ class JobTracker:
                 created_at=_utcnow_iso(),
                 label=label,
                 metadata=dict(metadata or {}),
+                trace_id=trace_id,
+                trace_context=dict(trace_context or {}),
                 retain_results=retain_results,
             )
             agg.counts[DocumentStatus.PENDING.value] = 0
@@ -675,6 +683,8 @@ class JobTracker:
             "finalized_at": agg.finalized_at,
             "label": agg.label,
         }
+        if agg.trace_id:
+            event["trace_id"] = agg.trace_id
         self._event_bus.publish_sync(event, job_id=agg.job_id)
 
     # ── reads ────────────────────────────────────────────────────────

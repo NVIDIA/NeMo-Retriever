@@ -43,6 +43,7 @@ spec:
   expose:
 {{ toYaml .Values.nimOperator.vlm_embed.expose | indent 4 }}
   env:
+{{ include "nemo-retriever.nimServiceOtelEnv" (dict "context" $ "key" "vlm_embed" "name" $name) | nindent 4 }}
 {{ toYaml .Values.nimOperator.vlm_embed.env | indent 4 }}
     - name: NGC_API_KEY
       valueFrom:

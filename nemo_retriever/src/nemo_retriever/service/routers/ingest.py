@@ -242,6 +242,8 @@ async def _enqueue_or_reject(pool_type: PoolType, item: WorkItem) -> None:
     pool = get_pipeline_pool()
     if pool is None:
         return
+    if not item.trace_context:
+        item.trace_context = _safe_inject_trace_context()
     if not await pool.submit(pool_type, item):
         raise HTTPException(
             status_code=429,
@@ -477,6 +479,65 @@ def _parse_backend_json(resp: Response) -> dict:
         return {}
 
 
+def _safe_inject_trace_context() -> dict[str, str]:
+    """Best-effort W3C trace context capture for downstream propagation."""
+    from nemo_retriever.service import tracing
+
+    try:
+        return dict(tracing.inject_trace_context())
+    except Exception as exc:
+        logger.warning("Trace context injection failed; continuing without propagated context: %s", exc)
+        return {}
+
+
+def _safe_extract_trace_context(carrier: dict[str, str] | None) -> Any | None:
+    """Best-effort W3C trace context extraction for accept spans."""
+    from nemo_retriever.service import tracing
+
+    try:
+        return tracing.extract_trace_context(carrier)
+    except Exception as exc:
+        logger.warning("Trace context extraction failed; continuing without parent context: %s", exc)
+        return None
+
+
+def _trace_context_from_request_or_job(request: Request, job_id: str | None) -> dict[str, str]:
+    inbound_traceparent = request.headers.get("traceparent")
+    if inbound_traceparent:
+        carrier = {"traceparent": inbound_traceparent}
+        if tracestate := request.headers.get("tracestate"):
+            carrier["tracestate"] = tracestate
+        return carrier
+
+    if not job_id:
+        return {}
+    tracker = get_job_tracker()
+    if tracker is None:
+        return {}
+    agg = tracker.get_job(job_id)
+    if agg is None:
+        return {}
+    return dict(agg.trace_context)
+
+
+def _start_accept_span(request: Request, job_id: str, name: str):
+    from opentelemetry.trace import SpanKind
+
+    from nemo_retriever.service import tracing
+
+    carrier = _trace_context_from_request_or_job(request, job_id)
+    return tracing.start_span(
+        name,
+        kind=SpanKind.SERVER,
+        context=_safe_extract_trace_context(carrier),
+        attributes={
+            "service.role": _role(request),
+            "job.id": job_id,
+            "route": request.url.path,
+        },
+    )
+
+
 # ------------------------------------------------------------------
 # POST /v1/ingest/job          — create a new job aggregate
 # GET  /v1/ingest/job/{job_id} — fetch the aggregate's current state
@@ -494,6 +555,7 @@ def _aggregate_to_response(agg, *, documents: list[dict[str, Any]] | None = None
         finalized_at=agg.finalized_at,
         elapsed_s=agg.elapsed_s,
         label=agg.label,
+        trace_id=agg.trace_id,
         counts=dict(agg.counts),
         document_ids=list(agg.document_ids),
         documents=documents,
@@ -506,7 +568,7 @@ def _aggregate_to_response(agg, *, documents: list[dict[str, Any]] | None = None
     status_code=201,
     summary="Create a new ingestion job aggregate",
 )
-async def create_job(request: Request, body: JobCreateRequest) -> JobCreatedResponse:
+async def create_job(request: Request, response: Response, body: JobCreateRequest) -> JobCreatedResponse:
     """Open a job that will receive ``expected_documents`` uploads.
 
     The server returns an opaque ``job_id`` the client uses for every
@@ -514,23 +576,43 @@ async def create_job(request: Request, body: JobCreateRequest) -> JobCreatedResp
     call. The job is in-memory only; gateway pod restarts erase it
     (this is intentional — see the J1 design notes).
     """
+    from opentelemetry.trace import SpanKind
+
+    from nemo_retriever.service import tracing
     from nemo_retriever.service.services.job_tracker import JobTrackerError
 
     tracker = get_job_tracker()
     if tracker is None:
         raise HTTPException(status_code=503, detail="Job tracker not available")
     job_id = uuid.uuid4().hex
+    trace_id: str | None = None
+    inbound_trace_context = _trace_context_from_request_or_job(request, None)
     try:
-        agg = tracker.register_job(
-            job_id,
-            expected_documents=body.expected_documents,
-            label=body.label,
-            metadata=body.metadata,
-            retain_results=body.retain_results,
-        )
+        with tracing.start_span(
+            "ingest.job",
+            kind=SpanKind.SERVER,
+            context=_safe_extract_trace_context(inbound_trace_context),
+            attributes={
+                "service.role": _role(request),
+                "job.expected_documents": body.expected_documents,
+            },
+        ):
+            trace_context = _safe_inject_trace_context()
+            trace_id = tracing.current_trace_id_hex() if trace_context else None
+            agg = tracker.register_job(
+                job_id,
+                expected_documents=body.expected_documents,
+                label=body.label,
+                metadata=body.metadata,
+                retain_results=body.retain_results,
+                trace_id=trace_id,
+                trace_context=trace_context,
+            )
     except JobTrackerError as exc:
         raise HTTPException(status_code=getattr(exc, "status_code", 500), detail=str(exc)) from exc
 
+    if trace_id:
+        response.headers[tracing.TRACE_ID_HEADER] = trace_id
     if (m := get_metrics()) is not None:
         m.record_request("/v1/ingest/job")
         m.record_job_created(job_id)
@@ -540,6 +622,7 @@ async def create_job(request: Request, body: JobCreateRequest) -> JobCreatedResp
         status=agg.status.value,
         created_at=agg.created_at,
         label=agg.label,
+        trace_id=agg.trace_id,
     )
 
 
@@ -735,113 +818,114 @@ async def submit_document_to_job(
     _check_upload_size(file, request)
     validated_spec = _resolve_pipeline_spec(request, meta)
 
-    if _is_gateway(request):
+    with _start_accept_span(request, job_id, "ingest.document.accept"):
+        if _is_gateway(request):
+            classification = FileClassifier.classify(file, filename_override=meta.filename or "")
+            enforce_media_dependencies(classification)
+            file_size = _file_size_from_upload(file, request)
+
+            file_bytes = await file.read()
+            route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
+
+            document_id = uuid.uuid4().hex
+            content_sha256 = hashlib.sha256(file_bytes).hexdigest()
+            now = datetime.now(timezone.utc).isoformat()
+
+            _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
+            tracker = get_job_tracker()
+            if tracker is not None:
+                tracker.mark_processing(document_id)
+
+            callback_url = _build_callback_url(request)
+            extra_headers = {
+                _GATEWAY_DOC_ID_HEADER: document_id,
+                _GATEWAY_JOB_ID_HEADER: job_id,
+                _GATEWAY_CALLBACK_HEADER: callback_url,
+                **_gateway_retain_results_headers(job_id),
+            }
+            if validated_spec is not None:
+                extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
+            resp = await _gateway_forward(request, route, extra_headers=extra_headers)
+
+            if resp.status_code not in (200, 202):
+                if tracker is not None:
+                    tracker.mark_failed(document_id, f"Worker returned HTTP {resp.status_code}")
+                return resp
+
+            _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=file_size)
+            if (m := get_metrics()) is not None:
+                m.record_request("/v1/ingest/job/document")
+                m.record_document_accepted(
+                    document_id=document_id,
+                    job_id=job_id,
+                    filename=classification.filename,
+                    file_category=classification.category.value,
+                    content_type=classification.content_type,
+                    file_size_bytes=file_size,
+                    endpoint="/v1/ingest/job/document",
+                )
+
+            return IngestAccepted(
+                document_id=document_id,
+                job_id=job_id,
+                content_sha256=content_sha256,
+                status="accepted",
+                created_at=now,
+            )
+
+        # ── worker / standalone ──────────────────────────────────────
         classification = FileClassifier.classify(file, filename_override=meta.filename or "")
         enforce_media_dependencies(classification)
-        file_size = _file_size_from_upload(file, request)
 
         file_bytes = await file.read()
         route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
-
-        document_id = uuid.uuid4().hex
         content_sha256 = hashlib.sha256(file_bytes).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 
-        _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
-        tracker = get_job_tracker()
-        if tracker is not None:
-            tracker.mark_processing(document_id)
+        gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
+        gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
+        gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
+        document_id = gw_doc_id or uuid.uuid4().hex
 
-        callback_url = _build_callback_url(request)
-        extra_headers = {
-            _GATEWAY_DOC_ID_HEADER: document_id,
-            _GATEWAY_JOB_ID_HEADER: job_id,
-            _GATEWAY_CALLBACK_HEADER: callback_url,
-            **_gateway_retain_results_headers(job_id),
-        }
-        if validated_spec is not None:
-            extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
-        resp = await _gateway_forward(request, route, extra_headers=extra_headers)
+        worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
 
-        if resp.status_code not in (200, 202):
-            if tracker is not None:
-                tracker.mark_failed(document_id, f"Worker returned HTTP {resp.status_code}")
-            return resp
+        if not gw_callback_url:
+            _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
 
-        _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=file_size)
+        await _enqueue_or_reject(
+            route,
+            WorkItem(
+                id=document_id,
+                payload=file_bytes,
+                filename=file.filename,
+                callback_url=gw_callback_url,
+                job_id=gw_job_id,
+                pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
+                retain_results=_work_item_retain_results(request, job_id=gw_job_id),
+            ),
+        )
+
+        _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=len(file_bytes))
+
         if (m := get_metrics()) is not None:
             m.record_request("/v1/ingest/job/document")
             m.record_document_accepted(
                 document_id=document_id,
-                job_id=job_id,
+                job_id=gw_job_id,
                 filename=classification.filename,
                 file_category=classification.category.value,
                 content_type=classification.content_type,
-                file_size_bytes=file_size,
+                file_size_bytes=len(file_bytes),
                 endpoint="/v1/ingest/job/document",
             )
 
         return IngestAccepted(
             document_id=document_id,
-            job_id=job_id,
+            job_id=gw_job_id,
             content_sha256=content_sha256,
             status="accepted",
             created_at=now,
         )
-
-    # ── worker / standalone ──────────────────────────────────────
-    classification = FileClassifier.classify(file, filename_override=meta.filename or "")
-    enforce_media_dependencies(classification)
-
-    file_bytes = await file.read()
-    route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
-    content_sha256 = hashlib.sha256(file_bytes).hexdigest()
-    now = datetime.now(timezone.utc).isoformat()
-
-    gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
-    gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
-    gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
-    document_id = gw_doc_id or uuid.uuid4().hex
-
-    worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
-
-    if not gw_callback_url:
-        _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
-
-    await _enqueue_or_reject(
-        route,
-        WorkItem(
-            id=document_id,
-            payload=file_bytes,
-            filename=file.filename,
-            callback_url=gw_callback_url,
-            job_id=gw_job_id,
-            pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
-            retain_results=_work_item_retain_results(request, job_id=gw_job_id),
-        ),
-    )
-
-    _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=len(file_bytes))
-
-    if (m := get_metrics()) is not None:
-        m.record_request("/v1/ingest/job/document")
-        m.record_document_accepted(
-            document_id=document_id,
-            job_id=gw_job_id,
-            filename=classification.filename,
-            file_category=classification.category.value,
-            content_type=classification.content_type,
-            file_size_bytes=len(file_bytes),
-            endpoint="/v1/ingest/job/document",
-        )
-
-    return IngestAccepted(
-        document_id=document_id,
-        job_id=gw_job_id,
-        content_sha256=content_sha256,
-        status="accepted",
-        created_at=now,
-    )
 
 
 @router.post(
@@ -864,44 +948,97 @@ async def submit_page_to_job(
         _require_job(job_id)
     _check_upload_size(file, request)
 
-    if _is_gateway(request):
+    with _start_accept_span(request, job_id, "ingest.page.accept"):
+        if _is_gateway(request):
+            classification = FileClassifier.classify(file, filename_override=filename)
+            enforce_media_dependencies(classification)
+            file_size = _file_size_from_upload(file, request)
+
+            page_id = uuid.uuid4().hex
+            content_sha256 = hashlib.sha256((await file.read()) or b"").hexdigest()
+            now = datetime.now(timezone.utc).isoformat()
+
+            _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
+            tracker = get_job_tracker()
+            if tracker is not None:
+                tracker.mark_processing(page_id)
+
+            callback_url = _build_callback_url(request)
+            resp = await _gateway_forward(
+                request,
+                PoolType.REALTIME,
+                extra_headers={
+                    _GATEWAY_DOC_ID_HEADER: page_id,
+                    _GATEWAY_JOB_ID_HEADER: job_id,
+                    _GATEWAY_CALLBACK_HEADER: callback_url,
+                    **_gateway_retain_results_headers(job_id),
+                },
+            )
+
+            if resp.status_code not in (200, 202):
+                if tracker is not None:
+                    tracker.mark_failed(page_id, f"Worker returned HTTP {resp.status_code}")
+                return resp
+
+            _record_prometheus(
+                request,
+                "/v1/ingest/job/page",
+                "2xx",
+                file_size=file_size,
+                is_page=True,
+            )
+            if (m := get_metrics()) is not None:
+                m.record_request("/v1/ingest/job/page")
+                m.record_page_accepted(
+                    page_id=page_id,
+                    document_id=document_id,
+                    endpoint="/v1/ingest/job/page",
+                    page_number=page_number,
+                    file_size_bytes=file_size,
+                    file_category=classification.category.value,
+                    content_type=classification.content_type,
+                )
+
+            return PageIngestAccepted(
+                page_id=page_id,
+                document_id=document_id,
+                page_number=page_number,
+                content_sha256=content_sha256,
+                status="accepted",
+                created_at=now,
+            )
+
+        # ── worker / standalone ──────────────────────────────────────
+        dry_run = _is_dry_run(request)
         classification = FileClassifier.classify(file, filename_override=filename)
         enforce_media_dependencies(classification)
-        file_size = _file_size_from_upload(file, request)
 
-        page_id = uuid.uuid4().hex
-        content_sha256 = hashlib.sha256((await file.read()) or b"").hexdigest()
+        file_bytes = await file.read()
+        content_sha256 = hashlib.sha256(file_bytes).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 
-        _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
-        tracker = get_job_tracker()
-        if tracker is not None:
-            tracker.mark_processing(page_id)
+        gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
+        gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
+        gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
+        page_id = gw_doc_id or uuid.uuid4().hex
 
-        callback_url = _build_callback_url(request)
-        resp = await _gateway_forward(
-            request,
-            PoolType.REALTIME,
-            extra_headers={
-                _GATEWAY_DOC_ID_HEADER: page_id,
-                _GATEWAY_JOB_ID_HEADER: job_id,
-                _GATEWAY_CALLBACK_HEADER: callback_url,
-                **_gateway_retain_results_headers(job_id),
-            },
-        )
+        if not dry_run:
+            if not gw_callback_url:
+                _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
+            await _enqueue_or_reject(
+                PoolType.REALTIME,
+                WorkItem(
+                    id=page_id,
+                    payload=file_bytes,
+                    filename=file.filename,
+                    callback_url=gw_callback_url,
+                    job_id=gw_job_id,
+                    retain_results=_work_item_retain_results(request, job_id=gw_job_id),
+                ),
+            )
 
-        if resp.status_code not in (200, 202):
-            if tracker is not None:
-                tracker.mark_failed(page_id, f"Worker returned HTTP {resp.status_code}")
-            return resp
+        _record_prometheus(request, "/v1/ingest/job/page", "2xx", file_size=len(file_bytes), is_page=True)
 
-        _record_prometheus(
-            request,
-            "/v1/ingest/job/page",
-            "2xx",
-            file_size=file_size,
-            is_page=True,
-        )
         if (m := get_metrics()) is not None:
             m.record_request("/v1/ingest/job/page")
             m.record_page_accepted(
@@ -909,7 +1046,7 @@ async def submit_page_to_job(
                 document_id=document_id,
                 endpoint="/v1/ingest/job/page",
                 page_number=page_number,
-                file_size_bytes=file_size,
+                file_size_bytes=len(file_bytes),
                 file_category=classification.category.value,
                 content_type=classification.content_type,
             )
@@ -922,58 +1059,6 @@ async def submit_page_to_job(
             status="accepted",
             created_at=now,
         )
-
-    # ── worker / standalone ──────────────────────────────────────
-    dry_run = _is_dry_run(request)
-    classification = FileClassifier.classify(file, filename_override=filename)
-    enforce_media_dependencies(classification)
-
-    file_bytes = await file.read()
-    content_sha256 = hashlib.sha256(file_bytes).hexdigest()
-    now = datetime.now(timezone.utc).isoformat()
-
-    gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
-    gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
-    gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
-    page_id = gw_doc_id or uuid.uuid4().hex
-
-    if not dry_run:
-        if not gw_callback_url:
-            _register_document_under_job(document_id=page_id, job_id=job_id, filename=filename or file.filename)
-        await _enqueue_or_reject(
-            PoolType.REALTIME,
-            WorkItem(
-                id=page_id,
-                payload=file_bytes,
-                filename=file.filename,
-                callback_url=gw_callback_url,
-                job_id=gw_job_id,
-                retain_results=_work_item_retain_results(request, job_id=gw_job_id),
-            ),
-        )
-
-    _record_prometheus(request, "/v1/ingest/job/page", "2xx", file_size=len(file_bytes), is_page=True)
-
-    if (m := get_metrics()) is not None:
-        m.record_request("/v1/ingest/job/page")
-        m.record_page_accepted(
-            page_id=page_id,
-            document_id=document_id,
-            endpoint="/v1/ingest/job/page",
-            page_number=page_number,
-            file_size_bytes=len(file_bytes),
-            file_category=classification.category.value,
-            content_type=classification.content_type,
-        )
-
-    return PageIngestAccepted(
-        page_id=page_id,
-        document_id=document_id,
-        page_number=page_number,
-        content_sha256=content_sha256,
-        status="accepted",
-        created_at=now,
-    )
 
 
 @router.post(
@@ -1000,47 +1085,103 @@ async def submit_whole_document_to_job(
     _check_upload_size(file, request)
     validated_spec = _resolve_pipeline_spec(request, meta)
 
-    if _is_gateway(request):
+    with _start_accept_span(request, job_id, "ingest.whole.accept"):
+        if _is_gateway(request):
+            classification = FileClassifier.classify(file, filename_override=meta.filename or "")
+            enforce_media_dependencies(classification)
+            file_size = _file_size_from_upload(file, request)
+
+            document_id = uuid.uuid4().hex
+            file_bytes = await file.read()
+            content_sha256 = hashlib.sha256(file_bytes).hexdigest()
+            now = datetime.now(timezone.utc).isoformat()
+
+            _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
+            tracker = get_job_tracker()
+            if tracker is not None:
+                tracker.mark_processing(document_id)
+
+            callback_url = _build_callback_url(request)
+            extra_headers = {
+                _GATEWAY_DOC_ID_HEADER: document_id,
+                _GATEWAY_JOB_ID_HEADER: job_id,
+                _GATEWAY_CALLBACK_HEADER: callback_url,
+                **_gateway_retain_results_headers(job_id),
+            }
+            if validated_spec is not None:
+                extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
+            resp = await _gateway_forward(request, PoolType.BATCH, extra_headers=extra_headers)
+
+            if resp.status_code not in (200, 202):
+                if tracker is not None:
+                    tracker.mark_failed(document_id, f"Worker returned HTTP {resp.status_code}")
+                return resp
+
+            _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
+            if (m := get_metrics()) is not None:
+                m.record_request("/v1/ingest/job/whole")
+                m.record_document_accepted(
+                    document_id=document_id,
+                    job_id=job_id,
+                    filename=classification.filename,
+                    file_category=classification.category.value,
+                    content_type=classification.content_type,
+                    file_size_bytes=file_size,
+                    endpoint="/v1/ingest/job/whole",
+                )
+
+            return DocumentIngestAccepted(
+                document_id=document_id,
+                filename=classification.filename,
+                file_size_bytes=len(file_bytes),
+                content_sha256=content_sha256,
+                status="accepted",
+                created_at=now,
+            )
+
+        # ── worker / standalone ──────────────────────────────────────
+        dry_run = _is_dry_run(request)
         classification = FileClassifier.classify(file, filename_override=meta.filename or "")
         enforce_media_dependencies(classification)
-        file_size = _file_size_from_upload(file, request)
 
-        document_id = uuid.uuid4().hex
         file_bytes = await file.read()
         content_sha256 = hashlib.sha256(file_bytes).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 
-        _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
-        tracker = get_job_tracker()
-        if tracker is not None:
-            tracker.mark_processing(document_id)
+        gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
+        gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
+        gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
+        document_id = gw_doc_id or uuid.uuid4().hex
 
-        callback_url = _build_callback_url(request)
-        extra_headers = {
-            _GATEWAY_DOC_ID_HEADER: document_id,
-            _GATEWAY_JOB_ID_HEADER: job_id,
-            _GATEWAY_CALLBACK_HEADER: callback_url,
-            **_gateway_retain_results_headers(job_id),
-        }
-        if validated_spec is not None:
-            extra_headers[_GATEWAY_PIPELINE_SPEC_HEADER] = validated_spec.model_dump_json()
-        resp = await _gateway_forward(request, PoolType.BATCH, extra_headers=extra_headers)
+        worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
 
-        if resp.status_code not in (200, 202):
-            if tracker is not None:
-                tracker.mark_failed(document_id, f"Worker returned HTTP {resp.status_code}")
-            return resp
+        if not dry_run:
+            if not gw_callback_url:
+                _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
+            await _enqueue_or_reject(
+                PoolType.BATCH,
+                WorkItem(
+                    id=document_id,
+                    payload=file_bytes,
+                    filename=file.filename,
+                    callback_url=gw_callback_url,
+                    job_id=gw_job_id,
+                    pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
+                    retain_results=_work_item_retain_results(request, job_id=gw_job_id),
+                ),
+            )
 
-        _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
+        _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=len(file_bytes))
+
         if (m := get_metrics()) is not None:
             m.record_request("/v1/ingest/job/whole")
             m.record_document_accepted(
                 document_id=document_id,
-                job_id=job_id,
+                job_id=gw_job_id,
                 filename=classification.filename,
                 file_category=classification.category.value,
                 content_type=classification.content_type,
-                file_size_bytes=file_size,
+                file_size_bytes=len(file_bytes),
                 endpoint="/v1/ingest/job/whole",
             )
 
@@ -1052,61 +1193,6 @@ async def submit_whole_document_to_job(
             status="accepted",
             created_at=now,
         )
-
-    # ── worker / standalone ──────────────────────────────────────
-    dry_run = _is_dry_run(request)
-    classification = FileClassifier.classify(file, filename_override=meta.filename or "")
-    enforce_media_dependencies(classification)
-
-    file_bytes = await file.read()
-    content_sha256 = hashlib.sha256(file_bytes).hexdigest()
-    now = datetime.now(timezone.utc).isoformat()
-
-    gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
-    gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
-    gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
-    document_id = gw_doc_id or uuid.uuid4().hex
-
-    worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
-
-    if not dry_run:
-        if not gw_callback_url:
-            _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
-        await _enqueue_or_reject(
-            PoolType.BATCH,
-            WorkItem(
-                id=document_id,
-                payload=file_bytes,
-                filename=file.filename,
-                callback_url=gw_callback_url,
-                job_id=gw_job_id,
-                pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
-                retain_results=_work_item_retain_results(request, job_id=gw_job_id),
-            ),
-        )
-
-    _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=len(file_bytes))
-
-    if (m := get_metrics()) is not None:
-        m.record_request("/v1/ingest/job/whole")
-        m.record_document_accepted(
-            document_id=document_id,
-            job_id=gw_job_id,
-            filename=classification.filename,
-            file_category=classification.category.value,
-            content_type=classification.content_type,
-            file_size_bytes=len(file_bytes),
-            endpoint="/v1/ingest/job/whole",
-        )
-
-    return DocumentIngestAccepted(
-        document_id=document_id,
-        filename=classification.filename,
-        file_size_bytes=len(file_bytes),
-        content_sha256=content_sha256,
-        status="accepted",
-        created_at=now,
-    )
 
 
 # ------------------------------------------------------------------
