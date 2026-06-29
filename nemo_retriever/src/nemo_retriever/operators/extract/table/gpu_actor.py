@@ -53,16 +53,25 @@ class TableStructureActor(AbstractOperator, GPUOperator):
             self._table_structure_model = None
         else:
             from nemo_retriever.models.local import NemotronTableStructureV1
+            from nemo_retriever.models.warmup_registry import get_warmed_model
 
-            self._table_structure_model = NemotronTableStructureV1()
+            warmed = get_warmed_model("table_structure")
+            self._table_structure_model = (
+                warmed if warmed is not None else NemotronTableStructureV1()
+            )
 
         if self._ocr_invoke_url:
             self._ocr_model = None
         else:
             from nemo_retriever.models.local import NemotronOCRV2
+            from nemo_retriever.models.warmup_registry import get_warmed_model
 
-            lang = resolve_ocr_v2_lang(ocr_version, ocr_lang)
-            self._ocr_model = NemotronOCRV2(lang=lang)
+            warmed = get_warmed_model("ocr")
+            if warmed is not None:
+                self._ocr_model = warmed
+            else:
+                lang = resolve_ocr_v2_lang(ocr_version, ocr_lang)
+                self._ocr_model = NemotronOCRV2(lang=lang)
 
         if self._table_structure_invoke_url or self._ocr_invoke_url:
             self._nim_client = NIMClient(

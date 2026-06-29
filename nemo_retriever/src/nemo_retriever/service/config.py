@@ -92,6 +92,30 @@ class LocalModelsConfig(RichModel):
     enabled: bool = False
     hf_cache_dir: str | None = None
     device: str | None = None
+    warmup_on_startup: bool = Field(
+        default=False,
+        description=(
+            "When true, each process-pool worker loads local HF models at "
+            "startup (before the first ingest). Increases VRAM use by "
+            "num_workers × model stack; pair with low worker counts."
+        ),
+    )
+    max_tasks_per_child: int | None = Field(
+        default=None,
+        description=(
+            "Override process pool max_tasks_per_child when warmup_on_startup "
+            "is true. Defaults to 10000 so warmed weights stay loaded."
+        ),
+    )
+    max_process_pool_workers: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "When enabled, caps each ingest process pool (realtime and batch) "
+            "to this many workers. Each worker loads the full local model stack "
+            "into GPU memory, so keep this low (often 1)."
+        ),
+    )
     extract: LocalExtractConfig = Field(default_factory=LocalExtractConfig)
     embed: LocalEmbedConfig = Field(default_factory=LocalEmbedConfig)
     asr: LocalAsrConfig = Field(default_factory=LocalAsrConfig)
@@ -395,6 +419,31 @@ class ServiceConfig(RichModel):
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
     pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
+
+    @model_validator(mode="after")
+    def _cap_process_pool_workers_for_local_models(self) -> "ServiceConfig":
+        """Each process-pool worker loads the full HF stack — cap pool size."""
+        if not self.local_models.enabled:
+            return self
+        cap = self.local_models.max_process_pool_workers
+        updates: dict[str, int] = {}
+        if self.pipeline.realtime_workers > cap:
+            updates["realtime_workers"] = cap
+        if self.pipeline.batch_workers > cap:
+            updates["batch_workers"] = cap
+        if updates:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "local_models.enabled: capping pipeline workers to %d per pool "
+                "(was realtime=%d batch=%d). Raise local_models.max_process_pool_workers "
+                "only if GPU memory allows num_workers × model stack.",
+                cap,
+                self.pipeline.realtime_workers,
+                self.pipeline.batch_workers,
+            )
+            self.pipeline = self.pipeline.model_copy(update=updates)
+        return self
 
 
 def _bundled_yaml_path() -> Path:

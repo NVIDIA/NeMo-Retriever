@@ -53,16 +53,25 @@ class GraphicElementsActor(AbstractOperator, GPUOperator):
             self._graphic_elements_model = None
         else:
             from nemo_retriever.models.local import NemotronGraphicElementsV1
+            from nemo_retriever.models.warmup_registry import get_warmed_model
 
-            self._graphic_elements_model = NemotronGraphicElementsV1()
+            warmed = get_warmed_model("graphic_elements")
+            self._graphic_elements_model = (
+                warmed if warmed is not None else NemotronGraphicElementsV1()
+            )
 
         if self._ocr_invoke_url:
             self._ocr_model = None
         else:
             from nemo_retriever.models.local import NemotronOCRV2
+            from nemo_retriever.models.warmup_registry import get_warmed_model
 
-            lang = resolve_ocr_v2_lang(ocr_version, ocr_lang)
-            self._ocr_model = NemotronOCRV2(lang=lang)
+            warmed = get_warmed_model("ocr")
+            if warmed is not None:
+                self._ocr_model = warmed
+            else:
+                lang = resolve_ocr_v2_lang(ocr_version, ocr_lang)
+                self._ocr_model = NemotronOCRV2(lang=lang)
 
         if self._graphic_elements_invoke_url or self._ocr_invoke_url:
             self._nim_client = NIMClient(

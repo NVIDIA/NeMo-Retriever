@@ -161,6 +161,18 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             batch_work_fn=bt_fn,
         )
 
+        if (
+            mode in ("standalone", "realtime", "batch")
+            and config.local_models.enabled
+            and config.local_models.warmup_on_startup
+        ):
+            import asyncio
+
+            from nemo_retriever.service.services.pipeline_executor import warmup_process_pool_workers
+
+            warmup_status = await asyncio.to_thread(warmup_process_pool_workers)
+            logger.info("Local model warmup status: %s", warmup_status)
+
     _check_media_dependencies(mode)
 
     logger.info(
@@ -318,6 +330,18 @@ def create_app(config: ServiceConfig) -> FastAPI:
     @app.get("/v1/health", tags=["system"], summary="Liveness / readiness probe")
     async def health() -> dict:
         base: dict = {"status": "ok", "mode": config.mode}
+        if (
+            config.mode in ("standalone", "realtime", "batch")
+            and config.local_models.enabled
+            and config.local_models.warmup_on_startup
+        ):
+            from nemo_retriever.service.services.pipeline_executor import get_service_warmup_status
+
+            warmup = get_service_warmup_status()
+            base["models_warm"] = bool(warmup.get("complete"))
+            base["local_models_warmup"] = warmup
+            if not warmup.get("complete"):
+                base["status"] = "starting"
         if config.mode == "gateway":
             from nemo_retriever.service.services.proxy import get_proxy
 

@@ -76,6 +76,9 @@ local_models:
   enabled: {{ .Values.serviceConfig.localModels.enabled }}
   hf_cache_dir: {{ if .Values.serviceConfig.localModels.hfCacheDir }}{{ .Values.serviceConfig.localModels.hfCacheDir | quote }}{{ else }}null{{ end }}
   device: {{ if .Values.serviceConfig.localModels.device }}{{ .Values.serviceConfig.localModels.device | quote }}{{ else }}null{{ end }}
+  warmup_on_startup: {{ .Values.serviceConfig.localModels.warmupOnStartup }}
+  max_tasks_per_child: {{ if .Values.serviceConfig.localModels.maxTasksPerChild }}{{ .Values.serviceConfig.localModels.maxTasksPerChild }}{{ else }}null{{ end }}
+  max_process_pool_workers: {{ .Values.serviceConfig.localModels.maxProcessPoolWorkers }}
   extract:
     enabled: {{ .Values.serviceConfig.localModels.extract.enabled }}
     use_table_structure: {{ .Values.serviceConfig.localModels.extract.useTableStructure }}

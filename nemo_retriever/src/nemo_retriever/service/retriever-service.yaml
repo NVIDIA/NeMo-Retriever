@@ -56,6 +56,10 @@ local_models:
   enabled: false
   hf_cache_dir: null
   device: null
+  warmup_on_startup: false
+  max_tasks_per_child: null
+  # Each process-pool worker loads the full HF stack into GPU memory.
+  max_process_pool_workers: 1
   extract:
     enabled: true
     use_table_structure: true
@@ -90,6 +94,7 @@ llm:
 # Pipeline worker pools.  Workers are abstract dispatchers — sizing
 # depends on whether they do local GPU work or fan out to remote NIMs.
 # For CPU-only NIM-forwarding nodes, higher worker counts are fine.
+# For in-pod HF models, local_models.max_process_pool_workers caps these.
 pipeline:
   realtime_workers: 8
   realtime_queue_size: 2048

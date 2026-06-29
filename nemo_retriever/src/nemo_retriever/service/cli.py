@@ -59,6 +59,17 @@ def start(
         "--hf-cache-dir",
         help="Hugging Face model cache directory for in-pod models (overrides YAML).",
     ),
+    local_models_warmup: bool = typer.Option(
+        False,
+        "--local-models-warmup/--no-local-models-warmup",
+        help="Load HF models in each process-pool worker at startup (overrides YAML).",
+    ),
+    max_process_pool_workers: Optional[int] = typer.Option(
+        None,
+        "--max-process-pool-workers",
+        min=1,
+        help="Cap each ingest process pool when --local-models is set (default 1).",
+    ),
     api_token: Optional[str] = typer.Option(
         None,
         "--api-token",
@@ -97,6 +108,10 @@ def start(
         overrides["local_models.embed.model_name"] = local_embed_model
     if hf_cache_dir is not None:
         overrides["local_models.hf_cache_dir"] = hf_cache_dir
+    if local_models_warmup:
+        overrides["local_models.warmup_on_startup"] = True
+    if max_process_pool_workers is not None:
+        overrides["local_models.max_process_pool_workers"] = max_process_pool_workers
     if api_token is not None:
         overrides["auth.api_token"] = api_token
 

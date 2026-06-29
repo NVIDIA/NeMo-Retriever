@@ -37,8 +37,10 @@ class PageElementDetectionActor(AbstractOperator, GPUOperator):
             )
         else:
             from nemo_retriever.models.local import NemotronPageElementsV3
+            from nemo_retriever.models.warmup_registry import get_warmed_model
 
-            self._model = NemotronPageElementsV3()
+            warmed = get_warmed_model("page_elements")
+            self._model = warmed if warmed is not None else NemotronPageElementsV3()
             self._nim_client = None
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:

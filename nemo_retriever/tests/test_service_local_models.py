@@ -5,6 +5,7 @@ from nemo_retriever.service.config import (
     LocalEmbedConfig,
     LocalModelsConfig,
     NimEndpointsConfig,
+    PipelinePoolConfig,
     ServiceConfig,
 )
 from nemo_retriever.service.services.pipeline_executor import (
@@ -124,3 +125,21 @@ def test_service_config_loads_local_models_from_dict() -> None:
     )
     assert cfg.local_models.enabled is True
     assert cfg.local_models.embed.local_ingest_embed_backend == "vllm"
+
+
+def test_local_models_caps_pipeline_workers() -> None:
+    cfg = ServiceConfig(
+        local_models=LocalModelsConfig(enabled=True, max_process_pool_workers=1),
+        pipeline=PipelinePoolConfig(realtime_workers=8, batch_workers=16),
+    )
+    assert cfg.pipeline.realtime_workers == 1
+    assert cfg.pipeline.batch_workers == 1
+
+
+def test_local_models_respects_higher_process_pool_cap() -> None:
+    cfg = ServiceConfig(
+        local_models=LocalModelsConfig(enabled=True, max_process_pool_workers=2),
+        pipeline=PipelinePoolConfig(realtime_workers=8, batch_workers=16),
+    )
+    assert cfg.pipeline.realtime_workers == 2
+    assert cfg.pipeline.batch_workers == 2

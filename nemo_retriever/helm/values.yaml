@@ -512,6 +512,9 @@ serviceConfig:
     enabled: false
     hfCacheDir: ""
     device: ""
+    warmupOnStartup: false
+    maxTasksPerChild: 0
+    maxProcessPoolWorkers: 1
     extract:
       enabled: true
       useTableStructure: true

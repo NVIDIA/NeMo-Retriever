@@ -21,6 +21,7 @@ Each work function:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import multiprocessing as mp
 import time
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 _MP_CONTEXT = mp.get_context("forkserver")
 _MAX_TASKS_PER_CHILD = 100
+_DEFAULT_WARM_MAX_TASKS_PER_CHILD = 10_000
 
 _SENSITIVE_PATTERNS = frozenset(
     {
@@ -93,6 +95,104 @@ def _sanitize_result_data(df: Any) -> list[dict[str, Any]]:
 # ── Process pool registry ────────────────────────────────────────────
 
 _process_executors: list[ProcessPoolExecutor] = []
+_executor_warmup_targets: list[tuple[ProcessPoolExecutor, int]] = []
+_service_warmup_state: dict[str, Any] = {
+    "enabled": False,
+    "complete": False,
+    "workers_expected": 0,
+    "workers_warm": 0,
+    "error": None,
+}
+
+
+def _pool_worker_initializer(warmup_spec_json: str) -> None:
+    """Process-pool child initializer — loads HF models when warmup is enabled."""
+    if not warmup_spec_json:
+        return
+    from nemo_retriever.models.warmup_registry import warm_local_models
+
+    warm_local_models(json.loads(warmup_spec_json))
+
+
+def _pool_worker_ping(_: int) -> bool:
+    """No-op task used to force worker processes to start (and run initializer)."""
+    from nemo_retriever.models.warmup_registry import is_warmup_active
+
+    return is_warmup_active()
+
+
+def _resolve_max_tasks_per_child(local: "LocalModelsConfig") -> int:
+    if local.enabled and local.warmup_on_startup:
+        if local.max_tasks_per_child is not None:
+            return local.max_tasks_per_child
+        return _DEFAULT_WARM_MAX_TASKS_PER_CHILD
+    return _MAX_TASKS_PER_CHILD
+
+
+def _build_pool_warmup_spec_json(
+    local: "LocalModelsConfig",
+    extract_params_dict: dict[str, Any],
+    embed_params_dict: dict[str, Any] | None,
+    asr_params_dict: dict[str, Any] | None,
+) -> str:
+    if not (local.enabled and local.warmup_on_startup):
+        return ""
+    from nemo_retriever.models.warmup_registry import build_warmup_spec
+
+    spec = build_warmup_spec(extract_params_dict, embed_params_dict, asr_params_dict)
+    if spec is None:
+        return ""
+    return json.dumps(spec)
+
+
+def _create_process_executor(
+    *,
+    num_workers: int,
+    max_tasks_per_child: int,
+    warmup_spec_json: str,
+) -> ProcessPoolExecutor:
+    return ProcessPoolExecutor(
+        max_workers=num_workers,
+        mp_context=_MP_CONTEXT,
+        max_tasks_per_child=max_tasks_per_child,
+        initializer=_pool_worker_initializer,
+        initargs=(warmup_spec_json,),
+    )
+
+
+def get_service_warmup_status() -> dict[str, Any]:
+    """Return startup warmup progress for health/readiness probes."""
+    return dict(_service_warmup_state)
+
+
+def warmup_process_pool_workers() -> dict[str, Any]:
+    """Force-spawn all pipeline process-pool workers and wait for model warmup."""
+    global _service_warmup_state
+
+    if not _executor_warmup_targets:
+        _service_warmup_state["complete"] = True
+        return dict(_service_warmup_state)
+
+    workers_expected = sum(n for _, n in _executor_warmup_targets)
+    _service_warmup_state["workers_expected"] = workers_expected
+    workers_warm = 0
+    try:
+        for executor, num_workers in _executor_warmup_targets:
+            futures = [executor.submit(_pool_worker_ping, i) for i in range(num_workers)]
+            for future in futures:
+                if future.result():
+                    workers_warm += 1
+        _service_warmup_state["workers_warm"] = workers_warm
+        _service_warmup_state["complete"] = workers_warm == workers_expected
+        if not _service_warmup_state["complete"]:
+            _service_warmup_state["error"] = (
+                f"only {workers_warm}/{workers_expected} workers reported warmed models"
+            )
+    except Exception as exc:
+        _service_warmup_state["error"] = f"{type(exc).__name__}: {exc}"
+        logger.exception("Local model warmup failed")
+        raise
+    return dict(_service_warmup_state)
 
 
 def shutdown_process_executors() -> None:
@@ -118,6 +218,15 @@ def shutdown_process_executors() -> None:
             except OSError:
                 pass
     _process_executors.clear()
+    _executor_warmup_targets.clear()
+    _service_warmup_state.update(
+        {
+            "complete": False,
+            "workers_expected": 0,
+            "workers_warm": 0,
+            "error": None,
+        }
+    )
     logger.info("All pipeline process executors shut down")
 
 
@@ -729,13 +838,25 @@ def _make_work_fn(
         logger.info("VectorDB write enabled for %s workers → %s", label, vectordb_url)
 
     num_workers = config.pipeline.realtime_workers if label.lower() == "realtime" else config.pipeline.batch_workers
+    max_tasks_per_child = _resolve_max_tasks_per_child(config.local_models)
+    warmup_spec_json = _build_pool_warmup_spec_json(
+        config.local_models,
+        extract_params.model_dump(mode="json"),
+        embed_params.model_dump(mode="json") if embed_params else None,
+        asr_params.model_dump(mode="json") if asr_params else None,
+    )
 
-    executor = ProcessPoolExecutor(
-        max_workers=num_workers,
-        mp_context=_MP_CONTEXT,
-        max_tasks_per_child=_MAX_TASKS_PER_CHILD,
+    if config.local_models.enabled and config.local_models.warmup_on_startup:
+        _service_warmup_state["enabled"] = True
+
+    executor = _create_process_executor(
+        num_workers=num_workers,
+        max_tasks_per_child=max_tasks_per_child,
+        warmup_spec_json=warmup_spec_json,
     )
     _process_executors.append(executor)
+    if warmup_spec_json:
+        _executor_warmup_targets.append((executor, num_workers))
 
     extract_params_dict = extract_params.model_dump(mode="json")
     embed_params_dict = embed_params.model_dump(mode="json") if embed_params else None
@@ -759,7 +880,7 @@ def _make_work_fn(
             "queue_size": (
                 config.pipeline.realtime_queue_size if label.lower() == "realtime" else config.pipeline.batch_queue_size
             ),
-            "max_tasks_per_child": _MAX_TASKS_PER_CHILD,
+            "max_tasks_per_child": max_tasks_per_child,
         },
         "nim_endpoints": _redact_dict(config.nim_endpoints.model_dump(mode="json")),
         "local_models": _redact_dict(config.local_models.model_dump(mode="json")),
@@ -767,13 +888,14 @@ def _make_work_fn(
 
     logger.info(
         "Pipeline work function created (%s): extract=%s, embed=%s, local_models=%s, "
-        "process_pool_workers=%d, max_tasks_per_child=%d",
+        "process_pool_workers=%d, max_tasks_per_child=%d, warmup_on_startup=%s",
         label,
         type(extract_params).__name__,
         type(embed_params).__name__ if embed_params else "disabled",
         config.local_models.enabled,
         num_workers,
-        _MAX_TASKS_PER_CHILD,
+        max_tasks_per_child,
+        config.local_models.warmup_on_startup,
     )
 
     # Mutable holder so the BrokenProcessPool handler can replace the
@@ -813,13 +935,19 @@ def _make_work_fn(
                 pass
             if old in _process_executors:
                 _process_executors.remove(old)
-            new_executor = ProcessPoolExecutor(
-                max_workers=num_workers,
-                mp_context=_MP_CONTEXT,
-                max_tasks_per_child=_MAX_TASKS_PER_CHILD,
+            new_executor = _create_process_executor(
+                num_workers=num_workers,
+                max_tasks_per_child=max_tasks_per_child,
+                warmup_spec_json=warmup_spec_json,
             )
             executor_ref[0] = new_executor
             _process_executors.append(new_executor)
+            if warmup_spec_json:
+                _executor_warmup_targets.append((new_executor, num_workers))
+                try:
+                    warmup_process_pool_workers()
+                except Exception:
+                    logger.warning("%s pool recreated but model warmup failed", label)
             raise
 
         logger.info(
