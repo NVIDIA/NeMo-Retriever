@@ -2,18 +2,6 @@
 
 Before you begin using [NeMo Retriever Library](overview.md), confirm your software stack, deployment hardware, and—if you use them—advanced features (audio and video, Nemotron Parse, VLM image captioning, reranking) against the guidance in this page.
 
-## On this page { #on-this-page }
-
-- [Software Requirements](#software-requirements)
-- [Hardware Requirements](#hardware-requirements)
-- [Core and Advanced Pipeline Features](#core-and-advanced-pipeline-features)
-    - [Default Helm NIMs](#default-helm-nims)
-    - [OCR artifacts (Helm vs local Hugging Face)](#nemotron-ocr-v2-language-mode)
-    - [Optional Helm NIMs (not auto-wired)](#optional-helm-nims-not-auto-wired-by-default)
-    - [Image captioning](#image-captioning)
-- [Model Hardware Requirements](#model-hardware-requirements)
-- [Related Topics](#related-topics)
-
 ## Software Requirements { #software-requirements }
 
 - Linux operating systems (Ubuntu 22.04 or later recommended)
