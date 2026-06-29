@@ -253,7 +253,7 @@ def test_validate_reject_mode_blocks_any_override() -> None:
 
 def test_validate_reject_mode_allows_compact_result_schema_only() -> None:
     cfg = PipelineOverridesConfig(mode="reject")
-    spec = PipelineSpec(result_schema="compact")
+    spec = PipelineSpec(result_schema="compact", extraction_mode="audio")
     assert validate_pipeline_spec(spec, cfg.to_policy()) is spec
 
 
