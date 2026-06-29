@@ -199,17 +199,14 @@ def _hits_to_semantic_rows(
             continue
         label_counts[lab_str] = cnt + 1
         score = _vector_distance_value(hit.get("_distance"))
-        row: dict = {
-            "text": (hit.get("text") or "").strip(),
-            "id": cid,
-            "label": lab,
-            "score": score,
-        }
-        for _field in ("name", "schema_name", "database_name"):
-            val = meta.get(_field)
-            if val is not None:
-                row[_field] = val
-        rows.append(row)
+        rows.append(
+            {
+                "text": (hit.get("text") or "").strip(),
+                "id": cid,
+                "label": lab,
+                "score": score,
+            }
+        )
     return rows
 
 
