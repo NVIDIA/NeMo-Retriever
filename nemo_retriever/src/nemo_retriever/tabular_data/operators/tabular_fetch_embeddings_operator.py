@@ -95,8 +95,6 @@ class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
                 table_name=table_name,
                 table_description=table_description,
                 columns=columns,
-                schema_name=schema_name,
-                database_name=self._database_name,
             )
             rows.append(
                 _create_row(
@@ -120,9 +118,7 @@ class TabularFetchEmbeddingsOp(AbstractOperator, CPUOperator):
                     column_description=column_description,
                     data_type=data_type,
                     sample_values=sample_values,
-                    schema_name=schema_name,
                     table_name=table_name,
-                    database_name=self._database_name,
                 )
                 rows.append(
                     _create_row(
@@ -145,15 +141,13 @@ def _create_table_text(
     table_name: str,
     table_description: str,
     columns: list[Any],
-    schema_name: str,
-    database_name: str,
 ) -> str:
     """Build the embedding text for a Table node.
 
     Returns just the text string; the caller is responsible for wrapping it
     in an embed-row dict via :func:`_create_row`.
     """
-    text = f"database_name: {database_name}" f", schema_name: {schema_name}" f", table_name: {table_name}"
+    text = f"table_name: {table_name}"
     if table_description:
         text += f", table_description: {table_description}"
 
@@ -180,21 +174,13 @@ def _create_column_text(
     data_type: str,
     sample_values: list[Any],
     table_name: str,
-    schema_name: str,
-    database_name: str,
 ) -> str:
     """Build the embedding text for a Column node.
 
     Returns just the text string; the caller is responsible for wrapping it
     in an embed-row dict via :func:`_create_row`.
     """
-    text = (
-        f"database_name: {database_name}"
-        f", schema_name: {schema_name}"
-        f", table_name: {table_name}"
-        f", column_name: {column_name}"
-        f", data_type: {data_type}"
-    )
+    text = f"table_name: {table_name}" f", column_name: {column_name}" f", data_type: {data_type}"
     if column_description:
         text += f", column_description: {column_description}"
     if len(sample_values) > 0:

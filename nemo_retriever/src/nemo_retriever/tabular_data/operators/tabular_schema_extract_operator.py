@@ -53,6 +53,7 @@ class TabularSchemaExtractOp(AbstractOperator, CPUOperator):
         from nemo_retriever.tabular_data.ingestion.extract_data import (
             extract_tabular_db_data,
             store_relational_db_in_neo4j,
+            store_sample_values,
         )
 
         empty = (pd.DataFrame(), pd.DataFrame())
@@ -63,6 +64,12 @@ class TabularSchemaExtractOp(AbstractOperator, CPUOperator):
         schemas = store_relational_db_in_neo4j(data=schema_data, dialect=data.connector.dialect) or {}
         if not schemas:
             return empty
+
+        store_sample_values(
+            connector=data.connector,
+            database_name=schema_data.get("database_name", data.connector.database_name),
+            schemas=schemas,
+        )
 
         tables = [s.tables_df for s in schemas.values() if s.tables_df is not None]
         columns = [s.columns_df for s in schemas.values() if s.columns_df is not None]
