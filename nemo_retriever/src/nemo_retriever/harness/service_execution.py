@@ -14,7 +14,7 @@ from typing import Any
 from nemo_retriever.common.input_files import resolve_input_files
 from nemo_retriever.harness.artifact_writer import ArtifactWriter, capture_output_to_log
 from nemo_retriever.harness.artifacts import last_commit, now_timestr
-from nemo_retriever.harness.benchmark_registry import DEFAULT_SUMMARY_KEYS
+from nemo_retriever.harness.benchmark_registry import DEFAULT_EMBED_MODEL, DEFAULT_SUMMARY_KEYS, DEFAULT_TABLE_NAME
 from nemo_retriever.harness.config import HarnessConfig
 from nemo_retriever.harness.contracts import (
     EXIT_INGEST_FAILURE,
@@ -143,7 +143,7 @@ def _run_service_beir_evaluation(cfg: HarnessConfig) -> tuple[float, dict[str, f
 
     beir_cfg = BeirConfig(
         lancedb_uri=str(cfg.lancedb_uri or "lancedb"),
-        lancedb_table=str(cfg.lancedb_table_name or "nv-ingest"),
+        lancedb_table=str(cfg.lancedb_table_name or DEFAULT_TABLE_NAME),
         embedding_model=cfg.embed_model_name,
         loader=str(beir_options.loader),
         dataset_name=str(beir_options.dataset_name),

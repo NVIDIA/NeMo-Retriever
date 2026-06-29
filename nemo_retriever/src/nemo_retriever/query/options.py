@@ -40,7 +40,7 @@ class QueryRerankOptions:
 @dataclass(frozen=True)
 class QueryStorageOptions:
     lancedb_uri: str = "lancedb"
-    table_name: str = "nemo-retriever"
+    table_name: str = "nemo_retriever"
 
 
 @dataclass(frozen=True)

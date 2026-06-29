@@ -892,7 +892,9 @@ async def rerun_run(run_id: int, req: RerunRequest | None = None):
 # Retrieval Playground
 # ---------------------------------------------------------------------------
 
-LANCEDB_TABLE = "nv-ingest"
+from nemo_retriever.harness.benchmark_registry import DEFAULT_EMBED_MODEL, DEFAULT_TABLE_NAME
+
+LANCEDB_TABLE = DEFAULT_TABLE_NAME
 
 
 def _get_lancedb_uri_for_run(run: dict[str, Any]) -> str | None:
@@ -946,7 +948,7 @@ async def run_retrieval_query(run_id: int, req: RetrievalQueryRequest):
     try:
         raw = row.get("raw_json") or {}
         tc = raw.get("test_config") or {}
-        embed_model = tc.get("embed_model_name", "nvidia/llama-nemotron-embed-1b-v2")
+        embed_model = tc.get("embed_model_name", DEFAULT_EMBED_MODEL)
 
         from nemo_retriever.graph.retriever import Retriever
 

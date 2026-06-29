@@ -101,7 +101,7 @@ def test_query_request_builds_retriever_kwargs_with_embed_and_remote_rerank(monk
     assert retriever_calls == [
         {
             "top_k": 10,
-            "vdb_kwargs": {"uri": "lancedb", "table_name": "nemo-retriever"},
+                "vdb_kwargs": {"uri": "lancedb", "table_name": "nemo_retriever"},
             "embed_kwargs": {
                 "embed_invoke_url": "http://embed:8000/v1/embeddings",
                 "embedding_endpoint": "http://embed:8000/v1/embeddings",
@@ -142,7 +142,7 @@ def test_query_documents_uses_typed_request(monkeypatch) -> None:
     )
 
     assert query_workflow.query_documents(request) == [{"text": "passage", "source": "doc.pdf", "page_number": 1}]
-    assert retriever_calls == [{"top_k": 1, "vdb_kwargs": {"uri": "lancedb", "table_name": "nemo-retriever"}}]
+    assert retriever_calls == [{"top_k": 1, "vdb_kwargs": {"uri": "lancedb", "table_name": "nemo_retriever"}}]
     assert query_calls == [
         (
             "deployment?",

@@ -16,6 +16,7 @@ import yaml
 from nemo_retriever.harness.artifact_writer import redact
 from nemo_retriever.harness.artifacts import get_artifacts_root
 from nemo_retriever.harness.benchmark_registry import (
+    DEFAULT_TABLE_NAME,
     REPO_ROOT,
     benchmark_names,
     benchmark_payload,
@@ -334,7 +335,7 @@ def build_ingest_request(resolved: dict[str, Any], dataset_path: Path, artifact_
     if not storage_data.get("lancedb_uri") or storage_data.get("lancedb_uri") == "lancedb":
         storage_data["lancedb_uri"] = str((artifact_dir / "lancedb").resolve())
     if not storage_data.get("table_name"):
-        storage_data["table_name"] = "nemo-retriever"
+        storage_data["table_name"] = DEFAULT_TABLE_NAME
     ingest["storage"] = storage_data
     resolved["ingest"] = ingest
 
@@ -383,7 +384,7 @@ def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryReque
     _validate_keys("query", query, _override_child_keys("query", QUERY_OVERRIDE_PATHS))
     ingest_storage = dict((resolved.get("ingest") or {}).get("storage") or {})
     lancedb_uri = query.get("lancedb_uri") or ingest_storage.get("lancedb_uri") or "lancedb"
-    table_name = query.get("table_name") or ingest_storage.get("table_name") or "nemo-retriever"
+    table_name = query.get("table_name") or ingest_storage.get("table_name") or DEFAULT_TABLE_NAME
     query["lancedb_uri"] = lancedb_uri
     query["table_name"] = table_name
     resolved["query"] = query

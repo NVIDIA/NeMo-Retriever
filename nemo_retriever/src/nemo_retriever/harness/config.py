@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+
+from nemo_retriever.harness.benchmark_registry import DEFAULT_EMBED_MODEL, DEFAULT_TABLE_NAME
 from pathlib import Path
 from typing import Any
 
@@ -103,9 +105,9 @@ class HarnessConfig:
     artifacts_dir: str | None = None
     ray_address: str | None = None
     lancedb_uri: str = "lancedb"
-    lancedb_table_name: str = "nv-ingest"
+    lancedb_table_name: str = DEFAULT_TABLE_NAME
     hybrid: bool = False
-    embed_model_name: str = "nvidia/llama-nemotron-embed-1b-v2"
+    embed_model_name: str = DEFAULT_EMBED_MODEL
     embed_modality: str = "text"
     embed_granularity: str = "element"
     ocr_version: str | None = None

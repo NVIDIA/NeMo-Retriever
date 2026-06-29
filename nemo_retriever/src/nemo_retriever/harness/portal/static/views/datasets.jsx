@@ -379,7 +379,7 @@ function DatasetFormModal({ dataset, onClose, onSaved }) {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
                 <div>
                   <label style={labelStyle}>Embed Model</label>
-                  <input className="input" style={{width:'100%'}} value={form.embed_model_name} onChange={e=>set('embed_model_name',e.target.value)} placeholder="nvidia/llama-nemotron-embed-1b-v2" />
+                  <input className="input" style={{width:'100%'}} value={form.embed_model_name} onChange={e=>set('embed_model_name',e.target.value)} placeholder="nvidia/llama-nemotron-embed-vl-1b-v2" />
                 </div>
                 <div>
                   <label style={labelStyle}>Embed Modality</label>

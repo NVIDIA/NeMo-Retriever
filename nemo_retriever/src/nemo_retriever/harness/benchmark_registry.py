@@ -9,10 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from nemo_retriever.harness.benchmark_specs import BenchmarkSpec, DatasetSpec, RunSet
+from nemo_retriever.models import VL_EMBED_MODEL
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_EMBED_MODEL = "nvidia/llama-nemotron-embed-1b-v2"
-DEFAULT_TABLE_NAME = "nemo-retriever"
+# Align with helm serviceConfig.vectordb (nemo_retriever/helm/values.yaml).
+DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
+DEFAULT_TABLE_NAME = "nemo_retriever"
 DEFAULT_SUMMARY_KEYS: tuple[str, ...] = (
     "files",
     "pages",
@@ -124,6 +126,7 @@ def _base_query(*, top_k: int = 10) -> dict[str, Any]:
         "page_dedup": False,
         "content_types": None,
         "retrieval_mode": "auto",
+        "table_name": DEFAULT_TABLE_NAME,
         "embed_model_name": DEFAULT_EMBED_MODEL,
         "embed_invoke_url": None,
         "rerank": False,

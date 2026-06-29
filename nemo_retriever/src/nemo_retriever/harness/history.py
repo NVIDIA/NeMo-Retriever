@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from nemo_retriever.harness.benchmark_registry import DEFAULT_TABLE_NAME
+
 logger = logging.getLogger(__name__)
 
 NEMO_RETRIEVER_ROOT = Path(__file__).resolve().parents[3]
@@ -1128,7 +1130,7 @@ def create_dataset(data: dict[str, Any], db_path: str | None = None) -> dict[str
                 1 if data.get("extract_infographics") else 0,
                 data.get("ocr_version") or None,
                 data.get("ocr_lang") or None,
-                data.get("lancedb_table_name", "nv-ingest") or "nv-ingest",
+                data.get("lancedb_table_name", DEFAULT_TABLE_NAME) or DEFAULT_TABLE_NAME,
                 0 if data.get("distribute") is False else 1,
                 data.get("description") or None,
                 tags,
