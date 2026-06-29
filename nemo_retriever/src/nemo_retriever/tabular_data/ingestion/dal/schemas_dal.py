@@ -8,7 +8,6 @@ from nemo_retriever.tabular_data.neo4j import get_neo4j_conn
 from nemo_retriever.tabular_data.ingestion.utils import (
     normalize_tables,
     normalize_columns,
-    chunks,
 )
 from nemo_retriever.tabular_data.ingestion.model.neo4j_node import Neo4jNode
 from nemo_retriever.tabular_data.ingestion.model.reserved_words import (
@@ -285,28 +284,6 @@ def add_pks(pks_df, database_name: str):
         query=query,
         parameters={"pks_dict": pks_df.to_dict(orient="records"), "database_name": database_name},
     )
-
-
-def set_column_sample_values(entries: list[dict], database_name: str) -> None:
-    """Set sampleValues on Column nodes from a list of per-column value entries.
-    Each entry must have keys: schema_name, table_name, column_name, sample_values
-    (sample_values is a JSON-serialised list[Any]).
-    """
-    if not entries:
-        return
-    query = f"""
-        UNWIND $entries AS entry
-        MATCH (:{Labels.DB} {{name: $database_name}})-[:{Edges.CONTAINS}]->
-              (:{Labels.SCHEMA} {{name: entry.schema_name}})-[:{Edges.CONTAINS}]->
-              (:{Labels.TABLE} {{name: entry.table_name}})-[:{Edges.CONTAINS}]->
-              (c:{Labels.COLUMN} {{name: entry.column_name}})
-        SET c.sample_values = entry.sample_values
-    """
-    for batch in chunks(entries, 500):
-        get_neo4j_conn().query_write(
-            query=query,
-            parameters={"entries": batch, "database_name": database_name},
-        )
 
 
 def merge_schema_nodes(nodes, created):
