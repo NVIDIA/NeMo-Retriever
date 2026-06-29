@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from nemo_retriever.harness.artifacts import now_timestr
+from nemo_retriever.harness.json_io import read_json_object
 
 DEFAULT_USERNAME = "nemo_retriever Nightly"
 DEFAULT_ICON_EMOJI = ":satellite:"
@@ -60,26 +60,13 @@ def _normalize_metrics(raw_metrics: Any) -> dict[str, Any]:
     return normalized
 
 
-def _read_json_dict(path: Path) -> dict[str, Any]:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise FileNotFoundError(f"JSON file not found: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
-
-    if not isinstance(data, dict):
-        raise ValueError(f"Expected JSON object in {path}")
-    return data
-
-
 def _load_results_payload(artifact_dir: Path | None) -> dict[str, Any]:
     if artifact_dir is None:
         return {}
     results_path = artifact_dir / "results.json"
     if not results_path.exists():
         return {}
-    return _read_json_dict(results_path)
+    return read_json_object(results_path)
 
 
 def _load_preferred_metrics(payload: dict[str, Any]) -> dict[str, Any]:
@@ -130,7 +117,7 @@ def load_session_report(session_summary_path: Path) -> NightlySessionReport:
     if resolved_summary_path.is_dir():
         resolved_summary_path = resolved_summary_path / "session_summary.json"
 
-    payload = _read_json_dict(resolved_summary_path)
+    payload = read_json_object(resolved_summary_path)
     raw_results = payload.get("results", [])
     if not isinstance(raw_results, list):
         raise ValueError(f"'results' must be a list in {resolved_summary_path}")
@@ -164,7 +151,7 @@ def load_replay_report(replay_paths: list[Path]) -> NightlySessionReport:
         results_path = path / "results.json" if path.is_dir() else path
         if results_path.name != "results.json":
             raise ValueError(f"Replay path must be a run directory, session directory, or results.json file: {path}")
-        payload = _read_json_dict(results_path)
+        payload = read_json_object(results_path)
         artifact_dir = results_path.parent
         test_config = payload.get("test_config", {})
         if not isinstance(test_config, dict):
