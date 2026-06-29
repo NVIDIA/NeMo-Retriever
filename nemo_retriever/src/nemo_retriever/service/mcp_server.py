@@ -129,7 +129,9 @@ class ServiceMCPClient:
         self._transport = transport
 
     def _client(self, *, timeout_s: float | None = None) -> httpx.AsyncClient:
-        timeout_value = timeout_s if timeout_s is not None else self._settings.request_timeout_s
+        timeout_value = (
+            timeout_s if timeout_s is not None else self._settings.request_timeout_s
+        )
         return httpx.AsyncClient(
             base_url=self._settings.normalized_base_url,
             headers=self._settings.auth_headers,
@@ -149,7 +151,9 @@ class ServiceMCPClient:
         if resp.status_code < 400:
             return
         detail = resp.text[:1000] if resp.text else "(empty)"
-        raise RuntimeError(f"Retriever service returned HTTP {resp.status_code}: {detail}")
+        raise RuntimeError(
+            f"Retriever service returned HTTP {resp.status_code}: {detail}"
+        )
 
     async def health(self) -> dict[str, Any]:
         async with self._client() as client:
@@ -163,7 +167,9 @@ class ServiceMCPClient:
         self._raise_for_status(resp)
         return dict(self._json_or_text(resp))
 
-    async def get_job(self, job_id: str, *, include_documents: bool = False) -> dict[str, Any]:
+    async def get_job(
+        self, job_id: str, *, include_documents: bool = False
+    ) -> dict[str, Any]:
         async with self._client() as client:
             resp = await client.get(
                 f"/v1/ingest/job/{job_id}",
@@ -194,7 +200,9 @@ class ServiceMCPClient:
         self._raise_for_status(resp)
         return dict(self._json_or_text(resp))
 
-    async def query(self, query: str, *, top_k: int = 5, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def query(
+        self, query: str, *, top_k: int = 5, payload: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         body = dict(payload or {})
         body.setdefault("query", query)
         body.setdefault("top_k", top_k)
@@ -281,7 +289,9 @@ class ServiceMCPClient:
             if include_result_data:
                 for item in documents_page.get("items", []):
                     if item.get("status") in {"completed", "failed"}:
-                        detail = await self._get_document_with_client(client, job_id, item["document_id"])
+                        detail = await self._get_document_with_client(
+                            client, job_id, item["document_id"]
+                        )
                         item["result_data"] = detail.get("result_data")
 
         upload_errors = [item for item in upload_results if not item.get("ok")]
@@ -317,15 +327,25 @@ class ServiceMCPClient:
                         metadata["pipeline"] = pipeline_spec
                     resp = await client.post(
                         f"/v1/ingest/job/{job_id}/document",
-                        files={"file": (filename, content, doc.content_type or "application/octet-stream")},
+                        files={
+                            "file": (
+                                filename,
+                                content,
+                                doc.content_type or "application/octet-stream",
+                            )
+                        },
                         data={"metadata": json.dumps(metadata)},
                     )
                     self._raise_for_status(resp)
                     body = dict(self._json_or_text(resp))
                     return {"ok": True, "filename": filename, **body}
-                except Exception as exc:  # noqa: BLE001 - MCP response should include every upload failure.
+                except (
+                    Exception
+                ) as exc:  # noqa: BLE001 - MCP response should include every upload failure.
                     filename = doc.filename or (Path(doc.path).name if doc.path else "")
-                    logger.warning("MCP upload failed for %s: %s", filename or "<unknown>", exc)
+                    logger.warning(
+                        "MCP upload failed for %s: %s", filename or "<unknown>", exc
+                    )
                     return {"ok": False, "filename": filename, "error": str(exc)}
 
         return await asyncio.gather(*(_upload_one(doc) for doc in documents))
@@ -368,7 +388,9 @@ class ServiceMCPClient:
                 return latest
             await asyncio.sleep(self._settings.poll_interval_s)
 
-    async def _list_all_job_documents(self, client: httpx.AsyncClient, job_id: str) -> dict[str, Any]:
+    async def _list_all_job_documents(
+        self, client: httpx.AsyncClient, job_id: str
+    ) -> dict[str, Any]:
         limit = 1000
         offset = 0
         all_items: list[dict[str, Any]] = []
@@ -388,7 +410,13 @@ class ServiceMCPClient:
             offset += len(items)
             if not items or offset >= total:
                 break
-        result = first_page or {"job_id": job_id, "total": 0, "total_filtered": 0, "offset": 0, "limit": limit}
+        result = first_page or {
+            "job_id": job_id,
+            "total": 0,
+            "total_filtered": 0,
+            "offset": 0,
+            "limit": limit,
+        }
         result["items"] = all_items
         result["offset"] = 0
         result["limit"] = len(all_items)
@@ -409,7 +437,9 @@ def _document_bytes(doc: MCPDocumentInput) -> tuple[str, bytes]:
     if doc.path:
         path = Path(doc.path).expanduser()
         if not path.is_file():
-            raise FileNotFoundError(f"Document path does not exist or is not a file: {path}")
+            raise FileNotFoundError(
+                f"Document path does not exist or is not a file: {path}"
+            )
         return doc.filename or path.name, path.read_bytes()
 
     raw = doc.content_base64 or ""
@@ -441,7 +471,10 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
     async def health() -> dict[str, Any]:
         return await service.health()
 
-    @mcp.tool(name="pipeline_config", description="Return redacted live service pipeline configuration.")
+    @mcp.tool(
+        name="pipeline_config",
+        description="Return redacted live service pipeline configuration.",
+    )
     async def pipeline_config() -> dict[str, Any]:
         return await service.pipeline_config()
 
@@ -449,24 +482,39 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
     async def get_job(job_id: str, include_documents: bool = False) -> dict[str, Any]:
         return await service.get_job(job_id, include_documents=include_documents)
 
-    @mcp.tool(name="list_job_documents", description="List document statuses for a service ingestion job.")
+    @mcp.tool(
+        name="list_job_documents",
+        description="List document statuses for a service ingestion job.",
+    )
     async def list_job_documents(
         job_id: str,
         status: str | None = None,
         offset: int = 0,
         limit: int = 100,
     ) -> dict[str, Any]:
-        return await service.list_job_documents(job_id, status=status, offset=offset, limit=limit)
+        return await service.list_job_documents(
+            job_id, status=status, offset=offset, limit=limit
+        )
 
-    @mcp.tool(name="get_document", description="Fetch one document status/result from a service ingestion job.")
+    @mcp.tool(
+        name="get_document",
+        description="Fetch one document status/result from a service ingestion job.",
+    )
     async def get_document(job_id: str, document_id: str) -> dict[str, Any]:
         return await service.get_document(job_id, document_id)
 
-    @mcp.tool(name="query", description="Search ingested documents through the service VectorDB endpoint.")
-    async def query(query: str, top_k: int = 5, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    @mcp.tool(
+        name="query",
+        description="Search ingested documents through the service VectorDB endpoint.",
+    )
+    async def query(
+        query: str, top_k: int = 5, payload: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         return await service.query(query, top_k=top_k, payload=payload)
 
-    @mcp.tool(name="answer", description="Search ingested documents and generate an answer.")
+    @mcp.tool(
+        name="answer", description="Search ingested documents and generate an answer."
+    )
     async def answer(
         query: str,
         top_k: int = 5,

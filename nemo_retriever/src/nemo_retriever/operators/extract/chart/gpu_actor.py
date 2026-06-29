@@ -13,7 +13,9 @@ from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.models.nim.nim import NIMClient
 from nemo_retriever.common.params import RemoteRetryParams
 from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_lang
-from nemo_retriever.common.modality.chart.shared import graphic_elements_ocr_page_elements
+from nemo_retriever.common.modality.chart.shared import (
+    graphic_elements_ocr_page_elements,
+)
 
 
 class GraphicElementsActor(AbstractOperator, GPUOperator):

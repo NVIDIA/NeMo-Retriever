@@ -257,8 +257,8 @@ spec:
       {{- end }}
       containers:
         - name: nemo-retriever
-          image: "{{ include "nemo-retriever.runtime.image.repository" . }}:{{ include "nemo-retriever.runtime.image.tag" . }}"
-          imagePullPolicy: {{ include "nemo-retriever.runtime.image.pullPolicy" . }}
+          image: "{{ include "nemo-retriever.runtime.image.repository" $ }}:{{ include "nemo-retriever.runtime.image.tag" $ }}"
+          imagePullPolicy: {{ include "nemo-retriever.runtime.image.pullPolicy" $ }}
           args:
             - retriever
             - service

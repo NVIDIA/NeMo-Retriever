@@ -13,7 +13,9 @@ from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.models.nim.nim import NIMClient
 from nemo_retriever.common.params import RemoteRetryParams
 from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_lang
-from nemo_retriever.common.modality.table.shared import table_structure_ocr_page_elements
+from nemo_retriever.common.modality.table.shared import (
+    table_structure_ocr_page_elements,
+)
 
 
 class TableStructureActor(AbstractOperator, GPUOperator):
@@ -38,7 +40,9 @@ class TableStructureActor(AbstractOperator, GPUOperator):
         remote_max_429_retries: int = 5,
     ) -> None:
         super().__init__()
-        self._table_structure_invoke_url = (table_structure_invoke_url or invoke_url or "").strip()
+        self._table_structure_invoke_url = (
+            table_structure_invoke_url or invoke_url or ""
+        ).strip()
         self._ocr_invoke_url = (ocr_invoke_url or "").strip()
         self._api_key = api_key
         self._request_timeout_s = float(request_timeout_s)

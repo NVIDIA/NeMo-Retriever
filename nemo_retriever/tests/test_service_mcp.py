@@ -33,7 +33,9 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-def test_settings_from_service_config_defaults_to_loopback_for_mounted_mcp(tmp_path) -> None:
+def test_settings_from_service_config_defaults_to_loopback_for_mounted_mcp(
+    tmp_path,
+) -> None:
     cfg = ServiceConfig(
         logging=LoggingConfig(file=str(tmp_path / "service.log")),
         auth=AuthConfig(api_token="secret", header_name="X-Token"),
@@ -63,12 +65,20 @@ def test_query_tool_client_posts_payload_and_auth_header() -> None:
         transport=httpx.MockTransport(_handler),
     )
 
-    result = _run(client.query("What is indexed?", top_k=2, payload={"filters": {"source": "a.pdf"}}))
+    result = _run(
+        client.query(
+            "What is indexed?", top_k=2, payload={"filters": {"source": "a.pdf"}}
+        )
+    )
 
     assert seen == {
         "path": "/v1/query",
         "auth": "Bearer tok",
-        "body": {"filters": {"source": "a.pdf"}, "query": "What is indexed?", "top_k": 2},
+        "body": {
+            "filters": {"source": "a.pdf"},
+            "query": "What is indexed?",
+            "top_k": 2,
+        },
     }
     assert result["results"][0]["hits"][0]["text"] == "match"
 
@@ -96,7 +106,10 @@ def test_ingest_documents_accepts_inline_base64_upload() -> None:
                     "created_at": "2026-06-23T00:00:00Z",
                 },
             )
-        if request.method == "POST" and request.url.path == "/v1/ingest/job/job-1/document":
+        if (
+            request.method == "POST"
+            and request.url.path == "/v1/ingest/job/job-1/document"
+        ):
             upload_body = request.content
             return httpx.Response(
                 202,
@@ -108,7 +121,10 @@ def test_ingest_documents_accepts_inline_base64_upload() -> None:
                     "created_at": "2026-06-23T00:00:01Z",
                 },
             )
-        if request.method == "GET" and request.url.path == "/v1/ingest/job/job-1/documents":
+        if (
+            request.method == "GET"
+            and request.url.path == "/v1/ingest/job/job-1/documents"
+        ):
             return httpx.Response(
                 200,
                 json={
@@ -128,7 +144,9 @@ def test_ingest_documents_accepts_inline_base64_upload() -> None:
                     ],
                 },
             )
-        return httpx.Response(404, text=f"unexpected {request.method} {request.url.path}")
+        return httpx.Response(
+            404, text=f"unexpected {request.method} {request.url.path}"
+        )
 
     client = ServiceMCPClient(
         ServiceMCPSettings(base_url="http://service:7670", poll_interval_s=0.01),
@@ -190,4 +208,3 @@ def test_service_start_mounts_mcp_and_auth_protects_it(monkeypatch, tmp_path) ->
 
     assert unauthorized.status_code == 401
     assert authorized.status_code != 401
-

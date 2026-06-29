@@ -57,7 +57,10 @@ class LocalEmbedConfig(RichModel):
 
     @model_validator(mode="after")
     def _validate_backend(self) -> "LocalEmbedConfig":
-        from nemo_retriever.models import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
+        from nemo_retriever.models import (
+            _LOCAL_INGEST_EMBED_BACKENDS,
+            normalize_backend,
+        )
 
         self.local_ingest_embed_backend = normalize_backend(
             self.local_ingest_embed_backend,
@@ -79,13 +82,13 @@ class LocalAsrConfig(RichModel):
 class LocalModelsConfig(RichModel):
     """Load Nemotron Hugging Face weights inside the service worker pod.
 
-  When ``enabled`` is true, pipeline stages without a matching
-  ``nim_endpoints.*`` URL load models from ``nemo_retriever.models.local``
-  instead of calling remote NIMs. Requires the ``[local]`` (and usually
-  ``[multimedia]``) install extras plus GPU resources.
+    When ``enabled`` is true, pipeline stages without a matching
+    ``nim_endpoints.*`` URL load models from ``nemo_retriever.models.local``
+    instead of calling remote NIMs. Requires the ``[local]`` (and usually
+    ``[multimedia]``) install extras plus GPU resources.
 
-  NIM URLs always take precedence when both are configured for a stage.
-  """
+    NIM URLs always take precedence when both are configured for a stage.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -212,7 +215,9 @@ class AuthConfig(RichModel):
 
     api_token: str | None = None
     header_name: str = "Authorization"
-    bypass_paths: list[str] = Field(default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"])
+    bypass_paths: list[str] = Field(
+        default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"]
+    )
 
 
 class MCPConfig(RichModel):
@@ -221,7 +226,9 @@ class MCPConfig(RichModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    path: str = Field(default="/mcp", description="HTTP mount path for the service FastMCP app.")
+    path: str = Field(
+        default="/mcp", description="HTTP mount path for the service FastMCP app."
+    )
     base_url: str | None = Field(
         default=None,
         description=(
@@ -240,7 +247,9 @@ class MCPConfig(RichModel):
         if not self.path.startswith("/"):
             raise ValueError("mcp.path must start with '/'")
         if self.path == "/":
-            raise ValueError("mcp.path must not be '/' because it would shadow service routes")
+            raise ValueError(
+                "mcp.path must not be '/' because it would shadow service routes"
+            )
         if self.path.endswith("/"):
             raise ValueError("mcp.path must not end with '/'")
         return self
@@ -257,8 +266,12 @@ class GatewayConfig(RichModel):
 
     realtime_url: str = "http://nemo-retriever-realtime:7670"
     batch_url: str = "http://nemo-retriever-batch:7670"
-    timeout_s: float = Field(default=300.0, description="Per-request forwarding timeout in seconds")
-    max_connections: int = Field(default=100, description="httpx connection pool limit per backend")
+    timeout_s: float = Field(
+        default=300.0, description="Per-request forwarding timeout in seconds"
+    )
+    max_connections: int = Field(
+        default=100, description="httpx connection pool limit per backend"
+    )
 
 
 class PipelinePoolConfig(RichModel):
@@ -271,10 +284,20 @@ class PipelinePoolConfig(RichModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    realtime_workers: int = Field(default=8, ge=1, description="Concurrent workers for low-latency page processing")
-    realtime_queue_size: int = Field(default=2048, ge=1, description="Max queued items before realtime pool rejects")
-    batch_workers: int = Field(default=16, ge=1, description="Concurrent workers for bulk document processing")
-    batch_queue_size: int = Field(default=4096, ge=1, description="Max queued items before batch pool rejects")
+    realtime_workers: int = Field(
+        default=8,
+        ge=1,
+        description="Concurrent workers for low-latency page processing",
+    )
+    realtime_queue_size: int = Field(
+        default=2048, ge=1, description="Max queued items before realtime pool rejects"
+    )
+    batch_workers: int = Field(
+        default=16, ge=1, description="Concurrent workers for bulk document processing"
+    )
+    batch_queue_size: int = Field(
+        default=4096, ge=1, description="Max queued items before batch pool rejects"
+    )
 
 
 class VectorDbConfig(RichModel):
@@ -360,14 +383,19 @@ class PipelineOverridesConfig(RichModel):
     extra_caption_keys: list[str] = Field(default_factory=list)
     sinks: SinksConfig = Field(default_factory=SinksConfig)
 
-    def to_policy(self, *, caption_enabled: bool = False) -> "PipelineOverridesPolicy":  # noqa: F821
+    def to_policy(
+        self, *, caption_enabled: bool = False
+    ) -> "PipelineOverridesPolicy":  # noqa: F821
         """Return a :class:`PipelineOverridesPolicy` configured from this section.
 
         ``caption_enabled`` is derived from ``NimEndpointsConfig.caption_invoke_url``
         by the caller — clients can only override caption settings when the
         operator has actually wired up a VLM endpoint.
         """
-        from nemo_retriever.common.policy import PipelineOverridesPolicy, SinkUrlAllowlist
+        from nemo_retriever.common.policy import (
+            PipelineOverridesPolicy,
+            SinkUrlAllowlist,
+        )
 
         return PipelineOverridesPolicy(
             mode=self.mode,
@@ -418,7 +446,9 @@ class ServiceConfig(RichModel):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     pipeline: PipelinePoolConfig = Field(default_factory=PipelinePoolConfig)
     vectordb: VectorDbConfig = Field(default_factory=VectorDbConfig)
-    pipeline_overrides: PipelineOverridesConfig = Field(default_factory=PipelineOverridesConfig)
+    pipeline_overrides: PipelineOverridesConfig = Field(
+        default_factory=PipelineOverridesConfig
+    )
 
     @model_validator(mode="after")
     def _cap_process_pool_workers_for_local_models(self) -> "ServiceConfig":
@@ -510,7 +540,11 @@ def load_config(
         if isinstance(section_value, RichModel):
             branch = tree.add(f"[cyan]{section_name}[/cyan]")
             for field_name, field_value in section_value:
-                display = "****" if field_name in _REDACTED_FIELDS and field_value else repr(field_value)
+                display = (
+                    "****"
+                    if field_name in _REDACTED_FIELDS and field_value
+                    else repr(field_value)
+                )
                 branch.add(f"[dim]{field_name}[/dim] = [white]{display}[/white]")
         else:
             tree.add(f"[cyan]{section_name}[/cyan] = [white]{section_value!r}[/white]")
