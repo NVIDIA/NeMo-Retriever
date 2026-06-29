@@ -155,7 +155,14 @@ def _retrieval_options(
     )
 
 
-@app.command("_local", hidden=True)
+@app.command(
+    "_local",
+    hidden=True,
+    help=(
+        f"Query a local LanceDB index. Default embedding model: {opts.DEFAULT_EMBED_MODEL}. "
+        f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}."
+    ),
+)
 def _local_command(
     ctx: typer.Context,
     query: opts.QueryArgument,
