@@ -165,7 +165,7 @@ Supported override namespaces:
   BEIR doc ID settings.
 - `ingest.*`: profile, input type, Ray mode/address, extraction/media/caption,
   dedup, chunk, embedding, image-store, storage, and batch worker settings.
-- `query.*`: top-k, candidate-k, page dedup, content types, hybrid search,
+- `query.*`: top-k, candidate-k, page dedup, content types, retrieval mode,
   embedding endpoint/model, reranking, LanceDB URI, and table name.
 - `evaluation.*`: evaluation mode, BEIR loader/dataset/split/language/doc ID
   field, and metric cutoffs.

@@ -102,7 +102,7 @@ QUERY_OVERRIDE_PATHS = {
     "query.candidate_k",
     "query.page_dedup",
     "query.content_types",
-    "query.hybrid",
+    "query.retrieval_mode",
     "query.embed_invoke_url",
     "query.embed_model_name",
     "query.rerank",
@@ -392,7 +392,7 @@ def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryReque
             candidate_k=query.get("candidate_k"),
             page_dedup=bool(query.get("page_dedup", False)),
             content_types=query.get("content_types"),
-            hybrid=bool(query.get("hybrid", False)),
+            retrieval_mode=str(query.get("retrieval_mode", "auto")),
         ),
         embed=QueryEmbedOptions(
             embed_invoke_url=query.get("embed_invoke_url"),
@@ -422,7 +422,7 @@ def query_plan_payload(plan: ResolvedQueryPlan) -> dict[str, Any]:
             "lancedb_uri": plan.lancedb_uri,
             "table_name": plan.table_name,
             "embed_kwargs": plan.embed_kwargs,
-            "hybrid": plan.hybrid,
+            "retrieval_mode": plan.retrieval_mode,
             "rerank": plan.rerank,
             "rerank_kwargs": plan.rerank_kwargs,
         }

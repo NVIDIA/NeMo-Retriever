@@ -112,7 +112,7 @@ def _base_ingest(*, profile: str = "auto") -> dict[str, Any]:
         "storage": {
             "table_name": DEFAULT_TABLE_NAME,
             "overwrite": True,
-            "hybrid": False,
+            "index_mode": "dense",
         },
     }
 
@@ -123,7 +123,7 @@ def _base_query(*, top_k: int = 10) -> dict[str, Any]:
         "candidate_k": None,
         "page_dedup": False,
         "content_types": None,
-        "hybrid": False,
+        "retrieval_mode": "auto",
         "embed_model_name": DEFAULT_EMBED_MODEL,
         "embed_invoke_url": None,
         "rerank": False,
