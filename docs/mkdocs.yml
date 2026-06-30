@@ -186,7 +186,7 @@ plugins:
         extraction/quickstart-library-mode.md: extraction/deployment-options.md
         extraction/workflow-video-ocr.md: extraction/audio-video.md
         extraction/user-defined-stages.md: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph
-        extraction/nimclient.md: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nimclient-and-custom-nim-endpoints
+        extraction/nimclient.md: https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/developer_docs/nimclient.md
   - site-urls
 
 markdown_extensions:
