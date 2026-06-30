@@ -85,8 +85,8 @@ spec:
       {{- end }}
       containers:
         - name: nemo-retriever
-          image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
-          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          image: "{{ include "nemo-retriever.runtime.image.repository" . }}:{{ include "nemo-retriever.runtime.image.tag" . }}"
+          imagePullPolicy: {{ include "nemo-retriever.runtime.image.pullPolicy" . }}
           {{- with $svc.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
@@ -140,8 +140,11 @@ spec:
           {{- end }}
           resources:
             {{- $resources := deepCopy $svc.resources }}
-            {{- if $svc.gpu.enabled }}
-            {{- $_ := set ($resources.limits | default dict) "nvidia.com/gpu" $svc.gpu.count -}}
+            {{- $gpuEnabled := or $svc.gpu.enabled .Values.serviceConfig.localModels.enabled }}
+            {{- if $gpuEnabled }}
+            {{- $gpuCount := $svc.gpu.count | int }}
+            {{- if eq $gpuCount 0 }}{{- $gpuCount = 1 }}{{- end }}
+            {{- $_ := set ($resources.limits | default dict) "nvidia.com/gpu" $gpuCount -}}
             {{- end }}
             {{- toYaml $resources | nindent 12 }}
           volumeMounts:
@@ -260,8 +263,8 @@ spec:
       {{- end }}
       containers:
         - name: nemo-retriever
-          image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
-          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          image: "{{ include "nemo-retriever.runtime.image.repository" $ }}:{{ include "nemo-retriever.runtime.image.tag" $ }}"
+          imagePullPolicy: {{ include "nemo-retriever.runtime.image.pullPolicy" $ }}
           args:
             - retriever
             - service
@@ -311,8 +314,14 @@ spec:
             {{- end }}
           resources:
             {{- $resources := deepCopy $roleCfg.resources }}
-            {{- if and (hasKey $roleCfg "gpu") (index $roleCfg "gpu").enabled }}
-            {{- $_ := set ($resources.limits | default dict) "nvidia.com/gpu" (index $roleCfg "gpu").count -}}
+            {{- $roleGpuEnabled := and (hasKey $roleCfg "gpu") (index $roleCfg "gpu").enabled }}
+            {{- $gpuEnabled := or $roleGpuEnabled (and (ne $role "gateway") $.Values.serviceConfig.localModels.enabled) }}
+            {{- if $gpuEnabled }}
+            {{- $gpuCount := 0 }}
+            {{- if $roleGpuEnabled }}{{- $gpuCount = (index $roleCfg "gpu").count | int }}{{- end }}
+            {{- if and (not $roleGpuEnabled) $.Values.serviceConfig.localModels.enabled }}{{- $gpuCount = 1 }}{{- end }}
+            {{- if and $roleGpuEnabled (eq $gpuCount 0) }}{{- $gpuCount = 1 }}{{- end }}
+            {{- $_ := set ($resources.limits | default dict) "nvidia.com/gpu" $gpuCount -}}
             {{- end }}
             {{- toYaml $resources | nindent 12 }}
           volumeMounts:

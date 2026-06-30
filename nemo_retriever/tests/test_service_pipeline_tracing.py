@@ -147,16 +147,22 @@ def test_make_work_fn_continues_when_trace_capture_fails(
     def _fake_run_pipeline_in_process(*args: Any, **kwargs: Any) -> tuple[int, list[dict[str, Any]], float]:
         return 1, [{"document_id": "doc-1", "text": "chunk"}], 0.01
 
-    monkeypatch.setattr(pipeline_executor, "build_extract_params", lambda nim: _Params())
-    monkeypatch.setattr(pipeline_executor, "build_embed_params", lambda nim: None)
+    monkeypatch.setattr(pipeline_executor, "build_extract_params", lambda nim, local=None: _Params())
+    monkeypatch.setattr(pipeline_executor, "build_embed_params", lambda nim, local=None: None)
     monkeypatch.setattr(pipeline_executor, "build_caption_params", lambda nim: None)
-    monkeypatch.setattr(pipeline_executor, "build_asr_params", lambda nim: None)
+    monkeypatch.setattr(pipeline_executor, "build_asr_params", lambda nim, local=None: None)
     monkeypatch.setattr(pipeline_executor, "ProcessPoolExecutor", _fake_process_pool_executor)
     monkeypatch.setattr(pipeline_executor, "_run_pipeline_in_process", _fake_run_pipeline_in_process)
     monkeypatch.setattr(tracing, "inject_trace_context", _raise_inject)
 
     config = SimpleNamespace(
         nim_endpoints=SimpleNamespace(model_dump=lambda *args, **kwargs: {}),
+        local_models=SimpleNamespace(
+            enabled=False,
+            warmup_on_startup=False,
+            max_tasks_per_child=None,
+            model_dump=lambda *args, **kwargs: {},
+        ),
         vectordb=SimpleNamespace(enabled=False, vectordb_url=None),
         pipeline=SimpleNamespace(
             realtime_workers=1,

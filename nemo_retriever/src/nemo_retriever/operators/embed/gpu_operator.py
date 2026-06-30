@@ -40,8 +40,19 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
         hf_cache = str(self._kwargs["hf_cache_dir"]) if self._kwargs.get("hf_cache_dir") else None
 
         from nemo_retriever.models import create_local_embedder
+        from nemo_retriever.models.warmup_registry import get_warmed_model
 
-        hf_device = str(self._kwargs["local_hf_device"]) if self._kwargs.get("local_hf_device") else None
+        warmed = get_warmed_model("embed")
+        if warmed is not None:
+            self._model = warmed
+            return
+
+        hf_device = None
+        if self._kwargs.get("local_hf_device"):
+            hf_device = str(self._kwargs["local_hf_device"])
+        elif self._kwargs.get("device"):
+            hf_device = str(self._kwargs["device"])
+
         self._model = create_local_embedder(
             self._kwargs.get("embed_model_name") or self._kwargs.get("model_name"),
             backend=ingest_backend,

@@ -554,7 +554,10 @@ def render_page_elements(
     nemotron_parse_model_name: Optional[str] = typer.Option(
         None,
         "--nemotron-parse-model-name",
-        help="Nemotron Parse model name (optional; defaults to schema default).",
+        help=(
+            "Nemotron Parse model name. Used only with --method nemotron_parse; "
+            "omitted value uses that method's schema default."
+        ),
     ),
     extract_text: bool = typer.Option(True, "--extract-text/--no-extract-text", help="Extract text primitives."),
     extract_images: bool = typer.Option(
@@ -705,13 +708,15 @@ def render_page_elements(
                 "Nemotron Parse endpoint required for method 'nemotron_parse'. "
                 "Set --nemotron-parse-grpc-endpoint or --nemotron-parse-http-endpoint."
             )
-        extractor_cfg["nemotron_parse_config"] = {
+        nemotron_parse_config = {
             "auth_token": auth_token,
             # Nemotron Parse may still rely on YOLOX for region proposals depending on config.
             "yolox_endpoints": [yolox_grpc_endpoint, yolox_http_endpoint],
             "nemotron_parse_endpoints": [nemotron_parse_grpc_endpoint, nemotron_parse_http_endpoint],
-            "nemotron_parse_model_name": nemotron_parse_model_name,
         }
+        if nemotron_parse_model_name is not None:
+            nemotron_parse_config["nemotron_parse_model_name"] = nemotron_parse_model_name
+        extractor_cfg["nemotron_parse_config"] = nemotron_parse_config
 
     extractor_schema = load_pdf_extractor_schema_from_dict(extractor_cfg)
     task_cfg = make_pdf_task_config(
