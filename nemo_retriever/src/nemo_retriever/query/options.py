@@ -23,6 +23,14 @@ class QueryRetrievalOptions:
 
 
 @dataclass(frozen=True)
+class QueryFilterOptions:
+    source_id: str | None = None
+    source: str | None = None
+    page_number: int | None = None
+    where: str | None = None
+
+
+@dataclass(frozen=True)
 class QueryEmbedOptions:
     embed_invoke_url: str | None = None
     embed_model_name: str | None = None
@@ -67,6 +75,7 @@ class QueryAgenticOptions:
 class QueryRequest:
     query: str
     retrieval: QueryRetrievalOptions = field(default_factory=QueryRetrievalOptions)
+    filters: QueryFilterOptions = field(default_factory=QueryFilterOptions)
     embed: QueryEmbedOptions = field(default_factory=QueryEmbedOptions)
     rerank: QueryRerankOptions = field(default_factory=QueryRerankOptions)
     storage: QueryStorageOptions = field(default_factory=QueryStorageOptions)
@@ -77,4 +86,5 @@ class QueryRequest:
 class ServiceQueryRequest:
     query: str
     retrieval: QueryRetrievalOptions = field(default_factory=QueryRetrievalOptions)
+    filters: QueryFilterOptions = field(default_factory=QueryFilterOptions)
     service: QueryServiceOptions = field(default_factory=QueryServiceOptions)

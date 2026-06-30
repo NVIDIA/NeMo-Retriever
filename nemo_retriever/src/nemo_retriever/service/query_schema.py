@@ -12,6 +12,19 @@ from pydantic import BaseModel, Field
 class QueryRequest(BaseModel):
     query: str | list[str]
     top_k: int = Field(default=10, ge=1, le=1000)
+    source_id: str | None = None
+    source: str | None = None
+    page_number: int | None = Field(default=None, ge=0)
+    where: str | None = Field(
+        default=None,
+        description=(
+            "Advanced trusted-caller LanceDB/DataFusion predicate. The VectorDB service "
+            "passes this to table.search(...).where(...) as a read-only pre-filter before "
+            "limit(). Prefer source_id, source, and page_number for common filtering. "
+            "Deployers should expose this only inside the same auth/trust boundary as "
+            "unfiltered /v1/query access."
+        ),
+    )
 
 
 class QueryResult(BaseModel):

@@ -10,8 +10,10 @@ import pytest
 
 import nemo_retriever.query.service as query_service
 import nemo_retriever.query.workflow as query_workflow
+from nemo_retriever.query.filters import build_query_where_clause
 from nemo_retriever.query.options import (
     QueryEmbedOptions,
+    QueryFilterOptions,
     QueryRerankOptions,
     QueryRequest,
     QueryRetrievalOptions,
@@ -182,6 +184,36 @@ def test_query_documents_with_metadata_reports_resolved_strategy(monkeypatch, mo
     assert result.strategies == strategies
 
 
+def test_query_documents_threads_filter_options_into_vdb_kwargs(monkeypatch) -> None:
+    query_calls: list[tuple[str, dict[str, Any]]] = []
+
+    class FakeRetriever:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def query(self, query: str, **kwargs: Any) -> list[dict[str, Any]]:
+            query_calls.append((query, kwargs))
+            return []
+
+    monkeypatch.setattr(query_workflow, "Retriever", FakeRetriever)
+
+    filters = QueryFilterOptions(source_id="docs/a.pdf", page_number=3)
+    request = QueryRequest(query="deployment?", filters=filters)
+
+    assert query_workflow.query_documents(request) == []
+    assert query_calls == [
+        (
+            "deployment?",
+            {
+                "candidate_k": None,
+                "page_dedup": False,
+                "content_types": None,
+                "vdb_kwargs": {"where": build_query_where_clause(filters)},
+            },
+        )
+    ]
+
+
 def test_service_query_uses_candidate_pool_and_preserves_local_shaping(monkeypatch) -> None:
     client_calls: list[dict[str, Any]] = []
 
@@ -189,8 +221,14 @@ def test_service_query_uses_candidate_pool_and_preserves_local_shaping(monkeypat
         def __init__(self, *, base_url: str, api_token: str | None = None, **_kwargs: Any) -> None:
             client_calls.append({"base_url": base_url, "api_token": api_token})
 
-        def query(self, query: str, *, top_k: int) -> list[list[dict[str, Any]]]:
-            client_calls.append({"query": query, "top_k": top_k})
+        def query(
+            self,
+            query: str,
+            *,
+            top_k: int,
+            filters: QueryFilterOptions | None = None,
+        ) -> list[list[dict[str, Any]]]:
+            client_calls.append({"query": query, "top_k": top_k, "filters": filters})
             return [
                 [
                     {"text": "keep", "source": "doc.pdf", "page_number": 1, "metadata": {"type": "text"}},
@@ -209,6 +247,7 @@ def test_service_query_uses_candidate_pool_and_preserves_local_shaping(monkeypat
             page_dedup=True,
             content_types="text",
         ),
+        filters=QueryFilterOptions(source="doc.pdf"),
         service=QueryServiceOptions(service_url="http://svc:7670", service_api_token="secret"),
     )
 
@@ -217,7 +256,7 @@ def test_service_query_uses_candidate_pool_and_preserves_local_shaping(monkeypat
     ]
     assert client_calls == [
         {"base_url": "http://svc:7670", "api_token": "secret"},
-        {"query": "deployment?", "top_k": 3},
+        {"query": "deployment?", "top_k": 3, "filters": QueryFilterOptions(source="doc.pdf")},
     ]
 
 
