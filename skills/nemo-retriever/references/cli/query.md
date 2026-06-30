@@ -12,7 +12,7 @@ That's your FIRST tool call on every query turn, run **exactly** as one pipeline
 { "evidence": [ { text, source, locator, modality, fidelity, score, citation } ], "coverage": {...} }
 ```
 
-`tee ./evidence.json` keeps the full result in the cwd (not `/tmp` — clobbered under parallel queries). Read it back only as needed (`<RETRIEVER_VENV>/bin/python -c "import json; print(json.load(open('./evidence.json'))['evidence'][0]['text'])"`); pulling all chunks' text into context inflates cached prompt size on every later turn.
+`tee ./evidence.json` keeps the full result in the cwd (not `/tmp` — clobbered under parallel queries). Read it back only as needed (`<RETRIEVER_VENV>/bin/python -c "import json; e=json.load(open('./evidence.json'))['evidence']; print(e[0]['text'] if e else 'no evidence')"` — guard the index, the list is empty when a query finds nothing); pulling all chunks' text into context inflates cached prompt size on every later turn.
 
 **No narration between tool calls.** Do not write "Let me search…", "The retriever returned…", or any commentary — every token between the `query` call and the `Write` of `./output.json` becomes input (and cached input) for every later turn (quadratic cost). Go straight from reading the result to writing the file.
 
