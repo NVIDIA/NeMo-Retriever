@@ -65,6 +65,20 @@ def test_serviceingestor_empty_spec_is_none() -> None:
     assert ing._pipeline_payload() is None
 
 
+def test_compact_result_schema_populates_pipeline_payload() -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    payload = ing._pipeline_payload(result_schema="compact")
+    assert payload is not None
+    assert payload["result_schema"] == "compact"
+    assert PipelineSpec.model_validate(payload).result_schema == "compact"
+
+
+def test_execute_time_result_schema_overrides_stored_spec_value() -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing._pipeline_spec["result_schema"] = "compact"
+    assert ing._pipeline_payload(result_schema="legacy") is None
+
+
 def test_extract_mode_only_omits_extract_params() -> None:
     """``.extract(extraction_mode='pdf')`` must not send client model defaults."""
     ing = ServiceIngestor(base_url="http://example:7670")
@@ -232,6 +246,20 @@ def test_validate_allows_extra_key_when_operator_widens() -> None:
 def test_validate_reject_mode_blocks_any_override() -> None:
     cfg = PipelineOverridesConfig(mode="reject")
     spec = PipelineSpec(extract_params={"dpi": 300})
+    with pytest.raises(PolicyError) as exc:
+        validate_pipeline_spec(spec, cfg.to_policy())
+    assert exc.value.status_code == 403
+
+
+def test_validate_reject_mode_allows_compact_result_schema_only() -> None:
+    cfg = PipelineOverridesConfig(mode="reject")
+    spec = PipelineSpec(result_schema="compact")
+    assert validate_pipeline_spec(spec, cfg.to_policy()) is spec
+
+
+def test_validate_reject_mode_blocks_extraction_mode_piggyback_on_compact_schema() -> None:
+    cfg = PipelineOverridesConfig(mode="reject")
+    spec = PipelineSpec(result_schema="compact", extraction_mode="audio")
     with pytest.raises(PolicyError) as exc:
         validate_pipeline_spec(spec, cfg.to_policy())
     assert exc.value.status_code == 403

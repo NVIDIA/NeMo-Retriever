@@ -11,6 +11,7 @@ from typing import Any
 from typer.testing import CliRunner
 
 import nemo_retriever.query.workflow as query_core
+from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
 
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.cli.main")
@@ -587,6 +588,16 @@ def test_root_query_local_help_shows_retrieval_mode_not_hybrid() -> None:
     assert result.exit_code == 0
     assert "--retrieval-mode" in result.output
     assert "--hybrid" not in result.output
+
+
+def test_root_query_local_help_names_default_models() -> None:
+    result = RUNNER.invoke(cli_main.app, ["query", "q", "--help"])
+
+    assert result.exit_code == 0
+    assert "Default embedding model" in result.output
+    assert VL_EMBED_MODEL in result.output
+    assert "Default local reranker model" in result.output
+    assert VL_RERANK_MODEL in result.output
 
 
 def test_root_query_service_help_hides_local_only_options() -> None:

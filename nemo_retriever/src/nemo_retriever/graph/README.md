@@ -245,3 +245,5 @@ from nemo_retriever.graph import (
 ```
 
 `nemo_retriever.graph` is the graph API location used by the codebase.
+
+For NimClient and custom NIM integrations in UDFs, refer to [NimClient and Custom NIM Endpoints](../../developer_docs/nimclient.md).

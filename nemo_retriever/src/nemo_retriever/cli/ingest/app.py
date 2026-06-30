@@ -10,6 +10,7 @@ from typer.core import TyperGroup
 
 from nemo_retriever.cli.ingest.graph_commands import _graph_ingest_command
 from nemo_retriever.cli.ingest.service import _service_command
+from nemo_retriever.cli.ingest.options import DEFAULT_CAPTION_MODEL, DEFAULT_EMBED_MODEL
 
 _DEFAULT_COMMAND = "local"
 _GROUP_OPTIONS = {"--help", "-h"}
@@ -31,6 +32,18 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-app.command("local")(_graph_ingest_command)
-app.command("batch")(_graph_ingest_command)
+app.command(
+    "local",
+    help=(
+        f"Run local ingest into a LanceDB index. Default embedding model: {DEFAULT_EMBED_MODEL}. "
+        f"Default caption model when captioning: {DEFAULT_CAPTION_MODEL}."
+    ),
+)(_graph_ingest_command)
+app.command(
+    "batch",
+    help=(
+        f"Run Ray batch ingest into a LanceDB index. Default embedding model: {DEFAULT_EMBED_MODEL}. "
+        f"Default caption model when captioning: {DEFAULT_CAPTION_MODEL}."
+    ),
+)(_graph_ingest_command)
 app.command("service")(_service_command)

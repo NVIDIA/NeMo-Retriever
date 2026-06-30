@@ -52,12 +52,14 @@ class OCRActor(AbstractOperator, GPUOperator):
             )
         else:
             from nemo_retriever.models.local import NemotronOCRV2
+            from nemo_retriever.models.warmup_registry import get_warmed_model
 
             lang = resolve_ocr_v2_lang(
                 str(self.ocr_kwargs.get("ocr_version", "v2")),
                 self.ocr_kwargs.get("ocr_lang"),
             )
-            self._model = NemotronOCRV2(lang=lang)
+            warmed = get_warmed_model("ocr")
+            self._model = warmed if warmed is not None else NemotronOCRV2(lang=lang)
             self._nim_client = None
 
     def preprocess(self, data: Any, **kwargs: Any) -> Any:

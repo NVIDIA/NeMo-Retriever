@@ -9,8 +9,7 @@ as the ``retriever pipeline run`` CLI subcommand.
 
 This module re-exports the same Typer :data:`app` and keeps the
 ``python -m nemo_retriever.examples.graph_pipeline <args>`` entry point
-working so existing callers (notably
-:mod:`nemo_retriever.harness.run`) do not need to change.
+working for existing pipeline callers.
 
 New code should invoke the pipeline via one of the following:
 
