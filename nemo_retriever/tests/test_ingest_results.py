@@ -48,6 +48,15 @@ def test_transport_preserves_column_layout_and_strips_bulky_payloads() -> None:
     assert record["images"][0] == {"image_b64": None, "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4]}
 
 
+def test_transport_summarizes_long_lists_after_nested_sanitization() -> None:
+    rows = [{"image_b64": f"raw-{idx}", "label": "image"} for idx in range(21)]
+    df = pd.DataFrame({"path": ["/a.pdf"], "images": [rows]})
+
+    record = dataframe_to_transport_records(df)[0]
+
+    assert record["images"] == "<list len=21>"
+
+
 def test_transport_compact_document_rows_drop_legacy_metadata_and_bbox() -> None:
     df = pd.DataFrame(
         {

@@ -84,9 +84,9 @@ def _sanitize_result_value(key: str, val: Any) -> Any:
     if isinstance(val, dict):
         return {str(k): _sanitize_result_value(str(k), v) for k, v in val.items()}
     if isinstance(val, list):
-        return [_sanitize_result_value("", item) for item in val]
+        return sanitize_cell_value([_sanitize_result_value("", item) for item in val])
     if isinstance(val, tuple):
-        return [_sanitize_result_value("", item) for item in val]
+        return sanitize_cell_value([_sanitize_result_value("", item) for item in val])
     return sanitize_cell_value(val)
 
 
