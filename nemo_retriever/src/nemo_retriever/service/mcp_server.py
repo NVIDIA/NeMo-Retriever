@@ -200,7 +200,7 @@ class ServiceMCPClient:
         query: str,
         *,
         top_k: int = 5,
-        format: str = "hits",
+        format: QueryFormat = "hits",
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         body = dict(payload or {})

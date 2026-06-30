@@ -34,7 +34,7 @@ import asyncio
 import logging
 import threading
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Union
 
 import lancedb
 import uvicorn
@@ -337,7 +337,7 @@ def create_vectordb_app(
         written = await asyncio.to_thread(_state.write_rows, req.rows)
         return WriteResponse(written=written, total_rows=_state.total_rows())
 
-    @app.post("/v1/query", response_model=None, tags=["query"])
+    @app.post("/v1/query", response_model=Union[QueryResponse, EvidenceQueryResponse], tags=["query"])
     async def query(req: QueryRequest) -> QueryResponse | EvidenceQueryResponse:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")

@@ -10,10 +10,6 @@ Import from there directly in new code.
 
 from __future__ import annotations
 
-from nemo_retriever.query.evidence import (
-    _evidence_item,
-    _normalize_modality,
-    build_evidence_result,
-)
+from nemo_retriever.query.evidence import build_evidence_result
 
-__all__ = ["build_evidence_result", "_evidence_item", "_normalize_modality"]
+__all__ = ["build_evidence_result"]
