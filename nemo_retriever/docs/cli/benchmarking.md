@@ -48,6 +48,38 @@ retriever harness sweep --runs-config nemo_retriever/harness/nightly_config.yaml
 retriever harness nightly --runs-config nemo_retriever/harness/nightly_config.yaml --dry-run
 ```
 
+### Agentic evaluation
+
+Harness runs use standard dense retrieval unless `agentic: true` is set in the
+`query` section of the selected benchmark/dataset config, or via
+`--override query.agentic=true`. Agentic harness evaluation runs the ReAct
+retrieval graph in-process after ingest and is supported for BEIR evaluation
+(`evaluation.mode: beir`).
+
+Minimal BEIR override example:
+
+```bash
+retriever harness run --dataset jp20 --preset single_gpu \
+  --override query.agentic=true \
+  --override query.agentic_llm_model=nvidia/llama-3.3-nemotron-super-49b-v1.5
+```
+
+Useful agentic overrides (all under the `query.` namespace):
+
+- `query.agentic_invoke_url` — OpenAI-compatible chat-completions endpoint. Omit
+  to use the built-in NVIDIA endpoint.
+- `query.agentic_backend_top_k` — backend candidate pool per ReAct retrieval
+  call. Must be at least the final requested metric depth (`max(beir_ks)`); the
+  agent targets `max(beir_ks)` documents so recall at the largest cutoff is
+  computable.
+- `query.agentic_num_concurrent` — number of queries the agent batch runs
+  concurrently (defaults to `1`).
+- `query.agentic_temperature` — defaults to `0.0`; hosted/default NVIDIA
+  endpoints are validated as `0.0..1.0`, while other OpenAI-compatible endpoints
+  allow `0.0..2.0`.
+- `query.agentic_reasoning_effort` — optional provider-specific field forwarded
+  only when configured.
+
 ### Image storage
 
 For normal ingest, configure image persistence on `retriever ingest` with
