@@ -144,17 +144,16 @@ def query_documents(request: QueryRequest) -> list[RetrievalHit]:
 
 
 def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
-    """Run agentic (ReAct) retrieval for a single query and return the agent's
-    ranked document IDs.
+    """Run agentic (ReAct) retrieval for a single query and return ranked hits.
 
-    Unlike the dense ``query_documents`` path (which returns enriched hits with
-    text), the agent operates at the document-ID granularity of the configured
-    index, so the result is the ranked ``doc_id`` list the agent selected,
-    annotated with the source that produced it (``final_results`` / ``rrf`` /
-    ``selection_agent``). The LanceDB ``uri``/``table_name``, embedding config,
-    and (when ``--rerank`` is enabled) reranker config are passed straight
-    through to the wrapped ``Retriever`` that backs the agent's ``retrieve``
-    tool. Reranking therefore applies per agent retrieval hop.
+    Each result carries the full ``RetrievalHit`` metadata (``text``, ``source``,
+    ``page_number``, ``pdf_page``, ``metadata``, …) — re-hydrated by ``doc_id`` from
+    the hits captured at retrieval time — plus the agentic annotations ``doc_id``,
+    ``rank``, and ``result_source`` (``final_results`` / ``rrf`` / ``selection_agent``).
+    This matches the metadata the dense ``query_documents`` path returns. The LanceDB
+    ``uri``/``table_name``, embedding config, and (when ``--rerank`` is enabled)
+    reranker config are passed through to the wrapped ``Retriever`` that backs the
+    agent's ``retrieve`` tool; reranking applies per agent retrieval hop.
     """
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
@@ -166,6 +165,9 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
         "vdb_op": "lancedb",
         "vdb_kwargs": vdb_kwargs,
         "top_k": int(request.retrieval.top_k),
+        "candidate_k": request.retrieval.candidate_k,
+        "page_dedup": bool(request.retrieval.page_dedup),
+        "content_types": request.retrieval.content_types,
         "embedding_endpoint": request.embed.embed_invoke_url,
         "embedding_api_key": api_key or "",
         "llm_model": request.agentic.llm_model,
@@ -193,13 +195,16 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
         result = result.sort_values("rank")
     ranked: list[dict[str, Any]] = []
     for _, row in result.iterrows():
-        ranked.append(
+        hit = row.get("hit") if "hit" in result.columns else None
+        enriched: dict[str, Any] = dict(hit) if isinstance(hit, dict) else {}
+        enriched.update(
             {
-                "rank": int(row.get("rank", len(ranked) + 1)),
                 "doc_id": str(row.get("doc_id", "")),
+                "rank": int(row.get("rank", len(ranked) + 1)),
                 "result_source": str(row.get("result_source", "")),
             }
         )
+        ranked.append(enriched)
         if len(ranked) >= request.retrieval.top_k:
             break
     return ranked

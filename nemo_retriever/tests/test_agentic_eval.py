@@ -36,11 +36,15 @@ class FakeRetriever:
         self.kwargs = kwargs
         self.graph = kwargs.get("graph")
         self.top_k = int(kwargs.get("top_k", 10))
+        self.query_calls: list[dict] = []
 
-    def query(self, query: str, *, top_k: int | None = None):
+    def query(self, query: str, *, top_k=None, candidate_k=None, page_dedup=False, content_types=None):
         if self.graph is not None:
             return self.queries([query], top_k=top_k)[0]
         _ = query
+        self.query_calls.append(
+            {"top_k": top_k, "candidate_k": candidate_k, "page_dedup": page_dedup, "content_types": content_types}
+        )
         hits = [
             {
                 "source": "/tmp/doc.pdf",
@@ -90,10 +94,16 @@ def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mo
     cfg = AgenticRetrievalConfig(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
     result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
 
-    assert list(result.columns) == ["query_id", "doc_id", "rank", "message", "result_source"]
+    assert list(result.columns) == ["query_id", "doc_id", "rank", "message", "result_source", "hit"]
     assert result["query_id"].tolist() == ["0"] * 10
     assert result["doc_id"].tolist()[0] == "doc_1"
     assert result["rank"].tolist() == list(range(1, 11))
+    # doc_1 was actually retrieved, so its row re-hydrates the full hit metadata
+    # (dropped at the agent boundary) rather than just a bare doc_id.
+    doc1_hit = result.loc[result["doc_id"] == "doc_1", "hit"].iloc[0]
+    assert doc1_hit.get("source") == "/tmp/doc.pdf"
+    assert doc1_hit.get("page_number") == 1
+    assert "text" in doc1_hit
 
 
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
@@ -117,6 +127,38 @@ def test_agentic_retriever_honors_top_k(mock_react_step, mock_selection_step):
     result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
 
     assert result["rank"].tolist() == list(range(1, 6))  # 5 rows, honoring top_k=5
+
+
+@patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
+@patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_forwards_retrieval_knobs(mock_react_step, mock_selection_step):
+    """candidate_k/page_dedup/content_types reach the per-hop Retriever.query call."""
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    mock_react_step.return_value = _make_tool_call_response(
+        "final_results", {"doc_ids": ["doc_1"], "message": "done", "search_successful": "true"}
+    )
+    mock_selection_step.return_value = _make_tool_call_response(
+        "log_selected_documents", {"doc_ids": ["doc_1"], "message": "best"}
+    )
+
+    cfg = AgenticRetrievalConfig(
+        llm_model="m",
+        invoke_url="http://localhost/v1/chat/completions",
+        top_k=1,
+        candidate_k=40,
+        page_dedup=True,
+        content_types="text",
+    )
+    retriever = AgenticRetriever(cfg, match_mode="pdf_page")
+    retriever.retrieve(["0"], ["find doc"])
+
+    calls = retriever._retriever.query_calls
+    assert calls, "expected at least one per-hop retriever.query call"
+    assert all(c["page_dedup"] is True for c in calls)
+    assert all(c["content_types"] == "text" for c in calls)
+    assert all(c["candidate_k"] >= c["top_k"] for c in calls)  # floored at the hop's top_k
 
 
 def test_agentic_config_requires_llm_model():

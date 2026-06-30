@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import cast
 
@@ -23,6 +24,7 @@ from nemo_retriever.cli.shared import (
 )
 from nemo_retriever.common.vdb.records import RetrievalHit
 from nemo_retriever.query.options import (
+    DEFAULT_AGENTIC_LLM_MODEL,
     QueryAgenticOptions,
     QueryEmbedOptions,
     QueryRerankOptions,
@@ -184,7 +186,7 @@ def _local_command(
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
     agentic: opts.AgenticOption = False,
-    agentic_llm_model: opts.AgenticLlmModelOption = None,
+    agentic_llm_model: opts.AgenticLlmModelOption = DEFAULT_AGENTIC_LLM_MODEL,
     agentic_invoke_url: opts.AgenticInvokeUrlOption = None,
     agentic_reasoning_effort: opts.AgenticReasoningEffortOption = "high",
     agentic_backend_top_k: opts.AgenticBackendTopKOption = 20,
@@ -243,8 +245,15 @@ def _local_command(
                     temperature=agentic_temperature,
                 ),
             )
-            with quiet_capture():
-                ranked = query_agentic_documents(request)
+            # Agentic retrieval is a multi-step ReAct loop, not a single dense pass, so
+            # surface per-query/step progress instead of running blind. Mirrors the
+            # `pipeline run` logging setup: INFO to stderr (stdout stays clean JSON).
+            logging.basicConfig(
+                level=logging.INFO,
+                format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+                force=True,
+            )
+            ranked = query_agentic_documents(request)
             typer.echo(json.dumps(ranked, indent=2, sort_keys=True, default=str))
             return
 

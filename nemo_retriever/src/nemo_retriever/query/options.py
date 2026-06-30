@@ -10,6 +10,10 @@ from typing import Literal, Sequence
 
 QueryRetrievalMode = Literal["auto", "dense", "hybrid", "sparse"]
 
+#: Default chat model the agentic ReAct loop drives. Override per-call via
+#: ``--agentic-llm-model`` or the ``NEMO_RETRIEVER_AGENTIC_LLM_MODEL`` env var.
+DEFAULT_AGENTIC_LLM_MODEL = "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+
 
 @dataclass(frozen=True)
 class QueryRetrievalOptions:
@@ -54,7 +58,7 @@ class QueryAgenticOptions:
     """Options for the agentic (ReAct) retrieval strategy."""
 
     enabled: bool = False
-    llm_model: str | None = None
+    llm_model: str | None = DEFAULT_AGENTIC_LLM_MODEL
     invoke_url: str | None = None
     reasoning_effort: str | None = "high"
     backend_top_k: int = 20
