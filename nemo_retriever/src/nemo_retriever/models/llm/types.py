@@ -40,6 +40,25 @@ class LLMClient(Protocol):
 
 
 @runtime_checkable
+class CompletionClient(Protocol):
+    """Minimal client contract consumed by reusable generation tasks."""
+
+    @property
+    def model(self) -> str:
+        """Return the model identifier used for generated results."""
+        ...
+
+    def complete(
+        self,
+        messages: list[dict[str, Any]],
+        max_tokens: Optional[int] = None,
+        extra_params: Optional[dict[str, Any]] = None,
+    ) -> tuple[str, float]:
+        """Return generated text and wall-clock latency in seconds."""
+        ...
+
+
+@runtime_checkable
 class AnswerJudge(Protocol):
     """Pluggable answer scoring interface."""
 
@@ -59,6 +78,25 @@ class GenerationResult:
     """Result from a single LLM generation call."""
 
     answer: str
+    latency_s: float
+    model: str
+    error: Optional[str] = None
+
+
+@dataclass
+class GenerationRequest:
+    """Provider-neutral request produced by a generation task."""
+
+    messages: list[dict[str, Any]]
+    max_tokens: Optional[int] = None
+    extra_params: Optional[dict[str, Any]] = None
+
+
+@dataclass
+class GeneratedTextResult:
+    """Task-neutral result from a single text-generation request."""
+
+    text: str
     latency_s: float
     model: str
     error: Optional[str] = None
@@ -104,7 +142,7 @@ class AnswerResult(BaseModel):
     to produce it and -- when a ``reference`` answer and/or ``judge`` are
     supplied -- the Tier-1 / Tier-2 / Tier-3 scoring artefacts produced by
     :mod:`nemo_retriever.evaluation.scoring` and
-    :class:`~nemo_retriever.llm.clients.judge.LLMJudge`.
+    :class:`~nemo_retriever.models.llm.clients.judge.LLMJudge`.
 
     Attributes:
         query: The question that was answered.
