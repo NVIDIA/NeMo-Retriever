@@ -25,13 +25,31 @@ If `command -v retriever` returns nothing, follow `references/install.md` to ins
 
 ## Query turn — run this, then write the answer
 
-`<RETRIEVER_VENV>/bin/retriever query "<question>" --format evidence --hybrid --top-k 10` → JSON
-`{ evidence: [ { text, source, locator, modality, fidelity, score, citation } ], coverage: {...} }`.
-That's the FIRST (usually only) call — don't `ls`/`find`/`sed`/Read to orient first; it already searched the whole corpus. Then:
-- **Lead with the direct answer** (the exact figure, or Yes/No) for the exact entity asked; address every entity / year / category the question names — even "not provided".
-- **Trust by fidelity** (`verbatim > ocr > transcribed > vlm_caption`): a number or directional claim resting ONLY on a `vlm_caption` (chart/image) is unconfirmed — quote it tagged "(chart-derived, unconfirmed)" unless a higher-fidelity item states the same fact. Never fabricate from adjacent text.
-- Re-`query` only if the answer isn't yet supported — once per genuinely distinct sub-question (per entity when comparing/listing), or with the exact term when `coverage.thin_spots` flags a miss.
-- Open `references/cli/query.md` ONLY for the fallback path (exact-term re-query, chart text-extract, compose-reply detail) — a normal answer needs none of it.
+Run TWO retrieval passes and capture each to a file — never stream to the terminal (the top-10 evidence overflows the ~10 KiB tool-output limit and truncates mid-data). The passes are complementary: semantic hybrid finds topically-relevant pages; a **lexical (sparse/BM25) pass on the exact term** finds the precise page a number/code/proper-noun lives on — which dense embedding retrieval often misses.
+
+```bash
+# 1) Semantic pass — the full question, hybrid (dense + lexical fusion).
+<RETRIEVER_VENV>/bin/retriever query "<question>" --format evidence --hybrid --top-k 10 > ./ev_dense.json
+# 2) Lexical pass — the EXACT term/figure/code/proper-noun the question targets (just the term, not the whole question; that's what makes BM25 precise).
+<RETRIEVER_VENV>/bin/retriever query "<exact term, e.g. Management VaR / Level 3 / a specific code>" --format evidence --retrieval-mode sparse --top-k 10 > ./ev_lex.json
+<RETRIEVER_VENV>/bin/python - <<'PY'
+import json, glob
+for f in sorted(glob.glob('./ev_*.json')):
+    for i, x in enumerate(json.load(open(f))['evidence']):
+        print(f, i, x['source'], x['locator']['value'], x['fidelity'], '|', x['text'][:140].replace('\n', ' '))
+PY
+```
+
+Always run the lexical pass for the specific named figure/metric/code/entity, and **query as many times as it takes to be sure** — one query per named term, and **re-query freely to disambiguate**. These filings repeat similar tables (e.g. many "Level 3" tables for different segments/categories); when several candidates come back, run more targeted queries to find the **consolidated / total** figure the question asks for (e.g. query `"consolidated total Level 3 assets liabilities"` or the exact row/section name), and read the competing candidate pages before deciding. Prefer more targeted queries over too few — under-querying is the main cause of wrong answers here. Those are your FIRST calls — don't `ls`/`find`/`sed`/Read to orient first. Then:
+- **Pull only the rows you need from the file(s) — never print a whole chunk** (a chunk can exceed the ~10 KiB limit and truncate, so `print(text)`/`cat` loses data). Filter to the lines naming the term:
+  `<RETRIEVER_VENV>/bin/python -c "import json; t=json.load(open('./ev_lex.json'))['evidence'][0]['text']; print('\n'.join(l for l in t.splitlines() if 'Management VaR' in l))"` (swap in the file, item index, and term).
+- **Ground every figure in a source line — quote before you write.** For each number/name your answer will state, first locate the exact line in the evidence that says it and copy the value straight from that line. **Never write a figure you cannot point to verbatim in the evidence** — if it isn't there, answer "not provided"; do not infer, round, or compute it from other cells.
+- **Prefer a prose statement over a table cell.** When a figure is stated in a sentence (e.g. *"Level 3 assets and liabilities were $9,194 million and $28,755 million, respectively"*), use that — it's unambiguous. Read a table cell only for values prose doesn't give, and bind it by its **row label × column header** in the markdown table, not by position.
+- **Verify before writing.** Each figure in your draft must appear, character-for-character, in a line you actually pulled from `ev_*.json`. If a draft figure isn't found in the evidence, it's wrong — replace it with the evidence value or mark it "not provided".
+- **Answer verbatim-figure-first** — copy each figure in the document's own units and scale (`$27,132 million`, not `$27.1 billion`/`27,132`); don't round, rescale (M↔B), or reformat. Cover every entity / period / category the question names. Lead with the values (or a bare Yes/No).
+- **Trust by fidelity** (`verbatim > ocr > transcribed > vlm_caption`): a number resting ONLY on a `vlm_caption` is unconfirmed — quote it tagged "(chart-derived, unconfirmed)" unless a higher-fidelity item agrees. Never fabricate from adjacent text.
+- **`ranked_retrieved` = the union of pages across both passes** — dedup by doc+page, ordered by relevance, up to 10.
+- Open `references/cli/query.md` ONLY for the fallback path (chart text-extract, compose-reply detail).
 
 For the full `retriever ingest` CLI spec, see `references/cli/ingest.md`. For `retriever query` flags, `<RETRIEVER_VENV>/bin/retriever query --help` is authoritative (and faster) — you do not need it for routine turns.
 
@@ -40,8 +58,8 @@ Before ingesting a mixed folder, inventory extensions (`find <dir> -name '*.*' |
 ## Hard limits (apply to every turn)
 
 - **Setup turn**: build the index in one shell command (see `references/setup.md`). STOP after the index lands.
-- **Query turn**: at most **2 Bash calls** — 1 `retriever query`, +1 optional targeted text-extract per `references/cli/query.md`. Reply and then STOP.
+- **Query turn**: query until the answer is fully supported — a semantic pass plus a lexical (sparse) pass per named term, **re-querying as needed to disambiguate similar tables** (commonly 4–8 retriever calls), then filter the rows you answer from. Don't stop early to save calls; **stop only when each figure is pinned to a source line.**
 - **No narration between tool calls.** Tokens you emit between calls become input + cached input for every later turn — quadratic cost. Go straight from reading the summary to writing the JSON file.
 - **Banned**: `TodoWrite`, Glob, Grep, `Read` of whole PDFs, re-running setup, spawning subagents, speculative "confirmation" calls.
 
-Long query turns (5+ tool calls, 1M+ cache-read tokens) cost ~5× a disciplined turn and almost always still produce the wrong answer. **Answering partially beats timing out.**
+Spend the calls you need to get the figures right — accuracy matters more than minimizing calls here. Only avoid genuinely wasteful loops (re-running identical queries, reading whole PDFs, 15+ calls). **A fully-supported answer beats a cheap partial one.**
