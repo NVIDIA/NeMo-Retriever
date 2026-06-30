@@ -36,11 +36,38 @@ class QueryResponse(BaseModel):
         return [result.hits for result in self.results]
 
 
+class Locator(BaseModel):
+    """Where an evidence item lives in its source (page / segment / timestamp / bbox)."""
+
+    kind: str
+    value: Any = None
+
+
+class EvidenceItem(BaseModel):
+    """One fidelity-tagged, citation-ready evidence span."""
+
+    text: str
+    source: str
+    locator: Locator
+    modality: str
+    fidelity: str
+    score: float
+    citation: str
+
+
+class Coverage(BaseModel):
+    """Summary of what was searched, plus flagged thin spots."""
+
+    strategies_used: list[str]
+    n_docs_seen: int
+    thin_spots: list[str]
+
+
 class EvidenceResult(BaseModel):
     """One query's answer-ready evidence, mirroring ``retriever query --format evidence``."""
 
-    evidence: list[dict[str, Any]]
-    coverage: dict[str, Any]
+    evidence: list[EvidenceItem]
+    coverage: Coverage
 
 
 class EvidenceQueryResponse(BaseModel):

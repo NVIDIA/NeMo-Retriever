@@ -56,8 +56,8 @@ def _evidence_item(hit: dict[str, Any]) -> dict[str, Any]:
     elif meta.get("frame_timestamp_seconds") is not None:
         locator = {"kind": "timestamp", "value": meta["frame_timestamp_seconds"]}
         citation = f"{source} @{meta['frame_timestamp_seconds']}"
-    elif meta.get("bbox_xyxy_norm") is not None:
-        locator = {"kind": "bbox", "value": meta["bbox_xyxy_norm"]}
+    elif (bbox := meta.get("bbox_xyxy_norm") or hit.get("bbox_xyxy_norm")) is not None:
+        locator = {"kind": "bbox", "value": bbox}
         citation = source
     else:
         locator = {"kind": "page", "value": None}
