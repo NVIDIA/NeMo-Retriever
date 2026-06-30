@@ -27,9 +27,9 @@ own ``(api_base, api_key, model)`` triple.
 Public surface contract
 -----------------------
 The names in ``__all__`` below are the frozen public API of this
-module.  External callers should import from ``nemo_retriever.llm``
-rather than reaching into submodules (``llm.clients.litellm``,
-``llm.text_utils``) directly -- those submodule paths are implementation
+module. External callers should import from ``nemo_retriever.models.llm``
+rather than reaching into submodules (``models.llm.clients.litellm``,
+``models.llm.text_utils``) directly -- those submodule paths are implementation
 details and may be reorganised in future releases without notice.  The
 Protocols + result dataclasses + concrete clients + re-exported params
 models listed here are the supported integration points.
@@ -39,17 +39,31 @@ from nemo_retriever.models.llm.types import (
     AnswerJudge,
     AnswerRequest,
     AnswerResult,
+    CompletionClient,
+    GeneratedTextResult,
+    GenerationRequest,
     GenerationResult,
     JudgeResult,
     LLMClient,
     RetrievalResult,
     RetrieverStrategy,
 )
-from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
+from nemo_retriever.common.params.models import (
+    LLMInferenceParams,
+    LLMRemoteClientParams,
+    LLMSamplingOverrides,
+    TextGenerationParams,
+)
+from nemo_retriever.models.llm.tasks import (
+    GenerationTask,
+    GenericPromptTask,
+    RagAnswerTask,
+    SummarizeTask,
+)
 
 _LAZY_IMPORTS = {
-    "LiteLLMClient": "nemo_retriever.llm.clients.litellm",
-    "LLMJudge": "nemo_retriever.llm.clients.judge",
+    "LiteLLMClient": "nemo_retriever.models.llm.clients.litellm",
+    "LLMJudge": "nemo_retriever.models.llm.clients.judge",
 }
 
 
@@ -65,18 +79,28 @@ def __getattr__(name: str):
 __all__ = [
     # Protocols
     "AnswerJudge",
+    "CompletionClient",
+    "GenerationTask",
     "LLMClient",
     "RetrieverStrategy",
     # Request/result models
     "AnswerRequest",
     "AnswerResult",
+    "GeneratedTextResult",
+    "GenerationRequest",
     "GenerationResult",
     "JudgeResult",
     "RetrievalResult",
+    # Tasks
+    "GenericPromptTask",
+    "RagAnswerTask",
+    "SummarizeTask",
     # Concrete clients (lazy-loaded)
     "LLMJudge",
     "LiteLLMClient",
     # Transport / sampling params (re-exported for ergonomics)
     "LLMInferenceParams",
     "LLMRemoteClientParams",
+    "LLMSamplingOverrides",
+    "TextGenerationParams",
 ]

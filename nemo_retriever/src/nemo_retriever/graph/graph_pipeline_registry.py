@@ -48,9 +48,11 @@ from typing import (
     Union,
 )
 
-from nemo_retriever.operators.abstract_operator import AbstractOperator
-from nemo_retriever.graph.pipeline_graph import Graph, Node
+from pydantic import BaseModel
 
+from nemo_retriever.common.remote_auth import resolve_remote_api_key
+from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -75,44 +77,379 @@ def _import_class(qualified: str) -> type:
     return cls
 
 
+_GRAPH_FORMAT_VERSION = 2
+_PYDANTIC_MODEL_MARKER = "__pydantic_model__"
+_PYDANTIC_FIELDS = "fields"
+_PYDANTIC_FIELDS_SET = "fields_set"
+_SECRET_ENV_MARKER = "__secret_env__"
+_SECRET_NO_AUTH_MARKER = "__secret_no_auth__"
+_TUPLE_MARKER = "__tuple__"
+_FROZENSET_MARKER = "__frozenset__"
+_MAPPING_MARKER = "__mapping__"
+_OMIT_FIELD = object()
+
+
+class GraphSerializationError(ValueError):
+    """Raised when graph state cannot be serialized safely and losslessly."""
+
+
+def _is_api_key_field(field_name: Optional[str]) -> bool:
+    return bool(field_name) and (field_name == "api_key" or field_name.endswith("_api_key"))
+
+
+def _is_obvious_secret_field(field_name: Optional[str]) -> bool:
+    if not field_name:
+        return False
+    normalized = field_name.lower().replace("-", "_")
+    compact = normalized.replace("_", "")
+    if _is_api_key_field(normalized):
+        return True
+    if normalized in {
+        "authorization",
+        "credential",
+        "credentials",
+        "password",
+        "passwd",
+        "private_key",
+        "secret",
+        "secret_key",
+        "storage_options",
+    }:
+        return True
+    if set(normalized.split("_")) & {"password", "passwd", "secret"}:
+        return True
+    if normalized == "token" or normalized.endswith("_token"):
+        return True
+    if compact in {
+        "authorization",
+        "credential",
+        "credentials",
+        "storageoptions",
+    }:
+        return True
+    return compact.endswith(("apikey", "password", "passwd", "secret", "secretkey", "privatekey", "token"))
+
+
+def _is_empty_secret(value: Any) -> bool:
+    if value is None or value == "":
+        return True
+    return isinstance(value, (dict, list, tuple, set, frozenset)) and not value
+
+
+def _import_qualified_object(qualified: str) -> Any:
+    """Import a qualified module attribute, including nested attributes."""
+    parts = qualified.split(".")
+    for index in range(len(parts) - 1, 0, -1):
+        module_name = ".".join(parts[:index])
+        try:
+            obj: Any = importlib.import_module(module_name)
+        except ModuleNotFoundError:
+            continue
+        try:
+            for part in parts[index:]:
+                obj = getattr(obj, part)
+        except AttributeError as exc:
+            raise ImportError(f"Cannot import qualified object {qualified!r}") from exc
+        return obj
+    raise ImportError(f"Cannot import qualified object {qualified!r}")
+
+
+def _model_uses_no_api_key(model: BaseModel, field_name: str) -> bool:
+    checker = getattr(model, "_uses_no_api_key", None)
+    if callable(checker):
+        return bool(checker(field_name))
+    return field_name in getattr(model, "_no_api_key_fields", set())
+
+
+def _contains_pydantic_model(value: Any, seen: Optional[Set[int]] = None) -> bool:
+    if isinstance(value, BaseModel):
+        return True
+    if value is None or isinstance(value, (bool, int, float, str, bytes)):
+        return False
+    if seen is None:
+        seen = set()
+    value_id = id(value)
+    if value_id in seen:
+        return False
+    seen.add(value_id)
+    if isinstance(value, dict):
+        return any(_contains_pydantic_model(item, seen) for pair in value.items() for item in pair)
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return any(_contains_pydantic_model(item, seen) for item in value)
+    return False
+
+
+def _encode_secret(
+    value: Any,
+    *,
+    field_name: str,
+    path: str,
+    owner: Optional[BaseModel],
+    allow_api_key_env: bool,
+) -> Any:
+    if _is_api_key_field(field_name):
+        if value == "" or (value is None and owner is not None and _model_uses_no_api_key(owner, field_name)):
+            return {_SECRET_NO_AUTH_MARKER: ""}
+        if owner is None and allow_api_key_env and isinstance(value, str) and value.strip().startswith("os.environ/"):
+            return value.strip()
+        if owner is None and not allow_api_key_env:
+            if value is None:
+                return None
+            raise GraphSerializationError(
+                f"{path}: refusing to serialize an API key inside an opaque mapping; "
+                "move it to a typed params field or top-level operator kwarg"
+            )
+        if value is not None and not isinstance(value, str):
+            raise GraphSerializationError(f"{path}: API-key fields must be strings, null, or the no-auth marker")
+        scope = "model" if owner is not None else "operator"
+        return {_SECRET_ENV_MARKER: scope}
+    if not _is_empty_secret(value):
+        raise GraphSerializationError(f"{path}: refusing to serialize non-rehydratable secret field {field_name!r}")
+    return value
+
+
+def _encode_value(
+    value: Any,
+    *,
+    path: str,
+    field_name: Optional[str] = None,
+    owner: Optional[BaseModel] = None,
+    allow_api_key_env: bool = False,
+) -> Any:
+    """Recursively encode ``value`` into lossless, JSON-native graph state."""
+    if _is_obvious_secret_field(field_name):
+        return _encode_secret(
+            value,
+            field_name=field_name or "",
+            path=path,
+            owner=owner,
+            allow_api_key_env=allow_api_key_env,
+        )
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, BaseModel):
+        model_type = type(value)
+        qualified = _qualified_name(model_type)
+        try:
+            restored_type = _import_qualified_object(qualified)
+        except ImportError as exc:
+            raise GraphSerializationError(f"{path}: Pydantic model {qualified!r} is not rehydratable") from exc
+        if restored_type is not model_type:
+            raise GraphSerializationError(f"{path}: Pydantic model {qualified!r} does not round-trip by identity")
+        dumped = value.model_dump(mode="python")
+        if not isinstance(dumped, dict):
+            raise GraphSerializationError(
+                f"{path}: Pydantic model serializer must return a mapping, got {type(dumped).__name__}"
+            )
+        fields: Dict[str, Any] = {}
+        for name, dumped_item in dumped.items():
+            actual = getattr(value, name, dumped_item)
+            item = actual if _contains_pydantic_model(actual) else dumped_item
+            fields[name] = _encode_value(
+                item,
+                path=f"{path}.{name}",
+                field_name=name,
+                owner=value,
+            )
+        return {
+            _PYDANTIC_MODEL_MARKER: qualified,
+            _PYDANTIC_FIELDS: fields,
+            _PYDANTIC_FIELDS_SET: sorted(value.model_fields_set),
+        }
+    if isinstance(value, type):
+        qualified = _qualified_name(value)
+        try:
+            restored = _import_qualified_object(qualified)
+        except ImportError as exc:
+            raise GraphSerializationError(f"{path}: type {qualified!r} is not rehydratable") from exc
+        if restored is not value:
+            raise GraphSerializationError(f"{path}: type {qualified!r} does not round-trip by identity")
+        return {"__type_ref__": qualified}
+    if callable(value) and hasattr(value, "__qualname__"):
+        module = getattr(value, "__module__", None) or ""
+        qualified = f"{module}.{value.__qualname__}"
+        try:
+            restored = _import_qualified_object(qualified)
+        except ImportError as exc:
+            raise GraphSerializationError(f"{path}: callable {qualified!r} is not rehydratable") from exc
+        if restored is not value:
+            raise GraphSerializationError(f"{path}: callable {qualified!r} does not round-trip by identity")
+        return {"__callable_ref__": qualified}
+    if isinstance(value, Path):
+        return {"__path__": str(value)}
+    if isinstance(value, tuple):
+        return {_TUPLE_MARKER: [_encode_value(item, path=f"{path}[{index}]") for index, item in enumerate(value)]}
+    if isinstance(value, list):
+        return [_encode_value(item, path=f"{path}[{index}]") for index, item in enumerate(value)]
+    if isinstance(value, (set, frozenset)):
+        encoded = [_encode_value(item, path=f"{path}[{index}]") for index, item in enumerate(value)]
+        encoded.sort(key=lambda item: json.dumps(item, sort_keys=True))
+        marker = _FROZENSET_MARKER if isinstance(value, frozenset) else "__set__"
+        return {marker: encoded}
+    if isinstance(value, dict):
+        encoded_dict: Dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise GraphSerializationError(
+                    f"{path}: mapping key {key!r} is not a string and cannot round-trip through JSON"
+                )
+            encoded_dict[key] = _encode_value(
+                item,
+                path=f"{path}.{key}",
+                field_name=key,
+            )
+        return {_MAPPING_MARKER: encoded_dict}
+    raise GraphSerializationError(
+        f"{path}: unsupported value of type {type(value).__module__}.{type(value).__qualname__}"
+    )
+
+
+def _decode_value(
+    value: Any,
+    *,
+    path: str,
+    format_version: int,
+    field_name: Optional[str] = None,
+) -> Any:
+    """Recursively restore graph state encoded by v2 or accepted v1 markers."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, list):
+        return [
+            _decode_value(item, path=f"{path}[{index}]", format_version=format_version)
+            for index, item in enumerate(value)
+        ]
+    if not isinstance(value, dict):
+        if format_version == 1:
+            return value
+        raise GraphSerializationError(f"{path}: expected JSON-native graph state")
+    if format_version >= 2 and _SECRET_ENV_MARKER in value:
+        if not _is_api_key_field(field_name):
+            raise GraphSerializationError(f"{path}: secret environment marker is outside an API-key field")
+        scope = value[_SECRET_ENV_MARKER]
+        if scope == "model":
+            return _OMIT_FIELD
+        if scope == "operator":
+            return resolve_remote_api_key()
+        raise GraphSerializationError(f"{path}: invalid API-key environment marker")
+    if format_version >= 2 and _SECRET_NO_AUTH_MARKER in value:
+        if not _is_api_key_field(field_name) or value[_SECRET_NO_AUTH_MARKER] != "":
+            raise GraphSerializationError(f"{path}: invalid no-auth API-key marker")
+        return ""
+    if format_version >= 2 and _MAPPING_MARKER in value:
+        items = value[_MAPPING_MARKER]
+        if not isinstance(items, dict):
+            raise GraphSerializationError(f"{path}: malformed mapping envelope")
+        decoded_mapping: Dict[str, Any] = {}
+        for key, item in items.items():
+            decoded = _decode_value(
+                item,
+                path=f"{path}.{key}",
+                format_version=format_version,
+                field_name=key,
+            )
+            if decoded is not _OMIT_FIELD:
+                decoded_mapping[key] = decoded
+        return decoded_mapping
+    if format_version >= 2 and _PYDANTIC_MODEL_MARKER in value:
+        qualified = value[_PYDANTIC_MODEL_MARKER]
+        fields = value.get(_PYDANTIC_FIELDS)
+        fields_set = value.get(_PYDANTIC_FIELDS_SET, [])
+        if not isinstance(qualified, str) or not isinstance(fields, dict):
+            raise GraphSerializationError(f"{path}: malformed Pydantic model envelope")
+        try:
+            model_cls = _import_qualified_object(qualified)
+        except ImportError as exc:
+            raise GraphSerializationError(f"{path}: Pydantic model {qualified!r} is not importable") from exc
+        if not isinstance(model_cls, type) or not issubclass(model_cls, BaseModel):
+            raise GraphSerializationError(f"{path}: {qualified!r} is not a Pydantic model type")
+        decoded_fields: Dict[str, Any] = {}
+        for name, item in fields.items():
+            decoded = _decode_value(
+                item,
+                path=f"{path}.{name}",
+                format_version=format_version,
+                field_name=name,
+            )
+            if decoded is not _OMIT_FIELD:
+                decoded_fields[name] = decoded
+        try:
+            model = model_cls.model_validate(decoded_fields)
+        except Exception as exc:
+            raise GraphSerializationError(
+                f"{path}: failed to validate restored Pydantic model {qualified!r}: {exc}"
+            ) from exc
+        if not isinstance(fields_set, list) or not all(isinstance(name, str) for name in fields_set):
+            raise GraphSerializationError(f"{path}: malformed Pydantic fields_set")
+        unknown = set(fields_set) - set(type(model).model_fields)
+        if unknown:
+            raise GraphSerializationError(f"{path}: Pydantic fields_set contains unknown fields: {sorted(unknown)}")
+        model.__pydantic_fields_set__ = set(fields_set)
+        return model
+    if "__type_ref__" in value:
+        qualified = value["__type_ref__"]
+        try:
+            restored = _import_qualified_object(qualified)
+        except (ImportError, TypeError) as exc:
+            if format_version == 1:
+                return value
+            raise GraphSerializationError(f"{path}: type reference {qualified!r} is not importable") from exc
+        if not isinstance(restored, type):
+            if format_version == 1:
+                return value
+            raise GraphSerializationError(f"{path}: type reference {qualified!r} is not a type")
+        return restored
+    if "__callable_ref__" in value:
+        qualified = value["__callable_ref__"]
+        try:
+            restored = _import_qualified_object(qualified)
+        except (ImportError, TypeError) as exc:
+            if format_version == 1:
+                return value
+            raise GraphSerializationError(f"{path}: callable reference {qualified!r} is not importable") from exc
+        if not callable(restored):
+            if format_version == 1:
+                return value
+            raise GraphSerializationError(f"{path}: callable reference {qualified!r} is not callable")
+        return restored
+    if "__path__" in value:
+        return Path(value["__path__"])
+    if "__set__" in value:
+        return {
+            _decode_value(item, path=f"{path}[{index}]", format_version=format_version)
+            for index, item in enumerate(value["__set__"])
+        }
+    if format_version >= 2 and _FROZENSET_MARKER in value:
+        return frozenset(
+            _decode_value(item, path=f"{path}[{index}]", format_version=format_version)
+            for index, item in enumerate(value[_FROZENSET_MARKER])
+        )
+    if format_version >= 2 and _TUPLE_MARKER in value:
+        return tuple(
+            _decode_value(item, path=f"{path}[{index}]", format_version=format_version)
+            for index, item in enumerate(value[_TUPLE_MARKER])
+        )
+    return {
+        key: _decode_value(
+            item,
+            path=f"{path}.{key}",
+            format_version=format_version,
+            field_name=key,
+        )
+        for key, item in value.items()
+    }
+
+
 class _RegistryJSONEncoder(json.JSONEncoder):
-    """JSON encoder that handles common non-serializable types found in operator kwargs."""
+    """Compatibility encoder delegating non-native values to the v2 codec."""
 
     def default(self, obj: Any) -> Any:
-        if isinstance(obj, type):
-            return {"__type_ref__": _qualified_name(obj)}
-        if callable(obj) and hasattr(obj, "__qualname__"):
-            module = getattr(obj, "__module__", None) or ""
-            return {"__callable_ref__": f"{module}.{obj.__qualname__}"}
-        if isinstance(obj, Path):
-            return {"__path__": str(obj)}
-        if isinstance(obj, (set, frozenset)):
-            return {"__set__": sorted(obj, key=str)}
-        if isinstance(obj, bytes):
-            return {"__bytes_len__": len(obj), "__repr__": repr(obj[:64])}
-        if hasattr(obj, "__dict__"):
-            safe_attrs = {}
-            for k, v in obj.__dict__.items():
-                if not k.startswith("_"):
-                    try:
-                        json.dumps(v, cls=_RegistryJSONEncoder)
-                        safe_attrs[k] = v
-                    except (TypeError, ValueError):
-                        safe_attrs[k] = repr(v)
-            return {
-                "__object__": _qualified_name(type(obj)),
-                "__attrs__": safe_attrs,
-            }
-        return super().default(obj)
+        return _encode_value(obj, path="$json")
 
 
 def _safe_serialize_value(value: Any) -> Any:
-    """Best-effort conversion of *value* into something JSON-safe."""
-    try:
-        json.dumps(value, cls=_RegistryJSONEncoder)
-        return value
-    except (TypeError, ValueError, OverflowError):
-        return repr(value)
+    """Encode a value without lossy repr fallback (compatibility helper)."""
+    return _encode_value(value, path="$value")
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +528,48 @@ def list_all_kwargs(graph: Graph) -> Dict[str, Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+def _redact_display_value(
+    value: Any,
+    *,
+    field_name: Optional[str] = None,
+    seen: Optional[Set[int]] = None,
+) -> Any:
+    """Return a recursively redacted copy suitable only for diagnostics."""
+    if _is_obvious_secret_field(field_name) and not _is_empty_secret(value):
+        return "***"
+    if value is None or isinstance(value, (bool, int, float, str, bytes)):
+        return value
+
+    if seen is None:
+        seen = set()
+    value_id = id(value)
+    if value_id in seen:
+        return "<recursive>"
+    seen.add(value_id)
+
+    if isinstance(value, BaseModel):
+        return {
+            name: _redact_display_value(
+                getattr(value, name),
+                field_name=name,
+                seen=seen,
+            )
+            for name in type(value).model_fields
+        }
+    if isinstance(value, dict):
+        return {key: _redact_display_value(item, field_name=str(key), seen=seen) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        redacted = [_redact_display_value(item, seen=seen) for item in value]
+        return tuple(redacted) if isinstance(value, tuple) else redacted
+    if isinstance(value, (set, frozenset)):
+        return [_redact_display_value(item, seen=seen) for item in value]
+    return value
+
+
+def _display_repr(field_name: str, value: Any) -> str:
+    return repr(_redact_display_value(value, field_name=field_name))
+
+
 def format_graph_tree(
     graph: Graph,
     *,
@@ -243,7 +622,7 @@ def format_graph_tree(
         if show_kwargs and node.operator_kwargs:
             kw_prefix = prefix + ("" if is_root else ("    " if is_last else "│   "))
             for key, val in sorted(node.operator_kwargs.items()):
-                val_repr = repr(val) if not isinstance(val, str) else f"'{val}'"
+                val_repr = _display_repr(key, val)
                 if len(val_repr) > max_value_width:
                     val_repr = val_repr[: max_value_width - 3] + "..."
                 lines.append(f"{kw_prefix}  ╰ {key} = {val_repr}")
@@ -269,7 +648,7 @@ def format_node_details(node: Node) -> str:
         f"  Kwargs ({len(node.operator_kwargs)}):",
     ]
     for key, val in sorted(node.operator_kwargs.items()):
-        val_repr = repr(val)
+        val_repr = _display_repr(key, val)
         if len(val_repr) > 200:
             val_repr = val_repr[:197] + "..."
         lines.append(f"    {key:30s} = {val_repr}")
@@ -475,15 +854,15 @@ class GraphDiff:
                 if nd.kwargs_added:
                     lines.append("    + Added kwargs:")
                     for k, v in sorted(nd.kwargs_added.items()):
-                        lines.append(f"        {k} = {repr(v)}")
+                        lines.append(f"        {k} = {_display_repr(k, v)}")
                 if nd.kwargs_removed:
                     lines.append("    - Removed kwargs:")
                     for k, v in sorted(nd.kwargs_removed.items()):
-                        lines.append(f"        {k} = {repr(v)}")
+                        lines.append(f"        {k} = {_display_repr(k, v)}")
                 if nd.kwargs_changed:
                     lines.append("    ~ Changed kwargs:")
                     for k, (old, new) in sorted(nd.kwargs_changed.items()):
-                        lines.append(f"        {k}: {repr(old)} -> {repr(new)}")
+                        lines.append(f"        {k}: {_display_repr(k, old)} -> {_display_repr(k, new)}")
                 if nd.children_a_only:
                     lines.append(f"    Children only in A: {nd.children_a_only}")
                 if nd.children_b_only:
@@ -610,28 +989,33 @@ def print_diff(graph_a: Graph, graph_b: Graph) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _serialize_node(node: Node) -> dict:
+def _serialize_node(node: Node, *, path: str) -> dict:
     """Serialize a single node to a JSON-compatible dict."""
-    safe_kwargs = {}
-    for k, v in node.operator_kwargs.items():
-        safe_kwargs[k] = _safe_serialize_value(v)
+    safe_kwargs: Dict[str, Any] = {}
+    for key, value in node.operator_kwargs.items():
+        if not isinstance(key, str):
+            raise GraphSerializationError(f"{path}.operator_kwargs: kwarg names must be strings")
+        safe_kwargs[key] = _encode_value(
+            value,
+            path=f"{path}.operator_kwargs.{key}",
+            field_name=key,
+            allow_api_key_env=True,
+        )
     return {
         "name": node.name,
         "operator_class": _qualified_name(node.operator_class),
         "operator_kwargs": safe_kwargs,
-        "children": [_serialize_node(child) for child in node.children],
+        "children": [
+            _serialize_node(child, path=f"{path}.children[{index}]") for index, child in enumerate(node.children)
+        ],
     }
 
 
 def serialize_graph(graph: Graph) -> dict:
-    """Serialize a graph to a JSON-compatible dictionary.
-
-    The result can be passed to :func:`json.dumps` (with the
-    :class:`_RegistryJSONEncoder`) and later restored via
-    :func:`deserialize_graph`.
-    """
+    """Serialize a graph to a versioned, recursively JSON-native dictionary."""
     return {
-        "roots": [_serialize_node(root) for root in graph.roots],
+        "format_version": _GRAPH_FORMAT_VERSION,
+        "roots": [_serialize_node(root, path=f"roots[{index}]({root.name})") for index, root in enumerate(graph.roots)],
         "metadata": {
             "node_count": node_count(graph),
             "max_depth": max_depth(graph),
@@ -661,56 +1045,79 @@ class _PlaceholderOperator(AbstractOperator):
         return data
 
 
-def _restore_special_values(kwargs: dict) -> dict:
-    """Walk a kwargs dict and restore ``__type_ref__``, ``__path__``, etc."""
+def _restore_special_values(
+    kwargs: dict,
+    *,
+    format_version: int = 1,
+    path: str = "operator_kwargs",
+) -> dict:
+    """Recursively restore encoded operator kwargs, including v1 markers."""
     cleaned: Dict[str, Any] = {}
-    for k, v in kwargs.items():
-        if isinstance(v, dict):
-            if "__type_ref__" in v:
-                try:
-                    cleaned[k] = _import_class(v["__type_ref__"])
-                except ImportError:
-                    cleaned[k] = v
-                continue
-            if "__callable_ref__" in v:
-                try:
-                    cleaned[k] = _import_class(v["__callable_ref__"])
-                except ImportError:
-                    cleaned[k] = v
-                continue
-            if "__path__" in v:
-                cleaned[k] = Path(v["__path__"])
-                continue
-            if "__set__" in v:
-                cleaned[k] = set(v["__set__"])
-                continue
-        cleaned[k] = v
+    for key, value in kwargs.items():
+        decoded = _decode_value(
+            value,
+            path=f"{path}.{key}",
+            format_version=format_version,
+            field_name=key,
+        )
+        if decoded is not _OMIT_FIELD:
+            cleaned[key] = decoded
     return cleaned
 
 
-def _deserialize_node(data: dict) -> Node:
+def _deserialize_node(data: dict, *, format_version: int, path: str) -> Node:
     """Reconstruct a :class:`Node` from its serialized dict."""
     cls = _import_class(data["operator_class"])
     raw_kwargs = data.get("operator_kwargs", {})
-    cleaned = _restore_special_values(raw_kwargs)
+    if not isinstance(raw_kwargs, dict):
+        raise GraphSerializationError(f"{path}.operator_kwargs: expected a mapping")
+    cleaned = _restore_special_values(
+        raw_kwargs,
+        format_version=format_version,
+        path=f"{path}.operator_kwargs",
+    )
 
     try:
         op = cls(**cleaned)
-    except Exception:
+    except Exception as exc:
+        if format_version >= 2:
+            raise GraphSerializationError(
+                f"{path}: failed to construct operator " f"{data['operator_class']!r}: {exc}"
+            ) from exc
         op = _PlaceholderOperator(original_class=data["operator_class"], original_kwargs=cleaned)
 
     node = Node(op, name=data.get("name"), operator_class=cls, operator_kwargs=cleaned)
-    for child_data in data.get("children", []):
-        child_node = _deserialize_node(child_data)
+    for index, child_data in enumerate(data.get("children", [])):
+        child_node = _deserialize_node(
+            child_data,
+            format_version=format_version,
+            path=f"{path}.children[{index}]",
+        )
         node.children.append(child_node)
     return node
 
 
+def _read_format_version(data: dict) -> int:
+    version = data.get("format_version", 1)
+    if isinstance(version, bool) or not isinstance(version, int):
+        raise GraphSerializationError("format_version must be an integer")
+    if version not in (1, _GRAPH_FORMAT_VERSION):
+        raise GraphSerializationError(f"unsupported graph format_version: {version}")
+    return version
+
+
 def deserialize_graph(data: dict) -> Graph:
-    """Reconstruct a :class:`Graph` from a dict produced by :func:`serialize_graph`."""
+    """Reconstruct a graph from v2 data or a versionless v1 payload."""
+    if not isinstance(data, dict):
+        raise GraphSerializationError("serialized graph must be a mapping")
+    format_version = _read_format_version(data)
     graph = Graph()
-    for root_data in data.get("roots", []):
-        root_node = _deserialize_node(root_data)
+    for index, root_data in enumerate(data.get("roots", [])):
+        root_node = _deserialize_node(
+            root_data,
+            format_version=format_version,
+            path=f"roots[{index}]",
+        )
         graph.roots.append(root_node)
     return graph
 
@@ -722,7 +1129,7 @@ def save_graph(graph: Graph, path: Union[str, Path], *, indent: int = 2) -> Path
     """
     path = Path(path)
     payload = serialize_graph(graph)
-    path.write_text(json.dumps(payload, cls=_RegistryJSONEncoder, indent=indent, default=repr))
+    path.write_text(json.dumps(payload, indent=indent))
     return path
 
 
@@ -977,23 +1384,25 @@ class GraphPipelineRegistry:
     def save_all(self, path: Union[str, Path], *, indent: int = 2) -> Path:
         """Serialize every registered graph to a single JSON file.
 
-        The file contains ``{name: {roots, metadata, blueprint}}`` for each
-        registered graph.  Returns the resolved path.
+        Version 2 stores graphs under a versioned ``graphs`` mapping. Returns
+        the resolved path.
         """
         path = Path(path)
-        payload: Dict[str, Any] = {}
+        graphs_payload: Dict[str, Any] = {}
         for name, bp in self._blueprints.items():
             graph = bp.build()
             entry = serialize_graph(graph)
             entry["blueprint"] = {
+                "name": bp.name,
                 "description": bp.description,
                 "version": bp.version,
                 "tags": bp.tags,
                 "created_at": bp.created_at,
                 "updated_at": bp.updated_at,
             }
-            payload[name] = entry
-        path.write_text(json.dumps(payload, cls=_RegistryJSONEncoder, indent=indent, default=repr))
+            graphs_payload[name] = entry
+        payload = {"format_version": _GRAPH_FORMAT_VERSION, "graphs": graphs_payload}
+        path.write_text(json.dumps(payload, indent=indent))
         return path
 
     def load_all(self, path: Union[str, Path], *, overwrite: bool = False) -> List[str]:
@@ -1004,8 +1413,20 @@ class GraphPipelineRegistry:
         """
         path = Path(path)
         payload = json.loads(path.read_text())
+        if not isinstance(payload, dict):
+            raise GraphSerializationError("serialized graph registry must be a mapping")
+        version_marker = payload.get("format_version")
+        if isinstance(version_marker, int) and not isinstance(version_marker, bool):
+            _read_format_version(payload)
+            entries = payload.get("graphs")
+            if not isinstance(entries, dict):
+                raise GraphSerializationError("version 2 graph registry requires a graphs mapping")
+        else:
+            # Versionless v1 registries were a direct name -> graph mapping,
+            # and graph names were unrestricted (including "format_version").
+            entries = payload
         loaded: List[str] = []
-        for name, entry in payload.items():
+        for name, entry in entries.items():
             bp_meta = entry.get("blueprint", {})
             graph_data = {k: v for k, v in entry.items() if k != "blueprint"}
 
@@ -1020,6 +1441,11 @@ class GraphPipelineRegistry:
                 tags=bp_meta.get("tags", []),
                 overwrite=overwrite,
             )
+            restored_bp = self.get_blueprint(name)
+            if isinstance(bp_meta.get("created_at"), str):
+                restored_bp.created_at = bp_meta["created_at"]
+            if isinstance(bp_meta.get("updated_at"), str):
+                restored_bp.updated_at = bp_meta["updated_at"]
             loaded.append(name)
         return loaded
 
@@ -1029,6 +1455,7 @@ class GraphPipelineRegistry:
         bp = self.get_blueprint(name)
         payload = serialize_graph(graph)
         payload["blueprint"] = {
+            "name": bp.name,
             "description": bp.description,
             "version": bp.version,
             "tags": bp.tags,
@@ -1036,7 +1463,7 @@ class GraphPipelineRegistry:
             "updated_at": bp.updated_at,
         }
         path = Path(path)
-        path.write_text(json.dumps(payload, cls=_RegistryJSONEncoder, indent=indent, default=repr))
+        path.write_text(json.dumps(payload, indent=indent))
         return path
 
     def load_graph(self, path: Union[str, Path], *, name: Optional[str] = None, overwrite: bool = False) -> str:
@@ -1047,7 +1474,12 @@ class GraphPipelineRegistry:
         """
         path = Path(path)
         payload = json.loads(path.read_text())
+        if not isinstance(payload, dict):
+            raise GraphSerializationError("serialized graph must be a mapping")
+        _read_format_version(payload)
         bp_meta = payload.get("blueprint", {})
+        if not isinstance(bp_meta, dict):
+            raise GraphSerializationError("blueprint metadata must be a mapping")
         graph_data = {k: v for k, v in payload.items() if k != "blueprint"}
         resolved_name = name or bp_meta.get("name") or path.stem
 
@@ -1062,6 +1494,11 @@ class GraphPipelineRegistry:
             tags=bp_meta.get("tags", []),
             overwrite=overwrite,
         )
+        restored_bp = self.get_blueprint(resolved_name)
+        if isinstance(bp_meta.get("created_at"), str):
+            restored_bp.created_at = bp_meta["created_at"]
+        if isinstance(bp_meta.get("updated_at"), str):
+            restored_bp.updated_at = bp_meta["updated_at"]
         return resolved_name
 
 

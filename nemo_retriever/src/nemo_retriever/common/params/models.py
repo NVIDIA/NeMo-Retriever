@@ -13,7 +13,7 @@ import warnings
 from upath import UPath
 
 from nemo_retriever.tabular_data.sql_database import SQLDatabase
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_serializer, model_validator
 
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
@@ -50,16 +50,34 @@ class _ParamsModel(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # Keep the explicit no-auth intent after NO_API_KEY is normalized to
+    # None for existing runtime consumers. Graph persistence uses this
+    # private provenance to distinguish no-auth from worker-side env lookup.
+    _no_api_key_fields: set[str] = PrivateAttr(default_factory=set)
+
     @model_validator(mode="after")
     def _resolve_api_keys(self) -> "_ParamsModel":
         for field_name in type(self).model_fields:
             if _is_api_key_field(field_name):
                 value = getattr(self, field_name, None)
                 if value is None:
+                    if field_name in self._no_api_key_fields:
+                        continue
                     setattr(self, field_name, resolve_remote_api_key())
                 elif value == NO_API_KEY:
+                    self._no_api_key_fields.add(field_name)
                     setattr(self, field_name, None)
+                else:
+                    self._no_api_key_fields.discard(field_name)
         return self
+
+    def _uses_no_api_key(self, field_name: str) -> bool:
+        """Return whether an API-key field was explicitly disabled.
+
+        This is an internal persistence hook. Runtime callers continue to
+        observe None for NO_API_KEY exactly as before.
+        """
+        return field_name in self._no_api_key_fields and getattr(self, field_name, None) is None
 
     def __repr__(self) -> str:
         parts: list[str] = []
@@ -547,14 +565,14 @@ class LLMInferenceParams(_ParamsModel):
     to any task that invokes an LLM (captioning, summarization, etc.).
     """
 
-    temperature: float = 1.0
+    temperature: Optional[float] = 1.0
     top_p: Optional[float] = None
     max_tokens: int = 1024
 
     @field_validator("temperature")
     @classmethod
-    def _check_temperature(cls, v: float) -> float:
-        if not (0.0 <= v <= 2.0):
+    def _check_temperature(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not (0.0 <= v <= 2.0):
             raise ValueError("temperature must be between 0.0 and 2.0")
         return v
 
@@ -579,7 +597,9 @@ class LLMInferenceParams(_ParamsModel):
         many backends (vLLM, OpenAI, NIM) change behaviour when the key is
         present vs. absent.
         """
-        kw: dict[str, Any] = {"temperature": self.temperature, "max_tokens": self.max_tokens}
+        kw: dict[str, Any] = {"max_tokens": self.max_tokens}
+        if self.temperature is not None:
+            kw["temperature"] = self.temperature
         if self.top_p is not None:
             kw["top_p"] = self.top_p
         return kw
@@ -618,6 +638,131 @@ class LLMRemoteClientParams(_ParamsModel):
         return v
 
 
+class LLMSamplingOverrides(_ParamsModel):
+    """Partial sampling overrides resolved on top of task-specific defaults."""
+
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_tokens: Optional[int] = None
+
+    @field_validator("temperature")
+    @classmethod
+    def _check_temperature(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not (0.0 <= v <= 2.0):
+            raise ValueError("temperature must be between 0.0 and 2.0")
+        return v
+
+    @field_validator("top_p")
+    @classmethod
+    def _check_top_p(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not (0.0 <= v <= 1.0):
+            raise ValueError("top_p must be between 0.0 and 1.0")
+        return v
+
+    @field_validator("max_tokens")
+    @classmethod
+    def _check_max_tokens(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v <= 0:
+            raise ValueError("max_tokens must be > 0")
+        return v
+
+    @model_validator(mode="after")
+    def _reject_explicit_null_max_tokens(self) -> "LLMSamplingOverrides":
+        if "max_tokens" in self.model_fields_set and self.max_tokens is None:
+            raise ValueError("max_tokens cannot be None; omit it to inherit the task default")
+        return self
+
+    @model_serializer(mode="plain")
+    def _serialize_only_explicit_overrides(self) -> dict[str, Any]:
+        """Preserve omitted-vs-null state across model and JSON round trips."""
+        return {
+            name: getattr(self, name)
+            for name in ("temperature", "top_p", "max_tokens")
+            if name in self.model_fields_set
+        }
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, LLMSamplingOverrides):
+            return self.model_fields_set == other.model_fields_set and super().__eq__(other)
+        return super().__eq__(other)
+
+    def resolve(self, defaults: LLMInferenceParams) -> LLMInferenceParams:
+        """Apply explicitly supplied fields to defaults."""
+        values = defaults.model_dump()
+        for name in self.model_fields_set:
+            value = getattr(self, name)
+            values[name] = value
+        return LLMInferenceParams(**values)
+
+
+_SAMPLING_UNSET = object()
+
+
+class TextGenerationParams(_ParamsModel):
+    """Transport, task controls, and partial sampling for text generation."""
+
+    transport: LLMRemoteClientParams
+    sampling: LLMSamplingOverrides = Field(default_factory=LLMSamplingOverrides)
+    prompt: Optional[str] = None
+    system_prompt: Optional[str] = None
+    reasoning_enabled: Optional[bool] = None
+    max_workers: int = Field(default=8, ge=1)
+
+    def resolve_sampling(self, defaults: LLMInferenceParams) -> LLMInferenceParams:
+        """Resolve explicit sampling fields over a task's defaults."""
+        return self.sampling.resolve(defaults)
+
+    @classmethod
+    def from_kwargs(
+        cls,
+        *,
+        model: str,
+        api_base: Optional[str] = None,
+        api_key: Optional[str] = None,
+        temperature: Any = _SAMPLING_UNSET,
+        top_p: Any = _SAMPLING_UNSET,
+        max_tokens: Any = _SAMPLING_UNSET,
+        extra_params: Optional[dict[str, Any]] = None,
+        num_retries: int = 3,
+        timeout: float = 120.0,
+        rag_system_prompt: Optional[str] = None,
+        rag_system_prompt_prefix: Optional[str] = None,
+        reasoning_enabled: Optional[bool] = None,
+        prompt: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        max_workers: int = 8,
+    ) -> "TextGenerationParams":
+        """Construct structured text-generation params from flat kwargs."""
+        sampling_values: dict[str, Any] = {}
+        for name, value in (
+            ("temperature", temperature),
+            ("top_p", top_p),
+            ("max_tokens", max_tokens),
+        ):
+            if value is not _SAMPLING_UNSET:
+                sampling_values[name] = value
+
+        transport_reasoning = True if reasoning_enabled is None else reasoning_enabled
+        return cls(
+            transport=LLMRemoteClientParams(
+                model=model,
+                api_base=api_base,
+                api_key=api_key,
+                num_retries=num_retries,
+                timeout=timeout,
+                extra_params=extra_params or {},
+                rag_system_prompt=rag_system_prompt,
+                rag_system_prompt_prefix=rag_system_prompt_prefix,
+                reasoning_enabled=transport_reasoning,
+            ),
+            sampling=LLMSamplingOverrides(**sampling_values),
+            prompt=prompt,
+            system_prompt=system_prompt,
+            reasoning_enabled=reasoning_enabled,
+            max_workers=max_workers,
+        )
+
+
 class CaptionParams(LLMInferenceParams):
     endpoint_url: Optional[str] = None
     model_name: str = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
@@ -632,6 +777,13 @@ class CaptionParams(LLMInferenceParams):
     gpu_memory_utilization: float = 0.5
     caption_infographics: bool = False
     extra_body: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("temperature")
+    @classmethod
+    def _require_temperature(cls, value: Optional[float]) -> float:
+        if value is None:
+            raise ValueError("temperature cannot be None for captioning")
+        return value
 
 
 class WebhookParams(_ParamsModel):

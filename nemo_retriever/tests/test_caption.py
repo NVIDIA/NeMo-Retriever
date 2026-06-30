@@ -218,6 +218,12 @@ class TestCaptionParamsInheritance:
         with pytest.raises(ValueError, match="temperature must be between"):
             CaptionParams(temperature=-1.0)
 
+    def test_null_temperature_rejected(self):
+        from nemo_retriever.common.params import CaptionParams
+
+        with pytest.raises(ValueError, match="cannot be None for captioning"):
+            CaptionParams(temperature=None)
+
 
 class TestCaptionImageParamThreading:
     """Verify top_p and max_tokens flow through to the model / client."""

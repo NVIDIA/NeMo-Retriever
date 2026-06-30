@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-from nemo_retriever.operators.abstract_operator import AbstractOperator
-from nemo_retriever.graph.pipeline_graph import Graph, Node
+from pydantic import BaseModel
+from nemo_retriever.common.params import LLMRemoteClientParams
 from nemo_retriever.graph.graph_pipeline_registry import (
     GraphBlueprint,
     GraphDiff,
+    GraphSerializationError,
     GraphPipelineRegistry,
     _PlaceholderOperator,
     _import_class,
@@ -48,6 +48,8 @@ from nemo_retriever.graph.graph_pipeline_registry import (
     walk_nodes,
 )
 
+from nemo_retriever.graph.pipeline_graph import Graph, Node
+from nemo_retriever.operators.abstract_operator import AbstractOperator
 
 # ---------------------------------------------------------------------------
 # Operator stubs (mirrors test_pipeline_graph.py conventions)
@@ -94,6 +96,25 @@ class AppendOp(AbstractOperator):
 
     def process(self, data: Any, **kw: Any) -> Any:
         return str(data) + self.suffix
+
+    def postprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+
+class ParamsContainer(BaseModel):
+    children: dict[str, LLMRemoteClientParams]
+
+
+class ParamsContainerOp(AbstractOperator):
+    def __init__(self, params: ParamsContainer) -> None:
+        super().__init__(params=params)
+        self.params = params
+
+    def preprocess(self, data: Any, **kw: Any) -> Any:
+        return data
+
+    def process(self, data: Any, **kw: Any) -> Any:
+        return data
 
     def postprocess(self, data: Any, **kw: Any) -> Any:
         return data
@@ -167,10 +188,9 @@ class TestSafeSerialize:
         assert _safe_serialize_value(42) == 42
         assert _safe_serialize_value("hello") == "hello"
 
-    def test_non_serializable_becomes_repr(self):
-        result = _safe_serialize_value(object())
-        assert isinstance(result, str)
-        assert "object" in result
+    def test_non_serializable_raises_instead_of_becoming_repr(self):
+        with pytest.raises(GraphSerializationError, match="unsupported value"):
+            _safe_serialize_value(object())
 
 
 # =====================================================================
@@ -1200,3 +1220,95 @@ class TestEdgeCases:
         assert callable(my_factory)
         assert my_factory() is not None
         assert isinstance(my_factory(), Graph)
+
+
+class TestLegacyRegistryCompatibility:
+    def test_v1_graph_may_be_named_format_version(self, tmp_path):
+        payload = {
+            "format_version": {
+                "roots": [],
+                "metadata": {},
+                "blueprint": {
+                    "name": "format_version",
+                    "description": "legacy graph name",
+                },
+            },
+        }
+        path = tmp_path / "legacy-registry.json"
+        path.write_text(json.dumps(payload))
+
+        registry = GraphPipelineRegistry()
+        loaded = registry.load_all(path)
+
+        assert loaded == ["format_version"]
+        assert registry.build("format_version").roots == []
+
+
+class TestTypedCodecRegressions:
+    def test_nested_model_container_preserves_no_auth(self, monkeypatch):
+        monkeypatch.setenv("NVIDIA_API_KEY", "ENV-SECRET")
+        child = LLMRemoteClientParams(
+            model="model",
+            api_key="",
+        )
+        container = ParamsContainer(children={"child": child})
+        graph = Graph()
+        graph.add_root(ParamsContainerOp(container))
+
+        payload = serialize_graph(graph)
+        encoded = json.dumps(payload)
+        restored = deserialize_graph(payload)
+        restored_child = restored.roots[0].operator.params.children["child"]
+
+        assert "ENV-SECRET" not in encoded
+        assert "__secret_no_auth__" in encoded
+        assert restored_child.api_key is None
+        assert restored_child._uses_no_api_key("api_key")
+
+    def test_function_local_pydantic_model_is_rejected(self):
+        class LocalModel(BaseModel):
+            value: int
+
+        with pytest.raises(
+            GraphSerializationError,
+            match="Pydantic model .* is not rehydratable",
+        ):
+            _safe_serialize_value(LocalModel(value=1))
+
+    @pytest.mark.parametrize(
+        "field_name",
+        ["refresh_token", "owner_token", "apiKey", "accessToken"],
+    )
+    def test_common_token_and_camel_case_secrets_are_rejected(self, field_name):
+        with pytest.raises(
+            GraphSerializationError,
+            match="non-rehydratable secret field",
+        ):
+            _safe_serialize_value(
+                {field_name: "MUST-NOT-LEAK"},
+            )
+
+    def test_flat_operator_api_key_rehydrates_on_worker(self, monkeypatch):
+        from nemo_retriever.operators.graph_ops.subquery_operator import (
+            SubQueryGeneratorOperator,
+        )
+
+        original = SubQueryGeneratorOperator(llm_model="model", api_key="ORIGINAL")
+        graph = Graph()
+        graph.add_root(original)
+        payload = serialize_graph(graph)
+
+        assert "ORIGINAL" not in json.dumps(payload)
+        monkeypatch.setenv("NVIDIA_API_KEY", "WORKER-KEY")
+        restored = deserialize_graph(payload).roots[0].operator
+        assert restored._api_key == "WORKER-KEY"
+        assert restored._resolve_api_key() == "WORKER-KEY"
+
+        monkeypatch.setenv("CUSTOM_LLM_KEY", "CUSTOM-WORKER-KEY")
+        reference = "os.environ/CUSTOM_LLM_KEY"
+        referenced = SubQueryGeneratorOperator(llm_model="model", api_key=reference)
+        referenced_graph = Graph()
+        referenced_graph.add_root(referenced)
+        restored_reference = deserialize_graph(serialize_graph(referenced_graph)).roots[0].operator
+        assert restored_reference._api_key == reference
+        assert restored_reference._resolve_api_key() == "CUSTOM-WORKER-KEY"
