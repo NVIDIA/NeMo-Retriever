@@ -1,6 +1,9 @@
-﻿# NimClient and custom NIM endpoints
+﻿# NimClient and Custom NIM Endpoints
 
-The `NimClient` class provides a unified interface for connecting to and interacting with NVIDIA NIM Microservices.
+**Module:** `nemo_retriever.models.nim`
+**Source:** `nemo_retriever/src/nemo_retriever/models/nim/`
+
+The `NimClient` class provides a unified interface for connecting to and interacting with NVIDIA NIM microservices.
 Use it to create custom NIM integrations in [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) pipelines and user-defined functions (UDFs).
 
 The NimClient architecture consists of two main components:
@@ -10,7 +13,7 @@ The NimClient architecture consists of two main components:
 
 For advanced usage patterns, refer to the existing model interfaces in [`nemo_retriever/models/nim/primitives/model_interface/`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/models/nim/primitives/model_interface).
 
-## Quick start
+## Quick Start
 
 For ingest and pipeline APIs used with NimClient in UDFs, refer to the [Python API guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/nemo-retriever-api-reference.md).
 
@@ -33,7 +36,7 @@ client = create_inference_client(
     auth_token="your-ngc-api-key",  # Optional
     infer_protocol="grpc",          # Optional: "grpc" or "http"
     timeout=120.0,                  # Optional: request timeout
-    max_retries=5                   # Optional: retry attempts
+    max_retries=10                  # Optional: retry attempts (default: 10)
 )
 
 # Perform inference
@@ -59,11 +62,9 @@ client = create_inference_client(
 )
 ```
 
-## Creating custom model interfaces
+## Creating Custom Model Interfaces
 
 To integrate a new NIM, create a custom `ModelInterface` subclass that implements the required methods.
-
-For ingest pipeline APIs used with custom NIMs, refer to the [Python API guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/nemo-retriever-api-reference.md).
 
 ### Basic model interface template
 
@@ -163,9 +164,7 @@ class MyCustomModelInterface(ModelInterface):
         return output
 ```
 
-## Real-world examples
-
-For parameter details on ingest and pipeline APIs, refer to the [Python API guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/nemo-retriever-api-reference.md).
+## Real-World Examples
 
 ### Text generation model interface
 
@@ -274,8 +273,6 @@ class ImageAnalysisModelInterface(ModelInterface):
 
 ## Using NimClient in UDFs
 
-For ingest pipeline APIs used in UDFs, refer to the [Python API guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/nemo-retriever-api-reference.md).
-
 ### Basic UDF with NimClient
 
 ```python
@@ -364,9 +361,9 @@ def batch_image_analysis_udf(control_message: IngestControlMessage) -> IngestCon
     return control_message
 ```
 
-## Configuration and best practices
+## Configuration and Best Practices
 
-### Environment variables
+### Environment Variables
 
 ```bash
 # NIM endpoints
@@ -386,7 +383,7 @@ export NIM_MAX_RETRIES=5
 1. **Use gRPC when possible**: Generally faster than HTTP for high-throughput scenarios
 2. **Batch processing**: Process multiple items together to reduce overhead
 3. **Connection reuse**: Create NimClient instances once and reuse them
-4. **Appropriate timeouts**: Set reasonable timeouts based on your model's response time
+4. **Appropriate timeouts**: Set reasonable timeouts based on your model response time
 5. **Error handling**: Always handle inference failures gracefully
 
 ### Error handling
@@ -427,17 +424,17 @@ def robust_nim_udf(control_message: IngestControlMessage) -> IngestControlMessag
 
 ### Common issues
 
-* **Connection Errors** â€“ Verify NIM service is running and endpoints are correct
-* **Authentication Failures** â€“ Check NGC_API_KEY is valid and properly set
-* **Timeout Errors** â€“ Increase timeout values or check NIM service performance
-* **Format Errors** â€“ Ensure your ModelInterface formats data correctly for your NIM
-* **Memory Issues** â€“ Use appropriate batch sizes to avoid memory exhaustion
+* **Connection errors** — Verify the NIM service is running and endpoints are correct
+* **Authentication failures** — Check that `NGC_API_KEY` is valid and set correctly
+* **Timeout errors** — Increase timeout values or check NIM service performance
+* **Format errors** — Ensure your `ModelInterface` formats data correctly for your NIM
+* **Memory issues** — Use appropriate batch sizes to avoid memory exhaustion
 
 ### NIM Triton limit memory
 
 If you encounter memory issues, try increasing the `NIM_TRITON_CUDA_MEMORY_POOL_MB` parameter. This adjustment typically does not affect performance.
 
-If memory issues persist, you can reduce the `NIM_TRITON_RATE_LIMIT` value â€” even down to 1. However, lowering this parameter affects performance.
+If memory issues persist, you can reduce the `NIM_TRITON_RATE_LIMIT` value — even down to 1. However, lowering this parameter affects performance.
 
 ### Debugging tips
 
@@ -454,7 +451,7 @@ formatted, batch_data = model_interface.format_input(prepared, "http", 1)
 print(f"Formatted input: {formatted}")
 ```
 
-## Related topics
+## Related Topics
 
 - [NeMo Retriever Graph](../src/nemo_retriever/graph/README.md) — graph-based pipelines and UDFs
 - [Python API guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/nemo-retriever-api-reference.md) — published ingest and pipeline APIs
