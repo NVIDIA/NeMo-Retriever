@@ -15,7 +15,28 @@ import tempfile
 from typing import Any, Mapping
 
 from nemo_retriever.harness.contracts import FailurePayload, PHASE_VALUES, STATUS_VALUES
-from nemo_retriever.harness.json_io import jsonable, write_json
+from nemo_retriever.harness.json_io import jsonable, redact, write_json
+
+
+ARTIFACT_NAMES = (
+    "status.json",
+    "events.jsonl",
+    "resolved_benchmark.json",
+    "ingest_plan.json",
+    "query_plan.json",
+    "summary_metrics.json",
+    "environment.json",
+    "runfile.json",
+    "results.json",
+    "run.log",
+    "beir_metrics.json",
+    "beir_run.trec",
+    "query_results.jsonl",
+)
+
+
+class ArtifactWriteError(RuntimeError):
+    """An artifact directory could not be initialized or written safely."""
 
 
 def utc_now() -> str:
@@ -25,7 +46,7 @@ def utc_now() -> str:
 def append_jsonl(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(jsonable(payload), sort_keys=False) + "\n")
+        handle.write(json.dumps(redact(jsonable(payload)), sort_keys=False) + "\n")
 
 
 def append_text(path: Path, text: str) -> None:
@@ -88,40 +109,98 @@ def capture_output_to_log(path: Path, *, label: str):
             os.close(saved_stdout)
 
 
-def redact(value: Any) -> Any:
-    if isinstance(value, dict):
-        out: dict[str, Any] = {}
-        for key, nested in value.items():
-            normalized = str(key).lower()
-            if any(token in normalized for token in ("api_key", "password", "secret", "credential", "token")):
-                out[key] = "<redacted>" if nested else nested
-            else:
-                out[key] = redact(nested)
-        return out
-    if isinstance(value, list):
-        return [redact(item) for item in value]
-    if isinstance(value, tuple):
-        return [redact(item) for item in value]
-    return value
+def initialize_artifact_dir(path: Path) -> Path:
+    """Create an artifact directory, refusing to reuse non-empty output."""
+    artifact_dir = path.expanduser().resolve()
+    try:
+        artifact_dir.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as exc:
+        if not artifact_dir.is_dir():
+            raise ArtifactWriteError(f"Artifact path exists and is not a directory: {artifact_dir}") from exc
+        try:
+            next(artifact_dir.iterdir())
+        except StopIteration:
+            pass
+        except OSError as list_exc:
+            raise ArtifactWriteError(f"Cannot inspect artifact directory {artifact_dir}: {list_exc}") from list_exc
+        else:
+            raise ArtifactWriteError(
+                f"Artifact directory is not empty: {artifact_dir}. Choose a new --output-dir."
+            ) from exc
+    except OSError as exc:
+        raise ArtifactWriteError(f"Cannot create artifact directory {artifact_dir}: {exc}") from exc
+    return artifact_dir
 
 
 class ArtifactWriter:
     def __init__(self, *, artifact_dir: Path, run_id: str, benchmark: str) -> None:
-        self.artifact_dir = artifact_dir.expanduser().resolve()
+        self.artifact_dir = initialize_artifact_dir(artifact_dir)
         self.run_id = run_id
         self.benchmark = benchmark
         self.started_at = utc_now()
-        self.artifact_dir.mkdir(parents=True, exist_ok=True)
         self.events_path = self.artifact_dir / "events.jsonl"
-        if self.events_path.exists():
-            self.events_path.unlink()
+        self._written_artifacts: set[str] = set()
 
     def path(self, name: str) -> Path:
         return self.artifact_dir / name
 
+    def _write_error(self, name: str, exc: Exception) -> ArtifactWriteError:
+        return ArtifactWriteError(f"Failed to write artifact {self.path(name)}: {exc}")
+
+    def write_json(self, name: str, payload: Mapping[str, Any]) -> Path:
+        try:
+            write_json(self.path(name), payload)
+        except Exception as exc:
+            raise self._write_error(name, exc) from exc
+        self._written_artifacts.add(name)
+        return self.path(name)
+
+    def append_jsonl(self, name: str, payload: Mapping[str, Any]) -> Path:
+        try:
+            append_jsonl(self.path(name), payload)
+        except Exception as exc:
+            raise self._write_error(name, exc) from exc
+        self._written_artifacts.add(name)
+        return self.path(name)
+
+    def write_text(self, name: str, text: str) -> Path:
+        try:
+            path = self.path(name)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        except Exception as exc:
+            raise self._write_error(name, exc) from exc
+        self._written_artifacts.add(name)
+        return self.path(name)
+
+    def register_existing(self, name: str) -> None:
+        if self.path(name).exists():
+            self._written_artifacts.add(name)
+
+    @contextlib.contextmanager
+    def capture_output(self, name: str, *, label: str):
+        body_error: BaseException | None = None
+        try:
+            with capture_output_to_log(self.path(name), label=label):
+                try:
+                    yield
+                except BaseException as exc:
+                    body_error = exc
+                    raise
+        except OSError as exc:
+            if exc is body_error:
+                raise
+            raise self._write_error(name, exc) from exc
+        finally:
+            self.register_existing(name)
+
+    def artifact_paths(self, *, pending: tuple[str, ...] = ()) -> dict[str, str]:
+        current_run = self._written_artifacts | set(pending)
+        return {name: str(self.path(name)) for name in ARTIFACT_NAMES if name in current_run}
+
     def event(self, phase: str, event: str, message: str, data: Mapping[str, Any] | None = None) -> None:
-        append_jsonl(
-            self.events_path,
+        self.append_jsonl(
+            "events.jsonl",
             {
                 "time": utc_now(),
                 "run_id": self.run_id,
@@ -156,25 +235,10 @@ class ArtifactWriter:
             "summary_metrics_path": str(summary_metrics_path) if summary_metrics_path is not None else None,
             "failure": failure.to_dict() if failure is not None else None,
         }
-        write_json(self.path("status.json"), payload)
+        self.write_json("status.json", payload)
         self.event(phase, f"status_{status}", f"status={status} phase={phase}")
         return payload
 
 
-def artifact_paths(writer: ArtifactWriter) -> dict[str, str]:
-    names = (
-        "status.json",
-        "events.jsonl",
-        "resolved_benchmark.json",
-        "ingest_plan.json",
-        "query_plan.json",
-        "summary_metrics.json",
-        "environment.json",
-        "runfile.json",
-        "results.json",
-        "run.log",
-        "beir_metrics.json",
-        "beir_run.trec",
-        "query_results.jsonl",
-    )
-    return {name: str(writer.path(name)) for name in names if writer.path(name).exists() or name == "results.json"}
+def artifact_paths(writer: ArtifactWriter, *, pending: tuple[str, ...] = ()) -> dict[str, str]:
+    return writer.artifact_paths(pending=pending)

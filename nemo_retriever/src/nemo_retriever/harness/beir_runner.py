@@ -4,11 +4,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import time
 from typing import Any, Mapping, Sequence
 
-from nemo_retriever.harness.artifact_writer import append_jsonl, ArtifactWriter
+from nemo_retriever.harness.artifact_writer import ArtifactWriter
 from nemo_retriever.harness.contracts import (
     EXIT_EVALUATION_FAILURE,
     EXIT_MISSING_INPUT,
@@ -16,7 +15,6 @@ from nemo_retriever.harness.contracts import (
     FailurePayload,
     HarnessRunError,
 )
-from nemo_retriever.harness.json_io import write_json
 from nemo_retriever.query.workflow import ResolvedQueryPlan
 from nemo_retriever.tools.recall.beir import (
     build_beir_run_from_hits,
@@ -25,17 +23,17 @@ from nemo_retriever.tools.recall.beir import (
 )
 
 
-def _write_trec_run(path: Path, run: Mapping[str, Mapping[str, float]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        for query_id, docs in run.items():
-            ordered = sorted(docs.items(), key=lambda item: (-item[1], item[0]))
-            for rank, (doc_id, score) in enumerate(ordered, start=1):
-                handle.write(f"{query_id} Q0 {doc_id} {rank} {float(score):.6f} retriever-harness\n")
+def _trec_run_text(run: Mapping[str, Mapping[str, float]]) -> str:
+    lines: list[str] = []
+    for query_id, docs in run.items():
+        ordered = sorted(docs.items(), key=lambda item: (-item[1], item[0]))
+        for rank, (doc_id, score) in enumerate(ordered, start=1):
+            lines.append(f"{query_id} Q0 {doc_id} {rank} {float(score):.6f} retriever-harness\n")
+    return "".join(lines)
 
 
 def _write_query_result(
-    path: Path,
+    writer: ArtifactWriter,
     *,
     query_id: str,
     query_text: str,
@@ -47,8 +45,8 @@ def _write_query_result(
         ranked = dict(hit)
         ranked["rank"] = rank
         ranked_hits.append(ranked)
-    append_jsonl(
-        path,
+    writer.append_jsonl(
+        "query_results.jsonl",
         {
             "query_id": query_id,
             "query": query_text,
@@ -114,9 +112,6 @@ def run_beir_queries(
     query_kwargs = query_plan.query_kwargs()
     raw_hits: list[list[dict[str, Any]]] = []
     latencies_ms: list[float] = []
-    query_results_path = writer.path("query_results.jsonl")
-    if query_results_path.exists():
-        query_results_path.unlink()
     for query_id, query_text in zip(dataset.query_ids, dataset.queries):
         start = time.perf_counter()
         try:
@@ -137,7 +132,7 @@ def run_beir_queries(
         raw_hits.append(hit_dicts)
         latencies_ms.append(latency_ms)
         _write_query_result(
-            query_results_path,
+            writer,
             query_id=query_id,
             query_text=query_text,
             latency_ms=latency_ms,
@@ -160,6 +155,6 @@ def run_beir_queries(
                 debug_artifacts=("query_results.jsonl", "run.log"),
             ),
         ) from exc
-    write_json(writer.path("beir_metrics.json"), metrics)
-    _write_trec_run(writer.path("beir_run.trec"), run)
+    writer.write_json("beir_metrics.json", metrics)
+    writer.write_text("beir_run.trec", _trec_run_text(run))
     return latencies_ms, metrics, len(dataset.queries)

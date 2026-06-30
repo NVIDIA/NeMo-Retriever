@@ -211,6 +211,9 @@ Read these files instead of scraping stdout:
 
 Dry-runs write only planning artifacts. They do not create empty `run.log`,
 `beir_metrics.json`, `beir_run.trec`, or `query_results.jsonl` files.
+An explicit `--output-dir` must be absent or empty; the harness refuses to
+reuse a non-empty directory so stale files cannot be reported as current-run
+artifacts.
 
 ## Gates
 
