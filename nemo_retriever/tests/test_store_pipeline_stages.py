@@ -146,6 +146,26 @@ class TestStoreOperatorInGraph:
         assert result.iloc[0]["page_image"]["image_b64"] is None
         assert result.iloc[0]["page_image"]["stored_image_uri"] == result.iloc[0]["_stored_image_uri"]
 
+    def test_store_operator_writes_top_level_image_b64_video_frame(self, tmp_path: Path):
+        b64 = _make_tiny_png_b64()
+        df = pd.DataFrame(
+            [
+                {
+                    "path": "/media/demo.mp4",
+                    "_content_type": "video_frame",
+                    "image_b64": b64,
+                }
+            ]
+        )
+
+        result = StoreOperator(params=StoreParams(storage_uri=str(tmp_path))).process(df)
+
+        files = list(tmp_path.rglob("*.png"))
+        assert len(files) == 1
+        assert files[0].read_bytes() == base64.b64decode(b64)
+        assert result.iloc[0]["_stored_image_uri"].startswith("file://")
+        assert result.iloc[0]["image_b64"] is None
+
     def test_store_operator_does_not_rewrite_page_image_when_strip_false(self, monkeypatch):
         b64 = _make_tiny_png_b64()
         df = _make_embedded_df(b64).drop(columns=["_image_b64"])
