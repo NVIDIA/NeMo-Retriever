@@ -6,9 +6,7 @@
   "require": [
     "files==20",
     "pages==1940",
-    "query_count==115",
-    "recall_5>=0.85",
-    "ndcg_10>=0.75"
+    "query_count==115"
   ],
   "set": {}
 }

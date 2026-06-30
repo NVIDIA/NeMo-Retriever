@@ -15,11 +15,27 @@ _BLANK_ROW = [
     {"type": "rich_text", "elements": [{"type": "rich_text_section", "elements": [{"type": "text", "text": " "}]}]},
 ]
 METRIC_LABELS = {
+    "files": "files",
     "pages_per_sec_ingest": "pages/s",
     "ingest_secs": "ingest_s",
     "pages": "pages",
+    "query_count": "queries",
+    "query_latency_p50_ms": "query p50 ms",
+    "query_latency_p95_ms": "query p95 ms",
+    "ndcg_10": "ndcg@10",
     "recall_5": "recall@5",
+    "recall_10": "recall@10",
 }
+DEFAULT_SLACK_METRIC_KEYS = (
+    "files",
+    "pages",
+    "ingest_secs",
+    "pages_per_sec_ingest",
+    "query_count",
+    "ndcg_10",
+    "recall_5",
+    "recall_10",
+)
 
 
 @dataclass
@@ -44,6 +60,7 @@ class NightlySessionReport:
     timestamp: str | None
     latest_commit: str | None
     all_passed: bool
+    dry_run: bool
     results: list[NightlyRunReport]
 
 
@@ -69,6 +86,15 @@ def _load_results_payload(artifact_dir: Path | None) -> dict[str, Any]:
     return read_json_object(results_path)
 
 
+def _load_environment_payload(artifact_dir: Path | None) -> dict[str, Any]:
+    if artifact_dir is None:
+        return {}
+    environment_path = artifact_dir / "environment.json"
+    if not environment_path.exists():
+        return {}
+    return read_json_object(environment_path)
+
+
 def _load_preferred_metrics(payload: dict[str, Any]) -> dict[str, Any]:
     summary_metrics = payload.get("summary_metrics")
     if isinstance(summary_metrics, dict) and summary_metrics:
@@ -76,14 +102,48 @@ def _load_preferred_metrics(payload: dict[str, Any]) -> dict[str, Any]:
     return _normalize_metrics(payload.get("metrics", {}))
 
 
+def _failure_reason(payload: dict[str, Any]) -> str | None:
+    failure = payload.get("failure")
+    if not isinstance(failure, dict):
+        return None
+    for key in ("message", "failure_reason"):
+        value = failure.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _resolved_dataset_name(payload: dict[str, Any]) -> str | None:
+    resolved = payload.get("resolved_benchmark")
+    if not isinstance(resolved, dict):
+        return None
+    dataset = resolved.get("dataset")
+    if not isinstance(dataset, dict):
+        return None
+    value = dataset.get("name")
+    return str(value) if value else None
+
+
+def _run_metadata(results_payload: dict[str, Any], environment_payload: dict[str, Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    raw_run_metadata = results_payload.get("run_metadata")
+    if isinstance(raw_run_metadata, dict):
+        metadata.update(raw_run_metadata)
+    metadata.update(environment_payload)
+    if "python" in metadata and "python_version" not in metadata:
+        metadata["python_version"] = metadata["python"]
+    return metadata
+
+
 def _normalize_run_report(summary_entry: dict[str, Any]) -> NightlyRunReport:
     artifact_dir_str = summary_entry.get("artifact_dir")
     artifact_dir = Path(artifact_dir_str).expanduser().resolve() if artifact_dir_str else None
     results_payload = _load_results_payload(artifact_dir)
+    environment_payload = _load_environment_payload(artifact_dir)
     test_config = results_payload.get("test_config", {})
-    run_metadata = results_payload.get("run_metadata", {})
+    run_metadata = _run_metadata(results_payload, environment_payload)
 
-    metrics = summary_entry.get("metrics", {})
+    metrics = summary_entry.get("metrics") or summary_entry.get("summary_metrics") or {}
     if not isinstance(metrics, dict) or not metrics:
         metrics = _load_preferred_metrics(results_payload)
     if not isinstance(metrics, dict):
@@ -94,21 +154,43 @@ def _normalize_run_report(summary_entry: dict[str, Any]) -> NightlyRunReport:
     if not isinstance(run_metadata, dict):
         run_metadata = {}
 
+    return_code = summary_entry.get("return_code", summary_entry.get("exit_code", results_payload.get("exit_code")))
+    success = summary_entry.get("success", results_payload.get("success", False))
+    latest_commit = (
+        results_payload.get("latest_commit")
+        or environment_payload.get("git_sha")
+        or environment_payload.get("git_commit")
+    )
+
     return NightlyRunReport(
-        run_name=str(summary_entry.get("run_name") or (artifact_dir.name if artifact_dir else "unknown_run")),
-        dataset=str(summary_entry.get("dataset") or test_config.get("dataset_label") or "unknown_dataset"),
+        run_name=str(
+            summary_entry.get("run_name")
+            or summary_entry.get("benchmark")
+            or results_payload.get("benchmark")
+            or (artifact_dir.name if artifact_dir else "unknown_run")
+        ),
+        dataset=str(
+            summary_entry.get("dataset")
+            or _resolved_dataset_name(results_payload)
+            or test_config.get("dataset_label")
+            or "unknown_dataset"
+        ),
         preset=(
             str(summary_entry.get("preset") or test_config.get("preset"))
             if (summary_entry.get("preset") or test_config.get("preset"))
             else None
         ),
-        success=bool(summary_entry.get("success")),
-        return_code=int(summary_entry["return_code"]) if summary_entry.get("return_code") is not None else None,
-        failure_reason=str(summary_entry.get("failure_reason")) if summary_entry.get("failure_reason") else None,
+        success=bool(success),
+        return_code=int(return_code) if return_code is not None else None,
+        failure_reason=(
+            str(summary_entry.get("failure_reason"))
+            if summary_entry.get("failure_reason")
+            else _failure_reason(results_payload)
+        ),
         artifact_dir=artifact_dir,
         metrics=_normalize_metrics(metrics),
-        latest_commit=str(results_payload.get("latest_commit")) if results_payload.get("latest_commit") else None,
-        run_metadata=dict(run_metadata),
+        latest_commit=str(latest_commit) if latest_commit else None,
+        run_metadata=run_metadata,
     )
 
 
@@ -118,18 +200,26 @@ def load_session_report(session_summary_path: Path) -> NightlySessionReport:
         resolved_summary_path = resolved_summary_path / "session_summary.json"
 
     payload = read_json_object(resolved_summary_path)
-    raw_results = payload.get("results", [])
+    raw_results = payload.get("runs", payload.get("results", []))
     if not isinstance(raw_results, list):
-        raise ValueError(f"'results' must be a list in {resolved_summary_path}")
+        raise ValueError(f"'results' or 'runs' must be a list in {resolved_summary_path}")
+    results = [_normalize_run_report(dict(item)) for item in raw_results if isinstance(item, dict)]
+    latest_commit = (
+        payload.get("run_commit")
+        or payload.get("latest_commit")
+        or next((run.latest_commit for run in results if run.latest_commit), None)
+    )
+    all_passed = payload.get("all_passed", payload.get("success", False))
 
     return NightlySessionReport(
-        session_name=resolved_summary_path.parent.name,
+        session_name=str(payload.get("session_name") or payload.get("runset") or resolved_summary_path.parent.name),
         session_dir=resolved_summary_path.parent,
         session_type=str(payload.get("session_type") or "nightly"),
         timestamp=str(payload.get("timestamp")) if payload.get("timestamp") else None,
-        latest_commit=str(payload.get("latest_commit")) if payload.get("latest_commit") else None,
-        all_passed=bool(payload.get("all_passed")),
-        results=[_normalize_run_report(dict(item)) for item in raw_results if isinstance(item, dict)],
+        latest_commit=str(latest_commit) if latest_commit else None,
+        all_passed=bool(all_passed),
+        dry_run=bool(payload.get("dry_run", False)),
+        results=results,
     )
 
 
@@ -146,6 +236,7 @@ def load_replay_report(replay_paths: list[Path]) -> NightlySessionReport:
 
     run_reports: list[NightlyRunReport] = []
     latest_commit: str | None = None
+    dry_run = True
 
     for path in resolved_paths:
         results_path = path / "results.json" if path.is_dir() else path
@@ -153,26 +244,28 @@ def load_replay_report(replay_paths: list[Path]) -> NightlySessionReport:
             raise ValueError(f"Replay path must be a run directory, session directory, or results.json file: {path}")
         payload = read_json_object(results_path)
         artifact_dir = results_path.parent
+        environment_payload = _load_environment_payload(artifact_dir)
         test_config = payload.get("test_config", {})
         if not isinstance(test_config, dict):
             test_config = {}
-        run_metadata = payload.get("run_metadata", {})
-        if not isinstance(run_metadata, dict):
-            run_metadata = {}
+        run_metadata = _run_metadata(payload, environment_payload)
 
-        latest_commit = latest_commit or (str(payload.get("latest_commit")) if payload.get("latest_commit") else None)
+        payload_commit = payload.get("latest_commit") or environment_payload.get("git_sha")
+        return_code = payload.get("return_code", payload.get("exit_code"))
+        latest_commit = latest_commit or (str(payload_commit) if payload_commit else None)
+        dry_run = dry_run and bool(payload.get("dry_run", False))
         run_reports.append(
             NightlyRunReport(
-                run_name=artifact_dir.name,
-                dataset=str(test_config.get("dataset_label") or artifact_dir.name),
+                run_name=str(payload.get("benchmark") or artifact_dir.name),
+                dataset=str(_resolved_dataset_name(payload) or test_config.get("dataset_label") or artifact_dir.name),
                 preset=str(test_config.get("preset")) if test_config.get("preset") else None,
                 success=bool(payload.get("success")),
-                return_code=int(payload["return_code"]) if payload.get("return_code") is not None else None,
-                failure_reason=str(payload.get("failure_reason")) if payload.get("failure_reason") else None,
+                return_code=int(return_code) if return_code is not None else None,
+                failure_reason=_failure_reason(payload),
                 artifact_dir=artifact_dir,
                 metrics=_load_preferred_metrics(payload),
-                latest_commit=str(payload.get("latest_commit")) if payload.get("latest_commit") else None,
-                run_metadata=dict(run_metadata),
+                latest_commit=str(payload_commit) if payload_commit else None,
+                run_metadata=run_metadata,
             )
         )
 
@@ -184,6 +277,7 @@ def load_replay_report(replay_paths: list[Path]) -> NightlySessionReport:
         timestamp=now_timestr(),
         latest_commit=latest_commit,
         all_passed=all(run.success for run in run_reports),
+        dry_run=dry_run,
         results=run_reports,
     )
 
@@ -262,21 +356,25 @@ def build_slack_payload(report: NightlySessionReport, slack_config: dict[str, An
     post_artifact_paths = bool(slack_config.get("post_artifact_paths", True))
     passed_count = sum(1 for run in report.results if run.success)
     total_count = len(report.results)
-    overall_status = (
-        f"PASS ({passed_count}/{total_count})" if report.all_passed else f"FAIL ({passed_count}/{total_count} passed)"
-    )
+    if report.dry_run:
+        overall_status = f"DRY RUN ({total_count} planned)"
+    elif report.all_passed:
+        overall_status = f"PASS ({passed_count}/{total_count})"
+    else:
+        overall_status = f"FAIL ({passed_count}/{total_count} passed)"
     first_metadata = next((run.run_metadata for run in report.results if run.run_metadata), {})
 
     rows: list[list[dict[str, Any]]] = []
     rows.append(_two_column_row_bold("OVERALL STATUS", overall_status))
     for run in report.results:
-        run_status = "PASS" if run.success else "FAIL"
+        run_status = "DRY RUN" if report.dry_run else "PASS" if run.success else "FAIL"
         rows.append(_two_column_row_bold(f"-    {run.dataset}", run_status))
 
     rows.append(_BLANK_ROW)
     rows.append(_two_column_row_bold("ENVIRONMENT", " "))
     rows.append(_two_column_row("-    session", report.session_name))
-    rows.append(_two_column_row("-    session_dir", str(report.session_dir)))
+    if post_artifact_paths:
+        rows.append(_two_column_row("-    session_dir", str(report.session_dir)))
     if report.latest_commit:
         rows.append(_two_column_row("-    git_commit", report.latest_commit))
     for key in ["host", "gpu_count", "cuda_driver", "ray_version", "python_version"]:
@@ -287,7 +385,7 @@ def build_slack_payload(report: NightlySessionReport, slack_config: dict[str, An
     rows.append(_BLANK_ROW)
     rows.append(_two_column_row_bold("RESULTS", " "))
     for run in report.results:
-        run_status = "PASS" if run.success else "FAIL"
+        run_status = "DRY RUN" if report.dry_run else "PASS" if run.success else "FAIL"
         rows.append(_two_column_row_bold(run.dataset, run_status))
         if not run.success and run.return_code is not None:
             rows.append(_two_column_row("-    return_code", str(run.return_code)))
@@ -333,14 +431,17 @@ def post_slack_payload(payload: dict[str, Any], webhook_url: str) -> None:
     except ModuleNotFoundError as exc:
         raise RuntimeError("requests is required for Slack posting") from exc
 
-    response = requests.post(
-        webhook_url,
-        json=payload,
-        headers={"Content-Type": "application/json"},
-        timeout=30,
-    )
+    try:
+        response = requests.post(
+            webhook_url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError("Slack post failed because the webhook request could not be completed") from exc
     if not response.ok:
-        raise RuntimeError(f"Slack post failed with status={response.status_code}: {response.text}")
+        raise RuntimeError(f"Slack post failed with status={response.status_code}")
 
 
 def post_report_to_slack(

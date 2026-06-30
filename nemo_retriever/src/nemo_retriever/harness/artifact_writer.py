@@ -88,12 +88,19 @@ def capture_output_to_log(path: Path, *, label: str):
             os.close(saved_stdout)
 
 
+_SENSITIVE_KEY_PARTS = ("api_key", "password", "secret", "credential", "token")
+
+
+def _is_sensitive_key(value: Any) -> bool:
+    normalized = str(value).lower()
+    return any(token in normalized for token in _SENSITIVE_KEY_PARTS)
+
+
 def redact(value: Any) -> Any:
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for key, nested in value.items():
-            normalized = str(key).lower()
-            if any(token in normalized for token in ("api_key", "password", "secret", "credential", "token")):
+            if _is_sensitive_key(key):
                 out[key] = "<redacted>" if nested else nested
             else:
                 out[key] = redact(nested)
@@ -102,6 +109,10 @@ def redact(value: Any) -> Any:
         return [redact(item) for item in value]
     if isinstance(value, tuple):
         return [redact(item) for item in value]
+    if isinstance(value, str) and "=" in value:
+        key, _separator, _raw = value.partition("=")
+        if _is_sensitive_key(key):
+            return f"{key}=<redacted>"
     return value
 
 

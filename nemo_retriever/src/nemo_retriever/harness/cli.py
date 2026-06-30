@@ -24,7 +24,8 @@ from nemo_retriever.harness.revamp_runner import (
 from nemo_retriever.harness.diff import diff_artifact_dirs
 from nemo_retriever.harness.resolution import make_run_id
 from nemo_retriever.harness.runfile import load_runfile
-from nemo_retriever.harness.runsets import run_runset
+from nemo_retriever.harness.runsets import run_runfiles, run_runset
+from nemo_retriever.harness.slack import DEFAULT_SLACK_METRIC_KEYS, load_replay_report, post_report_to_slack
 
 app = typer.Typer(help="Artifact-first Retriever benchmark harness.")
 
@@ -201,6 +202,95 @@ def run_set_command(
         typer.echo(f"Runset failed with exit code {outcome.exit_code}", err=True)
         typer.echo(f"Session artifacts: {outcome.artifact_dir}", err=True)
     raise typer.Exit(code=outcome.exit_code)
+
+
+@app.command("run-files")
+def run_files_command(
+    runfiles: Annotated[list[Path], typer.Argument(help="Runfile paths to execute as one session.")],
+    output_dir: Annotated[str | None, typer.Option("--output-dir", help="Directory for session artifacts.")] = None,
+    session_name: Annotated[str, typer.Option("--session-name", help="Stable session label.")] = "runfiles",
+    dataset_paths: Annotated[
+        Path | None,
+        typer.Option(
+            "--dataset-paths",
+            help="Machine-local YAML file that maps registered datasets to document and query paths.",
+        ),
+    ] = None,
+    mode: Annotated[str | None, typer.Option("--mode", help="Override ingest mode for every runfile.")] = None,
+    set_values: Annotated[
+        list[str] | None,
+        typer.Option("--set", help="Apply a small KEY=VALUE override to every run. Repeatable."),
+    ] = None,
+    requirements: Annotated[
+        list[str] | None,
+        typer.Option("--require", help="Require a summary metric gate for every run. Repeatable."),
+    ] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Resolve plans and artifacts without execution.")] = False,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit session summary JSON to stdout.")] = False,
+) -> None:
+    """Execute one or more checked-in runfiles as a single artifact session."""
+    try:
+        outcome = run_runfiles(
+            runfiles,
+            output_dir=output_dir,
+            session_name=session_name,
+            dataset_paths_file=dataset_paths,
+            mode=mode,
+            overrides=set_values or (),
+            requirements=requirements or (),
+            dry_run=dry_run,
+        )
+    except HarnessRunError as exc:
+        typer.echo(exc.failure.message, err=True)
+        raise typer.Exit(code=exc.exit_code) from exc
+
+    if json_output:
+        _echo_json(outcome.results)
+    elif outcome.exit_code == 0:
+        typer.echo(f"Session artifacts: {outcome.artifact_dir}")
+        typer.echo(f"Session summary: {outcome.artifact_dir / 'session_summary.json'}")
+    else:
+        typer.echo(f"Runfile session failed with exit code {outcome.exit_code}", err=True)
+        typer.echo(f"Session artifacts: {outcome.artifact_dir}", err=True)
+    raise typer.Exit(code=outcome.exit_code)
+
+
+@app.command("post-slack")
+def post_slack_command(
+    paths: Annotated[
+        list[Path],
+        typer.Argument(help="One session directory, or one or more run artifact directories/results.json files."),
+    ],
+    title: Annotated[str, typer.Option("--title", help="Slack message title.")] = "nemo_retriever Nightly Harness",
+    metric_keys: Annotated[
+        list[str] | None,
+        typer.Option("--metric-key", help="Summary metric key to include. Repeatable."),
+    ] = None,
+    post_artifact_paths: Annotated[
+        bool,
+        typer.Option("--artifact-paths/--no-artifact-paths", help="Include local artifact paths in the Slack post."),
+    ] = True,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit posted Slack payload JSON to stdout.")] = False,
+) -> None:
+    """Post an existing harness session or run artifact set to Slack."""
+    try:
+        report = load_replay_report(paths)
+        payload = post_report_to_slack(
+            report,
+            {
+                "title": title,
+                "metric_keys": metric_keys or DEFAULT_SLACK_METRIC_KEYS,
+                "post_artifact_paths": post_artifact_paths,
+            },
+        )
+    except Exception as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    if json_output:
+        _echo_json(payload)
+    else:
+        typer.echo(f"Posted Slack report for {report.session_name}")
 
 
 @app.command("diff")

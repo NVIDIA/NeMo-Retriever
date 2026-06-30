@@ -70,6 +70,8 @@ parallelism and memory pressure.
 - `show`: inspect one benchmark definition.
 - `run`: run one benchmark.
 - `run-set`: expand and run a code-owned runset.
+- `run-files`: execute one or more checked-in runfiles as one session.
+- `post-slack`: post an existing session or run artifact set to Slack.
 - `diff`: compare two run artifact directories by `summary_metrics.json`.
 
 Legacy graph-pipeline harness execution, sweep, nightly, runner, reporting, and
@@ -128,6 +130,146 @@ The harness accepts JSON, YAML, or YML runfiles. Runfiles use
 `schema_version: 1`; unknown top-level runfile keys fail during resolution with
 exit code `2`. The checked-in JP20 example is
 [`runfiles/jp20_beir.json`](runfiles/jp20_beir.json).
+
+### Configure Machine-Local Dataset Paths
+
+Dataset locations vary between developer systems. Keep benchmark definitions
+and checked-in runfiles independent of one machine's mount layout. Copy
+[`dataset_paths.example.yaml`](dataset_paths.example.yaml) to an untracked
+location, then set the document and query paths available on the machine that
+runs the harness.
+
+Pass the local file with `--dataset-paths`. Relative paths in the file resolve
+relative to the file itself. The harness writes the resolved absolute paths to
+`expanded_runs.json` and each run's `resolved_benchmark.json`.
+
+Settings resolve in this order, from lowest to highest precedence:
+
+1. Benchmark registry defaults.
+2. Checked-in runfile overrides.
+3. Machine-local dataset paths.
+4. Command-line `--set` overrides.
+
+### Run Several Runfiles as One Session
+
+The following command runs the canonical library benchmarks and writes all
+artifacts beneath one session directory:
+
+```bash
+export VLLM_USE_DEEP_GEMM=0
+export RETRIEVER_SESSION_DIR=/local/path/to/retriever-artifacts/library-nightly-$(date -u +%Y%m%d_%H%M%S_UTC)
+
+uv run --project nemo_retriever retriever harness run-files \
+  --session-name library_nightly \
+  --output-dir "$RETRIEVER_SESSION_DIR" \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
+  --json \
+  nemo_retriever/harness/runfiles/jp20_beir.json \
+  nemo_retriever/harness/runfiles/bo767_beir.json \
+  nemo_retriever/harness/runfiles/earnings_beir.json \
+  nemo_retriever/harness/runfiles/financebench_beir.json
+```
+
+On vLLM environments affected by the current DeepGEMM availability check,
+`VLLM_USE_DEEP_GEMM=0` keeps the local embedding backend enabled while using
+fallback kernels. Remove the variable after the vLLM and DeepGEMM dependency
+stack is repaired. Because this setting can affect throughput, the harness
+records it in `environment.json`.
+
+`run-files` owns the session layout. Runfiles passed to this command cannot set
+their own `output_dir` or `run_id`. The session uses the following paths and
+identifiers:
+
+```text
+<session-output-dir>/
+  expanded_runs.json
+  session_summary.json
+  001_<runfile-name>/
+  002_<runfile-name>/
+
+run ID: <session-name>_<index>_<runfile-name>
+```
+
+Session names and runfile names can contain letters, numbers, periods,
+underscores, and hyphens. Other characters fail validation before execution.
+
+## Post Results to Slack
+
+Harness execution and Slack reporting are separate operations. `run-files`
+writes local artifacts and never contacts Slack. `post-slack` reads an existing
+session or run artifact, builds a summary, and sends that summary without
+rerunning ingestion or queries.
+
+This separation lets you inspect a completed session before reporting it and
+reuse the same artifacts when report formatting changes.
+
+### Prerequisites
+
+Before you post a report, verify the following:
+
+- The run completed far enough to write `session_summary.json` or
+  `results.json`.
+- The environment includes the `requests` package.
+- `SLACK_WEBHOOK_URL` contains an incoming webhook for the destination channel.
+
+Set the webhook in the process environment:
+
+```bash
+export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
+```
+
+Do not put the webhook URL in a runfile, dataset paths file, shell argument, or
+artifact. For scheduled runs, load it from a permissions-restricted environment
+file outside the repository.
+
+### Post a Completed Session
+
+Pass the session directory to `post-slack`:
+
+```bash
+uv run --project nemo_retriever retriever harness post-slack \
+  --title "nemo-retriever library nightly" \
+  "$RETRIEVER_SESSION_DIR"
+```
+
+You can also pass one or more run artifact directories or `results.json` files.
+Each invocation sends a new Slack message; it does not modify the completed
+harness artifacts.
+
+By default, the report includes file and page counts, ingest time, ingest
+pages/sec, query count, recall, nDCG, environment details, and local artifact
+paths when those values are available. Use repeated `--metric-key` options to
+select a different metric set. Use `--no-artifact-paths` to omit local paths.
+
+### Preserve Run and Report Status
+
+A failed benchmark session normally still writes a summary that can be posted.
+When you schedule the harness, save the run exit code, attempt Slack reporting,
+then return the run failure after reporting:
+
+```bash
+uv run --project nemo_retriever retriever harness run-files \
+  --session-name library_nightly \
+  --output-dir "$RETRIEVER_SESSION_DIR" \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
+  nemo_retriever/harness/runfiles/jp20_beir.json \
+  nemo_retriever/harness/runfiles/bo767_beir.json \
+  nemo_retriever/harness/runfiles/earnings_beir.json \
+  nemo_retriever/harness/runfiles/financebench_beir.json
+run_status=$?
+
+uv run --project nemo_retriever retriever harness post-slack "$RETRIEVER_SESSION_DIR"
+slack_status=$?
+
+if [ "$run_status" -ne 0 ]; then
+  exit "$run_status"
+fi
+exit "$slack_status"
+```
+
+Use a host-local scheduler such as cron and a nonblocking `flock` lock to avoid
+overlapping daily runs. Keep the session directory on runner-owned storage; the
+harness does not upload full artifacts to Slack or external artifact storage.
 
 ## Controls And Overrides
 

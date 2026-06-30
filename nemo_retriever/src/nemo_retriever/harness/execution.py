@@ -69,7 +69,7 @@ def _run_result_payload(
         "artifacts": artifact_paths(writer),
     }
     result.update(extra)
-    return result
+    return redact(result)
 
 
 def _write_failure_result(
@@ -141,10 +141,12 @@ def run_benchmark(
         if runfile_payload is not None:
             write_json(
                 writer.path("runfile.json"),
-                {
-                    "source_path": runfile_path,
-                    "payload": runfile_payload,
-                },
+                redact(
+                    {
+                        "source_path": runfile_path,
+                        "payload": runfile_payload,
+                    }
+                ),
             )
         parse_metric_gates(requirements)
         resolved = resolve_benchmark(benchmark, mode=mode, overrides=overrides)
@@ -184,7 +186,7 @@ def run_benchmark(
         query_request = build_query_request(resolved, "")
         query_plan = resolve_query_plan(query_request)
         write_json(writer.path("query_plan.json"), query_plan_payload(query_plan))
-        write_json(writer.path("resolved_benchmark.json"), resolved)
+        write_json(writer.path("resolved_benchmark.json"), redact(resolved))
 
         ingest_summary: dict[str, Any] | None = None
         ingest_secs: float | None = None

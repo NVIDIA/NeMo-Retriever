@@ -5,12 +5,15 @@
 from __future__ import annotations
 
 from importlib import metadata
+import os
 import platform
 import socket
 import subprocess
 from typing import Any
 
 from nemo_retriever.harness.artifacts import last_commit
+
+_RECORDED_RUNTIME_ENV_KEYS = ("VLLM_USE_DEEP_GEMM",)
 
 
 def _safe_package_version() -> str:
@@ -49,6 +52,7 @@ def collect_environment() -> dict[str, Any]:
     except metadata.PackageNotFoundError:
         ray_version = "unknown"
     gpu_count, cuda_driver = _gpu_metadata()
+    runtime_environment = {key: os.environ[key] for key in _RECORDED_RUNTIME_ENV_KEYS if key in os.environ}
     return {
         "git_sha": last_commit(),
         "package_version": _safe_package_version(),
@@ -58,4 +62,5 @@ def collect_environment() -> dict[str, Any]:
         "gpu_count": gpu_count,
         "cuda_driver": cuda_driver,
         "ray_version": ray_version,
+        "runtime_environment": runtime_environment,
     }
