@@ -45,3 +45,18 @@ Before ingesting a mixed folder, inventory extensions (`find <dir> -name '*.*' |
 - **Banned**: `TodoWrite`, Glob, Grep, `Read` of whole PDFs, re-running setup, spawning subagents, speculative "confirmation" calls.
 
 Long query turns (5+ tool calls, 1M+ cache-read tokens) cost ~5× a disciplined turn and almost always still produce the wrong answer. **Answering partially beats timing out.**
+
+## Self-update
+
+The `retriever` CLI and output shape move. When a run exposes a durable gap in this skill, edit it.
+
+Update when:
+
+- A flag, command, default, output field, or `metadata` shape differs from this skill.
+- A supported input type, install extra, setup step, or backend requirement is missing.
+- A repeated failure mode or recovery path is not covered.
+- An eval miss reveals a workflow rule that would prevent future wrong answers.
+
+Put details in the narrowest reference: install/setup facts in `references/install.md` or `references/setup.md`; query/output/citation facts in `references/query.md`; failures in `references/troubleshooting.md`; CLI specifics in `references/cli/*.md`. Only always-on workflow rules belong here.
+
+Keep additions terse and evidence-backed. If a fact came from one corpus, one environment, or one transient failure, leave it out.
