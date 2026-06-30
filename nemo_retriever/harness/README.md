@@ -241,6 +241,23 @@ pages/sec, query count, recall, nDCG, environment details, and local artifact
 paths when those values are available. Use repeated `--metric-key` options to
 select a different metric set. Use `--no-artifact-paths` to omit local paths.
 
+### Preview Report Formatting
+
+Use `--preview` to render the exact Slack payload without reading
+`SLACK_WEBHOOK_URL` or making an HTTP request:
+
+```bash
+uv run --project nemo_retriever retriever harness post-slack \
+  --preview \
+  --title "nemo-retriever library nightly" \
+  "$RETRIEVER_SESSION_DIR"
+```
+
+Preview the same completed session as often as needed while adjusting the
+title, metric selection, or artifact-path setting. When the payload is ready,
+run the command again without `--preview` to post it. Preview and posting use
+the same artifact loader and payload formatter.
+
 ### Preserve Run and Report Status
 
 A failed benchmark session normally still writes a summary that can be posted.

@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 import requests
+from typer.testing import CliRunner
 
+from nemo_retriever.harness.cli import app
 from nemo_retriever.harness.slack import (
     DEFAULT_SLACK_METRIC_KEYS,
     build_slack_payload,
@@ -127,3 +129,37 @@ def test_slack_transport_error_does_not_expose_webhook(monkeypatch):
 
     assert "TSECRET" not in str(exc_info.value)
     assert "webhook request could not be completed" in str(exc_info.value)
+
+
+def test_slack_preview_matches_posted_payload_without_requiring_webhook(monkeypatch, tmp_path):
+    session_dir = _write_session(tmp_path)
+    runner = CliRunner()
+    posted = []
+
+    def capture_post(payload, webhook_url):
+        posted.append((payload, webhook_url))
+
+    monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
+    monkeypatch.setattr("nemo_retriever.harness.cli.post_slack_payload", capture_post)
+    common_args = [
+        "post-slack",
+        "--title",
+        "nemo-retriever library nightly",
+        "--no-artifact-paths",
+        str(session_dir),
+    ]
+
+    preview_result = runner.invoke(app, [*common_args, "--preview"])
+
+    assert preview_result.exit_code == 0
+    assert posted == []
+    preview_payload = json.loads(preview_result.stdout)
+
+    monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/test")
+    post_result = runner.invoke(app, [*common_args, "--json"])
+
+    assert post_result.exit_code == 0
+    assert len(posted) == 1
+    assert posted[0][1] == "https://hooks.slack.com/services/test"
+    assert preview_payload == posted[0][0]
+    assert preview_payload == json.loads(post_result.stdout)

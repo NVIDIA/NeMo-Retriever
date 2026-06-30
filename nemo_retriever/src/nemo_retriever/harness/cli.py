@@ -25,7 +25,13 @@ from nemo_retriever.harness.diff import diff_artifact_dirs
 from nemo_retriever.harness.resolution import make_run_id
 from nemo_retriever.harness.runfile import load_runfile
 from nemo_retriever.harness.runsets import run_runfiles, run_runset
-from nemo_retriever.harness.slack import DEFAULT_SLACK_METRIC_KEYS, load_replay_report, post_report_to_slack
+from nemo_retriever.harness.slack import (
+    DEFAULT_SLACK_METRIC_KEYS,
+    build_slack_payload,
+    load_replay_report,
+    post_slack_payload,
+    resolve_slack_webhook_url,
+)
 
 app = typer.Typer(help="Artifact-first Retriever benchmark harness.")
 
@@ -270,24 +276,28 @@ def post_slack_command(
         bool,
         typer.Option("--artifact-paths/--no-artifact-paths", help="Include local artifact paths in the Slack post."),
     ] = True,
+    preview: Annotated[
+        bool,
+        typer.Option("--preview", help="Render the Slack payload as JSON without reading a webhook or posting."),
+    ] = False,
     json_output: Annotated[bool, typer.Option("--json", help="Emit posted Slack payload JSON to stdout.")] = False,
 ) -> None:
-    """Post an existing harness session or run artifact set to Slack."""
+    """Render or post a Slack report from existing harness artifacts."""
     try:
         report = load_replay_report(paths)
-        payload = post_report_to_slack(
-            report,
-            {
-                "title": title,
-                "metric_keys": metric_keys or DEFAULT_SLACK_METRIC_KEYS,
-                "post_artifact_paths": post_artifact_paths,
-            },
-        )
+        slack_config = {
+            "title": title,
+            "metric_keys": metric_keys or DEFAULT_SLACK_METRIC_KEYS,
+            "post_artifact_paths": post_artifact_paths,
+        }
+        payload = build_slack_payload(report, slack_config)
+        if not preview:
+            post_slack_payload(payload, resolve_slack_webhook_url())
     except Exception as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
 
-    if json_output:
+    if preview or json_output:
         _echo_json(payload)
     else:
         typer.echo(f"Posted Slack report for {report.session_name}")

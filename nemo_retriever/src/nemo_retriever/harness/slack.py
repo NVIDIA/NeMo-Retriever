@@ -444,16 +444,19 @@ def post_slack_payload(payload: dict[str, Any], webhook_url: str) -> None:
         raise RuntimeError(f"Slack post failed with status={response.status_code}")
 
 
+def resolve_slack_webhook_url(webhook_url: str | None = None) -> str:
+    effective_webhook = webhook_url or os.environ.get("SLACK_WEBHOOK_URL")
+    if not effective_webhook:
+        raise RuntimeError("SLACK_WEBHOOK_URL is not set")
+    return effective_webhook
+
+
 def post_report_to_slack(
     report: NightlySessionReport,
     slack_config: dict[str, Any],
     *,
     webhook_url: str | None = None,
 ) -> dict[str, Any]:
-    effective_webhook = webhook_url or os.environ.get("SLACK_WEBHOOK_URL")
-    if not effective_webhook:
-        raise RuntimeError("SLACK_WEBHOOK_URL is not set")
-
     payload = build_slack_payload(report, slack_config)
-    post_slack_payload(payload, effective_webhook)
+    post_slack_payload(payload, resolve_slack_webhook_url(webhook_url))
     return payload
