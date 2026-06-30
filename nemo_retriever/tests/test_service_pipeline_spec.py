@@ -253,8 +253,16 @@ def test_validate_reject_mode_blocks_any_override() -> None:
 
 def test_validate_reject_mode_allows_compact_result_schema_only() -> None:
     cfg = PipelineOverridesConfig(mode="reject")
-    spec = PipelineSpec(result_schema="compact", extraction_mode="audio")
+    spec = PipelineSpec(result_schema="compact")
     assert validate_pipeline_spec(spec, cfg.to_policy()) is spec
+
+
+def test_validate_reject_mode_blocks_extraction_mode_piggyback_on_compact_schema() -> None:
+    cfg = PipelineOverridesConfig(mode="reject")
+    spec = PipelineSpec(result_schema="compact", extraction_mode="audio")
+    with pytest.raises(PolicyError) as exc:
+        validate_pipeline_spec(spec, cfg.to_policy())
+    assert exc.value.status_code == 403
 
 
 def test_validate_allow_all_mode_still_blocks_endpoints() -> None:

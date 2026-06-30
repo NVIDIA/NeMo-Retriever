@@ -606,6 +606,7 @@ def validate_pipeline_spec(
 
     result_schema_only = (
         spec.result_schema != "legacy"
+        and spec.extraction_mode in ("pdf", "auto")
         and spec.extract_params is None
         and spec.embed_params is None
         and spec.dedup_params is None
