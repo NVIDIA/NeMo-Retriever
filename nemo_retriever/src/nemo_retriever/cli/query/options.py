@@ -8,6 +8,11 @@ from typing import Annotated
 
 import typer
 
+from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+
+DEFAULT_EMBED_MODEL = VL_EMBED_MODEL
+DEFAULT_RERANK_MODEL = VL_RERANK_MODEL
+
 
 QueryArgument = Annotated[str, typer.Argument(..., help="Query text.")]
 TopKOption = Annotated[
@@ -62,7 +67,10 @@ EmbedInvokeUrlOption = Annotated[
 ]
 EmbedModelNameOption = Annotated[
     str | None,
-    typer.Option("--embed-model-name", help="Optional embedding model name override."),
+    typer.Option(
+        "--embed-model-name",
+        help=f"Optional embedding model name override. Defaults to {DEFAULT_EMBED_MODEL} when omitted.",
+    ),
 ]
 RerankerInvokeUrlOption = Annotated[
     str | None,
@@ -82,7 +90,7 @@ RerankerModelNameOption = Annotated[
     str | None,
     typer.Option(
         "--reranker-model-name",
-        help="Optional reranker model name override (used by the local GPU reranker).",
+        help=("Optional reranker model name override. When reranking locally, " f"defaults to {DEFAULT_RERANK_MODEL}."),
     ),
 ]
 RerankerBackendOption = Annotated[
@@ -106,14 +114,22 @@ RerankOption = Annotated[
         ),
     ),
 ]
+RetrievalModeOption = Annotated[
+    str,
+    typer.Option(
+        "--retrieval-mode",
+        help=(
+            "Expert LanceDB retrieval mode: auto, dense, hybrid, or sparse. Default auto inspects the table "
+            "and chooses the supported mode."
+        ),
+    ),
+]
 HybridOption = Annotated[
     bool,
     typer.Option(
-        "--hybrid/--no-hybrid",
-        help=(
-            "Fused vector + full-text (BM25) retrieval; falls back to vector-only if the table "
-            "has no FTS index. Opt-in (default off) preserves the legacy vector-only default."
-        ),
+        "--hybrid",
+        help="Deprecated alias for --retrieval-mode hybrid.",
+        hidden=True,
     ),
 ]
 OutputFormatOption = Annotated[

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import cast
 
 import click
 import typer
@@ -14,7 +15,7 @@ from typer.core import TyperGroup
 from nemo_retriever.cli.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
-from nemo_retriever.cli.query_workflow import query_documents as query_local_documents
+from nemo_retriever.cli.query_workflow import query_documents_with_metadata as query_local_documents_with_metadata
 from nemo_retriever.cli.shared import (
     ROOT_CLI_ERRORS,
     quiet_capture,
@@ -27,6 +28,7 @@ from nemo_retriever.query.options import (
     QueryRerankOptions,
     QueryRequest,
     QueryRetrievalOptions,
+    QueryRetrievalMode,
     QueryServiceOptions,
     QueryStorageOptions,
     ServiceQueryRequest,
@@ -35,6 +37,7 @@ from nemo_retriever.query.service import query_documents as query_service_docume
 
 _DEFAULT_COMMAND = "_local"
 _GROUP_OPTIONS = {"--help", "-h", "--install-completion", "--show-completion"}
+_RETRIEVAL_MODES: set[str] = {"auto", "dense", "hybrid", "sparse"}
 
 
 class DefaultLocalQueryGroup(TyperGroup):
@@ -46,7 +49,10 @@ class DefaultLocalQueryGroup(TyperGroup):
 
 app = typer.Typer(
     cls=DefaultLocalQueryGroup,
-    help="Query Retriever indexes. Omitting a mode queries local LanceDB.",
+    help=(
+        "Query Retriever indexes. The local root CLI supports LanceDB indexes; "
+        "use the SDK VDB interface for other backends."
+    ),
     no_args_is_help=True,
 )
 
@@ -91,6 +97,31 @@ def _validate_output_options(output_format: str, max_text_chars: int | None) -> 
         raise typer.Exit(1)
 
 
+def _validate_retrieval_mode(retrieval_mode: str) -> QueryRetrievalMode:
+    normalized = retrieval_mode.strip().lower()
+    if normalized not in _RETRIEVAL_MODES:
+        typer.echo(
+            "Error: unknown --retrieval-mode " f"{retrieval_mode!r} (use 'auto', 'dense', 'hybrid', or 'sparse').",
+            err=True,
+        )
+        raise typer.Exit(1)
+    return cast(QueryRetrievalMode, normalized)
+
+
+def _query_retrieval_mode(ctx: typer.Context, retrieval_mode: str, hybrid: bool) -> QueryRetrievalMode:
+    resolved = _validate_retrieval_mode(retrieval_mode)
+    hybrid_source = ctx.get_parameter_source("hybrid")
+    has_hybrid_alias = hybrid_source is not None and getattr(hybrid_source, "name", "") != "DEFAULT"
+    retrieval_mode_source = ctx.get_parameter_source("retrieval_mode")
+    has_retrieval_mode = retrieval_mode_source is not None and getattr(retrieval_mode_source, "name", "") != "DEFAULT"
+    if has_hybrid_alias and has_retrieval_mode:
+        typer.echo("Error: pass only one of --retrieval-mode or deprecated --hybrid.", err=True)
+        raise typer.Exit(1)
+    if has_hybrid_alias and hybrid:
+        return "hybrid"
+    return resolved
+
+
 def _emit_query_output(
     hits: list[RetrievalHit],
     *,
@@ -113,19 +144,27 @@ def _retrieval_options(
     candidate_k: int | None,
     page_dedup: bool,
     content_types: str | None,
-    hybrid: bool = False,
+    retrieval_mode: QueryRetrievalMode = "auto",
 ) -> QueryRetrievalOptions:
     return QueryRetrievalOptions(
         top_k=top_k,
         candidate_k=candidate_k,
         page_dedup=page_dedup,
         content_types=content_types,
-        hybrid=hybrid,
+        retrieval_mode=retrieval_mode,
     )
 
 
-@app.command("_local", hidden=True)
+@app.command(
+    "_local",
+    hidden=True,
+    help=(
+        f"Query a local LanceDB index. Default embedding model: {opts.DEFAULT_EMBED_MODEL}. "
+        f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}."
+    ),
+)
 def _local_command(
+    ctx: typer.Context,
     query: opts.QueryArgument,
     top_k: opts.TopKOption = 10,
     candidate_k: opts.CandidateKOption = None,
@@ -140,6 +179,7 @@ def _local_command(
     reranker_model_name: opts.RerankerModelNameOption = None,
     reranker_backend: opts.RerankerBackendOption = None,
     rerank: opts.RerankOption = False,
+    retrieval_mode: opts.RetrievalModeOption = "auto",
     hybrid: opts.HybridOption = False,
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
@@ -165,6 +205,7 @@ def _local_command(
 
     try:
         reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None
+        effective_retrieval_mode = _query_retrieval_mode(ctx, retrieval_mode, hybrid)
 
         if agentic:
             request = QueryRequest(
@@ -174,6 +215,7 @@ def _local_command(
                     candidate_k=candidate_k,
                     page_dedup=page_dedup,
                     content_types=content_types,
+                    retrieval_mode=effective_retrieval_mode,
                 ),
                 embed=QueryEmbedOptions(
                     embed_invoke_url=embed_invoke_url,
@@ -206,7 +248,7 @@ def _local_command(
             typer.echo(json.dumps(ranked, indent=2, sort_keys=True, default=str))
             return
 
-        def _request(use_hybrid: bool) -> QueryRequest:
+        def _request() -> QueryRequest:
             return QueryRequest(
                 query=query,
                 retrieval=_retrieval_options(
@@ -214,7 +256,7 @@ def _local_command(
                     candidate_k=candidate_k,
                     page_dedup=page_dedup,
                     content_types=content_types,
-                    hybrid=use_hybrid,
+                    retrieval_mode=effective_retrieval_mode,
                 ),
                 embed=QueryEmbedOptions(
                     embed_invoke_url=embed_invoke_url,
@@ -234,16 +276,9 @@ def _local_command(
             )
 
         with quiet_capture():
-            if hybrid:
-                try:
-                    hits = query_local_documents(_request(True))
-                    strategies = ["semantic", "lexical"]
-                except Exception:  # noqa: BLE001 - preserve root query's vector fallback on missing FTS.
-                    hits = query_local_documents(_request(False))
-                    strategies = ["semantic"]
-            else:
-                hits = query_local_documents(_request(False))
-                strategies = ["semantic"]
+            result = query_local_documents_with_metadata(_request())
+            hits = result.hits
+            strategies = result.strategies
     except ROOT_CLI_ERRORS as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc

@@ -102,7 +102,7 @@ nav:
       - Extending/Customizing NeMo Retriever Library with custom code: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph
       - "NimClient and custom NIM endpoints": extraction/nimclient.md
   - "9. Integrations & ecosystem":
-      - "Starter kits": extraction/notebooks/index.md
+      - "Starter kits": extraction/starter-kits.md
   - "10. Evaluation & benchmarks":
       - "Evaluate on your own documents": extraction/evaluate-on-your-data.md
   - "11. Reference":
@@ -157,10 +157,11 @@ plugins:
         extraction/hosted-nims-when-to-use.md: extraction/deployment-options.md
         extraction/releasenotes-nv-ingest.md: extraction/releasenotes.md
         extraction/ngc-api-key.md: extraction/api-keys.md
-        extraction/notebooks.md: extraction/notebooks/index.md
+        extraction/notebooks/index.md: extraction/starter-kits.md
+        extraction/notebooks.md: extraction/starter-kits.md
         extraction/data-store.md: extraction/vdbs.md
         extraction/custom-metadata.md: extraction/vdbs.md#metadata-and-filtering
-        extraction/integrations-langchain-llamaindex-haystack.md: extraction/notebooks/index.md
+        extraction/integrations-langchain-llamaindex-haystack.md: extraction/starter-kits.md
         extraction/nemoretriever-parse.md: extraction/multimodal-extraction.md#text-and-layout-extraction
         extraction/supported-file-types.md: extraction/multimodal-extraction.md#supported-file-types-and-formats
         extraction/text-layout-extraction.md: extraction/multimodal-extraction.md#text-and-layout-extraction
@@ -209,7 +210,7 @@ markdown_extensions:
 
 # MkDocs 1.6+: exclude suite landing and legacy duplicate pages (still in repo for parity).
 # extraction/chunking.md — removed from nav; content is under concepts.md (redirect_maps keeps old URLs).
-# Use /index.md (docs root only); bare index.md would exclude every index.md (e.g. extraction/notebooks/index.md).
+# Use /index.md (docs root only); bare index.md would exclude every index.md (e.g. under subfolders).
 exclude_docs: |
   /index.md
   extraction/chunking.md

@@ -14,7 +14,7 @@ Follow these steps:
 
 Pipeline concepts and stage overview appear in [Key concepts](concepts.md). Default chunking behavior is summarized under [Chunking](concepts.md#chunking).
 
-`create_ingestor(...)` returns a `GraphIngestor`, which chains `.extract()`, `.embed()`, and `.vdb_upload()` into one graph. The Python example below stops after `.embed()` so you can inspect chunks first; append `.vdb_upload(vdb_op="lancedb", vdb_kwargs={...})` before `.ingest()` to write directly to LanceDB (refer to [Vector databases](vdbs.md)). For directory-scale corpus ingest, the `graph_pipeline` CLI below is the canonical path used in evaluation workflows.
+`create_ingestor(...)` returns a `GraphIngestor`, which chains `.extract()`, `.embed()`, and `.vdb_upload()` into one graph. The Python example below stops after `.embed()` so you can inspect chunks first; append `.vdb_upload(vdb_op="lancedb", vdb_kwargs={...})` before `.ingest()` to write directly to LanceDB (refer to [Vector databases](vdbs.md)).
 
 ## Choose how you call the library
 
@@ -46,21 +46,5 @@ result = ingestor.ingest()  # ``pandas.DataFrame`` (``batch`` and ``inprocess``)
 ```
 
 Run the above with your working directory at the repository root (so `data/multimodal_test.pdf` resolves), or adjust `documents` to the absolute path of the test PDF.
-
-### Ingest a test corpus (CLI)
-
-`graph_pipeline` is the canonical ingestion script used throughout the [QA evaluation guide](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/evaluation/README.md#step-1-ingest-and-embed-pdfs-nemo-retriever). Point it at a **directory** of PDFs to produce a ready-to-query LanceDB table.
-
-!!! note "Corpus size and LanceDB indexing"
-
-    LanceDB's default IVF index needs enough chunks to train its partitions (often on the order of tens of chunks). A single small PDF can be insufficient; use a directory with enough documents for your index settings. Replace `/your-example-dir` with your corpus path.
-
-```bash
-python -m nemo_retriever.examples.graph_pipeline \
-  /your-example-dir \
-  --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}'
-```
-
-For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](api-keys.md#nvidia-api-key) and pass the `--*-invoke-url` / `--embed-invoke-url` options shown in the [README remote inference section](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/README.md#ingest-a-test-corpus-cli).
 
 **Next:** [Semantic retrieval](vdbs.md#semantic-retrieval) when serving queries (also refer to [Evaluate on your data](evaluate-on-your-data.md) for reranking and quality checks).

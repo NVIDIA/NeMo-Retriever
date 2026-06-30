@@ -11,6 +11,7 @@ from typing import Any
 from typer.testing import CliRunner
 
 import nemo_retriever.query.workflow as query_core
+from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
 
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.cli.main")
@@ -326,7 +327,7 @@ def test_root_query_reports_os_errors(monkeypatch) -> None:
     def fail_query_documents(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
         raise OSError("database unavailable")
 
-    monkeypatch.setattr(query_cli_app, "query_local_documents", fail_query_documents)
+    monkeypatch.setattr(query_cli_app, "query_local_documents_with_metadata", fail_query_documents)
 
     result = RUNNER.invoke(cli_main.app, ["query", "hello"])
 
@@ -464,7 +465,7 @@ def test_root_query_agentic_plumbs_rerank_into_config(monkeypatch) -> None:
     assert "reranker" not in config_calls[-1]
 
 
-def test_root_query_passes_hybrid_into_vdb_kwargs(monkeypatch) -> None:
+def test_root_query_passes_retrieval_mode_into_vdb_kwargs(monkeypatch) -> None:
     retriever_calls: list[dict[str, Any]] = []
 
     class FakeRetriever:
@@ -478,13 +479,51 @@ def test_root_query_passes_hybrid_into_vdb_kwargs(monkeypatch) -> None:
 
     result = RUNNER.invoke(
         cli_main.app,
-        ["query", "q", "--top-k", "5", "--lancedb-uri", "/tmp/lancedb", "--table-name", "docs", "--hybrid"],
+        [
+            "query",
+            "q",
+            "--top-k",
+            "5",
+            "--lancedb-uri",
+            "/tmp/lancedb",
+            "--table-name",
+            "docs",
+            "--retrieval-mode",
+            "dense",
+        ],
     )
 
     assert result.exit_code == 0
     assert retriever_calls == [
-        {"top_k": 5, "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "docs", "hybrid": True}}
+        {"top_k": 5, "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "docs", "retrieval_mode": "dense"}}
     ]
+
+
+def test_root_query_keeps_hidden_hybrid_alias(monkeypatch) -> None:
+    retriever_calls: list[dict[str, Any]] = []
+
+    class FakeRetriever:
+        def __init__(self, **kwargs: Any) -> None:
+            retriever_calls.append(kwargs)
+
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
+
+    result = RUNNER.invoke(cli_main.app, ["query", "q", "--hybrid"])
+
+    assert result.exit_code == 0
+    assert retriever_calls == [
+        {"top_k": 10, "vdb_kwargs": {"uri": "lancedb", "table_name": "nemo-retriever", "retrieval_mode": "hybrid"}}
+    ]
+
+
+def test_root_query_rejects_retrieval_mode_and_hybrid_alias_together() -> None:
+    result = RUNNER.invoke(cli_main.app, ["query", "q", "--retrieval-mode", "dense", "--hybrid"])
+
+    assert result.exit_code == 1
+    assert "pass only one of --retrieval-mode or deprecated --hybrid" in result.output
 
 
 def test_root_query_max_text_chars_truncates_and_omits(monkeypatch) -> None:
@@ -520,6 +559,24 @@ def test_root_query_help_lists_service_subcommand() -> None:
     assert "service" in result.output
     assert "--run-mode" not in result.output
     assert "--lancedb-uri" not in result.output
+
+
+def test_root_query_local_help_shows_retrieval_mode_not_hybrid() -> None:
+    result = RUNNER.invoke(cli_main.app, ["query", "q", "--help"])
+
+    assert result.exit_code == 0
+    assert "--retrieval-mode" in result.output
+    assert "--hybrid" not in result.output
+
+
+def test_root_query_local_help_names_default_models() -> None:
+    result = RUNNER.invoke(cli_main.app, ["query", "q", "--help"])
+
+    assert result.exit_code == 0
+    assert "Default embedding model" in result.output
+    assert VL_EMBED_MODEL in result.output
+    assert "Default local reranker model" in result.output
+    assert VL_RERANK_MODEL in result.output
 
 
 def test_root_query_service_help_hides_local_only_options() -> None:

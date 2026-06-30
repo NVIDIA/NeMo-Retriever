@@ -91,7 +91,7 @@ Semantic retrieval uses dense embeddings to find content that is similar in mean
 
 ## Metadata and filtering { #metadata-and-filtering }
 
-Refer to the [custom metadata notebook](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) for an end-to-end example of adding custom metadata fields to your documents and filtering retrieval results with that metadata.
+Refer to the [metadata filtering notebook](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) for an end-to-end example of adding custom metadata fields to your documents and filtering retrieval results with that metadata.
 
 ## LanceDB deployment characteristics { #lancedb-deployment-characteristics }
 
@@ -154,7 +154,7 @@ To implement a custom operator, follow the `VDB` abstract interface described in
 
 ## Related Topics { #related-topics }
 
-- [Custom Metadata Ingestion & Search/Retrieval Filtering](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb)
+- [Metadata and filtering](#metadata-and-filtering)
 - [Vector DB operators and LanceDB (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/common/vdb)
 - [Use the NeMo Retriever Library Python API](nemo-retriever-api-reference.md)
 - [Store Extracted Images](nemo-retriever-api-reference.md)

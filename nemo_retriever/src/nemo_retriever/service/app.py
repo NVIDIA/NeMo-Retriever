@@ -161,6 +161,18 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             batch_work_fn=bt_fn,
         )
 
+        if (
+            mode in ("standalone", "realtime", "batch")
+            and config.local_models.enabled
+            and config.local_models.warmup_on_startup
+        ):
+            import asyncio
+
+            from nemo_retriever.service.services.pipeline_executor import warmup_process_pool_workers
+
+            warmup_status = await asyncio.to_thread(warmup_process_pool_workers)
+            logger.info("Local model warmup status: %s", warmup_status)
+
     _check_media_dependencies(mode)
 
     logger.info(
@@ -244,6 +256,23 @@ def create_app(config: ServiceConfig) -> FastAPI:
     _configure_logging(config)
     _apply_resource_limits(config)
 
+    lifespan = _lifespan
+    mcp_asgi_app = None
+    if config.mcp.enabled:
+        try:
+            from fastmcp.utilities.lifespan import combine_lifespans
+
+            from nemo_retriever.service.mcp_server import build_mcp_app, settings_from_service_config
+
+            mcp_asgi_app = build_mcp_app(settings_from_service_config(config))
+            lifespan = combine_lifespans(_lifespan, mcp_asgi_app.lifespan)
+        except ImportError as exc:
+            mcp_asgi_app = None
+            logger.warning(
+                "FastMCP service integration failed to initialise; /mcp will not be mounted: %s",
+                exc,
+            )
+
     from nemo_retriever.service.tracing import configure_tracing
 
     configure_tracing(service_role=config.mode)
@@ -253,7 +282,7 @@ def create_app(config: ServiceConfig) -> FastAPI:
         description="Low-latency document ingestion service powered by nemo-retriever",
         version="26.5.0",
         docs_url="/docs",
-        lifespan=_lifespan,
+        lifespan=lifespan,
     )
     app.state.config = config
 
@@ -274,6 +303,10 @@ def create_app(config: ServiceConfig) -> FastAPI:
         )
     else:
         logger.info("Bearer-token authentication DISABLED (no api_token configured)")
+
+    if mcp_asgi_app is not None:
+        app.mount(config.mcp.path, mcp_asgi_app)
+        logger.info("FastMCP service endpoint mounted at %s", config.mcp.path)
 
     from nemo_retriever.service.routers import admin, ingest, metrics
     from nemo_retriever.service.services.prometheus import instrument_app
@@ -304,6 +337,18 @@ def create_app(config: ServiceConfig) -> FastAPI:
     @app.get("/v1/health", tags=["system"], summary="Liveness / readiness probe")
     async def health() -> dict:
         base: dict = {"status": "ok", "mode": config.mode}
+        if (
+            config.mode in ("standalone", "realtime", "batch")
+            and config.local_models.enabled
+            and config.local_models.warmup_on_startup
+        ):
+            from nemo_retriever.service.services.pipeline_executor import get_service_warmup_status
+
+            warmup = get_service_warmup_status()
+            base["models_warm"] = bool(warmup.get("complete"))
+            base["local_models_warmup"] = warmup
+            if not warmup.get("complete"):
+                base["status"] = "starting"
         if config.mode == "gateway":
             from nemo_retriever.service.services.proxy import get_proxy
 

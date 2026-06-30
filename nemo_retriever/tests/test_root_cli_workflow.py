@@ -986,6 +986,9 @@ def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
     assert "--api-key" in result.output
     assert "--dedup" in result.output
     assert "--caption" in result.output
+    assert "--index-mode" in result.output
+    assert "--hybrid" not in result.output
+    assert "--sparse" not in result.output
     assert re.search(r"--no-caption(?!-)", result.output) is None
 
 
@@ -1421,7 +1424,29 @@ def test_root_ingest_quiet_invokes_silencing_and_capture(monkeypatch, tmp_path) 
     assert "Ingested 1 file(s) → 3 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
 
-def test_root_ingest_passes_hybrid_into_vdb_kwargs(monkeypatch, tmp_path) -> None:
+def test_root_ingest_index_mode_hybrid_passes_hybrid_into_vdb_kwargs(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    doc = tmp_path / "a.pdf"
+    doc.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 1)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", str(doc), "--lancedb-uri", "/tmp/lancedb", "--table-name", "docs", "--index-mode", "hybrid"],
+    )
+
+    assert result.exit_code == 0
+    assert fake_ingestor.vdb_upload.call_args.args[0].vdb_kwargs == {
+        "uri": "/tmp/lancedb",
+        "table_name": "docs",
+        "overwrite": True,
+        "hybrid": True,
+    }
+
+
+def test_root_ingest_deprecated_hybrid_alias_still_maps_to_hybrid(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     doc = tmp_path / "a.pdf"
     doc.write_bytes(b"%PDF-1.4\n")
@@ -1441,3 +1466,112 @@ def test_root_ingest_passes_hybrid_into_vdb_kwargs(monkeypatch, tmp_path) -> Non
         "overwrite": True,
         "hybrid": True,
     }
+
+
+def test_root_ingest_index_mode_sparse_skips_embedding_and_writes_fts_table(monkeypatch, tmp_path) -> None:
+    lancedb = pytest.importorskip("lancedb")
+    fake_ingestor = _make_fake_ingestor()
+    doc = tmp_path / "a.pdf"
+    doc.write_bytes(b"%PDF-1.4\n")
+    fake_ingestor.ingest.return_value = [
+        {
+            "text": "alpha sparse manual",
+            "metadata": {
+                "content_metadata": {"id": "alpha", "page_number": 1, "type": "text"},
+                "source_metadata": {"source_id": str(doc)},
+            },
+        }
+    ]
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_: fake_ingestor)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(doc),
+            "--lancedb-uri",
+            str(tmp_path / "db"),
+            "--table-name",
+            "sparse_docs",
+            "--index-mode",
+            "sparse",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    fake_ingestor.embed.assert_not_called()
+    fake_ingestor.vdb_upload.assert_not_called()
+
+    table = lancedb.connect(str(tmp_path / "db")).open_table("sparse_docs")
+    assert "vector" not in table.schema.names
+    assert table.schema.metadata[b"retrieval_mode"] == b"sparse"
+    index_names = {index.name.lower() for index in table.list_indices()}
+    assert any("text" in name or "fts" in name for name in index_names)
+
+
+def test_root_ingest_deprecated_sparse_alias_still_maps_to_sparse(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    doc = tmp_path / "a.pdf"
+    doc.write_bytes(b"%PDF-1.4\n")
+    fake_ingestor.ingest.return_value = [{"text": "alpha sparse manual"}]
+    writes: list[dict[str, Any]] = []
+
+    def fake_write_sparse_result(result: object, *, lancedb_uri: str, table_name: str, overwrite: bool) -> None:
+        writes.append(
+            {
+                "result": result,
+                "lancedb_uri": lancedb_uri,
+                "table_name": table_name,
+                "overwrite": overwrite,
+            }
+        )
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "_write_sparse_lancedb_result", fake_write_sparse_result)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 1)
+
+    result = RUNNER.invoke(
+        cli_main.app,
+        [
+            "ingest",
+            str(doc),
+            "--lancedb-uri",
+            "/tmp/lancedb",
+            "--table-name",
+            "sparse_docs",
+            "--sparse",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    fake_ingestor.embed.assert_not_called()
+    fake_ingestor.vdb_upload.assert_not_called()
+    assert writes == [
+        {
+            "result": [{"text": "alpha sparse manual"}],
+            "lancedb_uri": "/tmp/lancedb",
+            "table_name": "sparse_docs",
+            "overwrite": True,
+        }
+    ]
+
+
+def test_root_ingest_rejects_multiple_index_mode_options(tmp_path) -> None:
+    doc = tmp_path / "a.pdf"
+    doc.write_bytes(b"%PDF-1.4\n")
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(doc), "--index-mode", "hybrid", "--sparse"])
+
+    assert result.exit_code == 1
+    assert "pass only one index mode option" in result.output
+
+
+def test_root_ingest_rejects_deprecated_sparse_and_hybrid_aliases_together(tmp_path) -> None:
+    doc = tmp_path / "a.pdf"
+    doc.write_bytes(b"%PDF-1.4\n")
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(doc), "--sparse", "--hybrid"])
+
+    assert result.exit_code == 1
+    assert "pass only one index mode option" in result.output

@@ -47,6 +47,32 @@ def test_query_request_builds_retriever_kwargs_without_rerank(monkeypatch) -> No
     ]
 
 
+def test_query_request_builds_retriever_kwargs_with_retrieval_mode(monkeypatch) -> None:
+    retriever_calls: list[dict[str, Any]] = []
+
+    class FakeRetriever:
+        def __init__(self, **kwargs: Any) -> None:
+            retriever_calls.append(kwargs)
+
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(query_workflow, "Retriever", FakeRetriever)
+    request = QueryRequest(
+        query="deployment?",
+        retrieval=QueryRetrievalOptions(top_k=3, retrieval_mode="sparse"),
+        storage=QueryStorageOptions(lancedb_uri="/tmp/lancedb", table_name="docs"),
+    )
+
+    assert query_workflow.query_documents(request) == []
+    assert retriever_calls == [
+        {
+            "top_k": 3,
+            "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "docs", "retrieval_mode": "sparse"},
+        }
+    ]
+
+
 def test_query_request_builds_retriever_kwargs_with_embed_and_remote_rerank(monkeypatch) -> None:
     retriever_calls: list[dict[str, Any]] = []
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
@@ -127,6 +153,33 @@ def test_query_documents_uses_typed_request(monkeypatch) -> None:
             },
         )
     ]
+
+
+@pytest.mark.parametrize(
+    ("mode", "strategies"),
+    [
+        ("dense", ["semantic"]),
+        ("hybrid", ["semantic", "lexical"]),
+        ("sparse", ["lexical"]),
+    ],
+)
+def test_query_documents_with_metadata_reports_resolved_strategy(monkeypatch, mode, strategies) -> None:
+    class FakeRetriever:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def _resolve_lancedb_query_mode(self, _vdb_kwargs: Any) -> tuple[str, object, str, str, bool]:
+            return mode, object(), "uri", "table", False
+
+        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
+            return [{"text": query, "source": "doc.pdf", "page_number": 1}]
+
+    monkeypatch.setattr(query_workflow, "Retriever", FakeRetriever)
+
+    result = query_workflow.query_documents_with_metadata(QueryRequest(query="deployment?"))
+
+    assert result.hits == [{"text": "deployment?", "source": "doc.pdf", "page_number": 1}]
+    assert result.strategies == strategies
 
 
 def test_service_query_uses_candidate_pool_and_preserves_local_shaping(monkeypatch) -> None:
