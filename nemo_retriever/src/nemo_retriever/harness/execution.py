@@ -4,15 +4,16 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 from typing import Any, Sequence
 
 from nemo_retriever.cli.ingest_workflow import run_ingest_workflow
 from nemo_retriever.cli.shared import silence_noisy_libraries
 from nemo_retriever.harness.artifact_writer import (
-    artifact_paths,
     ArtifactWriter,
     ArtifactWriteError,
+    capture_output_to_log,
 )
 from nemo_retriever.harness.beir_runner import run_beir_queries
 from nemo_retriever.harness.contracts import (
@@ -54,7 +55,6 @@ def _run_result_payload(
     resolved: dict[str, Any] | None,
     summary_metrics: dict[str, Any],
     failure: FailurePayload | None,
-    pending_results: bool = True,
     **extra: Any,
 ) -> dict[str, Any]:
     result = {
@@ -67,7 +67,7 @@ def _run_result_payload(
         "resolved_benchmark": resolved,
         "summary_metrics": summary_metrics,
         "failure": failure.to_dict() if failure is not None else None,
-        "artifacts": artifact_paths(writer, pending=("results.json",) if pending_results else ()),
+        "artifacts": writer.artifact_paths(),
     }
     result.update(extra)
     return redact(result)
@@ -119,13 +119,10 @@ def _artifact_failure_outcome(
         failure_reason="artifact_write_failed",
         retryable=False,
         message=str(exc),
-        debug_artifacts=tuple(artifact_paths(writer)),
+        debug_artifacts=tuple(writer.artifact_paths()),
     )
-    status_payload: dict[str, Any] | None = None
-    try:
-        status_payload = writer.status(status="failed", phase="write_artifacts", failure=failure)
-    except ArtifactWriteError:
-        pass
+    with contextlib.suppress(ArtifactWriteError):
+        writer.status(status="failed", phase="write_artifacts", failure=failure)
     result = _run_result_payload(
         writer,
         status="failed",
@@ -135,12 +132,9 @@ def _artifact_failure_outcome(
         resolved=resolved,
         summary_metrics=summary_metrics or {},
         failure=failure,
-        status_payload=status_payload,
     )
-    try:
+    with contextlib.suppress(ArtifactWriteError):
         writer.write_json("results.json", result)
-    except ArtifactWriteError:
-        result["artifacts"] = artifact_paths(writer)
     return RunOutcome(
         exit_code=EXIT_ARTIFACT_WRITE_FAILURE,
         artifact_dir=writer.artifact_dir,
@@ -250,26 +244,36 @@ def run_benchmark(
             writer.event("ingest", "ingest_start", f"Ingesting {len(ingest_plan.documents)} document(s)")
             ingest_start = time.perf_counter()
             try:
-                with writer.capture_output("run.log", label="ingest"):
-                    ingest_summary = run_ingest_workflow(ingest_plan, dry_run=False)
-            except ArtifactWriteError:
-                raise
-            except Exception as exc:
-                raise HarnessRunError(
-                    EXIT_INGEST_FAILURE,
-                    FailurePayload(
-                        failed_phase="ingest",
-                        failure_reason="ingest_failed",
-                        retryable=False,
-                        message=str(exc),
-                        debug_artifacts=("ingest_plan.json", "run.log"),
-                    ),
-                ) from exc
+                with capture_output_to_log(writer.path("run.log"), label="ingest"):
+                    try:
+                        ingest_summary = run_ingest_workflow(ingest_plan, dry_run=False)
+                    except ArtifactWriteError:
+                        raise
+                    except Exception as exc:
+                        raise HarnessRunError(
+                            EXIT_INGEST_FAILURE,
+                            FailurePayload(
+                                failed_phase="ingest",
+                                failure_reason="ingest_failed",
+                                retryable=False,
+                                message=str(exc),
+                                debug_artifacts=("ingest_plan.json", "run.log"),
+                            ),
+                        ) from exc
+            except OSError as exc:
+                raise ArtifactWriteError(f"Failed to write artifact {writer.path('run.log')}: {exc}") from exc
+            finally:
+                writer.register_existing("run.log")
             ingest_secs = round(time.perf_counter() - ingest_start, 3)
 
             if (resolved.get("evaluation") or {}).get("mode") == "beir":
-                with writer.capture_output("run.log", label="query_evaluate"):
-                    query_latencies_ms, beir_metrics, query_count = run_beir_queries(writer, resolved, query_plan)
+                try:
+                    with capture_output_to_log(writer.path("run.log"), label="query_evaluate"):
+                        query_latencies_ms, beir_metrics, query_count = run_beir_queries(writer, resolved, query_plan)
+                except OSError as exc:
+                    raise ArtifactWriteError(f"Failed to write artifact {writer.path('run.log')}: {exc}") from exc
+                finally:
+                    writer.register_existing("run.log")
 
         summary_metrics = build_summary_metrics(
             resolved,

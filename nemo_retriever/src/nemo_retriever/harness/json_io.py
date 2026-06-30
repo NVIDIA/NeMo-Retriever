@@ -73,8 +73,6 @@ def write_json(path: Path, payload: Mapping[str, Any]) -> None:
         ) as handle:
             temporary_path = Path(handle.name)
             handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
         os.replace(temporary_path, path)
     finally:
         if temporary_path is not None:

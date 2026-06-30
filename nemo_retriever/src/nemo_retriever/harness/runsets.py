@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from difflib import get_close_matches
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from nemo_retriever.harness.artifact_writer import ArtifactWriteError, initialize_artifact_dir
 from nemo_retriever.harness.artifacts import get_artifacts_root
@@ -75,6 +75,13 @@ def _artifact_error(exc: Exception) -> HarnessRunError:
     )
 
 
+def _write_session_json(path: Path, payload: Mapping[str, Any]) -> None:
+    try:
+        write_json(path, payload)
+    except Exception as exc:
+        raise _artifact_error(exc) from exc
+
+
 def run_runset(
     runset: str,
     *,
@@ -100,16 +107,13 @@ def run_runset(
         }
         for index, benchmark in enumerate(spec.runs, start=1)
     ]
-    try:
-        write_json(
-            session_dir / "expanded_runs.json",
-            {
-                "runset": spec.to_dict(),
-                "runs": expanded_runs,
-            },
-        )
-    except Exception as exc:
-        raise _artifact_error(exc) from exc
+    _write_session_json(
+        session_dir / "expanded_runs.json",
+        {
+            "runset": spec.to_dict(),
+            "runs": expanded_runs,
+        },
+    )
 
     run_results: list[dict[str, Any]] = []
     exit_code = EXIT_SUCCESS
@@ -134,8 +138,5 @@ def run_runset(
         "dry_run": bool(dry_run),
         "runs": run_results,
     }
-    try:
-        write_json(session_dir / "session_summary.json", session_summary)
-    except Exception as exc:
-        raise _artifact_error(exc) from exc
+    _write_session_json(session_dir / "session_summary.json", session_summary)
     return RunOutcome(exit_code=exit_code, artifact_dir=session_dir, results=session_summary)

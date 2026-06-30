@@ -138,7 +138,6 @@ class ArtifactWriter:
         self.run_id = run_id
         self.benchmark = benchmark
         self.started_at = utc_now()
-        self.events_path = self.artifact_dir / "events.jsonl"
         self._written_artifacts: set[str] = set()
 
     def path(self, name: str) -> Path:
@@ -177,26 +176,8 @@ class ArtifactWriter:
         if self.path(name).exists():
             self._written_artifacts.add(name)
 
-    @contextlib.contextmanager
-    def capture_output(self, name: str, *, label: str):
-        body_error: BaseException | None = None
-        try:
-            with capture_output_to_log(self.path(name), label=label):
-                try:
-                    yield
-                except BaseException as exc:
-                    body_error = exc
-                    raise
-        except OSError as exc:
-            if exc is body_error:
-                raise
-            raise self._write_error(name, exc) from exc
-        finally:
-            self.register_existing(name)
-
-    def artifact_paths(self, *, pending: tuple[str, ...] = ()) -> dict[str, str]:
-        current_run = self._written_artifacts | set(pending)
-        return {name: str(self.path(name)) for name in ARTIFACT_NAMES if name in current_run}
+    def artifact_paths(self) -> dict[str, str]:
+        return {name: str(self.path(name)) for name in ARTIFACT_NAMES if name in self._written_artifacts}
 
     def event(self, phase: str, event: str, message: str, data: Mapping[str, Any] | None = None) -> None:
         self.append_jsonl(
@@ -238,7 +219,3 @@ class ArtifactWriter:
         self.write_json("status.json", payload)
         self.event(phase, f"status_{status}", f"status={status} phase={phase}")
         return payload
-
-
-def artifact_paths(writer: ArtifactWriter, *, pending: tuple[str, ...] = ()) -> dict[str, str]:
-    return writer.artifact_paths(pending=pending)

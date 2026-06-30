@@ -130,7 +130,6 @@ def test_dry_run_redacts_json_output_and_structured_artifacts(
         "query_plan.json",
         "summary_metrics.json",
         "environment.json",
-        "results.json",
     }
     for path in output_dir.iterdir():
         if path.suffix in {".json", ".jsonl"}:
