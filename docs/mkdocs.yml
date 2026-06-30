@@ -100,7 +100,6 @@ nav:
       - "Ray and distributed ingest": extraction/ray-logging.md
   - "8. Customize & extend":
       - Extending/Customizing NeMo Retriever Library with custom code: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph
-      - "NimClient and custom NIM endpoints": extraction/nimclient.md
   - "9. Integrations & ecosystem":
       - "Starter kits": extraction/starter-kits.md
   - "10. Evaluation & benchmarks":
@@ -187,6 +186,7 @@ plugins:
         extraction/quickstart-library-mode.md: extraction/deployment-options.md
         extraction/workflow-video-ocr.md: extraction/audio-video.md
         extraction/user-defined-stages.md: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph
+        extraction/nimclient.md: https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nimclient-and-custom-nim-endpoints
   - site-urls
 
 markdown_extensions:
