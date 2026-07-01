@@ -108,8 +108,8 @@ Intentional removals:
 
 Intentional preserves:
 
-- `portal/`, `history.py`, `scheduler.py`, `slack.py`: retained for the
-  upcoming portal repurpose work
+- `portal/`, `history.py`, and `scheduler.py`: retained for upcoming portal
+  repurpose work; `slack.py` now owns artifact replay and Slack payloads
 - `helm_manager.py`, `helm-profiles/`, and harness Helm examples: retained for
   Helm owner follow-up work
 

@@ -88,7 +88,7 @@ def capture_output_to_log(path: Path, *, label: str):
             os.close(saved_stdout)
 
 
-_SENSITIVE_KEY_PARTS = ("api_key", "password", "secret", "credential", "token")
+_SENSITIVE_KEY_PARTS = ("api_key", "password", "secret", "credential", "token", "webhook")
 
 
 def _is_sensitive_key(value: Any) -> bool:
