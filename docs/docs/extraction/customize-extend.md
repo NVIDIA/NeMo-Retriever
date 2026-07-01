@@ -12,7 +12,6 @@ The following table maps common needs to the right section:
 | Add a small Python transformation between pipeline stages | [User-defined functions (UDFs)](#user-defined-functions-udfs) |
 | Build or reuse operators stage-by-stage | [Custom graph pipelines](#custom-graph-pipelines) |
 | Store vectors in a backend other than LanceDB | [Custom vector databases](#custom-vector-databases) |
-| Wire a non-default embedding model | [Custom embedding models](#custom-embedding-models) |
 
 ## On this page { #on-this-page }
 
@@ -20,7 +19,6 @@ The following table maps common needs to the right section:
 - [User-defined functions (UDFs)](#user-defined-functions-udfs)
 - [Custom graph pipelines](#custom-graph-pipelines)
 - [Custom vector databases](#custom-vector-databases)
-- [Custom embedding models](#custom-embedding-models)
 - [Related Topics](#related-topics)
 
 ## Start with task configuration { #start-with-task-configuration }
@@ -61,16 +59,6 @@ To integrate a different vector store, implement the [`VDB`](https://github.com/
 - [Vector DB package (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/common/vdb) — `VDB` abstract base and LanceDB reference implementation
 
 Partner and blueprint integrations (Elasticsearch, Pinecone, Teradata, and others) are summarized on [Vector databases — Vector database partners](vdbs.md#vector-database-partners).
-
-## Custom embedding models { #custom-embedding-models }
-
-!!! note "Coming soon"
-
-    Dedicated documentation for wiring custom embedding models into ingestion graphs is in progress. Today, configure embedding through task parameters and environment variables:
-
-    - [Multimodal embeddings (VLM)](embedding.md) — default and multimodal embed flows
-    - [Environment variables](environment-config.md) — `*_ENDPOINT` variables for self-hosted or hosted NIM embed services
-    - [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html) — OpenAI-compatible text embedding NIM
 
 ## Related Topics { #related-topics }
 
