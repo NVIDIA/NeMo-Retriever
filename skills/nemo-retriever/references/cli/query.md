@@ -1,4 +1,6 @@
-# Query turn — the WHOLE workflow
+# Query turn — fallback detail
+
+The canonical query flow is inline in `SKILL.md` §Query turn (the semantic-hybrid + lexical-sparse passes). This reference holds the detail behind it: the primary-pass command, the exact-term re-query, chart text-extract, and composing the reply.
 
 ```bash
 timeout 2000 <RETRIEVER_VENV>/bin/retriever query "<the user's question>" --format evidence --hybrid --top-k 10 \
@@ -6,7 +8,7 @@ timeout 2000 <RETRIEVER_VENV>/bin/retriever query "<the user's question>" --form
   | tee ./evidence.json
 ```
 
-That's your FIRST tool call on every query turn, run **exactly** as one pipeline (cold runs take ~20–30s; wait for it — don't background it or fire parallel queries). Do not Read, Glob, Grep, or list PDFs first — those duplicate what `retriever query` already did. `--format evidence` returns answer-ready JSON:
+Run it **exactly** as one pipeline (cold runs take ~20–30s; wait for it — don't background it or fire parallel queries). Do not Read, Glob, Grep, or list PDFs first — those duplicate what `retriever query` already did. `--format evidence` returns answer-ready JSON:
 
 ```
 { "evidence": [ { text, source, locator, modality, fidelity, score, citation } ], "coverage": {...} }
