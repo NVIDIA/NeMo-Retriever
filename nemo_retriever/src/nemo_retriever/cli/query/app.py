@@ -12,7 +12,7 @@ import click
 import typer
 from typer.core import TyperGroup
 
-from nemo_retriever.cli.evidence import build_evidence_result
+from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
 from nemo_retriever.cli.query_workflow import query_documents_with_metadata as query_local_documents_with_metadata
@@ -155,7 +155,14 @@ def _retrieval_options(
     )
 
 
-@app.command("_local", hidden=True)
+@app.command(
+    "_local",
+    hidden=True,
+    help=(
+        f"Query a local LanceDB index. Default embedding model: {opts.DEFAULT_EMBED_MODEL}. "
+        f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}."
+    ),
+)
 def _local_command(
     ctx: typer.Context,
     query: opts.QueryArgument,

@@ -485,6 +485,8 @@ def test_load_beir_dataset_tries_vidore_config_name_before_data_dir(monkeypatch)
             return [{"query_id": "q1", "query": "What is shown?", "language": "en"}]
         if args == ("qrels",):
             return [{"query_id": "q1", "corpus_id": "doc_a", "score": 1}]
+        if args == ("corpus",):
+            return [{"corpus_id": "doc_a", "doc_id": "doc_a"}]
         raise AssertionError("data_dir fallback should not be used")
 
     monkeypatch.setitem(sys.modules, "datasets", type("Datasets", (), {"load_dataset": _fake_load_dataset}))
@@ -495,6 +497,7 @@ def test_load_beir_dataset_tries_vidore_config_name_before_data_dir(monkeypatch)
     assert dataset.qrels == {"q1": {"doc_a": 1}}
     assert calls[0] == ("vidore/vidore_v3_computer_science", ("queries",), {"split": "test"})
     assert calls[1] == ("vidore/vidore_v3_computer_science", ("qrels",), {"split": "test"})
+    assert calls[2] == ("vidore/vidore_v3_computer_science", ("corpus",), {"split": "test"})
 
 
 def test_load_beir_dataset_falls_back_to_vidore_data_dir(monkeypatch) -> None:
@@ -508,6 +511,8 @@ def test_load_beir_dataset_falls_back_to_vidore_data_dir(monkeypatch) -> None:
             return [{"query_id": "q1", "query": "What is shown?", "language": "en"}]
         if kwargs.get("data_dir") == "qrels":
             return [{"query_id": "q1", "corpus_id": "doc_a", "score": 1}]
+        if kwargs.get("data_dir") == "corpus":
+            return [{"corpus_id": "doc_a", "doc_id": "doc_a"}]
         raise AssertionError("unexpected load_dataset call")
 
     monkeypatch.setitem(sys.modules, "datasets", type("Datasets", (), {"load_dataset": _fake_load_dataset}))
@@ -521,6 +526,8 @@ def test_load_beir_dataset_falls_back_to_vidore_data_dir(monkeypatch) -> None:
         ("vidore/vidore_v3_computer_science", (), {"data_dir": "queries", "split": "test"}),
         ("vidore/vidore_v3_computer_science", ("qrels",), {"split": "test"}),
         ("vidore/vidore_v3_computer_science", (), {"data_dir": "qrels", "split": "test"}),
+        ("vidore/vidore_v3_computer_science", ("corpus",), {"split": "test"}),
+        ("vidore/vidore_v3_computer_science", (), {"data_dir": "corpus", "split": "test"}),
     ]
 
 

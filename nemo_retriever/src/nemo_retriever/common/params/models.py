@@ -119,6 +119,7 @@ class IngestExecuteParams(_ParamsModel):
     return_failures: bool = False
     return_traces: bool = False
     return_results: bool = True
+    result_schema: Literal["legacy", "compact"] = "legacy"
     parallel: bool = False
     max_workers: Optional[int] = None
     gpu_devices: list[str] = Field(default_factory=list)

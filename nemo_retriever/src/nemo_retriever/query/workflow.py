@@ -8,13 +8,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from nemo_retriever.common.params import build_embed_option_kwargs
-from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
-from nemo_retriever.graph.retriever import Retriever
-from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
+from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode
 from nemo_retriever.common.vdb.records import RetrievalHit
+from nemo_retriever.graph.retriever import Retriever
+from nemo_retriever.models import VL_RERANK_MODEL
+from nemo_retriever.query.options import QueryRequest, QueryRerankOptions
 
-_LOCAL_VL_RERANK_MODEL = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+_LOCAL_VL_RERANK_MODEL = VL_RERANK_MODEL
 
 
 @dataclass(frozen=True)
@@ -50,30 +51,80 @@ def _build_rerank_kwargs(options: QueryRerankOptions) -> dict[str, str]:
 
 
 def _build_retriever_kwargs(request: QueryRequest) -> dict[str, Any]:
+    return resolve_query_plan(request).retriever_kwargs()
+
+
+@dataclass(frozen=True)
+class ResolvedQueryPlan:
+    """Resolved Retriever query configuration reusable across many queries."""
+
+    top_k: int
+    candidate_k: int | None
+    page_dedup: bool
+    content_types: str | None
+    lancedb_uri: str
+    table_name: str
+    retrieval_mode: str
+    embed_kwargs: dict[str, Any]
+    rerank: bool
+    rerank_kwargs: dict[str, Any]
+
+    def retriever_kwargs(self) -> dict[str, Any]:
+        vdb_kwargs: dict[str, Any] = {
+            "uri": self.lancedb_uri,
+            "table_name": self.table_name,
+        }
+        if self.retrieval_mode != "auto":
+            vdb_kwargs["retrieval_mode"] = self.retrieval_mode
+
+        kwargs: dict[str, Any] = {
+            "top_k": self.top_k,
+            "vdb_kwargs": vdb_kwargs,
+        }
+        if self.embed_kwargs:
+            kwargs["embed_kwargs"] = dict(self.embed_kwargs)
+        if self.rerank:
+            kwargs["rerank"] = True
+            if self.rerank_kwargs:
+                kwargs["rerank_kwargs"] = dict(self.rerank_kwargs)
+        return kwargs
+
+    def create_retriever(self) -> Retriever:
+        return Retriever(**self.retriever_kwargs())
+
+    def query_kwargs(self) -> dict[str, Any]:
+        return {
+            "candidate_k": self.candidate_k,
+            "page_dedup": self.page_dedup,
+            "content_types": self.content_types,
+        }
+
+
+def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
+    """Resolve root query options once so callers can reuse a Retriever."""
     embed_kwargs = build_embed_option_kwargs(request.embed.embed_invoke_url, request.embed.embed_model_name)
-    vdb_kwargs: dict[str, Any] = {
-        "uri": request.storage.lancedb_uri,
-        "table_name": request.storage.table_name,
-    }
-    if request.retrieval.retrieval_mode != "auto":
-        vdb_kwargs["retrieval_mode"] = request.retrieval.retrieval_mode
-    retriever_kwargs: dict[str, Any] = {
-        "top_k": request.retrieval.top_k,
-        "vdb_kwargs": vdb_kwargs,
-    }
-    if embed_kwargs:
-        retriever_kwargs["embed_kwargs"] = embed_kwargs
-    if request.rerank.enabled:
-        rerank_kwargs = _build_rerank_kwargs(request.rerank)
-        retriever_kwargs["rerank"] = True
-        if rerank_kwargs:
-            retriever_kwargs["rerank_kwargs"] = rerank_kwargs
-    return retriever_kwargs
+    rerank_kwargs = _build_rerank_kwargs(request.rerank) if request.rerank.enabled else {}
+    content_types = request.retrieval.content_types
+    if content_types is not None and not isinstance(content_types, str):
+        content_types = ",".join(str(value) for value in content_types)
+    return ResolvedQueryPlan(
+        top_k=int(request.retrieval.top_k),
+        candidate_k=request.retrieval.candidate_k,
+        page_dedup=bool(request.retrieval.page_dedup),
+        content_types=content_types,
+        lancedb_uri=str(request.storage.lancedb_uri),
+        table_name=str(request.storage.table_name),
+        retrieval_mode=str(request.retrieval.retrieval_mode),
+        embed_kwargs=embed_kwargs,
+        rerank=bool(request.rerank.enabled),
+        rerank_kwargs=rerank_kwargs,
+    )
 
 
 def query_documents_with_metadata(request: QueryRequest) -> QueryDocumentsResult:
     """Run the SDK query path and return hits plus resolved retrieval strategy metadata."""
-    retriever = Retriever(**_build_retriever_kwargs(request))
+    plan = resolve_query_plan(request)
+    retriever = plan.create_retriever()
     mode: LanceRetrievalMode | None = None
     resolve_mode = getattr(retriever, "_resolve_lancedb_query_mode", None)
     if callable(resolve_mode):
@@ -82,9 +133,7 @@ def query_documents_with_metadata(request: QueryRequest) -> QueryDocumentsResult
             mode = lancedb_mode[0]
     hits = retriever.query(
         request.query,
-        candidate_k=request.retrieval.candidate_k,
-        page_dedup=request.retrieval.page_dedup,
-        content_types=request.retrieval.content_types,
+        **plan.query_kwargs(),
     )
     return QueryDocumentsResult(hits=hits, strategies=_strategies_for_retrieval_mode(mode))
 

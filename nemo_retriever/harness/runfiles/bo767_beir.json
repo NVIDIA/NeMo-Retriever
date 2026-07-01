@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "name": "bo767_beir",
+  "benchmark": "bo767_beir",
+  "mode": "batch",
+  "require": [
+    "files==767",
+    "pages==54730",
+    "query_count==991"
+  ],
+  "set": {
+    "ingest.extract.batch.pdf_extract_workers": 8,
+    "ingest.extract.batch.pdf_extract_batch_size": 1,
+    "ingest.extract.batch.page_elements_workers": 1,
+    "ingest.extract.batch.page_elements_batch_size": 8,
+    "ingest.extract.batch.ocr_workers": 1,
+    "ingest.extract.batch.ocr_batch_size": 8,
+    "ingest.embed.batch.embed_workers": 1,
+    "ingest.embed.batch.embed_batch_size": 64
+  }
+}

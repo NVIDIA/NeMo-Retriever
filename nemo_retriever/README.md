@@ -309,83 +309,6 @@ Answer:
 Cat is the animal whose activity (jumping onto a laptop) matches the location of the typos, so the cat is responsible for the typos in the documents.
 ```
 
-### Run agentic retrieval
-
-Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
-It does not ingest documents; first build the index with one of the ingestion
-flows above, then query the same `lancedb_uri`, `table_name`, and embedding
-model.
-
-For [build.nvidia.com](https://build.nvidia.com/) hosted inference, set
-`NVIDIA_API_KEY`. On CPU-only machines, the CPU embedding actor and agent LLM
-use the hosted NVIDIA endpoints by default:
-
-```bash
-export NVIDIA_API_KEY=nvapi-...
-
-retriever query "Given their activities, which animal is responsible for the typos in my documents?" \
-  --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
-  --lancedb-uri lancedb \
-  --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
-```
-
-The agentic LLM uses the built-in NVIDIA hosted chat-completions endpoint when
-`--agentic-invoke-url` is omitted. On CPU-only machines, embedding actors also
-resolve to CPU/remote implementations and default to hosted endpoints. On
-GPU-capable machines, embedding prefers the local GPU implementation unless an
-endpoint URL, such as `--embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings`,
-is provided.
-
-For a quick smoke test, lower the amount of agent work:
-
-```bash
-retriever query "What is RAG?" \
-  --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
-  --lancedb-uri lancedb \
-  --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
-  --top-k 1 \
-  --agentic-react-max-steps 1 \
-  --agentic-backend-top-k 1
-```
-
-The same flow is available from Python. It uses the same `NVIDIA_API_KEY`
-environment variable shown above for hosted embedding and chat-completions
-requests.
-
-```python
-from nemo_retriever.cli.query_workflow import agentic_query_documents
-from nemo_retriever.query.options import (
-    QueryAgenticOptions,
-    QueryEmbedOptions,
-    QueryRequest,
-    QueryRetrievalOptions,
-    QueryStorageOptions,
-)
-
-# Requires NVIDIA_API_KEY=nvapi-... in the environment.
-results = agentic_query_documents(
-    QueryRequest(
-        query="What is RAG?",
-        retrieval=QueryRetrievalOptions(top_k=10),
-        storage=QueryStorageOptions(
-            lancedb_uri="lancedb",
-            table_name="nemo-retriever",
-        ),
-        embed=QueryEmbedOptions(
-            embed_model_name="nvidia/llama-nemotron-embed-1b-v2",
-        ),
-        agentic=QueryAgenticOptions(
-            enabled=True,
-            llm_model="nvidia/llama-3.3-nemotron-super-49b-v1.5",
-        ),
-    )
-)
-```
-
 ### Live RAG SDK (retrieve + answer in one call)
 
 The pattern above -- retrieve hits, build a prompt, call an LLM -- is baked into the SDK as `Retriever.answer()` so live applications can skip the boilerplate. The same `Retriever` instance powers three entry points:
@@ -711,26 +634,11 @@ sudo apt install python3.12-dev
 
 After installing the headers, restart the pipeline.
 
-## ViDoRe Harness Sweep
+## Retriever Harness
 
-The harness includes BEIR-style ViDoRe dataset presets in `nemo_retriever/harness/test_configs.yaml` and a ready-made sweep definition in `nemo_retriever/harness/vidore_sweep.yaml`.
-
-The ViDoRe harness datasets are configured to:
-
-- read PDFs from `/datasets/retrieval-eval/vidore_v3_corpus_pdf/...`
-- ingest with `embed_modality: text_image`
-- embed at `embed_granularity: page`
-- enable `extract_page_as_image: true` and `extract_infographics: true`
-- evaluate with BEIR-style `ndcg` and `recall` metrics
-
-To run the full ViDoRe sweep:
-
-```bash
-cd ~/NeMo-Retriever/nemo_retriever
-retriever-harness sweep --runs-config harness/vidore_sweep.yaml
-```
-
-The same commands also work under the main CLI as `retriever harness ...` if you prefer a single top-level command namespace.
+The developer harness runs code-owned benchmarks through `retriever harness`.
+Use `retriever harness list --runsets` to see available benchmark names and
+runsets, then run one benchmark with `retriever harness run <benchmark>`.
 
 ### Ingest image storage
 
@@ -744,6 +652,4 @@ retriever ingest ./data \
 
 The store stage writes the image payloads produced by ingest. With
 `--embed-granularity page`, stored assets are page images. With
-`--embed-granularity element`, stored assets are element images. Store is not
-currently configured through the harness; use `retriever pipeline run` only when
-you also need pipeline-specific compatibility artifacts.
+`--embed-granularity element`, stored assets are element images.
