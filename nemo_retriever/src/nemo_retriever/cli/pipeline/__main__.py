@@ -58,12 +58,6 @@ from typing import Any, Optional, TextIO
 import pandas as pd
 import typer
 
-from nemo_retriever.query.agentic_options import (
-    AGENTIC_OPENAI_COMPATIBLE_TEMPERATURE_MAX,
-    agentic_backend_top_k_error,
-    agentic_target_top_k,
-    agentic_temperature_error,
-)
 from nemo_retriever.ingest import service as ingest_service
 from nemo_retriever.ingest.execution import execute_ingest_plan
 from nemo_retriever.ingest.plan import (
@@ -106,8 +100,6 @@ app = typer.Typer(
 )
 
 DEFAULT_VDB_OP = "lancedb"
-AGENTIC_LLM_MODEL_ENV = "NEMO_RETRIEVER_AGENTIC_LLM_MODEL"
-AGENTIC_INVOKE_URL_ENV = "NEMO_RETRIEVER_AGENTIC_INVOKE_URL"
 
 # Help panel labels (keep stable so --help groupings read consistently).
 _PANEL_IO = "I/O and Execution"
@@ -145,16 +137,6 @@ _SERVICE_INCOMPATIBLE_FLAGS: tuple[tuple[str, str], ...] = (
     ("--table-structure-invoke-url", "table_structure_invoke_url"),
     ("--caption-invoke-url", "caption_invoke_url"),
     ("--caption-model-name", "caption_model_name"),
-    # Agentic evaluation is a local post-ingest graph, not a service-side mode.
-    ("--agentic", "agentic"),
-    ("--agentic-llm-model", "agentic_llm_model"),
-    ("--agentic-invoke-url", "agentic_invoke_url"),
-    ("--agentic-react-max-steps", "agentic_react_max_steps"),
-    ("--agentic-backend-top-k", "agentic_backend_top_k"),
-    ("--agentic-text-truncation", "agentic_text_truncation"),
-    ("--agentic-reasoning-effort", "agentic_reasoning_effort"),
-    ("--agentic-num-concurrent", "agentic_num_concurrent"),
-    ("--agentic-temperature", "agentic_temperature"),
     # Local-execution knobs (no in-cluster equivalent)
     ("--local-ingest-embed-backend", "local_ingest_embed_backend"),
     ("--caption-device", "caption_device"),
@@ -694,117 +676,6 @@ def _run_evaluation(
     return "Audio Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
 
 
-def _run_agentic_evaluation(
-    *,
-    evaluation_mode: str,
-    vdb_op: str,
-    vdb_kwargs: dict[str, Any],
-    embed_model_name: str,
-    embed_invoke_url: Optional[str],
-    embed_remote_api_key: Optional[str],
-    embed_modality: str,
-    query_csv: Optional[Path],
-    audio_match_tolerance_secs: float,
-    reranker: Optional[bool],
-    reranker_model_name: str,
-    reranker_invoke_url: Optional[str],
-    reranker_api_key: str,
-    local_reranker_backend: str,
-    local_hf_batch_size: int,
-    local_query_embed_backend: str,
-    agentic_llm_model: str,
-    agentic_invoke_url: Optional[str],
-    agentic_api_key: Optional[str],
-    agentic_react_max_steps: int,
-    agentic_backend_top_k: int,
-    agentic_text_truncation: int,
-    agentic_reasoning_effort: Optional[str],
-    agentic_num_concurrent: int,
-    agentic_temperature: float,
-    beir_loader: Optional[str],
-    beir_dataset_name: Optional[str],
-    beir_split: str,
-    beir_query_language: Optional[str],
-    beir_doc_id_field: Optional[str],
-    beir_k: list[int],
-) -> tuple[str, float, dict[str, float], Optional[int], bool]:
-    """Run post-ingest evaluation through graph-backed agentic retrieval."""
-
-    from nemo_retriever.models import resolve_embed_model
-    from nemo_retriever.query.agentic import (
-        AgenticRetrievalConfig,
-        run_agentic_audio_recall_evaluation,
-        run_agentic_beir_evaluation,
-    )
-
-    if evaluation_mode == "beir":
-        ks = tuple(beir_k) if beir_k else (1, 3, 5, 10)
-    elif evaluation_mode == "audio_recall":
-        ks = (1, 5, 10)
-    else:
-        raise ValueError(f"Unsupported agentic evaluation mode: {evaluation_mode!r}")
-
-    cfg = AgenticRetrievalConfig(
-        vdb_op=str(vdb_op),
-        vdb_kwargs=dict(vdb_kwargs or {}),
-        query_embedder=resolve_embed_model(str(embed_model_name)),
-        embedding_endpoint=embed_invoke_url,
-        embedding_api_key=embed_remote_api_key or "",
-        local_hf_batch_size=int(local_hf_batch_size),
-        local_query_embed_backend=local_query_embed_backend,
-        reranker=reranker_model_name if reranker else None,
-        reranker_endpoint=reranker_invoke_url,
-        reranker_api_key=reranker_api_key,
-        local_reranker_backend=local_reranker_backend,
-        embed_modality=embed_modality,
-        llm_model=agentic_llm_model,
-        invoke_url=agentic_invoke_url,
-        api_key=agentic_api_key,
-        react_max_steps=int(agentic_react_max_steps),
-        backend_top_k=int(agentic_backend_top_k),
-        text_truncation=int(agentic_text_truncation),
-        reasoning_effort=agentic_reasoning_effort,
-        num_concurrent=int(agentic_num_concurrent),
-        temperature=float(agentic_temperature),
-        top_k=agentic_target_top_k(evaluation_mode, list(ks)),
-    )
-
-    evaluation_start = time.perf_counter()
-    if evaluation_mode == "beir":
-        if not beir_loader:
-            raise ValueError("--beir-loader is required when --evaluation-mode=beir")
-        if not beir_dataset_name:
-            raise ValueError("--beir-dataset-name is required when --evaluation-mode=beir")
-        df_query, _result, _qrels, _run, metrics = run_agentic_beir_evaluation(
-            loader=str(beir_loader),
-            dataset_name=str(beir_dataset_name),
-            cfg=cfg,
-            split=str(beir_split),
-            query_language=beir_query_language,
-            doc_id_field=str(beir_doc_id_field or "pdf_basename"),
-            ks=ks,
-        )
-        return "Agentic BEIR", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
-
-    if evaluation_mode == "audio_recall":
-        if query_csv is None:
-            logger.warning("No query CSV configured; skipping agentic audio recall evaluation.")
-            return "Agentic Audio Recall", 0.0, {}, None, False
-        query_csv_path = Path(query_csv)
-        if not query_csv_path.exists():
-            logger.warning("Query CSV not found at %s; skipping agentic audio recall evaluation.", query_csv_path)
-            return "Agentic Audio Recall", 0.0, {}, None, False
-        df_query, _result, _gold, _retrieved, metrics = run_agentic_audio_recall_evaluation(
-            query_csv=query_csv_path,
-            cfg=cfg,
-            ks=ks,
-            audio_match_tolerance_secs=float(audio_match_tolerance_secs),
-        )
-        return "Agentic Audio Recall", time.perf_counter() - evaluation_start, metrics, len(df_query.index), True
-
-    raise ValueError(f"Unsupported agentic evaluation mode: {evaluation_mode!r}")
-
-
 # ---------------------------------------------------------------------------
 # Typer command: `retriever pipeline run`
 # ---------------------------------------------------------------------------
@@ -1206,12 +1077,6 @@ def run(
         help="Post-ingest evaluation: none (default), audio_recall, beir, or qa.",
         rich_help_panel=_PANEL_EVAL,
     ),
-    agentic: bool = typer.Option(
-        False,
-        "--agentic",
-        help="Run post-ingest BEIR or audio recall evaluation through graph-backed agentic retrieval.",
-        rich_help_panel=_PANEL_EVAL,
-    ),
     query_csv: Path = typer.Option(
         "./data/bo767_query_gt.csv",
         "--query-csv",
@@ -1296,63 +1161,6 @@ def run(
         exists=True,
         rich_help_panel=_PANEL_EVAL,
     ),
-    agentic_llm_model: Optional[str] = typer.Option(
-        None,
-        "--agentic-llm-model",
-        help=f"Chat model for --agentic; may also be set with {AGENTIC_LLM_MODEL_ENV}.",
-        rich_help_panel=_PANEL_EVAL,
-    ),
-    agentic_invoke_url: Optional[str] = typer.Option(
-        None,
-        "--agentic-invoke-url",
-        help=(
-            "OpenAI-compatible chat completions endpoint for --agentic; "
-            f"may also be set with {AGENTIC_INVOKE_URL_ENV}."
-        ),
-        rich_help_panel=_PANEL_EVAL,
-    ),
-    agentic_react_max_steps: int = typer.Option(
-        50,
-        "--agentic-react-max-steps",
-        min=1,
-        help="Maximum ReAct loop iterations per query for --agentic.",
-        rich_help_panel=_PANEL_EVAL,
-    ),
-    agentic_backend_top_k: int = typer.Option(
-        20,
-        "--agentic-backend-top-k",
-        min=1,
-        help="Backend retrieve-pool depth per agentic retrieval call.",
-        rich_help_panel=_PANEL_EVAL,
-    ),
-    agentic_text_truncation: int = typer.Option(
-        0,
-        "--agentic-text-truncation",
-        min=0,
-        help="Max characters of each candidate shown to the agent; 0 disables truncation.",
-        rich_help_panel=_PANEL_EVAL,
-    ),
-    agentic_reasoning_effort: Optional[str] = typer.Option(
-        None,
-        "--agentic-reasoning-effort",
-        help="reasoning_effort forwarded on agentic LLM calls when set.",
-        rich_help_panel=_PANEL_EVAL,
-    ),
-    agentic_num_concurrent: int = typer.Option(
-        1,
-        "--agentic-num-concurrent",
-        min=1,
-        help="Maximum concurrent agentic queries.",
-        rich_help_panel=_PANEL_EVAL,
-    ),
-    agentic_temperature: float = typer.Option(
-        0.0,
-        "--agentic-temperature",
-        min=0.0,
-        max=AGENTIC_OPENAI_COMPATIBLE_TEMPERATURE_MAX,
-        help="Sampling temperature for agentic LLM calls (0.0 = greedy). NVIDIA endpoints allow up to 1.0; other OpenAI-compatible endpoints allow up to 2.0.",
-        rich_help_panel=_PANEL_EVAL,
-    ),
 ) -> None:
     """Run the end-to-end graph ingestion pipeline against ``INPUT_PATH``."""
 
@@ -1375,10 +1183,6 @@ def run(
             raise ValueError(f"Unsupported --audio-split-type: {audio_split_type!r}")
         if evaluation_mode not in {"none", "audio_recall", "beir", "qa"}:
             raise ValueError(f"Unsupported --evaluation-mode: {evaluation_mode!r}")
-        if agentic and evaluation_mode not in {"audio_recall", "beir"}:
-            raise typer.BadParameter(
-                "--agentic is supported only with --evaluation-mode=audio_recall or --evaluation-mode=beir."
-            )
         if evaluation_mode == "audio_recall":
             if input_type != "audio":
                 raise ValueError("--evaluation-mode=audio_recall is only supported with --input-type=audio")
@@ -1389,26 +1193,6 @@ def run(
                 "--evaluation-mode=qa requires --eval-config (QA sweep YAML/JSON). "
                 "Use the same file format as `retriever eval run --config` (dataset, retrieval, models, ...)."
             )
-        resolved_agentic_llm_model = (agentic_llm_model or os.environ.get(AGENTIC_LLM_MODEL_ENV) or "").strip()
-        resolved_agentic_invoke_url = (
-            agentic_invoke_url or os.environ.get(AGENTIC_INVOKE_URL_ENV) or ""
-        ).strip() or None
-        if agentic and not resolved_agentic_llm_model:
-            raise typer.BadParameter(f"--agentic requires --agentic-llm-model or {AGENTIC_LLM_MODEL_ENV}.")
-        if agentic:
-            try:
-                target_top_k = agentic_target_top_k(evaluation_mode, beir_k)
-            except ValueError as exc:
-                raise typer.BadParameter(str(exc)) from exc
-            backend_error = agentic_backend_top_k_error(agentic_backend_top_k, target_top_k=target_top_k)
-            if backend_error:
-                raise typer.BadParameter(backend_error)
-            temperature_error = agentic_temperature_error(
-                agentic_temperature,
-                invoke_url=resolved_agentic_invoke_url,
-            )
-            if temperature_error:
-                raise typer.BadParameter(temperature_error)
 
         if run_mode == "batch":
             # --quiet implies --no-ray-log-to-driver: Ray flushes worker stdout
@@ -1859,72 +1643,35 @@ def run(
                 raise typer.Exit(code=qa_code)
             return
 
-        if agentic:
-            evaluation_label, evaluation_total_time, evaluation_metrics, evaluation_query_count, ran = (
-                _run_agentic_evaluation(
-                    evaluation_mode=evaluation_mode,
-                    vdb_op=resolved_vdb_op,
-                    vdb_kwargs=resolved_vdb_kwargs,
-                    embed_model_name=embed_model_name,
-                    embed_invoke_url=embed_invoke_url,
-                    embed_remote_api_key=embed_remote_api_key,
-                    embed_modality=embed_modality,
-                    query_csv=query_csv,
-                    audio_match_tolerance_secs=audio_match_tolerance_secs,
-                    reranker=reranker,
-                    reranker_model_name=reranker_model_name,
-                    reranker_invoke_url=reranker_invoke_url,
-                    reranker_api_key=reranker_bearer,
-                    local_reranker_backend=local_reranker_backend,
-                    local_hf_batch_size=local_hf_batch_size,
-                    local_query_embed_backend=local_query_embed_backend,
-                    agentic_llm_model=resolved_agentic_llm_model,
-                    agentic_invoke_url=resolved_agentic_invoke_url,
-                    agentic_api_key=remote_api_key,
-                    agentic_react_max_steps=agentic_react_max_steps,
-                    agentic_backend_top_k=agentic_backend_top_k,
-                    agentic_text_truncation=agentic_text_truncation,
-                    agentic_reasoning_effort=agentic_reasoning_effort,
-                    agentic_num_concurrent=agentic_num_concurrent,
-                    agentic_temperature=agentic_temperature,
-                    beir_loader=beir_loader,
-                    beir_dataset_name=beir_dataset_name,
-                    beir_split=beir_split,
-                    beir_query_language=beir_query_language,
-                    beir_doc_id_field=beir_doc_id_field,
-                    beir_k=beir_k,
-                )
-            )
-        else:
-            evaluation_label, evaluation_total_time, evaluation_metrics, evaluation_query_count, ran = _run_evaluation(
-                evaluation_mode=evaluation_mode,
-                vdb_op=resolved_vdb_op,
-                vdb_kwargs=resolved_vdb_kwargs,
-                embed_model_name=embed_model_name,
-                embed_invoke_url=embed_invoke_url,
-                embed_remote_api_key=embed_remote_api_key,
-                embed_modality=embed_modality,
-                query_csv=query_csv,
-                recall_match_mode=recall_match_mode,
-                audio_match_tolerance_secs=audio_match_tolerance_secs,
-                reranker=reranker,
-                reranker_model_name=reranker_model_name,
-                reranker_invoke_url=reranker_invoke_url,
-                reranker_api_key=reranker_bearer,
-                local_reranker_backend=local_reranker_backend,
-                local_hf_batch_size=local_hf_batch_size,
-                local_query_max_length=local_query_max_length,
-                beir_loader=beir_loader,
-                beir_dataset_name=beir_dataset_name,
-                beir_split=beir_split,
-                beir_query_language=beir_query_language,
-                beir_doc_id_field=beir_doc_id_field,
-                beir_k=beir_k,
-                local_query_embed_backend=local_query_embed_backend,
-                run_mode=run_mode,
-                service_url=service_url,
-                service_api_token=service_api_token,
-            )
+        evaluation_label, evaluation_total_time, evaluation_metrics, evaluation_query_count, ran = _run_evaluation(
+            evaluation_mode=evaluation_mode,
+            vdb_op=resolved_vdb_op,
+            vdb_kwargs=resolved_vdb_kwargs,
+            embed_model_name=embed_model_name,
+            embed_invoke_url=embed_invoke_url,
+            embed_remote_api_key=embed_remote_api_key,
+            embed_modality=embed_modality,
+            query_csv=query_csv,
+            recall_match_mode=recall_match_mode,
+            audio_match_tolerance_secs=audio_match_tolerance_secs,
+            reranker=reranker,
+            reranker_model_name=reranker_model_name,
+            reranker_invoke_url=reranker_invoke_url,
+            reranker_api_key=reranker_bearer,
+            local_reranker_backend=local_reranker_backend,
+            local_hf_batch_size=local_hf_batch_size,
+            local_query_max_length=local_query_max_length,
+            beir_loader=beir_loader,
+            beir_dataset_name=beir_dataset_name,
+            beir_split=beir_split,
+            beir_query_language=beir_query_language,
+            beir_doc_id_field=beir_doc_id_field,
+            beir_k=beir_k,
+            local_query_embed_backend=local_query_embed_backend,
+            run_mode=run_mode,
+            service_url=service_url,
+            service_api_token=service_api_token,
+        )
 
         if not ran:
             no_eval_total_time = time.perf_counter() - ingest_start
