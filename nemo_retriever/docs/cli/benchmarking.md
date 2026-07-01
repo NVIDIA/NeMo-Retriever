@@ -48,13 +48,14 @@ retriever harness sweep --runs-config nemo_retriever/harness/nightly_config.yaml
 retriever harness nightly --runs-config nemo_retriever/harness/nightly_config.yaml --dry-run
 ```
 
-### Agentic evaluation
+### Agentic BEIR evaluation
 
-Harness runs use standard dense retrieval unless `agentic: true` is set in the
-`query` section of the selected benchmark/dataset config, or via
-`--override query.agentic=true`. Agentic harness evaluation runs the ReAct
-retrieval graph in-process after ingest and is supported for BEIR evaluation
-(`evaluation.mode: beir`).
+Harness runs use the standard dense retrieval path unless agentic retrieval is
+enabled in the resolved benchmark query config. Set `query.agentic: true` in the
+benchmark or dataset config, or use `--override query.agentic=true` on the CLI.
+The agentic harness path runs the same ReAct retrieval graph used by root query,
+but only after ingest and only for BEIR evaluation (`evaluation.mode: beir`).
+`retriever pipeline run` does not expose agentic evaluation flags.
 
 Minimal BEIR override example:
 
@@ -64,14 +65,18 @@ retriever harness run --dataset jp20 --preset single_gpu \
   --override query.agentic_llm_model=nvidia/llama-3.3-nemotron-super-49b-v1.5
 ```
 
-Useful agentic overrides (all under the `query.` namespace):
+Useful agentic query overrides:
 
+- `query.agentic_llm_model` — chat model used by the ReAct and selection agents;
+  required when `query.agentic=true`.
 - `query.agentic_invoke_url` — OpenAI-compatible chat-completions endpoint. Omit
   to use the built-in NVIDIA endpoint.
 - `query.agentic_backend_top_k` — backend candidate pool per ReAct retrieval
-  call. Must be at least the final requested metric depth (`max(beir_ks)`); the
-  agent targets `max(beir_ks)` documents so recall at the largest cutoff is
-  computable.
+  call. Must be at least the final requested metric depth (`max(evaluation.ks)`).
+- `query.agentic_react_max_steps` — maximum ReAct loop iterations per query
+  (defaults to `50`).
+- `query.agentic_text_truncation` — max characters of each candidate shown to
+  the agent; `0` disables truncation.
 - `query.agentic_num_concurrent` — number of queries the agent batch runs
   concurrently (defaults to `1`).
 - `query.agentic_temperature` — defaults to `0.0`; hosted/default NVIDIA
