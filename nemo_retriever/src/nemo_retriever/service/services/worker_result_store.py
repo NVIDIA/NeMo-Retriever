@@ -38,6 +38,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
+_filesystem_lock = threading.Lock()
 _store: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _RESULTS_DIR_ENV = "NEMO_RETRIEVER_RESULTS_DIR"
 _RESULTS_TTL_S_ENV = "NEMO_RETRIEVER_RESULTS_TTL_SECONDS"
@@ -64,6 +65,35 @@ def is_shared_result_store_configured() -> bool:
 
 def _results_root(results_dir: Path) -> Path:
     return results_dir / _STORE_NAMESPACE
+
+
+def _fsync_directory(path: Path) -> None:
+    """Persist directory-entry changes made beneath *path*."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _mkdir_and_fsync_parent(path: Path) -> None:
+    """Create one directory and durably publish it in its existing parent."""
+    try:
+        path.mkdir(exist_ok=False)
+    except FileExistsError:
+        if not path.is_dir():
+            raise
+    else:
+        _fsync_directory(path.parent)
+
+
+def _ensure_results_root(results_dir: Path) -> Path:
+    if not results_dir.is_dir():
+        raise OSError(f"Shared result directory {results_dir} does not exist or is not a directory")
+    root = _results_root(results_dir)
+    _mkdir_and_fsync_parent(root)
+    return root
 
 
 def _document_digest(document_id: str) -> str:
@@ -98,23 +128,32 @@ def validate_result_store() -> None:
     if results_dir is None:
         return
 
-    root = _results_root(results_dir)
+    try:
+        root = _ensure_results_root(results_dir)
+    except OSError as exc:
+        raise RuntimeError(
+            f"Shared result directory {results_dir} must support directory and file creation, "
+            "fsync, same-directory atomic rename, read, and unlink"
+        ) from exc
     probe_id = uuid.uuid4().hex
     probe_dir = root / f".probe-{probe_id}"
     source = probe_dir / f".{probe_id}.tmp"
     target = probe_dir / f"{probe_id}.json"
     failure: OSError | None = None
     try:
-        probe_dir.mkdir(parents=True, exist_ok=False)
+        _mkdir_and_fsync_parent(probe_dir)
         with source.open("x", encoding="utf-8") as stream:
             stream.write("probe")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(source, target)
+        _fsync_directory(probe_dir)
         if target.read_text(encoding="utf-8") != "probe":
             raise OSError("shared result store probe read returned unexpected data")
         target.unlink()
+        _fsync_directory(probe_dir)
         probe_dir.rmdir()
+        _fsync_directory(root)
     except OSError as exc:
         failure = exc
     finally:
@@ -135,6 +174,11 @@ def validate_result_store() -> None:
             f"Shared result directory {results_dir} must support directory and file creation, "
             "fsync, same-directory atomic rename, read, and unlink"
         ) from failure
+
+
+def result_retention_seconds() -> float:
+    """Return how long unacknowledged or retained rows remain retryable."""
+    return _results_ttl_s()
 
 
 def _results_ttl_s() -> float:
@@ -215,8 +259,10 @@ def _maybe_sweep_expired_files(results_dir: Path) -> None:
 
 def _store_on_filesystem(results_dir: Path, document_id: str, result_data: list[dict[str, Any]]) -> None:
     _maybe_sweep_expired_files(results_dir)
-    document_dir = _document_dir(results_dir, document_id)
-    document_dir.mkdir(parents=True, exist_ok=True)
+    with _filesystem_lock:
+        root = _ensure_results_root(results_dir)
+        document_dir = root / _document_digest(document_id)
+        _mkdir_and_fsync_parent(document_dir)
     generation_id = uuid.uuid4().hex
     temporary = document_dir / f".{generation_id}.tmp"
     target = document_dir / f"{generation_id}.json"
@@ -226,6 +272,7 @@ def _store_on_filesystem(results_dir: Path, document_id: str, result_data: list[
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, target)
+        _fsync_directory(document_dir)
     finally:
         try:
             temporary.unlink(missing_ok=True)

@@ -35,6 +35,15 @@ def _strip_bearer(value: str) -> str:
     return value.strip()
 
 
+def auth_headers(config: AuthConfig) -> dict[str, str]:
+    """Build the configured service-auth header for internal HTTP calls."""
+    token = (config.api_token or "").strip()
+    if not token:
+        return {}
+    value = f"Bearer {token}" if config.header_name.lower() == "authorization" else token
+    return {config.header_name: value}
+
+
 class BearerAuthMiddleware(BaseHTTPMiddleware):
     """Reject requests that don't carry the configured token.
 

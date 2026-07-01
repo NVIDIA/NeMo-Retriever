@@ -177,6 +177,13 @@ def _work_item_retain_results(request: Request, *, job_id: str | None) -> bool:
     return _job_retain_results(job_id)
 
 
+def _internal_auth_headers(request: Request) -> dict[str, str]:
+    """Return service credentials for pod-to-pod callback traffic."""
+    from nemo_retriever.service.auth import auth_headers
+
+    return auth_headers(request.app.state.config.auth)
+
+
 def _gateway_retain_results_headers(job_id: str) -> dict[str, str]:
     if _job_retain_results(job_id):
         return {_GATEWAY_RETAIN_RESULTS_HEADER: "true"}
@@ -308,7 +315,7 @@ async def _pull_and_store_worker_result(request: Request, document_id: str, work
     """Copy rows from the exact completing worker into the gateway store."""
     url = _worker_result_url(request, document_id, worker_ip)
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, headers=_internal_auth_headers(request)) as client:
             response = await client.get(url)
     except httpx.HTTPError as exc:
         raise HTTPException(
@@ -961,6 +968,7 @@ async def submit_document_to_job(
                 payload=file_bytes,
                 filename=file.filename,
                 callback_url=gw_callback_url,
+                callback_headers=_internal_auth_headers(request),
                 job_id=gw_job_id,
                 pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
                 retain_results=_work_item_retain_results(request, job_id=gw_job_id),
@@ -1094,6 +1102,7 @@ async def submit_page_to_job(
                     payload=file_bytes,
                     filename=file.filename,
                     callback_url=gw_callback_url,
+                    callback_headers=_internal_auth_headers(request),
                     job_id=gw_job_id,
                     retain_results=_work_item_retain_results(request, job_id=gw_job_id),
                 ),
@@ -1227,6 +1236,7 @@ async def submit_whole_document_to_job(
                     payload=file_bytes,
                     filename=file.filename,
                     callback_url=gw_callback_url,
+                    callback_headers=_internal_auth_headers(request),
                     job_id=gw_job_id,
                     pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
                     retain_results=_work_item_retain_results(request, job_id=gw_job_id),

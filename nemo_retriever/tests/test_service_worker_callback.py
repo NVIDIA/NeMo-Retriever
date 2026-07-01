@@ -606,3 +606,221 @@ def test_worker_result_url_supports_ipv6_and_rejects_spoofed_peer() -> None:
     with pytest.raises(HTTPException) as missing:
         _worker_result_url(make_request("testclient"), "missing-doc", None)
     assert missing.value.status_code == 503
+
+
+def test_internal_auth_headers_support_default_and_custom_header_names() -> None:
+    from nemo_retriever.service.auth import auth_headers
+    from nemo_retriever.service.config import AuthConfig
+
+    assert auth_headers(AuthConfig(api_token="secret")) == {"Authorization": "Bearer secret"}
+    assert auth_headers(AuthConfig(api_token="secret", header_name="X-Service-Token")) == {"X-Service-Token": "secret"}
+
+
+def test_fire_gateway_callback_sends_internal_auth_headers() -> None:
+    client_kwargs: dict[str, Any] = {}
+
+    class _Resp:
+        status_code = 200
+
+    class _Client:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            client_kwargs.update(kwargs)
+
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *exc: Any) -> None:
+            return None
+
+        async def post(self, url: str, json: dict[str, Any]) -> _Resp:
+            return _Resp()
+
+    with patch("httpx.AsyncClient", _Client):
+        succeeded = asyncio.run(
+            _fire_gateway_callback(
+                "http://gateway/v1/internal/job-callback",
+                "authenticated-doc",
+                "completed",
+                callback_headers={"X-Service-Token": "secret"},
+            )
+        )
+
+    assert succeeded is True
+    assert client_kwargs["headers"] == {"X-Service-Token": "secret"}
+
+
+def test_deferred_callback_retries_without_rerunning_and_discards_after_ack(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nemo_retriever.service.services import pipeline_pool
+    from nemo_retriever.service.services.pipeline_pool import _Pool
+
+    attempts = 0
+
+    async def succeeds(*args: Any, **kwargs: Any) -> bool:
+        nonlocal attempts
+        attempts += 1
+        return True
+
+    async def run() -> None:
+        pool = _Pool("deferred-test", num_workers=1, max_queue_size=1)
+        pool._running = True
+        store_result_data("deferred-doc", [{"text": "retained"}])
+        monkeypatch.setattr(pipeline_pool, "_fire_gateway_callback", succeeds)
+        monkeypatch.setattr(pipeline_pool, "_CALLBACK_DEFERRED_INITIAL_DELAY_S", 0.0)
+        pool._schedule_gateway_callback_retry(
+            callback_url="http://gateway/v1/internal/job-callback",
+            item_id="deferred-doc",
+            status="completed",
+            result_rows=1,
+            result_worker_ip="10.1.2.3",
+            callback_headers={"Authorization": "Bearer secret"},
+            retain_results=True,
+        )
+        task = pool._handoff_tasks["deferred-doc"]
+        await asyncio.wait_for(task, timeout=1.0)
+        pool._running = False
+
+    asyncio.run(run())
+
+    assert attempts == 1
+    assert get_result_data("deferred-doc") is None
+
+
+def test_shared_result_publication_fsyncs_created_parents_and_generation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
+    fsynced: list[Path] = []
+    original = worker_result_store._fsync_directory
+
+    def record_fsync(path: Path) -> None:
+        fsynced.append(path)
+        original(path)
+
+    monkeypatch.setattr(worker_result_store, "_fsync_directory", record_fsync)
+    store_result_data("durable-doc", [{"text": "durable"}])
+
+    root = worker_result_store._results_root(tmp_path)
+    document_dir = worker_result_store._document_dir(tmp_path, "durable-doc")
+    assert fsynced == [tmp_path, root, document_dir]
+    assert get_result_data("durable-doc") == [{"text": "durable"}]
+
+
+def test_result_store_validation_rejects_unsupported_directory_fsync(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
+
+    def unsupported_directory_fsync(_: Path) -> None:
+        raise OSError(errno.EOPNOTSUPP, "Directory fsync is not supported")
+
+    monkeypatch.setattr(worker_result_store, "_fsync_directory", unsupported_directory_fsync)
+
+    with pytest.raises(RuntimeError, match="fsync"):
+        validate_result_store()
+
+
+def test_gateway_result_pull_sends_configured_internal_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from starlette.requests import Request
+
+    from nemo_retriever.service.config import AuthConfig, ServiceConfig
+    from nemo_retriever.service.routers import ingest
+
+    client_kwargs: dict[str, Any] = {}
+
+    class _Resp:
+        status_code = 200
+
+        def json(self) -> dict[str, Any]:
+            return {"result_data": [{"text": "authenticated handoff"}]}
+
+    class _Client:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            client_kwargs.update(kwargs)
+
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *exc: Any) -> None:
+            return None
+
+        async def get(self, url: str) -> _Resp:
+            return _Resp()
+
+    app = SimpleNamespace(
+        state=SimpleNamespace(
+            config=ServiceConfig(
+                mode="gateway",
+                auth=AuthConfig(api_token="secret", header_name="X-Service-Token"),
+            )
+        )
+    )
+    request = Request(
+        {
+            "type": "http",
+            "app": app,
+            "client": ("10.1.2.3", 12345),
+            "headers": [],
+            "method": "POST",
+            "path": "/v1/internal/job-callback",
+            "query_string": b"",
+            "scheme": "http",
+            "server": ("gateway", 7670),
+        }
+    )
+
+    monkeypatch.setattr(ingest.httpx, "AsyncClient", _Client)
+    asyncio.run(ingest._pull_and_store_worker_result(request, "auth-pull-doc", "10.1.2.3"))
+
+    assert client_kwargs["headers"] == {"X-Service-Token": "secret"}
+    assert get_result_data("auth-pull-doc") == [{"text": "authenticated handoff"}]
+
+
+def test_fire_gateway_callback_honors_capped_retry_after(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_retriever.service.services import pipeline_pool
+
+    sleeps: list[float] = []
+    attempts = 0
+
+    class _Resp:
+        def __init__(self, status_code: int) -> None:
+            self.status_code = status_code
+            self.headers = {"Retry-After": "120"}
+
+    class _Client:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> "_Client":
+            return self
+
+        async def __aexit__(self, *exc: Any) -> None:
+            return None
+
+        async def post(self, url: str, json: dict[str, Any]) -> _Resp:
+            nonlocal attempts
+            attempts += 1
+            return _Resp(503 if attempts == 1 else 200)
+
+    async def record_sleep(delay_s: float) -> None:
+        sleeps.append(delay_s)
+
+    monkeypatch.setattr(pipeline_pool, "_CALLBACK_RETRY_DELAYS_S", (0.0,))
+    monkeypatch.setattr(pipeline_pool.asyncio, "sleep", record_sleep)
+    with patch("httpx.AsyncClient", _Client):
+        succeeded = asyncio.run(
+            _fire_gateway_callback(
+                "http://gateway/v1/internal/job-callback",
+                "retry-after-doc",
+                "completed",
+                retry_after_cap_s=2.0,
+            )
+        )
+
+    assert succeeded is True
+    assert sleeps == [2.0]
