@@ -48,6 +48,43 @@ retriever harness sweep --runs-config nemo_retriever/harness/nightly_config.yaml
 retriever harness nightly --runs-config nemo_retriever/harness/nightly_config.yaml --dry-run
 ```
 
+### Agentic BEIR evaluation
+
+Harness runs use the standard dense retrieval path unless agentic retrieval is
+enabled in the resolved benchmark query config. Set `query.agentic: true` in the
+benchmark or dataset config, or use `--override query.agentic=true` on the CLI.
+The agentic harness path runs the same ReAct retrieval graph used by root query,
+but only after ingest and only for BEIR evaluation (`evaluation.mode: beir`).
+`retriever pipeline run` does not expose agentic evaluation flags.
+
+Minimal BEIR override example:
+
+```bash
+retriever harness run --dataset jp20 --preset single_gpu \
+  --override query.agentic=true \
+  --override query.agentic_llm_model=nvidia/llama-3.3-nemotron-super-49b-v1.5
+```
+
+Useful agentic query overrides:
+
+- `query.agentic_llm_model` — chat model used by the ReAct and selection agents;
+  required when `query.agentic=true`.
+- `query.agentic_invoke_url` — OpenAI-compatible chat-completions endpoint. Omit
+  to use the built-in NVIDIA endpoint.
+- `query.agentic_backend_top_k` — backend candidate pool per ReAct retrieval
+  call. Must be at least the final requested metric depth (`max(evaluation.ks)`).
+- `query.agentic_react_max_steps` — maximum ReAct loop iterations per query
+  (defaults to `50`).
+- `query.agentic_text_truncation` — max characters of each candidate shown to
+  the agent; `0` disables truncation.
+- `query.agentic_num_concurrent` — number of queries the agent batch runs
+  concurrently (defaults to `1`).
+- `query.agentic_temperature` — defaults to `0.0`; hosted/default NVIDIA
+  endpoints are validated as `0.0..1.0`, while other OpenAI-compatible endpoints
+  allow `0.0..2.0`.
+- `query.agentic_reasoning_effort` — optional provider-specific field forwarded
+  only when configured.
+
 ### Image storage
 
 For normal ingest, configure image persistence on `retriever ingest` with
