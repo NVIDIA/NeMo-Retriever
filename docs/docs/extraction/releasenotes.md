@@ -73,7 +73,7 @@ Highlights for the 26.05 release include:
 ### Documentation
 
 - Documentation aligned to a Helm-first supported path for NIM and service deployment
-- Documentation consolidates extraction concepts, ingest workflow, embeddings, audio/video guides, prerequisites and support matrix, and customization paths in [Customize & extend](customize-extend.md)  
+- Documentation consolidates extraction concepts, ingest workflow, embeddings, audio/video guides, prerequisites and support matrix, and UDF/custom stages in the [graph README](https://github.com/NVIDIA/NeMo-Retriever/tree/26.05/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)
 
 ## Release Notes for Previous Versions
 

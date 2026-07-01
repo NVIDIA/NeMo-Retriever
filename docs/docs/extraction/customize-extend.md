@@ -4,6 +4,16 @@ NeMo Retriever Library ships with defaults tuned for strong recall on common doc
 
 Use this page to choose an extension path and find the detailed guides in the repository.
 
+The following table maps common needs to the right section:
+
+| If you need to… | Start here |
+|-----------------|------------|
+| Tune extraction, chunking, embedding, or upload without new code | [Start with task configuration](#start-with-task-configuration) |
+| Add a small Python transformation between pipeline stages | [User-defined functions (UDFs)](#user-defined-functions-udfs) |
+| Build or reuse operators stage-by-stage | [Custom graph pipelines](#custom-graph-pipelines) |
+| Store vectors in a backend other than LanceDB | [Custom vector databases](#custom-vector-databases) |
+| Wire a non-default embedding model | [Custom embedding models](#custom-embedding-models) |
+
 ## On this page { #on-this-page }
 
 - [Start with task configuration](#start-with-task-configuration)
@@ -11,7 +21,7 @@ Use this page to choose an extension path and find the detailed guides in the re
 - [Custom graph pipelines](#custom-graph-pipelines)
 - [Custom vector databases](#custom-vector-databases)
 - [Custom embedding models](#custom-embedding-models)
-- [Related topics](#related-topics)
+- [Related Topics](#related-topics)
 
 ## Start with task configuration { #start-with-task-configuration }
 
@@ -25,7 +35,7 @@ A **user-defined function (UDF)** wraps your Python logic as a first-class pipel
 
 Use UDFs when you need a small, self-contained transformation that is not covered by task keyword arguments.
 
-**Repository guides and examples**
+### Repository guides and examples
 
 - [NeMo Retriever graph README — `UDFOperator`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#using-udfoperator) — API, lifecycle, and when to use `UDFOperator` versus a custom operator class
 - [UDF example scripts](https://github.com/NVIDIA/NeMo-Retriever/tree/main/examples/udfs) — sample implementations such as HTML-to-Markdown conversion and structural splitting
@@ -45,7 +55,7 @@ The supported user path for vector storage is **[LanceDB](vdbs.md)** (`vdb_op="l
 
 To integrate a different vector store, implement the [`VDB`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/common/vdb/adt_vdb.py) interface and wire it through graph [`IngestVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/operators/vdb.py) / [`RetrieveVdbOperator`](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/src/nemo_retriever/operators/vdb.py). NVIDIA validates the first-party LanceDB operator; you are responsible for testing and maintaining other backends.
 
-**Repository guides**
+### Repository guides
 
 - [Build a custom vector database operator (notebook)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb) — step-by-step walkthrough
 - [Vector DB package (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/common/vdb) — `VDB` abstract base and LanceDB reference implementation
@@ -62,10 +72,10 @@ Partner and blueprint integrations (Elasticsearch, Pinecone, Teradata, and other
     - [Environment variables](environment-config.md) — `*_ENDPOINT` variables for self-hosted or hosted NIM embed services
     - [NeMo Retriever Text Embedding NIM](https://docs.nvidia.com/nim/nemo-retriever/text-embedding/latest/overview.html) — OpenAI-compatible text embedding NIM
 
-## Related topics { #related-topics }
+## Related Topics { #related-topics }
 
 - [Concepts — Pipeline and tasks](concepts.md#pipeline-and-tasks)
 - [Vector databases](vdbs.md)
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Python API guide](nemo-retriever-api-reference.md)
-- [Starter kits and notebooks](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/README.md)
+- [Starter kits and notebooks](starter-kits.md)
