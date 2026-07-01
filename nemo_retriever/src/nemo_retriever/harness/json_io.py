@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import re
+import tempfile
 from typing import Any, Mapping
 
 
@@ -13,9 +16,67 @@ def jsonable(value: Any) -> Any:
     return json.loads(json.dumps(value, default=str))
 
 
+_SECRET_KEY_PARTS = {
+    "authorization",
+    "credential",
+    "credentials",
+    "passwd",
+    "password",
+    "secret",
+    "token",
+}
+
+
+def _is_secret_key(key: Any) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", "_", str(key).lower()).strip("_")
+    parts = set(normalized.split("_"))
+    return "api_key" in normalized or bool(parts & _SECRET_KEY_PARTS)
+
+
+def redact(value: Any) -> Any:
+    """Return JSON-compatible data with credential values removed.
+
+    In addition to nested credential fields, this covers runfile and CLI
+    override strings such as ``query.reranker_api_key=...``. Metric names such
+    as ``input_tokens`` are intentionally not treated as credentials.
+    """
+    if isinstance(value, Mapping):
+        out: dict[Any, Any] = {}
+        for key, nested in value.items():
+            if _is_secret_key(key):
+                out[key] = "<redacted>" if nested else nested
+            else:
+                out[key] = redact(nested)
+        return out
+    if isinstance(value, (list, tuple)):
+        return [redact(item) for item in value]
+    if isinstance(value, str) and "=" in value:
+        key, nested = value.split("=", 1)
+        if _is_secret_key(key):
+            return f"{key}=<redacted>" if nested else value
+    return value
+
+
 def write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Atomically write a redacted JSON object in the destination directory."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(jsonable(payload), indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    text = json.dumps(redact(jsonable(payload)), indent=2, sort_keys=False) + "\n"
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(text)
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def read_json_object(path: Path) -> dict[str, Any]:

@@ -7,11 +7,19 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from difflib import get_close_matches
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
+from nemo_retriever.harness.artifact_writer import ArtifactWriteError, initialize_artifact_dir
 from nemo_retriever.harness.artifacts import get_artifacts_root
 from nemo_retriever.harness.benchmark_registry import get_runset, runset_names
-from nemo_retriever.harness.contracts import EXIT_INVALID, EXIT_SUCCESS, FailurePayload, HarnessRunError, RunOutcome
+from nemo_retriever.harness.contracts import (
+    EXIT_ARTIFACT_WRITE_FAILURE,
+    EXIT_INVALID,
+    EXIT_SUCCESS,
+    FailurePayload,
+    HarnessRunError,
+    RunOutcome,
+)
 from nemo_retriever.harness.execution import run_benchmark
 from nemo_retriever.harness.json_io import write_json
 
@@ -55,6 +63,25 @@ def _run_outcome_summary(benchmark: str, outcome: RunOutcome) -> dict[str, Any]:
     }
 
 
+def _artifact_error(exc: Exception) -> HarnessRunError:
+    return HarnessRunError(
+        EXIT_ARTIFACT_WRITE_FAILURE,
+        FailurePayload(
+            failed_phase="write_artifacts",
+            failure_reason="artifact_write_failed",
+            retryable=False,
+            message=str(exc),
+        ),
+    )
+
+
+def _write_session_json(path: Path, payload: Mapping[str, Any]) -> None:
+    try:
+        write_json(path, payload)
+    except Exception as exc:
+        raise _artifact_error(exc) from exc
+
+
 def run_runset(
     runset: str,
     *,
@@ -65,8 +92,10 @@ def run_runset(
     dry_run: bool = False,
 ) -> RunOutcome:
     spec = _runset_or_error(runset)
-    session_dir = _session_dir(runset, output_dir)
-    session_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        session_dir = initialize_artifact_dir(_session_dir(runset, output_dir))
+    except (ArtifactWriteError, OSError) as exc:
+        raise _artifact_error(exc) from exc
     expanded_runs = [
         {
             "index": index,
@@ -78,7 +107,7 @@ def run_runset(
         }
         for index, benchmark in enumerate(spec.runs, start=1)
     ]
-    write_json(
+    _write_session_json(
         session_dir / "expanded_runs.json",
         {
             "runset": spec.to_dict(),
@@ -109,5 +138,5 @@ def run_runset(
         "dry_run": bool(dry_run),
         "runs": run_results,
     }
-    write_json(session_dir / "session_summary.json", session_summary)
+    _write_session_json(session_dir / "session_summary.json", session_summary)
     return RunOutcome(exit_code=exit_code, artifact_dir=session_dir, results=session_summary)
