@@ -169,9 +169,18 @@ class Graph:
         Returns a list of leaf outputs (one per leaf node reached).
         """
         resolved = self.resolve_for_local_execution()
+        return resolved.execute_resolved(data, **kwargs)
+
+    def execute_resolved(self, data: Any, **kwargs: Any) -> List[Any]:
+        """Execute this graph without resolving or cloning it again.
+
+        This is an execution-lifecycle primitive for callers that intentionally
+        retain this graph and its stateful operator delegates, including locally
+        loaded models, across repeated executions.
+        """
         results: List[Any] = []
-        for root in resolved.roots:
-            resolved._execute_node(root, data, results, **kwargs)
+        for root in self.roots:
+            self._execute_node(root, data, results, **kwargs)
         return results
 
     def resolve(self, resources: Any) -> "Graph":

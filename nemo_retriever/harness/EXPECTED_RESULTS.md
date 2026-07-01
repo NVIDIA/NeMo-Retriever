@@ -3,18 +3,33 @@
 
 # Harness Expected Results
 
-Known dataset facts, canonical benchmark result ranges, and suggested
-`--require` gates for `retriever harness`.
+Known dataset facts, canonical benchmark result ranges, and suggested integrity
+gates for `retriever harness`.
 
-This file is documentation, not executable policy. Use these values to choose
-explicit `--require` gates for local validation, agent-run ablations, and
-nightly jobs. Update it when datasets, benchmark definitions, hardware, or
-retrieval behavior intentionally change.
+This file is documentation, not executable policy. Use dataset facts for
+explicit `--require` gates. Use quality and performance ranges to judge whether
+a result is in the expected ballpark. Update the references when datasets,
+benchmark definitions, hardware, or retrieval behavior intentionally change.
 
 Only canonical benchmark expectations belong here. Exploratory runs, fast-text
 fallbacks, chunking experiments, and failed attempts should stay in run
 artifacts or handoff notes until the team chooses them as canonical benchmark
 definitions.
+
+File counts, page counts, and query counts are portable dataset-integrity gates.
+Recall and nDCG are reference ranges that help developers and agents identify
+results outside the expected ballpark. Do not treat the quality ranges as
+universal pass/fail policy across different hardware and runtime profiles.
+
+Performance observations such as ingest seconds, pages/sec, and query latency
+are reference points for a specific environment. Treat them as hardware- and
+configuration-sensitive unless the GPU SKU/count, CUDA driver, model backend,
+vLLM/kernel settings, Ray worker layout, storage path, and dataset mount are
+controlled.
+
+The dataset paths below are registry reference paths, not a portable filesystem
+contract. Use `harness/dataset_paths.example.yaml` and `run-files
+--dataset-paths` to point checked-in runfiles at the current machine.
 
 ## JP20
 
@@ -34,12 +49,14 @@ Benchmarks:
 Suggested full BEIR command:
 
 ```bash
-retriever harness run jp20_beir \
+retriever harness run-files \
+  --session-name jp20_beir \
+  --output-dir /local/path/to/retriever-artifacts/jp20-beir \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
   --require 'files==20' \
   --require 'pages==1940' \
   --require 'query_count==115' \
-  --require 'recall_5>=0.85' \
-  --require 'ndcg_10>=0.75'
+  nemo_retriever/harness/runfiles/jp20_beir.json
 ```
 
 Recent observed `jp20_beir` metrics on local hardware:
@@ -52,7 +69,8 @@ Recent observed `jp20_beir` metrics on local hardware:
 - `recall_10`: about `0.930` to `0.948`
 - `ndcg_10`: about `0.793` to `0.802`
 
-Avoid hard-gating on latency unless the run environment is controlled.
+Avoid hard-gating on latency or throughput unless the run environment is
+controlled and recorded in the artifacts.
 
 ## BO20
 
@@ -80,13 +98,14 @@ Benchmark:
 Suggested full BEIR command:
 
 ```bash
-retriever harness run \
-  --runfile nemo_retriever/harness/runfiles/bo767_beir.json \
+retriever harness run-files \
+  --session-name bo767_beir \
+  --output-dir /local/path/to/retriever-artifacts/bo767-beir \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
   --require 'files==767' \
   --require 'pages==54730' \
   --require 'query_count==991' \
-  --require 'recall_5>=0.84' \
-  --require 'ndcg_10>=0.74'
+  nemo_retriever/harness/runfiles/bo767_beir.json
 ```
 
 Recent observed `bo767_beir` metrics on H100 batch execution:

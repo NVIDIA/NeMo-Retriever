@@ -94,6 +94,8 @@ class Retriever:
 
     _cached_graph: Any = field(default=None, init=False, repr=False, compare=False)
     _cache_key: Any = field(default=None, init=False, repr=False, compare=False)
+    _cached_resolved_graph: Any = field(default=None, init=False, repr=False, compare=False)
+    _resolved_graph_source: Any = field(default=None, init=False, repr=False, compare=False)
     _lancedb_capabilities_cache: dict[tuple[str, str], LanceTableCapabilities] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
@@ -185,6 +187,20 @@ class Retriever:
         self._cache_key = key
         return g
 
+    def _get_resolved_graph(self, graph: Any) -> Any:
+        """Resolve *graph* once and retain its stateful local operator delegates."""
+        # A caller-owned custom graph may be mutated in place between queries.
+        # Preserve the historical resolve-per-call behavior for that surface;
+        # Retriever-owned default graphs are immutable and safe to cache.
+        if self.graph is not None:
+            return graph.resolve_for_local_execution()
+        if self._cached_resolved_graph is not None and self._resolved_graph_source is graph:
+            return self._cached_resolved_graph
+        resolved = graph.resolve_for_local_execution()
+        self._cached_resolved_graph = resolved
+        self._resolved_graph_source = graph
+        return resolved
+
     def _execute_queries_graph(
         self,
         query_texts: list[str],
@@ -210,8 +226,14 @@ class Retriever:
             "top_k": int(retrieval_top_k),
             "query_texts": query_texts,
         }
-        resolved = graph.resolve_for_local_execution()
-        leaves = resolved.execute(df, **exec_kwargs)
+        resolved = self._get_resolved_graph(graph)
+        execute_resolved = getattr(resolved, "execute_resolved", None)
+        if callable(execute_resolved):
+            leaves = execute_resolved(df, **exec_kwargs)
+        else:
+            # Compatibility for graph-like custom objects predating
+            # ``Graph.execute_resolved``.
+            leaves = resolved.execute(df, **exec_kwargs)
         if len(leaves) != 1:
             raise RuntimeError(
                 f"Retriever query graph must yield exactly one leaf output; got {len(leaves)}. "
