@@ -246,6 +246,28 @@ def test_in_memory_result_store_is_idempotent_and_ttl_bounded(monkeypatch: pytes
     assert get_result_data("memory") is None
 
 
+@pytest.mark.parametrize("shared", [False, True])
+def test_result_store_isolates_stored_and_returned_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    shared: bool,
+) -> None:
+    if shared:
+        monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
+    rows = [{"metadata": {"tags": ["original"]}}]
+    expected = [{"metadata": {"tags": ["original"]}}]
+
+    store_result_data("isolated", rows)
+    rows[0]["metadata"]["tags"].append("producer-mutation")
+
+    first_read = get_result_data("isolated")
+    assert first_read == expected
+    assert first_read is not None
+    first_read[0]["metadata"]["tags"].append("reader-mutation")
+
+    assert get_result_data("isolated") == expected
+
+
 def test_shared_result_store_default_ttl_covers_full_job_lifecycle() -> None:
     assert worker_result_store._results_ttl_s() == DEFAULT_STALE_JOB_TTL_S + DEFAULT_TTL_S
 

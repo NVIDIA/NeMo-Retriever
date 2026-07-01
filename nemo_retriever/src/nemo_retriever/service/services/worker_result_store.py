@@ -22,6 +22,7 @@ non-Helm deployments that do not configure shared storage.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import logging
@@ -289,7 +290,7 @@ def store_result_data(document_id: str, result_data: list[dict[str, Any]] | None
     with _lock:
         now = time.monotonic()
         _sweep_memory_locked(now=now)
-        _store[document_id] = (now, result_data)
+        _store[document_id] = (now, copy.deepcopy(result_data))
 
 
 def get_result_data(document_id: str) -> list[dict[str, Any]] | None:
@@ -299,7 +300,7 @@ def get_result_data(document_id: str) -> list[dict[str, Any]] | None:
     with _lock:
         _sweep_memory_locked(now=time.monotonic())
         entry = _store.get(document_id)
-        return entry[1] if entry is not None else None
+        return copy.deepcopy(entry[1]) if entry is not None else None
 
 
 def clear_for_tests() -> None:

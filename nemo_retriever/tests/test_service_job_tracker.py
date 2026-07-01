@@ -677,6 +677,15 @@ def test_get_result_data_is_idempotent_until_job_eviction() -> None:
     tracker = JobTracker()
     tracker.register_job("j", expected_documents=1, retain_results=True)
     tracker.register_document("d", job_id="j")
-    tracker.mark_completed("d", result_data=[{"x": 1}])
-    assert tracker.get_result_data("d") == [{"x": 1}]
-    assert tracker.get_result_data("d") == [{"x": 1}]
+    rows = [{"metadata": {"tags": ["original"]}}]
+    expected = [{"metadata": {"tags": ["original"]}}]
+
+    tracker.mark_completed("d", result_data=rows)
+    rows[0]["metadata"]["tags"].append("producer-mutation")
+
+    first_read = tracker.get_result_data("d")
+    assert first_read == expected
+    assert first_read is not None
+    first_read[0]["metadata"]["tags"].append("reader-mutation")
+
+    assert tracker.get_result_data("d") == expected

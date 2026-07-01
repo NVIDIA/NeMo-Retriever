@@ -39,6 +39,7 @@ Singleton access mirrors the other service singletons::
 
 from __future__ import annotations
 
+import copy
 import logging
 import threading
 import time
@@ -518,7 +519,7 @@ class JobTracker:
             rec.result_rows = result_rows
             agg_for_retain = self._jobs.get(rec.job_id)
             retain_results = bool(agg_for_retain.retain_results) if agg_for_retain is not None else False
-            rec.result_data = result_data if retain_results else None
+            rec.result_data = copy.deepcopy(result_data) if retain_results else None
             rec.error = error
             if elapsed_s is not None:
                 rec.elapsed_s = elapsed_s
@@ -739,7 +740,7 @@ class JobTracker:
         """Return retained ``result_data`` for *document_id* without consuming it."""
         with self._lock:
             rec = self._get_live_document_locked(document_id)
-            return rec.result_data if rec is not None else None
+            return copy.deepcopy(rec.result_data) if rec is not None else None
 
     def summary(self) -> dict[str, Any]:
         with self._lock:
