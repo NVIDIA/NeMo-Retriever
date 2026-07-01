@@ -43,8 +43,9 @@ def _make_retriever(**overrides: Any) -> Retriever:
 def _install_mock_graph(monkeypatch: pytest.MonkeyPatch, hits: list[list[dict[str, Any]]]) -> MagicMock:
     """Avoid constructing real LanceDB / embed operators."""
     resolved = MagicMock()
-    # :meth:`Graph.execute` returns one entry per graph leaf; retrieval output is ``list[list[dict]]``.
-    resolved.execute.return_value = [hits]
+    # Resolved graph execution returns one entry per graph leaf; retrieval output
+    # is ``list[list[dict]]``.
+    resolved.execute_resolved.return_value = [hits]
 
     graph = MagicMock()
     graph.resolve_for_local_execution.return_value = resolved
@@ -74,8 +75,8 @@ class TestQueriesGraphExecution:
         retriever = _make_retriever(top_k=11)
         out = retriever.queries(["q"], vdb_kwargs={"where": "x"})
         assert out == hit
-        resolved.execute.assert_called_once()
-        _args, kw = resolved.execute.call_args
+        resolved.execute_resolved.assert_called_once()
+        _args, kw = resolved.execute_resolved.call_args
         assert kw["top_k"] == 11
         assert kw["query_texts"] == ["q"]
         assert kw["where"] == "x"
@@ -104,7 +105,7 @@ class TestQueriesGraphExecution:
         retriever._cached_graph = None
         retriever._cache_key = None
         retriever.queries(["q"])
-        assert resolved.execute.call_args.kwargs["top_k"] == 12
+        assert resolved.execute_resolved.call_args.kwargs["top_k"] == 12
 
     def test_rerank_dataframe_output_orders_hits_by_score(self, monkeypatch: pytest.MonkeyPatch) -> None:
         vector_hits = [
@@ -114,7 +115,7 @@ class TestQueriesGraphExecution:
         execute_kwargs: list[dict[str, Any]] = []
 
         class FakeResolvedGraph:
-            def execute(self, _df: pd.DataFrame, **kwargs: Any) -> list[Any]:
+            def execute_resolved(self, _df: pd.DataFrame, **kwargs: Any) -> list[Any]:
                 execute_kwargs.append(kwargs)
                 return [
                     pd.DataFrame(
@@ -161,7 +162,67 @@ class TestQueriesGraphExecution:
         out = _make_retriever(top_k=2).queries(["q"], candidate_k=5)
 
         assert [hit["text"] for hit in out[0]] == ["hit 0", "hit 1"]
-        assert resolved.execute.call_args.kwargs["top_k"] == 5
+        assert resolved.execute_resolved.call_args.kwargs["top_k"] == 5
+
+    def test_repeated_queries_reuse_resolved_graph(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        hits = [[{"text": "retrieved", "source": "doc.pdf", "page_number": 1}]]
+        resolved = MagicMock()
+        resolved.execute_resolved.return_value = [hits]
+        graph = MagicMock()
+        graph.resolve_for_local_execution.return_value = resolved
+        build = MagicMock(return_value=graph)
+        monkeypatch.setattr(Retriever, "_build_default_graph", build)
+        monkeypatch.setattr(Retriever, "_resolve_lancedb_query_mode", lambda self, runtime_vdb_kwargs: None)
+
+        retriever = _make_retriever()
+        assert retriever.query("first") == hits[0]
+        assert retriever.query("second") == hits[0]
+
+        build.assert_called_once()
+        graph.resolve_for_local_execution.assert_called_once()
+        assert resolved.execute_resolved.call_count == 2
+
+    def test_custom_graph_preserves_resolve_per_query_behavior(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        hits = [[{"text": "retrieved", "source": "doc.pdf", "page_number": 1}]]
+
+        class LegacyResolvedGraph:
+            def execute(self, _df: pd.DataFrame, **_kwargs: Any) -> list[Any]:
+                return [hits]
+
+        graph = MagicMock()
+        graph.resolve_for_local_execution.side_effect = (LegacyResolvedGraph(), LegacyResolvedGraph())
+        monkeypatch.setattr(Retriever, "_resolve_lancedb_query_mode", lambda self, runtime_vdb_kwargs: None)
+
+        retriever = _make_retriever(graph=graph)
+        assert retriever.query("first") == hits[0]
+        assert retriever.query("second") == hits[0]
+
+        assert graph.resolve_for_local_execution.call_count == 2
+
+    def test_embed_override_invalidates_resolved_graph_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        hits = [[{"text": "retrieved", "source": "doc.pdf", "page_number": 1}]]
+        resolved_one = MagicMock()
+        resolved_one.execute_resolved.return_value = [hits]
+        graph_one = MagicMock()
+        graph_one.resolve_for_local_execution.return_value = resolved_one
+        resolved_two = MagicMock()
+        resolved_two.execute_resolved.return_value = [hits]
+        graph_two = MagicMock()
+        graph_two.resolve_for_local_execution.return_value = resolved_two
+        build = MagicMock(side_effect=(graph_one, graph_two))
+        monkeypatch.setattr(Retriever, "_build_default_graph", build)
+        monkeypatch.setattr(Retriever, "_resolve_lancedb_query_mode", lambda self, runtime_vdb_kwargs: None)
+
+        retriever = _make_retriever()
+        retriever.query("first")
+        retriever.query("same configuration")
+        retriever.query("different configuration", embed_kwargs={"model_name": "different"})
+
+        graph_one.resolve_for_local_execution.assert_called_once()
+        graph_two.resolve_for_local_execution.assert_called_once()
+        assert resolved_one.execute_resolved.call_count == 2
+        resolved_two.execute_resolved.assert_called_once()
+        assert build.call_count == 2
 
     def test_candidate_k_must_cover_top_k(self) -> None:
         with pytest.raises(ValueError, match=r"candidate_k \(2\).*top_k \(5\)"):
@@ -354,6 +415,20 @@ class TestRetrieveVdbOperatorPreprocess:
         op = RetrieveVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp", "table_name": "t"})
         vec = op.preprocess(df)
         assert vec == [[0.7, 0.8]]
+
+    def test_dataframe_to_vectors_reports_embedding_error(self) -> None:
+        from nemo_retriever.operators.vdb import RetrieveVdbOperator
+
+        df = pd.DataFrame(
+            {
+                "text": ["a"],
+                "text_embeddings_1b_v2": [{"embedding": [], "error": "429 Client Error: Too Many Requests"}],
+            }
+        )
+        op = RetrieveVdbOperator(vdb_op="lancedb", vdb_kwargs={"uri": "/tmp", "table_name": "t"})
+
+        with pytest.raises(ValueError, match="429 Client Error: Too Many Requests"):
+            op.preprocess(df)
 
 
 class TestRerankLongDataframe:
