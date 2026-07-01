@@ -4,11 +4,11 @@ These terms appear throughout NeMo Retriever Library documentation.
 
 ## Job { #job }
 
-An **ingestion job** is a unit of work you run on input content (documents, audio, video, and other supported types). You submit jobs through the **ingestor Python API** (for example `Ingestor` task chains such as `.extract(...)`) or the **`retriever ingest` CLI**—not by posting a standalone JSON job document. Default tasks target strong recall; customize behavior with task keyword arguments (including chunking and splitting on `.extract()`) or custom UDF-style operations ([NeMo Retriever graph](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph)). Results are structured metadata and annotations (Ray Dataset, pandas `DataFrame`, or similar).
+An **ingestion job** is a unit of work you run on input content (documents, audio, video, and other supported types). You submit jobs through the **ingestor Python API** (for example `Ingestor` task chains such as `.extract(...)`) or the **`retriever ingest` CLI**—not by posting a standalone JSON job document. Default tasks target strong recall; customize behavior with task keyword arguments (including chunking and splitting on `.extract()`) or custom UDF-style operations (refer to [Customize & extend](customize-extend.md)). Results are structured metadata and annotations (Ray Dataset, pandas `DataFrame`, or similar).
 
 ## Pipeline and tasks { #pipeline-and-tasks }
 
-NeMo Retriever Library does **not** run one static pipeline on every document. You configure **tasks** such as parsing, chunking, embedding, storage, and filtering per job. Related topics: [Extending/Customizing NeMo Retriever Library with custom code](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#nemo-retriever-graph).
+NeMo Retriever Library does **not** run one static pipeline on every document. You configure **tasks** such as parsing, chunking, embedding, storage, and filtering per job. For UDFs, custom graph stages, and other extension paths, refer to [Customize & extend](customize-extend.md).
 
 ## Extraction metadata { #extraction-metadata }
 
