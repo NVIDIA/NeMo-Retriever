@@ -27,6 +27,10 @@ configuration-sensitive unless the GPU SKU/count, CUDA driver, model backend,
 vLLM/kernel settings, Ray worker layout, storage path, and dataset mount are
 controlled.
 
+The dataset paths below are registry reference paths, not a portable filesystem
+contract. Use `harness/dataset_paths.example.yaml` and `run-files
+--dataset-paths` to point checked-in runfiles at the current machine.
+
 ## JP20
 
 Dataset:
@@ -45,10 +49,14 @@ Benchmarks:
 Suggested full BEIR command:
 
 ```bash
-retriever harness run jp20_beir \
+retriever harness run-files \
+  --session-name jp20_beir \
+  --output-dir /local/path/to/retriever-artifacts/jp20-beir \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
   --require 'files==20' \
   --require 'pages==1940' \
-  --require 'query_count==115'
+  --require 'query_count==115' \
+  nemo_retriever/harness/runfiles/jp20_beir.json
 ```
 
 Recent observed `jp20_beir` metrics on local hardware:
@@ -90,11 +98,14 @@ Benchmark:
 Suggested full BEIR command:
 
 ```bash
-retriever harness run \
-  --runfile nemo_retriever/harness/runfiles/bo767_beir.json \
+retriever harness run-files \
+  --session-name bo767_beir \
+  --output-dir /local/path/to/retriever-artifacts/bo767-beir \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
   --require 'files==767' \
   --require 'pages==54730' \
-  --require 'query_count==991'
+  --require 'query_count==991' \
+  nemo_retriever/harness/runfiles/bo767_beir.json
 ```
 
 Recent observed `bo767_beir` metrics on H100 batch execution:

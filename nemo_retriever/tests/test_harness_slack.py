@@ -43,7 +43,7 @@ def _write_session(tmp_path: Path, *, dry_run: bool = False) -> Path:
         artifact_dir / "environment.json",
         {
             "git_sha": "abc1234",
-            "host": "nightly-host",
+            "host": "benchmark-host",
             "gpu_count": 8,
             "python": "3.12.12",
             "ray_version": "2.49.0",
@@ -52,7 +52,7 @@ def _write_session(tmp_path: Path, *, dry_run: bool = False) -> Path:
     _write_json(
         tmp_path / "session_summary.json",
         {
-            "session_name": "library_nightly",
+            "session_name": "library_beir",
             "session_type": "runfiles",
             "run_commit": "abc1234",
             "success": True,
@@ -81,21 +81,21 @@ def test_slack_report_loads_runfile_session_and_omits_local_paths(tmp_path):
     payload = build_slack_payload(
         report,
         {
-            "title": "nemo-retriever library nightly",
+            "title": "nemo-retriever library benchmarks",
             "metric_keys": DEFAULT_SLACK_METRIC_KEYS,
             "post_artifact_paths": False,
         },
     )
     payload_text = json.dumps(payload)
 
-    assert report.session_name == "library_nightly"
+    assert report.session_name == "library_beir"
     assert report.all_passed is True
     assert report.latest_commit == "abc1234"
     assert report.results[0].dataset == "jp20"
     assert report.results[0].return_code == 0
     assert report.results[0].metrics == {"pages": 1940, "recall_5": 0.887}
     assert report.results[0].run_metadata["python_version"] == "3.12.12"
-    assert "nemo-retriever library nightly" in payload_text
+    assert "nemo-retriever library benchmarks" in payload_text
     assert "recall@5" in payload_text
     assert str(tmp_path) not in payload_text
 
@@ -158,7 +158,7 @@ def test_slack_preview_matches_posted_payload_without_requiring_webhook(monkeypa
     common_args = [
         "post-slack",
         "--title",
-        "nemo-retriever library nightly",
+        "nemo-retriever library benchmarks",
         str(session_dir),
     ]
 

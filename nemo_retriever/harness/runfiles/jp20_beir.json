@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "name": "jp20_beir_expected",
+  "name": "jp20_beir",
   "benchmark": "jp20_beir",
   "mode": "local",
   "require": [

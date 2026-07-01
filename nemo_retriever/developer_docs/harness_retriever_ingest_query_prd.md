@@ -1,6 +1,15 @@
 # Retriever Harness PRD: End-to-End Ingest/Query Benchmarks
 
-Last updated: 2026-06-24
+Last updated: 2026-07-01
+
+## Implementation Status
+
+The current implementation includes the core runner described here plus two
+orchestration-neutral extensions: `run-files` applies a machine-local dataset
+path map to one or more checked-in runfiles, and `post-slack` renders or posts
+completed artifacts. It does not include recurring scheduling, deployment,
+locking, retry policy, or secret distribution. The harness README is the
+normative user and agent guide; this PRD records the design rationale.
 
 ## Summary
 
@@ -12,7 +21,7 @@ engineers. The harness should run the new library direction end to end:
    `retriever query`.
 3. Run full BEIR-style evaluation.
 4. Emit stable `summary_metrics` and machine-readable artifacts for humans,
-   agents, and future nightly reporting.
+   agents, and downstream reporting.
 
 This is a total revamp, not a compatibility wrapper around the current harness.
 Assume `retriever pipeline run` is deleted in the next release. The current
@@ -84,19 +93,19 @@ Reference links are at the end of this document.
 - Do not adopt Hydra, MLflow Projects, W&B Sweeps, or another orchestration
   framework in phase one.
 - Do not make this a public supported product API.
-- Do not build Slack posting in phase one. Design artifacts so a Slack sink can
-  be added later.
+- Do not couple benchmark execution to Slack or another reporting transport.
+- Do not add recurring scheduling or deployment infrastructure to the harness.
 - Do not make CLI text formatting part of the run contract.
-- Do not make pytest the validation strategy for the harness. This harness is
-  itself a functional evaluation tool; success should be judged by harness
-  command exit codes and artifact contracts.
+- Do not make pytest the sole validation strategy for the harness. Unit tests
+  protect artifact and reporting contracts; real harness exit codes and
+  artifacts validate end-to-end behavior.
 
 ## Users
 
 - Retriever engineers validating ingest/query behavior.
 - Performance owners running throughput and quality ablations.
 - Agents asked to run a named benchmark or ablation.
-- Future nightly automation that needs stable result files.
+- External automation that needs stable result files.
 
 ## Design Principles
 
@@ -262,6 +271,11 @@ Rules:
   default source of truth for recurring benchmark definitions.
 - During `--dry-run`, gates for unavailable execution metrics are skipped and
   reported in `results.json`; static dataset gates are still evaluated.
+
+Machine-specific document and query paths belong in a separate, untracked
+dataset path map. `run-files --dataset-paths <file>` applies that map after
+runfile overrides and before CLI `--set` overrides. Passing one runfile creates
+a one-dataset session; passing multiple runfiles creates a suite session.
 
 ### Ablations
 
@@ -564,6 +578,9 @@ retriever harness run <benchmark> --set query.top_k=20
 retriever harness run <benchmark> --set ingest.profile=fast-text
 retriever harness run --runfile /tmp/ablation.yaml
 retriever harness run-set <runset>
+retriever harness run-files --dataset-paths /local/dataset_paths.yaml <runfile>...
+retriever harness post-slack --preview <session-or-results>...
+retriever harness post-slack <session-or-results>...
 retriever harness diff <run-a-dir> <run-b-dir> --json
 ```
 
@@ -575,6 +592,8 @@ Notes:
 - `--dry-run` should be available on `run` and `run-set`.
 - `--json` on read-only commands writes machine-readable output to stdout.
   Human formatting remains non-contractual.
+- `post-slack` consumes existing artifacts and never runs ingest or query.
+- No CLI command installs or owns recurring scheduling.
 
 Defer or remove:
 
@@ -593,9 +612,10 @@ reporting UI.
 
 ## Functional Validation
 
-The harness should be validated like an evaluation runner, not like a conventional
-pytest-heavy library component. Developers should prove behavior by running the
-harness commands and inspecting stable artifacts.
+The harness should be validated both as a library contract and as an evaluation
+runner. Focused tests protect resolution, artifact, and reporting behavior;
+developers should also prove execution behavior by running harness commands and
+inspecting stable artifacts.
 
 Minimum local validation commands:
 
@@ -640,9 +660,8 @@ Known dataset facts, benchmark result ranges, and suggested gates should live in
 `nemo_retriever/harness/EXPECTED_RESULTS.md`, not in benchmark Python code.
 
 The harness may include tiny no-GPU fixtures or fake benchmark specs to make
-developer validation cheap, but the primary confidence signal is functional
-execution through the CLI and artifact contract. Existing pytest-style harness
-tests can be retired as this replacement matures.
+developer validation cheap, but execution changes still require functional
+validation through the CLI and artifact contract.
 
 ## Implementation Plan
 
@@ -677,7 +696,8 @@ tests can be retired as this replacement matures.
 - Build `diff --json` around `summary_metrics` and BEIR deltas.
 - Rebuild richer `compare` only if the team needs it after stable artifacts
   exist.
-- Add nightly runner and Slack sink later.
+- Keep Slack as an optional post-hoc artifact sink.
+- Keep recurring execution and deployment in separately reviewed infrastructure.
 
 ## Open Decisions
 
@@ -713,6 +733,10 @@ tests can be retired as this replacement matures.
   set, writes BEIR outputs, and emits stable `summary_metrics`.
 - `retriever harness run-set <name>` expands a code-owned ablation and writes
   `expanded_runs.json`.
+- `retriever harness run-files` runs one or more checked-in requests with an
+  optional machine-local dataset path map.
+- `retriever harness post-slack --preview` reads artifacts without requiring a
+  webhook or contacting Slack.
 - Every run writes `status.json`, `events.jsonl`, and `results.json`.
 - Failed runs write typed failure data without requiring stdout inspection.
 - Unknown `--set` keys fail before execution.
@@ -723,7 +747,8 @@ tests can be retired as this replacement matures.
   `nemo_retriever.examples.graph_pipeline`.
 - CLI text formatting is explicitly non-contractual; machine consumers use
   artifact files or `--json` read-only commands.
-- Phase-one validation is functional and artifact-driven, not pytest-gated.
+- Validation combines focused contract tests with functional, artifact-driven
+  benchmark execution.
 
 ## References
 

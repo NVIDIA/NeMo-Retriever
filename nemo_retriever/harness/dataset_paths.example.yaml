@@ -12,3 +12,5 @@ datasets:
   financebench:
     path: /path/to/datasets/nv-ingest/foundation_rag/financebench
     query_file: /path/to/NeMo-Retriever/data/financebench_train.json
+  vidore_v3_finance_en:
+    path: /path/to/datasets/nv-ingest/vidore_v3/vidore_v3_finance_en

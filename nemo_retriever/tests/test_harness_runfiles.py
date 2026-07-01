@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 
-from nemo_retriever.harness.benchmark_registry import get_runset
 from nemo_retriever.harness.contracts import HarnessRunError, RunOutcome
 from nemo_retriever.harness.runsets import run_runfiles
 
@@ -24,15 +23,6 @@ def _successful_outcome(benchmark: str, output_dir: str) -> RunOutcome:
         "failure": None,
     }
     return RunOutcome(exit_code=0, artifact_dir=artifact_dir, results=results)
-
-
-def test_library_nightly_runset_names_canonical_beir_benchmarks():
-    assert get_runset("library_nightly").runs == (
-        "jp20_beir",
-        "bo767_beir",
-        "earnings_beir",
-        "financebench_beir",
-    )
 
 
 def test_run_files_applies_machine_paths_then_cli_overrides(monkeypatch, tmp_path):
@@ -74,7 +64,7 @@ def test_run_files_applies_machine_paths_then_cli_overrides(monkeypatch, tmp_pat
     outcome = run_runfiles(
         [runfile],
         output_dir=str(tmp_path / "session"),
-        session_name="library_nightly",
+        session_name="library_beir",
         dataset_paths_file=dataset_paths,
         overrides=("query.top_k=20",),
         requirements=("pages==1940",),
@@ -91,7 +81,7 @@ def test_run_files_applies_machine_paths_then_cli_overrides(monkeypatch, tmp_pat
         f'evaluation.dataset_name="{query_file}"',
         "query.top_k=20",
     )
-    assert outcome.results["session_name"] == "library_nightly"
+    assert outcome.results["session_name"] == "library_beir"
     assert outcome.results["runs"][0]["dataset"] == "jp20"
     assert outcome.results["runs"][0]["artifact_dir"] == "001_jp20_beir"
     assert outcome.results["runs"][0]["results_path"] == "001_jp20_beir/results.json"

@@ -33,7 +33,12 @@ from nemo_retriever.harness.slack import (
     resolve_slack_webhook_url,
 )
 
-app = typer.Typer(help="Artifact-first Retriever benchmark harness.")
+app = typer.Typer(
+    help=(
+        "Developer benchmark and evaluation harness. Use 'retriever ingest' and "
+        "'retriever query' for direct product workflows."
+    )
+)
 
 
 def _echo_json(payload: object) -> None:
@@ -107,7 +112,7 @@ def run_command(
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Resolve plans and artifacts without execution.")] = False,
     json_output: Annotated[bool, typer.Option("--json", help="Emit results JSON to stdout.")] = False,
 ) -> None:
-    """Run one benchmark and write stable artifacts."""
+    """Run one registered benchmark and write stable artifacts."""
     try:
         runfile_payload = None
         runfile_path = None
@@ -185,7 +190,7 @@ def run_set_command(
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Resolve plans and artifacts without execution.")] = False,
     json_output: Annotated[bool, typer.Option("--json", help="Emit session summary JSON to stdout.")] = False,
 ) -> None:
-    """Expand and run a code-owned benchmark runset."""
+    """Run a code-owned benchmark group using registry dataset paths."""
     try:
         outcome = run_runset(
             runset,
@@ -234,7 +239,7 @@ def run_files_command(
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Resolve plans and artifacts without execution.")] = False,
     json_output: Annotated[bool, typer.Option("--json", help="Emit session summary JSON to stdout.")] = False,
 ) -> None:
-    """Execute one or more checked-in runfiles as a single artifact session."""
+    """Run one or more runfiles, optionally with machine-local dataset paths."""
     try:
         outcome = run_runfiles(
             runfiles,
@@ -282,7 +287,7 @@ def post_slack_command(
     ] = False,
     json_output: Annotated[bool, typer.Option("--json", help="Emit posted Slack payload JSON to stdout.")] = False,
 ) -> None:
-    """Render or post a Slack report from existing harness artifacts."""
+    """Render or post existing harness artifacts without running benchmarks."""
     try:
         report = load_replay_report(paths)
         slack_config = {

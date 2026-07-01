@@ -3,7 +3,12 @@
 
 # Retriever Harness
 
-Developer benchmark harness for Retriever ingest/query evaluation.
+Developer benchmark harness for repeatable Retriever ingest/query evaluation.
+
+Use `retriever ingest` and `retriever query` when you want to operate Retriever
+directly on your own inputs. Use `retriever harness` when you want to run a
+registered benchmark with reproducible settings, metric gates, and a stable
+artifact contract. The harness does not install or operate a scheduler.
 
 The harness is artifact-first. Poll `status.json` while one run is active, read
 `results.json` when that run is terminal, and read `session_summary.json` for a
@@ -19,26 +24,29 @@ uv run --project nemo_retriever retriever harness list --runsets
 uv run --project nemo_retriever retriever harness show jp20_beir --json
 ```
 
-Resolve a benchmark without executing ingest or queries:
+The registry contains canonical benchmark definitions, but dataset mounts vary
+by machine. Before executing a checked-in runfile, copy
+[`dataset_paths.example.yaml`](dataset_paths.example.yaml) outside the repository
+and replace the example document and query paths with paths available locally.
+
+Dry-run one checked-in dataset with that path map:
 
 ```bash
-uv run --project nemo_retriever retriever harness run jp20_beir \
+uv run --project nemo_retriever retriever harness run-files \
+  --session-name jp20_check \
+  --output-dir /tmp/retriever-harness-jp20-check \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
   --dry-run \
-  --output-dir /tmp/retriever-harness-dry-run \
-  --json
+  --json \
+  nemo_retriever/harness/runfiles/jp20_beir.json
 ```
 
-Run the cheap JP20 ingest smoke check:
+After inspecting `session_summary.json` and the child run's resolved plans,
+remove `--dry-run` to execute it. The same `run-files` command accepts multiple
+runfiles for a collection.
 
-```bash
-uv run --project nemo_retriever retriever harness run jp20_smoke \
-  --output-dir /tmp/retriever-harness-jp20-smoke \
-  --require 'files==20' \
-  --require 'pages==1940' \
-  --json
-```
-
-Run the full JP20 BEIR benchmark:
+If the registry's default paths already exist on the machine, `run` is the
+short form for one registered benchmark:
 
 ```bash
 uv run --project nemo_retriever retriever harness run jp20_beir \
@@ -46,17 +54,6 @@ uv run --project nemo_retriever retriever harness run jp20_beir \
   --require 'files==20' \
   --require 'pages==1940' \
   --require 'query_count==115' \
-  --require 'recall_5>=0.85' \
-  --require 'ndcg_10>=0.75' \
-  --json
-```
-
-Run the same JP20 BEIR request from a checked-in runfile:
-
-```bash
-uv run --project nemo_retriever retriever harness run \
-  --runfile nemo_retriever/harness/runfiles/jp20_beir.json \
-  --output-dir /tmp/retriever-harness-jp20-beir \
   --json
 ```
 
@@ -69,50 +66,17 @@ parallelism and memory pressure.
 
 - `list`: list code-owned benchmarks and optional runsets.
 - `show`: inspect one benchmark definition.
-- `run`: run one benchmark.
-- `run-set`: expand and run a code-owned runset.
-- `run-files`: execute one or more checked-in runfiles as one session.
-- `post-slack`: post an existing session or run artifact set to Slack.
+- `run`: run one registered benchmark using registry paths or explicit `--set`
+  overrides.
+- `run-set`: expand a code-owned benchmark group using registry paths.
+- `run-files`: execute one or more runfiles with an optional machine-local
+  dataset path map. This is the portable entry point for the checked-in suite.
+- `post-slack`: preview or post existing artifacts; it never executes a run.
 - `diff`: compare two run artifact directories by `results.json` summary metrics.
 
-Legacy graph-pipeline harness execution, sweep, nightly, runner, reporting, and
-portal commands are not part of the phase-one CLI surface. Portal and Helm
-support files are intentionally preserved for follow-on owner work.
-
-## Reviewer Guide
-
-Review the PR in this order:
-
-1. Start with this README for the user-facing harness contract.
-2. Read `benchmark_registry.py` for code-owned datasets, benchmarks, and
-   runsets.
-3. Read `resolution.py` for how registry specs, runfiles, CLI `--set`
-   overrides, and mode selection become ingest/query requests.
-4. Read `execution.py` for the artifact-first run lifecycle and exit-code
-   behavior.
-5. Read `beir_runner.py` and `metrics.py` for query evaluation and summary
-   metric construction.
-6. Read `artifact_writer.py` for artifact names, status updates, and `run.log`
-   capture.
-7. Read `json_io.py` for shared artifact JSON read/write helpers used by the
-   harness, diff, runset, Slack, and artifact-writing paths.
-
-Intentional removals:
-
-- old `run.py` and `runner.py`: subprocess-oriented graph-pipeline harness
-  execution and portal runner agent
-- old `parsers.py`: regex parsing of stdout/progress logs
-- old `nightly.py`, `reporting.py`, and nightly/sweep YAML: previous session
-  reporting and scheduled-run machinery
-- old harness pytests: this harness is validated by functional benchmark
-  execution and artifact/exit-code checks
-
-Intentional preserves:
-
-- `portal/`, `history.py`, and `scheduler.py`: retained for upcoming portal
-  repurpose work; `slack.py` now owns artifact replay and Slack payloads
-- `helm_manager.py`, `helm-profiles/`, and harness Helm examples: retained for
-  Helm owner follow-up work
+Legacy graph-pipeline, sweep, recurring-job, runner, reporting-UI, and portal
+commands are not part of this CLI surface. Scheduling and deployment belong to
+separate infrastructure, not the benchmark harness.
 
 ## Runfiles
 
@@ -140,6 +104,10 @@ and checked-in runfiles independent of one machine's mount layout. Copy
 location, then set the document and query paths available on the machine that
 runs the harness.
 
+The harness does not distribute or download private benchmark corpora or qrels.
+The operator must have access to the datasets referenced by the selected
+runfiles.
+
 Pass the local file with `--dataset-paths`. Relative paths in the file resolve
 relative to the file itself. The harness writes the resolved absolute paths to
 `expanded_runs.json` and each run's `resolved_benchmark.json`.
@@ -151,17 +119,26 @@ Settings resolve in this order, from lowest to highest precedence:
 3. Machine-local dataset paths.
 4. Command-line `--set` overrides.
 
-### Run Several Runfiles as One Session
+### Run One Or More Runfiles As A Session
 
-The following command runs the canonical library benchmarks and writes all
-artifacts beneath one session directory:
+For a single dataset, pass one runfile:
 
 ```bash
-export VLLM_USE_DEEP_GEMM=0
-export RETRIEVER_SESSION_DIR=/local/path/to/retriever-artifacts/library-nightly-$(date -u +%Y%m%d_%H%M%S_UTC)
+uv run --project nemo_retriever retriever harness run-files \
+  --session-name jp20_beir \
+  --output-dir /local/path/to/retriever-artifacts/jp20-beir \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
+  nemo_retriever/harness/runfiles/jp20_beir.json
+```
+
+For the four-dataset library suite, pass all four runfiles. This is still an
+ordinary user-invoked harness session; the repository does not schedule it:
+
+```bash
+export RETRIEVER_SESSION_DIR=/local/path/to/retriever-artifacts/library-beir-$(date -u +%Y%m%d_%H%M%S_UTC)
 
 uv run --project nemo_retriever retriever harness run-files \
-  --session-name library_nightly \
+  --session-name library_beir \
   --output-dir "$RETRIEVER_SESSION_DIR" \
   --dataset-paths /local/path/to/dataset_paths.yaml \
   --json \
@@ -171,11 +148,10 @@ uv run --project nemo_retriever retriever harness run-files \
   nemo_retriever/harness/runfiles/financebench_beir.json
 ```
 
-On vLLM environments affected by the current DeepGEMM availability check,
-`VLLM_USE_DEEP_GEMM=0` keeps the local embedding backend enabled while using
-fallback kernels. Remove the variable after the vLLM and DeepGEMM dependency
-stack is repaired. Because this setting can affect throughput, the harness
-records it in `environment.json`.
+If model startup specifically reports that the DeepGEMM backend is unavailable,
+`VLLM_USE_DEEP_GEMM=0` can select fallback kernels. Do not set it preemptively;
+it can affect throughput. The harness records the setting in
+`environment.json` when present.
 
 `run-files` owns the session layout. Runfiles passed to this command cannot set
 their own `output_dir` or `run_id`. The session uses the following paths and
@@ -220,8 +196,8 @@ export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
 ```
 
 Do not put the webhook URL in a runfile, dataset paths file, shell argument, or
-artifact. For scheduled runs, load it from a permissions-restricted environment
-file outside the repository.
+artifact. Load it from the process environment or a permissions-restricted
+secret file outside the repository.
 
 ### Post a Completed Session
 
@@ -229,7 +205,7 @@ Pass the session directory to `post-slack`:
 
 ```bash
 uv run --project nemo_retriever retriever harness post-slack \
-  --title "nemo-retriever library nightly" \
+  --title "nemo-retriever library benchmarks" \
   "$RETRIEVER_SESSION_DIR"
 ```
 
@@ -250,7 +226,7 @@ Use `--preview` to render the exact Slack payload without reading
 ```bash
 uv run --project nemo_retriever retriever harness post-slack \
   --preview \
-  --title "nemo-retriever library nightly" \
+  --title "nemo-retriever library benchmarks" \
   "$RETRIEVER_SESSION_DIR"
 ```
 
@@ -259,35 +235,9 @@ title, metric selection, or artifact-path setting. When the payload is ready,
 run the command again without `--preview` to post it. Preview and posting use
 the same artifact loader and payload formatter.
 
-### Preserve Run and Report Status
-
-A failed benchmark session normally still writes a summary that can be posted.
-When you schedule the harness, save the run exit code, attempt Slack reporting,
-then return the run failure after reporting:
-
-```bash
-uv run --project nemo_retriever retriever harness run-files \
-  --session-name library_nightly \
-  --output-dir "$RETRIEVER_SESSION_DIR" \
-  --dataset-paths /local/path/to/dataset_paths.yaml \
-  nemo_retriever/harness/runfiles/jp20_beir.json \
-  nemo_retriever/harness/runfiles/bo767_beir.json \
-  nemo_retriever/harness/runfiles/earnings_beir.json \
-  nemo_retriever/harness/runfiles/financebench_beir.json
-run_status=$?
-
-uv run --project nemo_retriever retriever harness post-slack "$RETRIEVER_SESSION_DIR"
-slack_status=$?
-
-if [ "$run_status" -ne 0 ]; then
-  exit "$run_status"
-fi
-exit "$slack_status"
-```
-
-Use a host-local scheduler such as cron and a nonblocking `flock` lock to avoid
-overlapping daily runs. Keep the session directory on runner-owned storage; the
-harness does not upload full artifacts to Slack or external artifact storage.
+`post-slack` has its own exit status and never changes the completed session's
+status or artifacts. Any policy that combines run status, report status,
+retries, locking, or recurrence belongs to the caller.
 
 ## Controls And Overrides
 
@@ -348,9 +298,11 @@ by the CLI:
 - query: `resolve_query_plan(...)` and shared query workflow objects
 - BEIR: harness-owned query iteration over the resolved query plan
 
-This keeps benchmark execution in-process at the Python boundary while still
-reusing the CLI-owned request/plan/workflow seams. Stdout remains diagnostic
-only; artifacts and exit codes are the contract.
+The harness controller calls those APIs in its Python process; this does not
+force the ingest workload into local/in-process mode. A runfile with `mode:
+batch` still resolves to Ray-backed batch ingest, while `mode: local` resolves
+to local in-process ingest. Stdout remains diagnostic only; artifacts and exit
+codes are the contract.
 
 ## Artifacts
 
@@ -361,6 +313,39 @@ Use one entrypoint for each lifecycle level instead of scanning the directory:
   pointers to detailed run evidence.
 - `session_summary.json`: authoritative terminal result for `run-set` and
   `run-files` sessions, with relative pointers to each child run.
+
+The terminal files are deliberately compact. A successful run has this shape:
+
+```json
+{
+  "benchmark": "jp20_beir",
+  "dataset": "jp20",
+  "success": true,
+  "exit_code": 0,
+  "summary_metrics": {"files": 20, "pages": 1940, "recall_5": 0.887},
+  "failure": null,
+  "artifacts": {"log": "run.log", "lancedb": "lancedb"}
+}
+```
+
+A multi-run session summarizes its children without embedding their detailed
+results:
+
+```json
+{
+  "session_type": "runfiles",
+  "session_name": "library_beir",
+  "success": true,
+  "exit_code": 0,
+  "runs": [
+    {
+      "benchmark": "jp20_beir",
+      "success": true,
+      "results_path": "001_jp20_beir/results.json"
+    }
+  ]
+}
+```
 
 Follow the pointers in `results.json` only when deeper evidence is needed:
 
@@ -381,6 +366,15 @@ remains readable. Failure messages in `status.json` and `results.json` are kept
 concise; use the listed debug artifacts, normally `run.log`, for full traces.
 When an output directory is reused, the harness removes only its known generated
 artifacts before starting; unrelated files in that directory are preserved.
+
+`environment.json` records an allowlisted set of reproducibility diagnostics,
+including source revision, Python and package versions, accelerator information,
+and selected Hugging Face, Ray, CUDA, and vLLM settings. Credentials and webhook
+values are not recorded.
+
+New runs keep summary metrics inside `results.json`; they do not emit a separate
+`summary_metrics.json`. `diff` and `post-slack` retain read compatibility with
+older harness artifacts.
 
 Dry-runs write only planning artifacts. They do not create empty `run.log`,
 `beir_metrics.json`, `beir_run.trec`, `query_results.jsonl`, or `lancedb/`.
@@ -410,17 +404,24 @@ not in benchmark Python code.
 
 For automated harness work:
 
-1. Start with `retriever harness list --runsets --json`.
-2. Use `retriever harness show <benchmark> --json` to inspect a benchmark.
-3. Use `--output-dir` so artifact paths are deterministic.
-4. Use `--dry-run` before expensive runs when changing paths, overrides, or
-   gates.
-5. Use explicit `--require` gates from `EXPECTED_RESULTS.md`.
-6. Decide success from the process exit code and `results.json`.
-7. Read `results.json.summary_metrics` for benchmark metrics.
-8. Read `run.log` only when lower-level ingest/query logs are needed.
+1. Use this harness only for registered benchmark/evaluation work. Use
+   `retriever ingest` and `retriever query` for direct product workflows.
+2. Start with `retriever harness list --runsets --json`, then inspect the target
+   with `retriever harness show <benchmark> --json`.
+3. Copy `dataset_paths.example.yaml` outside the repository and set the paths
+   available on the current machine.
+4. Use `run-files --dataset-paths ...` with one runfile for one dataset or
+   multiple runfiles for a suite.
+5. Always set `--output-dir`, and use `--dry-run` before expensive execution
+   when changing paths, overrides, or gates.
+6. Use explicit `--require` gates from `EXPECTED_RESULTS.md`.
+7. Decide success from the process exit code and `results.json` for one run or
+   `session_summary.json` for a session.
+8. Read `summary_metrics` from the applicable terminal JSON file. Follow its
+   pointers to `run.log` or other detailed evidence only when needed.
 9. Do not parse progress bars, human CLI formatting, or raw stdout as the API.
-10. Do not use `retriever pipeline run` for phase-one harness validation.
+10. Treat `post-slack` as optional post-processing. Previewing or posting never
+    executes a benchmark.
 
 ## Exit Codes
 
@@ -438,5 +439,4 @@ For automated harness work:
 
 - [`EXPECTED_RESULTS.md`](EXPECTED_RESULTS.md): dataset facts, observed metrics,
   and suggested explicit gates.
-- [`HANDOFF.md`](HANDOFF.md): current implementation notes and validation
-  history for this revamp.
+- [`HANDOFF.md`](HANDOFF.md): concise maintainer-oriented implementation notes.

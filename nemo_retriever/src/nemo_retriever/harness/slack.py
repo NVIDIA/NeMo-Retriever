@@ -223,7 +223,7 @@ def load_session_report(session_summary_path: Path) -> HarnessSessionReport:
     return HarnessSessionReport(
         session_name=str(payload.get("session_name") or payload.get("runset") or resolved_summary_path.parent.name),
         session_dir=resolved_summary_path.parent,
-        session_type=str(payload.get("session_type") or "nightly"),
+        session_type=str(payload.get("session_type") or "session"),
         timestamp=str(payload.get("timestamp")) if payload.get("timestamp") else None,
         latest_commit=str(latest_commit) if latest_commit else None,
         all_passed=bool(all_passed),

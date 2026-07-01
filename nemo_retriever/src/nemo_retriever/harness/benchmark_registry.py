@@ -238,12 +238,6 @@ RUNSETS: dict[str, RunSet] = {
         tags=("jp20", "core"),
         description="Small jp20 smoke plus BEIR validation set.",
     ),
-    "library_nightly": RunSet(
-        name="library_nightly",
-        runs=("jp20_beir", "bo767_beir", "earnings_beir", "financebench_beir"),
-        tags=("nightly", "beir", "library"),
-        description="Canonical library nightly BEIR suite for JP20, BO767, Earnings, and FinanceBench.",
-    ),
 }
 
 
