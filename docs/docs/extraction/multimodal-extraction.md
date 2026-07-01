@@ -1,3 +1,21 @@
+---
+title: "Multimodal extraction"
+content_type: explanation
+audience: intermediate
+journey_stage: build
+product: nemo-retriever-library
+features:
+  - extraction
+technologies:
+  - python
+prerequisites:
+  - extraction/overview.md
+  - extraction/concepts.md
+duration_minutes: 20
+surface: published-docs
+status: published
+---
+
 # Multimodal extraction
 
 NeMo Retriever Library classifies and extracts text, tables, charts, infographics, and related layout from documents and media. This page groups formats, extraction modes, structured outputs, and throughput guidance in one place. Use the table of contents to jump to a topic.
