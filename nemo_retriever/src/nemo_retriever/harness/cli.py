@@ -267,7 +267,7 @@ def post_slack_command(
         list[Path],
         typer.Argument(help="One session directory, or one or more run artifact directories/results.json files."),
     ],
-    title: Annotated[str, typer.Option("--title", help="Slack message title.")] = "nemo_retriever Nightly Harness",
+    title: Annotated[str, typer.Option("--title", help="Slack message title.")] = "nemo_retriever Harness Report",
     metric_keys: Annotated[
         list[str] | None,
         typer.Option("--metric-key", help="Summary metric key to include. Repeatable."),
@@ -275,7 +275,7 @@ def post_slack_command(
     post_artifact_paths: Annotated[
         bool,
         typer.Option("--artifact-paths/--no-artifact-paths", help="Include local artifact paths in the Slack post."),
-    ] = True,
+    ] = False,
     preview: Annotated[
         bool,
         typer.Option("--preview", help="Render the Slack payload as JSON without reading a webhook or posting."),
@@ -305,8 +305,8 @@ def post_slack_command(
 
 @app.command("diff")
 def diff_command(
-    left: Annotated[Path, typer.Argument(help="Left run artifact directory or summary_metrics.json file.")],
-    right: Annotated[Path, typer.Argument(help="Right run artifact directory or summary_metrics.json file.")],
+    left: Annotated[Path, typer.Argument(help="Left run artifact directory or results.json file.")],
+    right: Annotated[Path, typer.Argument(help="Right run artifact directory or results.json file.")],
     json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")] = False,
 ) -> None:
     """Diff two run artifact directories by summary metrics."""

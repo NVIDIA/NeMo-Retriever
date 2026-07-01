@@ -17,9 +17,9 @@ def _successful_outcome(benchmark: str, output_dir: str) -> RunOutcome:
     artifact_dir.mkdir(parents=True)
     results = {
         "benchmark": benchmark,
+        "dataset": "jp20",
         "success": True,
         "exit_code": 0,
-        "resolved_benchmark": {"dataset": {"name": "jp20"}},
         "summary_metrics": {"files": 20},
         "failure": None,
     }
@@ -93,6 +93,8 @@ def test_run_files_applies_machine_paths_then_cli_overrides(monkeypatch, tmp_pat
     )
     assert outcome.results["session_name"] == "library_nightly"
     assert outcome.results["runs"][0]["dataset"] == "jp20"
+    assert outcome.results["runs"][0]["artifact_dir"] == "001_jp20_beir"
+    assert outcome.results["runs"][0]["results_path"] == "001_jp20_beir/results.json"
     assert "results" not in outcome.results
 
     expanded = json.loads((outcome.artifact_dir / "expanded_runs.json").read_text(encoding="utf-8"))
@@ -100,6 +102,7 @@ def test_run_files_applies_machine_paths_then_cli_overrides(monkeypatch, tmp_pat
         "path": str(documents),
         "query_file": str(query_file),
     }
+    assert expanded["runfiles"][0]["artifact_dir"] == "001_jp20_beir"
 
 
 def test_run_files_completes_remaining_runs_and_preserves_first_failure(monkeypatch, tmp_path):

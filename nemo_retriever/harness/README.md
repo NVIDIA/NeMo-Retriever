@@ -5,9 +5,10 @@
 
 Developer benchmark harness for Retriever ingest/query evaluation.
 
-The harness is artifact-first. Humans may read CLI output, but agents and
-orchestrators should read `results.json`, `status.json`, and
-`summary_metrics.json`.
+The harness is artifact-first. Poll `status.json` while one run is active, read
+`results.json` when that run is terminal, and read `session_summary.json` for a
+multi-run session. Those terminal files point to detailed evidence; agents do
+not need to scan every file in the artifact directory.
 
 ## Quick Start
 
@@ -72,7 +73,7 @@ parallelism and memory pressure.
 - `run-set`: expand and run a code-owned runset.
 - `run-files`: execute one or more checked-in runfiles as one session.
 - `post-slack`: post an existing session or run artifact set to Slack.
-- `diff`: compare two run artifact directories by `summary_metrics.json`.
+- `diff`: compare two run artifact directories by `results.json` summary metrics.
 
 Legacy graph-pipeline harness execution, sweep, nightly, runner, reporting, and
 portal commands are not part of the phase-one CLI surface. Portal and Helm
@@ -89,8 +90,8 @@ Review the PR in this order:
    overrides, and mode selection become ingest/query requests.
 4. Read `execution.py` for the artifact-first run lifecycle and exit-code
    behavior.
-5. Read `beir_runner.py` and `metrics.py` for query evaluation and
-   `summary_metrics.json` construction.
+5. Read `beir_runner.py` and `metrics.py` for query evaluation and summary
+   metric construction.
 6. Read `artifact_writer.py` for artifact names, status updates, and `run.log`
    capture.
 7. Read `json_io.py` for shared artifact JSON read/write helpers used by the
@@ -237,9 +238,9 @@ Each invocation sends a new Slack message; it does not modify the completed
 harness artifacts.
 
 By default, the report includes file and page counts, ingest time, ingest
-pages/sec, query count, recall, nDCG, environment details, and local artifact
-paths when those values are available. Use repeated `--metric-key` options to
-select a different metric set. Use `--no-artifact-paths` to omit local paths.
+pages/sec, query count, recall, nDCG, and environment details when those values
+are available. Use repeated `--metric-key` options to select a different metric
+set. Use `--artifact-paths` when recipients can access the runner's local paths.
 
 ### Preview Report Formatting
 
@@ -353,28 +354,41 @@ only; artifacts and exit codes are the contract.
 
 ## Artifacts
 
-Read these files instead of scraping stdout:
+Use one entrypoint for each lifecycle level instead of scanning the directory:
 
-- `results.json`: authoritative run result and artifact manifest.
-- `status.json`: current/final run status, phase, and failure payload.
-- `summary_metrics.json`: compact metrics for gates, dashboards, and agents.
+- `status.json`: current phase and concise failure state while a run is active.
+- `results.json`: authoritative terminal result, summary metrics, and relative
+  pointers to detailed run evidence.
+- `session_summary.json`: authoritative terminal result for `run-set` and
+  `run-files` sessions, with relative pointers to each child run.
+
+Follow the pointers in `results.json` only when deeper evidence is needed:
+
 - `events.jsonl`: phase transitions and harness events.
-- `resolved_benchmark.json`: exact resolved benchmark spec.
-- `ingest_plan.json`: redacted ingest dry-run plan.
-- `query_plan.json`: resolved query plan.
+- `runfile.json`: original runfile payload, when a runfile was used.
+- `resolved_benchmark.json`: exact effective benchmark spec.
+- `ingest_plan.json`: redacted executable ingest plan.
+- `query_plan.json`: executable query plan.
 - `environment.json`: commit and runtime context.
-- `run.log`: captured lower-level stdout/stderr for non-dry execution.
-- `beir_metrics.json`: BEIR metrics when BEIR evaluation executes.
-- `beir_run.trec`: TREC runfile when BEIR evaluation executes.
-- `query_results.jsonl`: per-query results when queries execute.
+- `run.log`: captured lower-level stdout/stderr and full exception tracebacks.
+- `beir_metrics.json`: full BEIR metric family when evaluation executes.
+- `beir_run.trec`: standard TREC runfile when evaluation executes.
+- `query_results.jsonl`: per-query latency and ranked hits.
+- `lancedb/`: the ingested table and index used by the run.
+
+Artifact manifest paths are relative to the run directory so a copied session
+remains readable. Failure messages in `status.json` and `results.json` are kept
+concise; use the listed debug artifacts, normally `run.log`, for full traces.
+When an output directory is reused, the harness removes only its known generated
+artifacts before starting; unrelated files in that directory are preserved.
 
 Dry-runs write only planning artifacts. They do not create empty `run.log`,
-`beir_metrics.json`, `beir_run.trec`, or `query_results.jsonl` files.
+`beir_metrics.json`, `beir_run.trec`, `query_results.jsonl`, or `lancedb/`.
 
 ## Gates
 
 Use explicit `--require` gates. Gate expressions compare keys from
-`summary_metrics.json`:
+`results.json.summary_metrics`:
 
 ```bash
 --require 'files==20'
@@ -403,7 +417,7 @@ For automated harness work:
    gates.
 5. Use explicit `--require` gates from `EXPECTED_RESULTS.md`.
 6. Decide success from the process exit code and `results.json`.
-7. Read `summary_metrics.json` for benchmark metrics.
+7. Read `results.json.summary_metrics` for benchmark metrics.
 8. Read `run.log` only when lower-level ingest/query logs are needed.
 9. Do not parse progress bars, human CLI formatting, or raw stdout as the API.
 10. Do not use `retriever pipeline run` for phase-one harness validation.

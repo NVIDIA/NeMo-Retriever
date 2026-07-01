@@ -70,24 +70,36 @@ def _run_outcome_summary(
     benchmark: str,
     outcome: RunOutcome,
     *,
+    session_dir: Path,
     run_name: str | None = None,
     runfile_path: str | None = None,
     mode: str | None = None,
 ) -> dict[str, Any]:
-    resolved = outcome.results.get("resolved_benchmark")
-    dataset = resolved.get("dataset") if isinstance(resolved, dict) else None
     failure = outcome.results.get("failure")
+    artifact_dir = outcome.artifact_dir.resolve()
+    try:
+        artifact_dir_value = artifact_dir.relative_to(session_dir.resolve()).as_posix()
+        results_path_value = f"{artifact_dir_value}/results.json"
+    except ValueError:
+        artifact_dir_value = str(artifact_dir)
+        results_path_value = str(artifact_dir / "results.json")
     payload = {
         "run_name": run_name or benchmark,
         "benchmark": benchmark,
-        "artifact_dir": str(outcome.artifact_dir),
+        "artifact_dir": artifact_dir_value,
         "exit_code": outcome.exit_code,
         "success": outcome.exit_code == EXIT_SUCCESS,
         "summary_metrics": outcome.results.get("summary_metrics", {}),
-        "results_path": str(outcome.artifact_dir / "results.json"),
+        "results_path": results_path_value,
     }
-    if isinstance(dataset, dict) and dataset.get("name"):
-        payload["dataset"] = str(dataset["name"])
+    dataset = outcome.results.get("dataset")
+    if not dataset:
+        try:
+            dataset = get_benchmark(benchmark).dataset
+        except KeyError:
+            dataset = None
+    if dataset:
+        payload["dataset"] = str(dataset)
     if runfile_path is not None:
         payload["runfile_path"] = runfile_path
     if mode is not None:
@@ -138,7 +150,7 @@ def run_runset(
         {
             "index": index,
             "benchmark": benchmark,
-            "artifact_dir": str((session_dir / f"{index:03d}_{benchmark}").resolve()),
+            "artifact_dir": f"{index:03d}_{benchmark}",
             "mode": mode,
             "overrides": list(overrides),
             "dry_run": bool(dry_run),
@@ -160,14 +172,14 @@ def run_runset(
     for expanded in expanded_runs:
         outcome = run_benchmark(
             str(expanded["benchmark"]),
-            output_dir=str(expanded["artifact_dir"]),
+            output_dir=str(session_dir / str(expanded["artifact_dir"])),
             run_id=f"{runset}_{expanded['index']:03d}_{expanded['benchmark']}",
             mode=mode,
             overrides=overrides,
             requirements=requirements,
             dry_run=dry_run,
         )
-        run_results.append(_run_outcome_summary(str(expanded["benchmark"]), outcome))
+        run_results.append(_run_outcome_summary(str(expanded["benchmark"]), outcome, session_dir=session_dir))
         if exit_code == EXIT_SUCCESS and outcome.exit_code != EXIT_SUCCESS:
             exit_code = outcome.exit_code
 
@@ -223,7 +235,7 @@ def run_runfiles(
                 "benchmark": request.benchmark,
                 "dataset": dataset_name,
                 "runfile_path": str(request.source_path),
-                "artifact_dir": str((session_dir / f"{index:03d}_{run_name}").resolve()),
+                "artifact_dir": f"{index:03d}_{run_name}",
                 "mode": mode or request.mode or "local",
                 "dataset_paths": dataset_paths.to_dict() if dataset_paths is not None else None,
                 "overrides": [*request.overrides, *dataset_overrides, *overrides],
@@ -250,7 +262,7 @@ def run_runfiles(
     for expanded, request in zip(expanded_runs, requests, strict=True):
         outcome = run_benchmark(
             request.benchmark,
-            output_dir=str(expanded["artifact_dir"]),
+            output_dir=str(session_dir / str(expanded["artifact_dir"])),
             run_id=f"{session_name}_{expanded['index']:03d}_{expanded['name']}",
             mode=str(expanded["mode"]),
             overrides=tuple(expanded["overrides"]),
@@ -263,6 +275,7 @@ def run_runfiles(
             _run_outcome_summary(
                 request.benchmark,
                 outcome,
+                session_dir=session_dir,
                 run_name=str(expanded["name"]),
                 runfile_path=str(request.source_path),
                 mode=str(expanded["mode"]),

@@ -13,7 +13,18 @@ from typing import Any
 
 from nemo_retriever.harness.artifacts import last_commit
 
-_RECORDED_RUNTIME_ENV_KEYS = ("VLLM_USE_DEEP_GEMM",)
+_RECORDED_RUNTIME_ENV_KEYS = (
+    "CUDA_HOME",
+    "HF_HOME",
+    "HF_HUB_CACHE",
+    "HF_HUB_OFFLINE",
+    "NEMO_RETRIEVER_HF_CACHE_DIR",
+    "TRANSFORMERS_CACHE",
+    "TRANSFORMERS_OFFLINE",
+    "VLLM_DEEP_GEMM_WARMUP",
+    "VLLM_MOE_USE_DEEP_GEMM",
+    "VLLM_USE_DEEP_GEMM",
+)
 
 
 def _safe_package_version() -> str:

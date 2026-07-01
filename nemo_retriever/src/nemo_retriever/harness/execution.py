@@ -4,12 +4,15 @@
 
 from __future__ import annotations
 
+import re
 import time
+import traceback
 from typing import Any, Sequence
 
 from nemo_retriever.cli.ingest_workflow import run_ingest_workflow
 from nemo_retriever.cli.shared import silence_noisy_libraries
 from nemo_retriever.harness.artifact_writer import (
+    append_text,
     artifact_paths,
     ArtifactWriter,
     capture_output_to_log,
@@ -43,6 +46,48 @@ from nemo_retriever.harness.resolution import (
 from nemo_retriever.ingest.plan import resolve_ingest_plan
 from nemo_retriever.query.workflow import resolve_query_plan
 
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_EXCEPTION_LINE_RE = re.compile(r"(?:Error|Exception):")
+_MAX_FAILURE_MESSAGE_CHARS = 500
+
+
+def _concise_message(message: str) -> str:
+    plain = _ANSI_ESCAPE_RE.sub("", str(message))
+    lines = [line.strip() for line in plain.splitlines() if line.strip()]
+    exception_lines = [line for line in lines if _EXCEPTION_LINE_RE.search(line)]
+    selected = exception_lines[-1] if exception_lines else lines[0] if lines else "Unknown harness failure"
+    if len(selected) <= _MAX_FAILURE_MESSAGE_CHARS:
+        return selected
+    return selected[: _MAX_FAILURE_MESSAGE_CHARS - 3].rstrip() + "..."
+
+
+def _concise_exception_message(exc: BaseException) -> str:
+    return f"{type(exc).__name__}: {_concise_message(str(exc))}"
+
+
+def _concise_failure(failure: FailurePayload) -> FailurePayload:
+    return FailurePayload(
+        failed_phase=failure.failed_phase,
+        failure_reason=failure.failure_reason,
+        retryable=failure.retryable,
+        message=_concise_message(failure.message),
+        debug_artifacts=failure.debug_artifacts,
+    )
+
+
+def _result_identity(resolved: dict[str, Any] | None) -> dict[str, str]:
+    if not isinstance(resolved, dict):
+        return {}
+    identity: dict[str, str] = {}
+    dataset = resolved.get("dataset")
+    if isinstance(dataset, dict) and dataset.get("name"):
+        identity["dataset"] = str(dataset["name"])
+    ingest = resolved.get("ingest")
+    if isinstance(ingest, dict) and ingest.get("run_mode"):
+        run_mode = str(ingest["run_mode"])
+        identity["mode"] = "local" if run_mode == "inprocess" else run_mode
+    return identity
+
 
 def _run_result_payload(
     writer: ArtifactWriter,
@@ -59,11 +104,11 @@ def _run_result_payload(
     result = {
         "run_id": writer.run_id,
         "benchmark": writer.benchmark,
+        **_result_identity(resolved),
         "status": status,
         "success": success,
         "exit_code": exit_code,
         "dry_run": bool(dry_run),
-        "resolved_benchmark": resolved,
         "summary_metrics": summary_metrics,
         "failure": failure.to_dict() if failure is not None else None,
         "artifacts": artifact_paths(writer),
@@ -83,16 +128,7 @@ def _write_failure_result(
 ) -> dict[str, Any]:
     if summary_metrics is None:
         summary_metrics = {}
-    try:
-        write_json(writer.path("summary_metrics.json"), summary_metrics)
-    except Exception:
-        pass
-    status_payload = writer.status(
-        status="failed",
-        phase=failure.failed_phase if failure.failed_phase in PHASE_VALUES else "write_artifacts",
-        failure=failure,
-        summary_metrics_path=writer.path("summary_metrics.json"),
-    )
+    failure = _concise_failure(failure)
     result = _run_result_payload(
         writer,
         status="failed",
@@ -102,9 +138,14 @@ def _write_failure_result(
         resolved=resolved,
         summary_metrics=summary_metrics,
         failure=failure,
-        status_payload=status_payload,
     )
     write_json(writer.path("results.json"), result)
+    writer.status(
+        status="failed",
+        phase=failure.failed_phase if failure.failed_phase in PHASE_VALUES else "write_artifacts",
+        failure=failure,
+        results_path=writer.path("results.json"),
+    )
     return result
 
 
@@ -150,11 +191,13 @@ def run_benchmark(
             )
         parse_metric_gates(requirements)
         resolved = resolve_benchmark(benchmark, mode=mode, overrides=overrides)
-        dataset_path, _query_path = validate_dataset_inputs(resolved, dry_run=dry_run)
+        write_json(writer.path("resolved_benchmark.json"), redact(resolved))
         write_json(writer.path("environment.json"), collect_environment())
+        dataset_path, _query_path = validate_dataset_inputs(resolved, dry_run=dry_run)
 
         writer.status(status="running", phase="ingest_plan")
         ingest_request = build_ingest_request(resolved, dataset_path, writer.artifact_dir)
+        write_json(writer.path("resolved_benchmark.json"), redact(resolved))
         try:
             ingest_plan = resolve_ingest_plan(ingest_request)
             ingest_plan_payload = run_ingest_workflow(ingest_plan, dry_run=True)
@@ -186,7 +229,6 @@ def run_benchmark(
         query_request = build_query_request(resolved, "")
         query_plan = resolve_query_plan(query_request)
         write_json(writer.path("query_plan.json"), query_plan_payload(query_plan))
-        write_json(writer.path("resolved_benchmark.json"), redact(resolved))
 
         ingest_summary: dict[str, Any] | None = None
         ingest_secs: float | None = None
@@ -210,7 +252,7 @@ def run_benchmark(
                         failed_phase="ingest",
                         failure_reason="ingest_failed",
                         retryable=False,
-                        message=str(exc),
+                        message=_concise_exception_message(exc),
                         debug_artifacts=("ingest_plan.json", "run.log"),
                     ),
                 ) from exc
@@ -234,7 +276,6 @@ def run_benchmark(
             _mark_dry_run_metrics_unavailable(summary_metrics)
 
         writer.status(status="running", phase="write_artifacts")
-        write_json(writer.path("summary_metrics.json"), summary_metrics)
         skipped_metric_gates = enforce_metric_gates(summary_metrics, requirements, skip_missing=dry_run)
         result = _run_result_payload(
             writer,
@@ -245,17 +286,14 @@ def run_benchmark(
             resolved=resolved,
             summary_metrics=summary_metrics,
             failure=None,
-            ingest_summary=ingest_summary,
-            beir_metrics=beir_metrics,
             metric_gates=list(requirements),
             skipped_metric_gates=list(skipped_metric_gates),
-            runfile={"source_path": runfile_path, "payload": runfile_payload} if runfile_payload is not None else None,
         )
         write_json(writer.path("results.json"), result)
         writer.status(
             status="complete",
             phase="write_artifacts",
-            summary_metrics_path=writer.path("summary_metrics.json"),
+            results_path=writer.path("results.json"),
         )
         return RunOutcome(exit_code=EXIT_SUCCESS, artifact_dir=writer.artifact_dir, results=result)
     except HarnessRunError as exc:
@@ -269,12 +307,13 @@ def run_benchmark(
         )
         return RunOutcome(exit_code=exc.exit_code, artifact_dir=writer.artifact_dir, results=result)
     except Exception as exc:
+        append_text(writer.path("run.log"), f"\n## {traceback.format_exc()}")
         failure = FailurePayload(
             failed_phase="write_artifacts",
             failure_reason="unexpected_internal_error",
             retryable=False,
-            message=str(exc),
-            debug_artifacts=("status.json", "events.jsonl"),
+            message=_concise_exception_message(exc),
+            debug_artifacts=("status.json", "events.jsonl", "run.log"),
         )
         result = _write_failure_result(
             writer,

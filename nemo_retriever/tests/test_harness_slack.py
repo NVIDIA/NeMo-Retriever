@@ -25,10 +25,10 @@ def _write_session(tmp_path: Path, *, dry_run: bool = False) -> Path:
         artifact_dir / "results.json",
         {
             "benchmark": "jp20_beir",
+            "dataset": "jp20",
             "success": True,
             "exit_code": 0,
             "dry_run": dry_run,
-            "resolved_benchmark": {"dataset": {"name": "jp20"}},
             "summary_metrics": {
                 "files": 20,
                 "pages": 1940,
@@ -63,7 +63,7 @@ def _write_session(tmp_path: Path, *, dry_run: bool = False) -> Path:
                 {
                     "run_name": "jp20_beir",
                     "benchmark": "jp20_beir",
-                    "artifact_dir": str(artifact_dir),
+                    "artifact_dir": artifact_dir.name,
                     "exit_code": 0,
                     "success": True,
                     "summary_metrics": {"pages": 1940, "recall_5": 0.887},
@@ -116,6 +116,20 @@ def test_slack_report_labels_dry_run_without_reporting_pass(tmp_path):
     assert "PASS" not in payload_text
 
 
+def test_session_report_resolves_child_artifacts_after_session_is_moved(tmp_path):
+    original = tmp_path / "original"
+    original.mkdir()
+    _write_session(original)
+    moved = tmp_path / "moved"
+    original.rename(moved)
+
+    report = load_session_report(moved)
+
+    assert report.results[0].artifact_dir == moved / "001_jp20_beir"
+    assert report.results[0].dataset == "jp20"
+    assert report.results[0].run_metadata["gpu_count"] == 8
+
+
 def test_slack_transport_error_does_not_expose_webhook(monkeypatch):
     webhook = "https://hooks.slack.com/services/TSECRET/BSECRET/XSECRET"
 
@@ -145,7 +159,6 @@ def test_slack_preview_matches_posted_payload_without_requiring_webhook(monkeypa
         "post-slack",
         "--title",
         "nemo-retriever library nightly",
-        "--no-artifact-paths",
         str(session_dir),
     ]
 
@@ -163,3 +176,4 @@ def test_slack_preview_matches_posted_payload_without_requiring_webhook(monkeypa
     assert posted[0][1] == "https://hooks.slack.com/services/test"
     assert preview_payload == posted[0][0]
     assert preview_payload == json.loads(post_result.stdout)
+    assert str(session_dir) not in json.dumps(preview_payload)

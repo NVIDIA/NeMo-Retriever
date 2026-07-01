@@ -108,20 +108,22 @@ is restored or replaced.
 
 ## Artifact contract
 
-Per run, read these files instead of scraping CLI text:
+Poll `status.json` while a run is active and read `results.json` when it is
+terminal. Follow its relative artifact pointers only when more evidence is
+needed:
 
 - `status.json`
 - `events.jsonl`
 - `resolved_benchmark.json`
 - `ingest_plan.json`
 - `query_plan.json`
-- `summary_metrics.json`
 - `environment.json`
 - `results.json`
 - `run.log` when ingest/query execution runs
 - `beir_metrics.json` when BEIR evaluation executes
 - `beir_run.trec` when BEIR evaluation executes
 - `query_results.jsonl` when queries execute
+- `lancedb/` when ingest executes
 
 Dry-runs resolve the benchmark, ingest plan, query plan, and summary metrics,
 but intentionally do not execute ingest or BEIR queries. Dry-run artifact

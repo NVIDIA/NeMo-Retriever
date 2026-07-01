@@ -8,7 +8,7 @@ from typing import Any
 from nemo_retriever.harness.artifacts import now_timestr
 from nemo_retriever.harness.json_io import read_json_object
 
-DEFAULT_USERNAME = "nemo_retriever Nightly"
+DEFAULT_USERNAME = "nemo_retriever Harness"
 DEFAULT_ICON_EMOJI = ":satellite:"
 _BLANK_ROW = [
     {"type": "rich_text", "elements": [{"type": "rich_text_section", "elements": [{"type": "text", "text": " "}]}]},
@@ -39,7 +39,7 @@ DEFAULT_SLACK_METRIC_KEYS = (
 
 
 @dataclass
-class NightlyRunReport:
+class HarnessRunReport:
     run_name: str
     dataset: str
     preset: str | None
@@ -53,7 +53,7 @@ class NightlyRunReport:
 
 
 @dataclass
-class NightlySessionReport:
+class HarnessSessionReport:
     session_name: str
     session_dir: Path
     session_type: str
@@ -61,7 +61,7 @@ class NightlySessionReport:
     latest_commit: str | None
     all_passed: bool
     dry_run: bool
-    results: list[NightlyRunReport]
+    results: list[HarnessRunReport]
 
 
 def _normalize_metrics(raw_metrics: Any) -> dict[str, Any]:
@@ -135,9 +135,13 @@ def _run_metadata(results_payload: dict[str, Any], environment_payload: dict[str
     return metadata
 
 
-def _normalize_run_report(summary_entry: dict[str, Any]) -> NightlyRunReport:
+def _normalize_run_report(summary_entry: dict[str, Any], *, session_dir: Path) -> HarnessRunReport:
     artifact_dir_str = summary_entry.get("artifact_dir")
-    artifact_dir = Path(artifact_dir_str).expanduser().resolve() if artifact_dir_str else None
+    artifact_dir = Path(artifact_dir_str).expanduser() if artifact_dir_str else None
+    if artifact_dir is not None:
+        if not artifact_dir.is_absolute():
+            artifact_dir = session_dir / artifact_dir
+        artifact_dir = artifact_dir.resolve()
     results_payload = _load_results_payload(artifact_dir)
     environment_payload = _load_environment_payload(artifact_dir)
     test_config = results_payload.get("test_config", {})
@@ -162,7 +166,7 @@ def _normalize_run_report(summary_entry: dict[str, Any]) -> NightlyRunReport:
         or environment_payload.get("git_commit")
     )
 
-    return NightlyRunReport(
+    return HarnessRunReport(
         run_name=str(
             summary_entry.get("run_name")
             or summary_entry.get("benchmark")
@@ -171,6 +175,7 @@ def _normalize_run_report(summary_entry: dict[str, Any]) -> NightlyRunReport:
         ),
         dataset=str(
             summary_entry.get("dataset")
+            or results_payload.get("dataset")
             or _resolved_dataset_name(results_payload)
             or test_config.get("dataset_label")
             or "unknown_dataset"
@@ -194,7 +199,7 @@ def _normalize_run_report(summary_entry: dict[str, Any]) -> NightlyRunReport:
     )
 
 
-def load_session_report(session_summary_path: Path) -> NightlySessionReport:
+def load_session_report(session_summary_path: Path) -> HarnessSessionReport:
     resolved_summary_path = Path(session_summary_path).expanduser().resolve()
     if resolved_summary_path.is_dir():
         resolved_summary_path = resolved_summary_path / "session_summary.json"
@@ -203,7 +208,11 @@ def load_session_report(session_summary_path: Path) -> NightlySessionReport:
     raw_results = payload.get("runs", payload.get("results", []))
     if not isinstance(raw_results, list):
         raise ValueError(f"'results' or 'runs' must be a list in {resolved_summary_path}")
-    results = [_normalize_run_report(dict(item)) for item in raw_results if isinstance(item, dict)]
+    results = [
+        _normalize_run_report(dict(item), session_dir=resolved_summary_path.parent)
+        for item in raw_results
+        if isinstance(item, dict)
+    ]
     latest_commit = (
         payload.get("run_commit")
         or payload.get("latest_commit")
@@ -211,7 +220,7 @@ def load_session_report(session_summary_path: Path) -> NightlySessionReport:
     )
     all_passed = payload.get("all_passed", payload.get("success", False))
 
-    return NightlySessionReport(
+    return HarnessSessionReport(
         session_name=str(payload.get("session_name") or payload.get("runset") or resolved_summary_path.parent.name),
         session_dir=resolved_summary_path.parent,
         session_type=str(payload.get("session_type") or "nightly"),
@@ -223,7 +232,7 @@ def load_session_report(session_summary_path: Path) -> NightlySessionReport:
     )
 
 
-def load_replay_report(replay_paths: list[Path]) -> NightlySessionReport:
+def load_replay_report(replay_paths: list[Path]) -> HarnessSessionReport:
     if not replay_paths:
         raise ValueError("At least one replay path is required")
 
@@ -234,7 +243,7 @@ def load_replay_report(replay_paths: list[Path]) -> NightlySessionReport:
             raise ValueError("Replay accepts either one session directory or one or more run directories")
         return load_session_report(session_dirs[0] / "session_summary.json")
 
-    run_reports: list[NightlyRunReport] = []
+    run_reports: list[HarnessRunReport] = []
     latest_commit: str | None = None
     dry_run = True
 
@@ -255,9 +264,14 @@ def load_replay_report(replay_paths: list[Path]) -> NightlySessionReport:
         latest_commit = latest_commit or (str(payload_commit) if payload_commit else None)
         dry_run = dry_run and bool(payload.get("dry_run", False))
         run_reports.append(
-            NightlyRunReport(
+            HarnessRunReport(
                 run_name=str(payload.get("benchmark") or artifact_dir.name),
-                dataset=str(_resolved_dataset_name(payload) or test_config.get("dataset_label") or artifact_dir.name),
+                dataset=str(
+                    payload.get("dataset")
+                    or _resolved_dataset_name(payload)
+                    or test_config.get("dataset_label")
+                    or artifact_dir.name
+                ),
                 preset=str(test_config.get("preset")) if test_config.get("preset") else None,
                 success=bool(payload.get("success")),
                 return_code=int(return_code) if return_code is not None else None,
@@ -270,10 +284,10 @@ def load_replay_report(replay_paths: list[Path]) -> NightlySessionReport:
         )
 
     session_dir = resolved_paths[0].parent if resolved_paths else Path.cwd()
-    return NightlySessionReport(
+    return HarnessSessionReport(
         session_name=f"replay_{now_timestr()}",
         session_dir=session_dir,
-        session_type="nightly_replay",
+        session_type="artifact_replay",
         timestamp=now_timestr(),
         latest_commit=latest_commit,
         all_passed=all(run.success for run in run_reports),
@@ -351,9 +365,9 @@ def _two_column_row_bold(left: str, right: str) -> list[dict[str, Any]]:
     ]
 
 
-def build_slack_payload(report: NightlySessionReport, slack_config: dict[str, Any]) -> dict[str, Any]:
+def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, Any]) -> dict[str, Any]:
     metric_keys = [str(key) for key in slack_config.get("metric_keys", [])]
-    post_artifact_paths = bool(slack_config.get("post_artifact_paths", True))
+    post_artifact_paths = bool(slack_config.get("post_artifact_paths", False))
     passed_count = sum(1 for run in report.results if run.success)
     total_count = len(report.results)
     if report.dry_run:
@@ -408,7 +422,7 @@ def build_slack_payload(report: NightlySessionReport, slack_config: dict[str, An
     blocks: list[dict[str, Any]] = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": str(slack_config.get("title") or "nemo_retriever Nightly Harness")},
+            "text": {"type": "plain_text", "text": str(slack_config.get("title") or "nemo_retriever Harness Report")},
         },
         {
             "type": "section",
@@ -452,7 +466,7 @@ def resolve_slack_webhook_url(webhook_url: str | None = None) -> str:
 
 
 def post_report_to_slack(
-    report: NightlySessionReport,
+    report: HarnessSessionReport,
     slack_config: dict[str, Any],
     *,
     webhook_url: str | None = None,
