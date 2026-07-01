@@ -159,6 +159,37 @@ def _store_on_filesystem(results_dir: Path, document_id: str, result_data: list[
         temporary.unlink(missing_ok=True)
 
 
+def _remove_claim(claimed: Path, document_id: str) -> None:
+    """Best-effort removal that must not turn a successful read into an error."""
+    try:
+        claimed.unlink(missing_ok=True)
+    except OSError:
+        logger.warning("Unable to remove shared result claim for %r", document_id, exc_info=True)
+
+
+def _restore_claim(claimed: Path, target: Path, document_id: str) -> None:
+    """Restore a failed claim for retry without replacing an existing result."""
+    try:
+        target.stat()
+    except FileNotFoundError:
+        try:
+            os.replace(claimed, target)
+        except FileNotFoundError:
+            pass  # Another pod swept or consumed the claim first.
+        except OSError:
+            # Preserve the claim when restoration fails. A later expiry sweep
+            # can remove it after the result's retention window.
+            logger.warning("Unable to restore shared result claim for %r", document_id, exc_info=True)
+    except OSError:
+        # If the canonical path cannot be inspected, leave both paths alone
+        # rather than risk overwriting a replacement or deleting the claim.
+        logger.warning("Unable to inspect shared result while restoring %r", document_id, exc_info=True)
+    else:
+        # A replacement already owns the canonical path, so the older claim
+        # must not overwrite it.
+        _remove_claim(claimed, document_id)
+
+
 def _consume_from_filesystem(results_dir: Path, document_id: str) -> list[dict[str, Any]] | None:
     _maybe_sweep_expired_files(results_dir)
     target = _result_path(results_dir, document_id)
@@ -167,7 +198,14 @@ def _consume_from_filesystem(results_dir: Path, document_id: str) -> list[dict[s
         os.replace(target, claimed)
     except FileNotFoundError:
         return None
+    except OSError:
+        logger.warning("Unable to claim shared result for %r", document_id, exc_info=True)
+        # Network filesystems can report an error after applying a rename, so
+        # restore the known claim path if the canonical path disappeared.
+        _restore_claim(claimed, target, document_id)
+        return None
 
+    discard_claim = True
     try:
         with claimed.open(encoding="utf-8") as stream:
             rows = json.load(stream)
@@ -180,8 +218,14 @@ def _consume_from_filesystem(results_dir: Path, document_id: str) -> list[dict[s
     except ValueError:
         logger.warning("Unable to decode shared result payload for %r", document_id, exc_info=True)
         return None
+    except OSError:
+        discard_claim = False
+        logger.warning("I/O error while reading shared result for %r", document_id, exc_info=True)
+        _restore_claim(claimed, target, document_id)
+        return None
     finally:
-        claimed.unlink(missing_ok=True)
+        if discard_claim:
+            _remove_claim(claimed, document_id)
 
 
 def store_result_data(document_id: str, result_data: list[dict[str, Any]] | None) -> None:

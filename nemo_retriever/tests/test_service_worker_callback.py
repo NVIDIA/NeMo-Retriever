@@ -138,6 +138,91 @@ def test_shared_result_store_tolerates_concurrently_swept_claim(
     assert not list(tmp_path.iterdir())
 
 
+def test_shared_result_store_retries_after_claim_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
+    rows = [{"text": "retry claim"}]
+    store_result_data("doc-claim-error", rows)
+    target = worker_result_store._result_path(tmp_path, "doc-claim-error")
+    original_replace = os.replace
+    fail_claim = True
+
+    def fail_claim_once(source: Path, destination: Path) -> None:
+        nonlocal fail_claim
+        if fail_claim and source == target and destination.name.endswith(".claim"):
+            fail_claim = False
+            raise OSError(errno.ESTALE, "Stale file handle")
+        original_replace(source, destination)
+
+    monkeypatch.setattr(worker_result_store.os, "replace", fail_claim_once)
+
+    assert consume_result_data("doc-claim-error") is None
+    assert consume_result_data("doc-claim-error") == rows
+
+
+def test_shared_result_store_restores_claim_after_read_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
+    rows = [{"text": "retry read"}]
+    store_result_data("doc-read-error", rows)
+    target = worker_result_store._result_path(tmp_path, "doc-read-error")
+    original_open = Path.open
+    fail_read = True
+
+    def fail_claim_read_once(path: Path, *args: Any, **kwargs: Any) -> Any:
+        nonlocal fail_read
+        if fail_read and path.name.endswith(".claim"):
+            fail_read = False
+            raise OSError(errno.EIO, "I/O error")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_claim_read_once)
+
+    assert consume_result_data("doc-read-error") is None
+    assert target.exists()
+    assert consume_result_data("doc-read-error") == rows
+
+
+def test_shared_result_store_preserves_claim_when_restore_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
+    store_result_data("doc-restore-error", [{"text": "preserve"}])
+    original_open = Path.open
+    original_replace = os.replace
+
+    def fail_claim_read(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path.name.endswith(".claim"):
+            raise OSError(errno.EIO, "I/O error")
+        return original_open(path, *args, **kwargs)
+
+    def fail_restore(source: Path, destination: Path) -> None:
+        if source.name.endswith(".claim"):
+            raise OSError(errno.ESTALE, "Stale file handle")
+        original_replace(source, destination)
+
+    monkeypatch.setattr(Path, "open", fail_claim_read)
+    monkeypatch.setattr(worker_result_store.os, "replace", fail_restore)
+
+    assert consume_result_data("doc-restore-error") is None
+    assert len(list(tmp_path.glob("*.claim"))) == 1
+
+
+def test_shared_result_store_ignores_claim_cleanup_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
+    rows = [{"text": "successful read"}]
+    store_result_data("doc-cleanup-error", rows)
+    original_unlink = Path.unlink
+
+    def fail_claim_unlink(path: Path, *args: Any, **kwargs: Any) -> None:
+        if path.name.endswith(".claim"):
+            raise OSError(errno.EIO, "I/O error")
+        original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", fail_claim_unlink)
+
+    assert consume_result_data("doc-cleanup-error") == rows
+    assert len(list(tmp_path.glob("*.claim"))) == 1
+
+
 @pytest.mark.parametrize("payload", ["{", '{"unexpected":true}'])
 def test_shared_result_store_discards_invalid_payload(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture, payload: str
