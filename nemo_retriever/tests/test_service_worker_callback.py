@@ -22,9 +22,11 @@ from nemo_retriever.service.services import worker_result_store
 from nemo_retriever.service.services.job_tracker import DEFAULT_STALE_JOB_TTL_S, DEFAULT_TTL_S
 from nemo_retriever.service.services.pipeline_pool import _fire_gateway_callback
 from nemo_retriever.service.services.worker_result_store import (
+    ResultStoreTemporarilyUnavailable,
     clear_for_tests,
     consume_result_data,
     store_result_data,
+    validate_result_store,
 )
 
 
@@ -155,7 +157,8 @@ def test_shared_result_store_retries_after_claim_error(monkeypatch: pytest.Monke
 
     monkeypatch.setattr(worker_result_store.os, "replace", fail_claim_once)
 
-    assert consume_result_data("doc-claim-error") is None
+    with pytest.raises(ResultStoreTemporarilyUnavailable):
+        consume_result_data("doc-claim-error")
     assert consume_result_data("doc-claim-error") == rows
 
 
@@ -176,18 +179,20 @@ def test_shared_result_store_restores_claim_after_read_error(monkeypatch: pytest
 
     monkeypatch.setattr(Path, "open", fail_claim_read_once)
 
-    assert consume_result_data("doc-read-error") is None
+    with pytest.raises(ResultStoreTemporarilyUnavailable):
+        consume_result_data("doc-read-error")
     assert target.exists()
     assert consume_result_data("doc-read-error") == rows
 
 
-def test_shared_result_store_preserves_claim_when_restore_fails(
+def test_shared_result_store_recovers_abandoned_claim_after_restore_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
-    store_result_data("doc-restore-error", [{"text": "preserve"}])
+    rows = [{"text": "preserve"}]
+    store_result_data("doc-restore-error", rows)
     original_open = Path.open
-    original_replace = os.replace
+    original_link = os.link
 
     def fail_claim_read(path: Path, *args: Any, **kwargs: Any) -> Any:
         if path.name.endswith(".claim"):
@@ -197,13 +202,33 @@ def test_shared_result_store_preserves_claim_when_restore_fails(
     def fail_restore(source: Path, destination: Path) -> None:
         if source.name.endswith(".claim"):
             raise OSError(errno.ESTALE, "Stale file handle")
-        original_replace(source, destination)
+        original_link(source, destination)
 
-    monkeypatch.setattr(Path, "open", fail_claim_read)
-    monkeypatch.setattr(worker_result_store.os, "replace", fail_restore)
+    with monkeypatch.context() as context:
+        context.setattr(Path, "open", fail_claim_read)
+        context.setattr(worker_result_store.os, "link", fail_restore)
+        with pytest.raises(ResultStoreTemporarilyUnavailable):
+            consume_result_data("doc-restore-error")
 
-    assert consume_result_data("doc-restore-error") is None
-    assert len(list(tmp_path.glob("*.claim"))) == 1
+    claims = list(tmp_path.glob("*.claim"))
+    assert len(claims) == 1
+    expired_lease = time.time() - worker_result_store._CLAIM_LEASE_S - 1
+    os.utime(claims[0], (expired_lease, expired_lease))
+
+    assert consume_result_data("doc-restore-error") == rows
+    assert not list(tmp_path.iterdir())
+
+
+def test_shared_result_store_does_not_steal_active_claim(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
+    store_result_data("doc-active", [{"text": "active"}])
+    target = worker_result_store._result_path(tmp_path, "doc-active")
+    claimed = tmp_path / f".{target.name}.{('a' * 32)}.claim"
+    os.replace(target, claimed)
+    os.utime(claimed, None)
+
+    assert consume_result_data("doc-active") is None
+    assert claimed.exists()
 
 
 def test_shared_result_store_ignores_claim_cleanup_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -240,6 +265,35 @@ def test_shared_result_store_discards_invalid_payload(
 
 def test_shared_result_store_default_ttl_covers_full_job_lifecycle() -> None:
     assert worker_result_store._results_ttl_s() == DEFAULT_STALE_JOB_TTL_S + DEFAULT_TTL_S
+
+
+def test_result_store_validation_probes_required_operations(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
+
+    validate_result_store()
+
+    assert not list(tmp_path.iterdir())
+
+
+def test_result_store_validation_rejects_unsupported_hard_links(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from nemo_retriever.service.app import create_app
+    from nemo_retriever.service.config import ServiceConfig
+
+    monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
+
+    def unsupported_link(*_: object) -> None:
+        raise OSError(errno.EOPNOTSUPP, "Hard links are not supported")
+
+    monkeypatch.setattr(worker_result_store.os, "link", unsupported_link)
+
+    with pytest.raises(RuntimeError, match="must support file creation"):
+        with TestClient(create_app(ServiceConfig(mode="gateway"))):
+            pass
+    assert not list(tmp_path.iterdir())
 
 
 def test_shared_result_store_removes_expired_owned_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -319,6 +373,45 @@ def test_shared_result_store_keeps_unexpired_results(monkeypatch: pytest.MonkeyP
 
     assert consume_result_data("existing") == [{"text": "existing"}]
     assert consume_result_data("new") == [{"text": "new"}]
+
+
+def test_worker_result_endpoint_returns_retryable_503(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from nemo_retriever.service.app import create_app
+    from nemo_retriever.service.config import ServiceConfig
+    from nemo_retriever.service.routers import ingest
+
+    def unavailable(_: str) -> None:
+        raise ResultStoreTemporarilyUnavailable("shared result store unavailable")
+
+    monkeypatch.setattr(ingest, "consume_result_data", unavailable)
+
+    with TestClient(create_app(ServiceConfig(mode="batch"))) as client:
+        response = client.get("/v1/internal/document-result/doc-unavailable")
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "60"
+    assert response.json()["detail"] == "shared result store unavailable"
+
+
+def test_gateway_fetch_returns_retryable_503_when_shared_store_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import HTTPException
+
+    from nemo_retriever.service.routers import ingest
+
+    def unavailable(_: str) -> None:
+        raise ResultStoreTemporarilyUnavailable("shared result store unavailable")
+
+    monkeypatch.setattr(ingest, "consume_result_data", unavailable)
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(ingest._fetch_result_data_from_workers("doc-unavailable"))
+
+    assert error.value.status_code == 503
+    assert error.value.headers == {"Retry-After": "60"}
 
 
 def test_gateway_fetches_shared_result_before_proxy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

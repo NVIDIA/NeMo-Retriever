@@ -66,7 +66,10 @@ from nemo_retriever.service.services.prometheus import (
     INGEST_REQUESTS_TOTAL,
 )
 from nemo_retriever.service.services.proxy import get_proxy
-from nemo_retriever.service.services.worker_result_store import consume_result_data
+from nemo_retriever.service.services.worker_result_store import (
+    ResultStoreTemporarilyUnavailable,
+    consume_result_data,
+)
 from nemo_retriever.service.utils.file_type import (
     FileCategory,
     FileClassifier,
@@ -74,6 +77,7 @@ from nemo_retriever.service.utils.file_type import (
 )
 
 _RETRY_AFTER_SECONDS = "5"
+_CLAIM_RETRY_AFTER_SECONDS = 60
 _DRY_RUN_HEADER = "X-Nemo-Dry-Run"
 _GATEWAY_DOC_ID_HEADER = "X-Gateway-Document-Id"
 _GATEWAY_CALLBACK_HEADER = "X-Gateway-Callback-Url"
@@ -255,7 +259,14 @@ async def _enqueue_or_reject(pool_type: PoolType, item: WorkItem) -> None:
 
 async def _fetch_result_data_from_workers(document_id: str) -> list[dict[str, Any]] | None:
     """Consume shared rows, falling back to legacy worker Service lookup."""
-    rows = consume_result_data(document_id)
+    try:
+        rows = consume_result_data(document_id)
+    except ResultStoreTemporarilyUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": str(_CLAIM_RETRY_AFTER_SECONDS)},
+        ) from exc
     if rows is not None:
         return rows
 
@@ -1679,7 +1690,14 @@ async def query(request: Request) -> Response:
 )
 async def worker_document_result(document_id: str) -> JSONResponse:
     """Return rows stored by the worker pool after pipeline completion."""
-    rows = consume_result_data(document_id)
+    try:
+        rows = consume_result_data(document_id)
+    except ResultStoreTemporarilyUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": str(_CLAIM_RETRY_AFTER_SECONDS)},
+        ) from exc
     if rows is None:
         raise HTTPException(
             status_code=404,

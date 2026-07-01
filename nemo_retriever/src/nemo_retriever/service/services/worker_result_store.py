@@ -31,8 +31,13 @@ _RESULTS_DIR_ENV = "NEMO_RETRIEVER_RESULTS_DIR"
 _RESULTS_TTL_S_ENV = "NEMO_RETRIEVER_RESULTS_TTL_SECONDS"
 _DEFAULT_RESULTS_TTL_S = 8 * 3600  # stale-job window plus terminal-job retention
 _SWEEP_INTERVAL_S = 60
+_CLAIM_LEASE_S = 60
 _last_sweep_dir: Path | None = None
 _last_sweep_at = 0.0
+
+
+class ResultStoreTemporarilyUnavailable(RuntimeError):
+    """Raised when shared result data may be retryable after an I/O failure."""
 
 
 def _results_dir() -> Path | None:
@@ -44,6 +49,43 @@ def _result_path(results_dir: Path, document_id: str) -> Path:
     """Return a traversal-safe, deterministic path for *document_id*."""
     digest = hashlib.sha256(document_id.encode("utf-8")).hexdigest()
     return results_dir / f"{digest}.json"
+
+
+def validate_result_store() -> None:
+    """Fail startup when the configured shared store lacks required operations."""
+    results_dir = _results_dir()
+    if results_dir is None:
+        return
+
+    probe_id = uuid.uuid4().hex
+    source = results_dir / f".result-store-probe-{probe_id}.tmp"
+    target = results_dir / f".result-store-probe-{probe_id}.target"
+    linked = results_dir / f".result-store-probe-{probe_id}.link"
+    failure: OSError | None = None
+    try:
+        results_dir.mkdir(parents=True, exist_ok=True)
+        with source.open("x", encoding="utf-8") as stream:
+            stream.write("probe")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(source, target)
+        os.link(target, linked)
+        linked.unlink()
+        target.unlink()
+    except OSError as exc:
+        failure = exc
+    finally:
+        for path in (source, target, linked):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                failure = failure or exc
+
+    if failure is not None:
+        raise RuntimeError(
+            f"Shared result directory {results_dir} must support file creation, fsync, "
+            "atomic rename, hard links, and unlink"
+        ) from failure
 
 
 def _results_ttl_s() -> float:
@@ -90,9 +132,8 @@ def _remove_expired_result(path: Path, *, cutoff: float) -> bool:
 
         claimed = path.with_name(f".{path.name}.{uuid.uuid4().hex}.cleanup")
         # Restoring a concurrently replaced result requires an atomic,
-        # no-overwrite hard link. Verify that operation is supported before
-        # moving the canonical result out of the way; some RWX filesystems do
-        # not support hard links, so expiry is best-effort there.
+        # no-overwrite hard link. Startup validates this operation, while this
+        # runtime guard keeps expiry best-effort if mount behavior changes.
         os.link(path, claimed)
         claimed.unlink(missing_ok=True)
 
@@ -167,27 +208,57 @@ def _remove_claim(claimed: Path, document_id: str) -> None:
         logger.warning("Unable to remove shared result claim for %r", document_id, exc_info=True)
 
 
-def _restore_claim(claimed: Path, target: Path, document_id: str) -> None:
+def _restore_claim(claimed: Path, target: Path, document_id: str) -> bool:
     """Restore a failed claim for retry without replacing an existing result."""
     try:
-        target.stat()
-    except FileNotFoundError:
-        try:
-            os.replace(claimed, target)
-        except FileNotFoundError:
-            pass  # Another pod swept or consumed the claim first.
-        except OSError:
-            # Preserve the claim when restoration fails. A later expiry sweep
-            # can remove it after the result's retention window.
-            logger.warning("Unable to restore shared result claim for %r", document_id, exc_info=True)
-    except OSError:
-        # If the canonical path cannot be inspected, leave both paths alone
-        # rather than risk overwriting a replacement or deleting the claim.
-        logger.warning("Unable to inspect shared result while restoring %r", document_id, exc_info=True)
-    else:
+        os.link(claimed, target)
+    except FileExistsError:
         # A replacement already owns the canonical path, so the older claim
         # must not overwrite it.
         _remove_claim(claimed, document_id)
+        return True
+    except FileNotFoundError:
+        try:
+            target.stat()
+        except FileNotFoundError:
+            return False
+        except OSError:
+            logger.warning("Unable to inspect shared result while restoring %r", document_id, exc_info=True)
+            return False
+        return True
+    except OSError:
+        # Preserve the claim when restoration fails. A later request can
+        # recover it after its active-consumer lease expires.
+        logger.warning("Unable to restore shared result claim for %r", document_id, exc_info=True)
+        return False
+
+    _remove_claim(claimed, document_id)
+    return True
+
+
+def _recover_abandoned_claim(results_dir: Path, target: Path, claimed: Path, document_id: str) -> bool:
+    """Atomically acquire an abandoned claim after its consumer lease expires."""
+    cutoff = time.time() - _CLAIM_LEASE_S
+    try:
+        candidates = list(results_dir.glob(f".{target.name}.*.claim"))
+    except OSError as exc:
+        raise ResultStoreTemporarilyUnavailable(f"Unable to scan shared result claims for {document_id!r}") from exc
+
+    for candidate in candidates:
+        try:
+            if candidate.stat().st_mtime > cutoff:
+                continue
+            os.replace(candidate, claimed)
+            os.utime(claimed, None)
+            logger.info("Recovered abandoned shared result claim for %r", document_id)
+            return True
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise ResultStoreTemporarilyUnavailable(
+                f"Unable to recover shared result claim for {document_id!r}"
+            ) from exc
+    return False
 
 
 def _consume_from_filesystem(results_dir: Path, document_id: str) -> list[dict[str, Any]] | None:
@@ -196,14 +267,19 @@ def _consume_from_filesystem(results_dir: Path, document_id: str) -> list[dict[s
     claimed = results_dir / f".{target.name}.{uuid.uuid4().hex}.claim"
     try:
         os.replace(target, claimed)
+        # A rename preserves the result's original mtime. Touch the claim so
+        # other consumers can distinguish an active lease from an abandoned
+        # claim left behind by an interrupted or failed reader.
+        os.utime(claimed, None)
     except FileNotFoundError:
-        return None
-    except OSError:
+        if not _recover_abandoned_claim(results_dir, target, claimed, document_id):
+            return None
+    except OSError as exc:
         logger.warning("Unable to claim shared result for %r", document_id, exc_info=True)
         # Network filesystems can report an error after applying a rename, so
         # restore the known claim path if the canonical path disappeared.
         _restore_claim(claimed, target, document_id)
-        return None
+        raise ResultStoreTemporarilyUnavailable(f"Unable to claim shared result for {document_id!r}") from exc
 
     discard_claim = True
     try:
@@ -218,11 +294,11 @@ def _consume_from_filesystem(results_dir: Path, document_id: str) -> list[dict[s
     except ValueError:
         logger.warning("Unable to decode shared result payload for %r", document_id, exc_info=True)
         return None
-    except OSError:
+    except OSError as exc:
         discard_claim = False
         logger.warning("I/O error while reading shared result for %r", document_id, exc_info=True)
         _restore_claim(claimed, target, document_id)
-        return None
+        raise ResultStoreTemporarilyUnavailable(f"Unable to read shared result for {document_id!r}") from exc
     finally:
         if discard_claim:
             _remove_claim(claimed, document_id)

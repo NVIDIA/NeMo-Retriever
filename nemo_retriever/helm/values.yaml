@@ -684,8 +684,10 @@ serviceConfig:
 # document.
 #
 # Use local/host-path storage for results to avoid network I/O overhead.
-# A ReadWriteOnce claim can be shared only by pods on the same node. Use an
-# RWX-capable storage class when split roles can schedule across multiple nodes.
+# A ReadWriteOnce claim can be shared only by pods on the same node. Use a
+# POSIX-compatible RWX storage class supporting atomic rename and hard links
+# when split roles can schedule across multiple nodes. SMB-backed volumes such
+# as Azure Files are not supported by this result store.
 retrieverResults:
   enabled: true
   # Unconsumed results and interrupted temporary/claim files are removed
