@@ -449,8 +449,8 @@ class ServiceIngestor(ingestor):
     def _fetch_document_result_data(self, document_id: str) -> list[dict[str, Any]]:
         """Fetch ``result_data`` for *document_id* from the status endpoint.
 
-        The status endpoint consumes ``result_data`` on first read, so
-        callers must invoke this exactly once per document.
+        The status endpoint retains ``result_data`` through the job retention
+        window, so retrying this read is safe.
         """
         if not document_id:
             raise ValueError("_fetch_document_result_data(): empty document_id")

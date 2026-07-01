@@ -131,6 +131,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     from nemo_retriever.service.services.pipeline_pool import init_pipeline_pool, shutdown_pipeline_pool
     from nemo_retriever.service.services.proxy import init_proxy, shutdown_proxy
     from nemo_retriever.service.services.sidecar_store import init_sidecar_store, shutdown_sidecar_store
+    from nemo_retriever.service.services.worker_result_store import validate_result_store
+
+    validate_result_store()
 
     if mode in ("gateway", "standalone"):
         app.state.metrics = init_metrics()
