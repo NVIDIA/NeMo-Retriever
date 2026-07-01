@@ -135,6 +135,91 @@ To work around this issue, convert image files to PDFs before you use `extract_m
 
 
 
+## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
+
+[NVIDIA-hosted Page Elements NIM](https://build.nvidia.com/nvidia/nemotron-page-elements-v3) endpoints on `ai.api.nvidia.com` (and the matching build.nvidia.com model experience) enforce a strict limit on **inline** image payloads. The same limit applies to hosted **Table Structure** and **Graphic Elements** object-detection NIMs because they share the same `/v1/infer` request shape.
+
+| Deployment | Inline base64 limit | Oversized images |
+|------------|---------------------|------------------|
+| Hosted (`build.nvidia.com`, `ai.api.nvidia.com`) | About **180,000 characters** on the base64 portion of the data URL (roughly 180 KB; build.nvidia.com validates `len(image_b64) < 180_000`) | Upload with the [NVCF Asset API](https://docs.api.nvidia.com/cloud-functions/reference/createasset), then reference `data:image/<format>;asset_id,<asset_id>` in the `url` field |
+| Self-hosted NIM container | Higher; the NeMo Retriever client downscales HTTP payloads above **512,000 characters** before calling the NIM | Resize or re-encode the source image, or rely on the client downscaling |
+
+The [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html) states only that “very large images may cause processing issues.” For hosted integrations, treat **180,000 characters** as the inline cap unless NVIDIA publishes a different limit for your endpoint.
+
+### NeMo Retriever Library pipeline users
+
+When you route extraction to hosted Page Elements NIM URLs (for example `page_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"`), the library:
+
+- Renders PDF pages with default `render_mode="fit_to_model"` (targets about 1024 px on the long edge instead of full raster DPI).
+- Downscales base64 page images before remote object-detection NIM HTTP calls when payloads exceed the client limit (512,000 characters for Page Elements, Table Structure, and Graphic Elements).
+
+If you still receive **422** responses mentioning invalid image URLs on hosted endpoints, lower `dpi` in `ExtractParams`, keep `render_mode="fit_to_model"`, or preprocess very large standalone image inputs before ingest. For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+
+### Direct Page Elements NIM API calls (build.nvidia.com or custom clients)
+
+When you call Page Elements NIM **directly** (build playground, curl, or a custom integration—not through the NeMo Retriever pipeline), use inline base64 only when `len(base64_image) < 180_000`. For larger PNG or JPEG inputs, upload once with the NVCF Asset API and pass an asset reference in the inference payload.
+
+1. **Create an asset** — `POST https://api.nvcf.nvidia.com/v2/nvcf/assets` with `Authorization: Bearer $NVIDIA_API_KEY`, plus JSON `contentType` (for example `image/png`) and `description`.
+2. **Upload the file** — `PUT` the image bytes to the `uploadUrl` from step 1. Set `Content-Type` to match `contentType`, and set `x-amz-meta-nvcf-asset-description` to the same description string.
+3. **Infer** — `POST` to your Page Elements invoke URL with `"url": "data:image/png;asset_id,<assetId>"` inside each `input[]` item (same `type: image_url` schema as inline base64).
+
+For the full asset workflow (including reuse across requests), refer to [NVCF assets](https://docs.nvidia.com/cloud-functions/user-guide/latest/cloud-function/assets.html) in the Cloud Functions user guide and the [Create Asset](https://docs.api.nvidia.com/cloud-functions/reference/createasset) API reference. Hosted calls require the same [`NVIDIA_API_KEY`](api-keys.md#nvidia-api-key) you use for other build.nvidia.com NIM endpoints.
+
+```python
+import requests
+
+API_KEY = "nvapi-..."
+PAGE_ELEMENTS_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
+IMAGE_PATH = "large_page.png"
+
+create = requests.post(
+    "https://api.nvcf.nvidia.com/v2/nvcf/assets",
+    headers={
+        "Authorization": f"Bearer {API_KEY}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    },
+    json={"contentType": "image/png", "description": "page-elements-large-input"},
+    timeout=60,
+)
+create.raise_for_status()
+asset = create.json()
+
+with open(IMAGE_PATH, "rb") as image_file:
+    upload = requests.put(
+        asset["uploadUrl"],
+        headers={
+            "Content-Type": "image/png",
+            "x-amz-meta-nvcf-asset-description": "page-elements-large-input",
+        },
+        data=image_file.read(),
+        timeout=120,
+    )
+upload.raise_for_status()
+
+payload = {
+    "input": [{
+        "type": "image_url",
+        "url": f"data:image/png;asset_id,{asset['assetId']}",
+    }]
+}
+response = requests.post(
+    PAGE_ELEMENTS_URL,
+    headers={
+        "Authorization": f"Bearer {API_KEY}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    },
+    json=payload,
+    timeout=120,
+)
+response.raise_for_status()
+```
+
+Supported inline formats remain **PNG** and **JPEG**, encoded as `data:image/<format>;base64,<data>` or `data:image/<format>;asset_id,<uuid>`. OpenAPI specs for Page Elements v2/v3 are linked from the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html#openapi-reference-for-page-elements).
+
+
+
 ## Too many open files error
 
 In rare cases, when you run a job you might an see an error similar to `too many open files` or `max open file descriptor`.
