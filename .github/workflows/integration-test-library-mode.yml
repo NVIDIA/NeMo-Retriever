@@ -37,7 +37,7 @@ jobs:
       # Hosted NIM / integrate.api auth (ExtractParams / EmbedParams read NVIDIA_API_KEY / NGC_API_KEY).
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_BUILD_API_KEY }}
       PAGE_ELEMENTS_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
-      OCR_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v2"
+      OCR_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2"
       GRAPHIC_ELEMENTS_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1"
       TABLE_STRUCTURE_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"
       EMBED_INVOKE_URL: "https://integrate.api.nvidia.com/v1"
