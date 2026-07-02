@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 import json
 from pathlib import Path
 
@@ -181,7 +185,10 @@ def test_run_files_redacts_sensitive_overrides_from_session_plan(monkeypatch, tm
             "schema_version": 1,
             "name": "jp20_beir",
             "benchmark": "jp20_beir",
-            "set": ["query.reranker_api_key=runfile-secret"],
+            "set": {
+                "query.reranker_api_key": "runfile-secret",
+                "query.content_types": {"webhook_url": "structured-secret"},
+            },
         },
     )
     calls = []
@@ -201,13 +208,15 @@ def test_run_files_redacts_sensitive_overrides_from_session_plan(monkeypatch, tm
 
     assert calls[0]["overrides"] == (
         "query.reranker_api_key=runfile-secret",
+        'query.content_types={"webhook_url": "structured-secret"}',
         f'dataset.path="{tmp_path}"',
         "query.reranker_api_key=cli-secret",
     )
     expanded_text = (outcome.artifact_dir / "expanded_runs.json").read_text(encoding="utf-8")
     assert "runfile-secret" not in expanded_text
+    assert "structured-secret" not in expanded_text
     assert "cli-secret" not in expanded_text
-    assert expanded_text.count("<redacted>") == 2
+    assert expanded_text.count("<redacted>") == 3
 
 
 @pytest.mark.parametrize(

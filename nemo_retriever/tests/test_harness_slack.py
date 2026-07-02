@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 import json
 from pathlib import Path
 
@@ -8,6 +12,9 @@ from typer.testing import CliRunner
 from nemo_retriever.harness.cli import app
 from nemo_retriever.harness.slack import (
     DEFAULT_SLACK_METRIC_KEYS,
+    HarnessRunReport,
+    HarnessSessionReport,
+    MAX_SLACK_TABLE_ROWS,
     build_slack_payload,
     load_replay_report,
     load_session_report,
@@ -148,6 +155,42 @@ def test_run_artifact_replay_has_deterministic_identity(tmp_path):
 
     assert first.session_name == second.session_name == "artifact_replay"
     assert first.timestamp is second.timestamp is None
+
+
+def test_slack_payload_truncates_tables_at_slack_row_limit(tmp_path):
+    results = [
+        HarnessRunReport(
+            run_name=f"run-{index}",
+            dataset=f"dataset-{index}",
+            preset=None,
+            success=True,
+            return_code=0,
+            failure_reason=None,
+            artifact_dir=None,
+            metrics={key: index for key in DEFAULT_SLACK_METRIC_KEYS},
+        )
+        for index in range(12)
+    ]
+    report = HarnessSessionReport(
+        session_name="large-session",
+        session_dir=tmp_path,
+        session_type="runfiles",
+        timestamp=None,
+        latest_commit="abc1234",
+        all_passed=True,
+        dry_run=False,
+        results=results,
+    )
+
+    payload = build_slack_payload(
+        report,
+        {"metric_keys": DEFAULT_SLACK_METRIC_KEYS, "post_artifact_paths": False},
+    )
+    table = next(block for block in payload["blocks"] if block["type"] == "table")
+
+    assert len(table["rows"]) == MAX_SLACK_TABLE_ROWS
+    assert "TRUNCATED" in json.dumps(table["rows"][-1])
+    assert "rows omitted" in json.dumps(table["rows"][-1])
 
 
 def test_slack_transport_error_does_not_expose_webhook(monkeypatch):

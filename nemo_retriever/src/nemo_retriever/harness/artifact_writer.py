@@ -140,9 +140,16 @@ def redact(value: Any) -> Any:
     if isinstance(value, tuple):
         return [redact(item) for item in value]
     if isinstance(value, str) and "=" in value:
-        key, _separator, _raw = value.partition("=")
+        key, _separator, raw = value.partition("=")
         if _is_sensitive_key(key):
             return f"{key}=<redacted>"
+        try:
+            structured_value = json.loads(raw)
+        except json.JSONDecodeError:
+            return value
+        redacted_value = redact(structured_value)
+        if redacted_value != structured_value:
+            return f"{key}={json.dumps(redacted_value, sort_keys=True)}"
     return value
 
 

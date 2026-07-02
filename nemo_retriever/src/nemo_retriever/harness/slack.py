@@ -35,6 +35,7 @@ DEFAULT_SLACK_METRIC_KEYS = (
     "recall_5",
     "recall_10",
 )
+MAX_SLACK_TABLE_ROWS = 100
 
 
 @dataclass
@@ -419,6 +420,11 @@ def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, An
 
     if report.results:
         rows.pop(-1)
+
+    if len(rows) > MAX_SLACK_TABLE_ROWS:
+        omitted_count = len(rows) - MAX_SLACK_TABLE_ROWS + 1
+        rows = rows[: MAX_SLACK_TABLE_ROWS - 1]
+        rows.append(_two_column_row_bold("TRUNCATED", f"{omitted_count} rows omitted; inspect session artifacts"))
 
     blocks: list[dict[str, Any]] = [
         {

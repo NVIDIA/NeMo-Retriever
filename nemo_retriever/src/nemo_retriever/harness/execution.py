@@ -211,6 +211,8 @@ def run_benchmark(
                     }
                 ),
             )
+        # Keep the pre-plan config when request validation fails. build_ingest_request
+        # then adds artifact-local storage paths, so the final config is written again.
         write_json(writer.path("resolved_benchmark.json"), redact(resolved))
         write_json(writer.path("environment.json"), collect_environment())
 

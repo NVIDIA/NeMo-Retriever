@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import json
 
 import pytest
 
-from nemo_retriever.harness.artifact_writer import artifact_paths, ArtifactWriter, capture_output_to_log
+from nemo_retriever.harness.artifact_writer import artifact_paths, ArtifactWriter, capture_output_to_log, redact
 from nemo_retriever.harness.contracts import EXIT_INGEST_FAILURE, FailurePayload, HarnessRunError
 from nemo_retriever.harness.diff import diff_artifact_dirs
 from nemo_retriever.harness.environment import collect_environment
@@ -43,6 +44,12 @@ def test_artifact_writer_removes_only_stale_harness_outputs(tmp_path):
     assert not (tmp_path / "beir_metrics.json").exists()
     assert not (tmp_path / "lancedb").exists()
     assert (tmp_path / "keep-me.txt").read_text(encoding="utf-8") == "user-owned"
+
+
+def test_redact_recurses_into_structured_override_values():
+    override = 'query={"reranker_api_key":"secret-value","top_k":10}'
+
+    assert redact(override) == 'query={"reranker_api_key": "<redacted>", "top_k": 10}'
 
 
 def test_invalid_run_config_preserves_existing_artifacts(tmp_path):
