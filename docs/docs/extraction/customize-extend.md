@@ -33,10 +33,9 @@ A **user-defined function (UDF)** wraps your Python logic as a first-class pipel
 
 Use UDFs when you need a small, self-contained transformation that is not covered by task keyword arguments.
 
-### Repository guides and examples
+### Repository guides
 
 - [NeMo Retriever graph README — `UDFOperator`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/graph#using-udfoperator) — API, lifecycle, and when to use `UDFOperator` versus a custom operator class
-- [UDF example scripts](https://github.com/NVIDIA/NeMo-Retriever/tree/main/examples/udfs) — sample implementations such as HTML-to-Markdown conversion and structural splitting
 - [NimClient and custom NIM endpoints](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/developer_docs/nimclient.md#nimclient-and-custom-nim-endpoints) — call custom or self-hosted NIM microservices from UDF stages
 
 ## Custom graph pipelines { #custom-graph-pipelines }
@@ -55,7 +54,6 @@ To integrate a different vector store, implement the [`VDB`](https://github.com/
 
 ### Repository guides
 
-- [Build a custom vector database operator (notebook)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb) — step-by-step walkthrough
 - [Vector DB package (source)](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/src/nemo_retriever/common/vdb) — `VDB` abstract base and LanceDB reference implementation
 
 Partner and blueprint integrations (Elasticsearch, Pinecone, Teradata, and others) are summarized on [Vector databases — Vector database partners](vdbs.md#vector-database-partners).
@@ -66,4 +64,3 @@ Partner and blueprint integrations (Elasticsearch, Pinecone, Teradata, and other
 - [Vector databases](vdbs.md)
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Python API guide](nemo-retriever-api-reference.md)
-- [Starter kits and notebooks](starter-kits.md)
