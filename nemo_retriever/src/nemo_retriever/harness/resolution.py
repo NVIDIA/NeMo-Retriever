@@ -45,6 +45,7 @@ from nemo_retriever.ingest.plan import (
     IngestStorageOptions,
 )
 from nemo_retriever.query.options import (
+    QueryAgenticOptions,
     QueryEmbedOptions,
     QueryRerankOptions,
     QueryRequest,
@@ -112,6 +113,15 @@ QUERY_OVERRIDE_PATHS = {
     "query.reranker_api_key",
     "query.lancedb_uri",
     "query.table_name",
+    "query.agentic",
+    "query.agentic_llm_model",
+    "query.agentic_invoke_url",
+    "query.agentic_reasoning_effort",
+    "query.agentic_backend_top_k",
+    "query.agentic_react_max_steps",
+    "query.agentic_text_truncation",
+    "query.agentic_num_concurrent",
+    "query.agentic_temperature",
 }
 EVALUATION_OVERRIDE_PATHS = {
     "evaluation.mode",
@@ -410,6 +420,17 @@ def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryReque
         storage=QueryStorageOptions(
             lancedb_uri=str(lancedb_uri),
             table_name=str(table_name),
+        ),
+        agentic=QueryAgenticOptions(
+            enabled=bool(query.get("agentic", False)),
+            llm_model=query.get("agentic_llm_model"),
+            invoke_url=query.get("agentic_invoke_url"),
+            reasoning_effort=query.get("agentic_reasoning_effort"),
+            backend_top_k=int(query.get("agentic_backend_top_k") or 20),
+            react_max_steps=int(query.get("agentic_react_max_steps") or 50),
+            text_truncation=int(query.get("agentic_text_truncation") or 0),
+            num_concurrent=int(query.get("agentic_num_concurrent") or 1),
+            temperature=float(query.get("agentic_temperature") or 0.0),
         ),
     )
 
