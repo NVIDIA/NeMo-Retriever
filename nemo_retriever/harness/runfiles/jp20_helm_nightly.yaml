@@ -1,0 +1,10 @@
+schema_version: 1
+name: jp20_helm
+benchmark: jp20_beir
+mode: service
+require:
+  - files==20
+  - pages==1940
+  - query_count==115
+  - recall_5>=0.85
+  - ndcg_10>=0.75

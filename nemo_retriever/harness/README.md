@@ -62,6 +62,12 @@ ViDoRe use `mode: batch`. Keep JP20 local for quick smoke validation, and use
 batch mode for larger canonical quality runs so Ray-backed ingest owns worker
 parallelism and memory pressure.
 
+Use `mode: service` when the system under test is an already-running Retriever
+service. Supply its machine-local URL with `--service-endpoint`; `run-files`
+applies that URL only to service-mode children in a mixed session. Service mode
+uses the product service APIs for ingest and query while preserving the same
+`status.json`, `results.json`, metric gates, and session summary contract.
+
 ## Commands
 
 - `list`: list code-owned benchmarks and optional runsets.
@@ -165,6 +171,30 @@ run ID: <session-name>_<index>_<runfile-name>
 
 Session names and runfile names can contain letters, numbers, periods,
 underscores, and hyphens. Other characters fail validation before execution.
+
+## Provision A Service With Helm
+
+Helm is one way to provision the service under test; it is not a benchmark
+execution mode or part of the runfile schema. The checked-in
+[`run_helm_nightly.sh`](run_helm_nightly.sh) wrapper loads the non-secret
+deployment settings in
+[`examples/managed-helm-main.yaml`](examples/managed-helm-main.yaml), deploys an
+explicit immutable image, waits for readiness and establishes a port-forward,
+invokes `run-files` with the JP20 service runfile, collects `service_logs/` on
+failure, and always tears the release down.
+
+Set `HARNESS_HELM_SERVICE_IMAGE_REPOSITORY` and
+`HARNESS_HELM_SERVICE_IMAGE_TAG`, plus `NEMO_RETRIEVER_HELM_OUTPUT_DIR` and
+`NEMO_RETRIEVER_HELM_CONFIG` when their defaults are not suitable, then run:
+
+```bash
+nemo_retriever/harness/run_helm_nightly.sh \
+  --dataset-paths /local/path/to/dataset_paths.yaml
+```
+
+The wrapper never reads a Slack webhook. After the terminal session exists,
+read each child's `results.json` for metrics and optionally invoke
+`post-slack --preview` or `post-slack` as a separate operation.
 
 ## Post Results to Slack
 
@@ -293,6 +323,10 @@ by the CLI:
 - ingest: `resolve_ingest_plan(...)` and `run_ingest_workflow(...)`
 - query: `resolve_query_plan(...)` and shared query workflow objects
 - BEIR: harness-owned query iteration over the resolved query plan
+
+For `mode: service`, the corresponding service ingest and query request APIs
+replace the in-process plans. Helm deployment remains in `helm_runner.py`,
+outside this benchmark contract.
 
 The harness controller calls those APIs in its Python process; this does not
 force the ingest workload into local/in-process mode. A runfile with `mode:
