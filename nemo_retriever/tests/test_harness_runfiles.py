@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from nemo_retriever.harness.contracts import HarnessRunError, RunOutcome
-from nemo_retriever.harness.runsets import run_runfiles
+from nemo_retriever.harness.contracts import EXIT_MISSING_INPUT, FailurePayload, HarnessRunError, RunOutcome
+from nemo_retriever.harness.runsets import run_runfiles, run_runset
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -138,6 +138,113 @@ def test_run_files_completes_remaining_runs_and_preserves_first_failure(monkeypa
     assert outcome.exit_code == 10
     assert outcome.results["all_passed"] is False
     assert [run["exit_code"] for run in outcome.results["runs"]] == [10, 0]
+
+
+def test_run_files_removes_stale_summary_before_child_execution(monkeypatch, tmp_path):
+    runfile = tmp_path / "jp20_beir.json"
+    _write_json(runfile, {"schema_version": 1, "name": "jp20_beir", "benchmark": "jp20_beir"})
+    session_dir = tmp_path / "session"
+    session_dir.mkdir()
+    _write_json(session_dir / "session_summary.json", {"success": True, "old": True})
+
+    def fake_run_benchmark(benchmark, **kwargs):
+        assert not (session_dir / "session_summary.json").exists()
+        return _successful_outcome(benchmark, kwargs["output_dir"])
+
+    monkeypatch.setattr("nemo_retriever.harness.runsets.run_benchmark", fake_run_benchmark)
+
+    outcome = run_runfiles(
+        [runfile],
+        output_dir=str(session_dir),
+        overrides=(f'dataset.path="{tmp_path}"',),
+        dry_run=True,
+    )
+
+    assert outcome.exit_code == 0
+    summary = json.loads((session_dir / "session_summary.json").read_text(encoding="utf-8"))
+    assert "old" not in summary
+    assert summary["success"] is True
+
+
+def test_run_files_converts_raised_child_failure_and_continues(monkeypatch, tmp_path):
+    runfiles = []
+    for name in ("jp20_beir", "bo767_beir"):
+        path = tmp_path / f"{name}.json"
+        _write_json(path, {"schema_version": 1, "name": name, "benchmark": name})
+        runfiles.append(path)
+    calls = []
+
+    def fake_run_benchmark(benchmark, **kwargs):
+        calls.append(benchmark)
+        if benchmark == "jp20_beir":
+            raise HarnessRunError(
+                EXIT_MISSING_INPUT,
+                FailurePayload(
+                    failed_phase="resolve",
+                    failure_reason="dataset_missing",
+                    retryable=False,
+                    message="dataset disappeared",
+                ),
+            )
+        return _successful_outcome(benchmark, kwargs["output_dir"])
+
+    monkeypatch.setattr("nemo_retriever.harness.runsets.run_benchmark", fake_run_benchmark)
+    session_dir = tmp_path / "session"
+
+    outcome = run_runfiles(
+        runfiles,
+        output_dir=str(session_dir),
+        overrides=(f'dataset.path="{tmp_path}"',),
+        dry_run=True,
+    )
+
+    assert calls == ["jp20_beir", "bo767_beir"]
+    assert outcome.exit_code == EXIT_MISSING_INPUT
+    assert [run["exit_code"] for run in outcome.results["runs"]] == [EXIT_MISSING_INPUT, 0]
+    assert (session_dir / "001_jp20_beir" / "results.json").exists()
+    assert (session_dir / "session_summary.json").exists()
+
+
+def test_runset_converts_raised_child_failure_and_continues(monkeypatch, tmp_path):
+    class FakeRunset:
+        name = "pair"
+        runs = ("jp20_beir", "bo767_beir")
+
+        def to_dict(self):
+            return {"name": self.name, "runs": list(self.runs)}
+
+    calls = []
+
+    def fake_run_benchmark(benchmark, **kwargs):
+        calls.append(benchmark)
+        if benchmark == "jp20_beir":
+            raise HarnessRunError(
+                EXIT_MISSING_INPUT,
+                FailurePayload(
+                    failed_phase="resolve",
+                    failure_reason="dataset_missing",
+                    retryable=False,
+                    message="dataset disappeared",
+                ),
+            )
+        return _successful_outcome(benchmark, kwargs["output_dir"])
+
+    monkeypatch.setattr("nemo_retriever.harness.runsets._runset_or_error", lambda name: FakeRunset())
+    monkeypatch.setattr("nemo_retriever.harness.runsets.run_benchmark", fake_run_benchmark)
+    session_dir = tmp_path / "session"
+
+    outcome = run_runset(
+        "pair",
+        output_dir=str(session_dir),
+        overrides=(f'dataset.path="{tmp_path}"',),
+        dry_run=True,
+    )
+
+    assert calls == ["jp20_beir", "bo767_beir"]
+    assert outcome.exit_code == EXIT_MISSING_INPUT
+    assert [run["exit_code"] for run in outcome.results["runs"]] == [EXIT_MISSING_INPUT, 0]
+    assert (session_dir / "001_jp20_beir" / "results.json").exists()
+    assert (session_dir / "session_summary.json").exists()
 
 
 def test_run_files_preflights_every_run_before_execution(monkeypatch, tmp_path):

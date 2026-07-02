@@ -12,7 +12,14 @@ from typing import Any, Sequence
 from nemo_retriever.harness.artifact_writer import redact
 from nemo_retriever.harness.artifacts import get_artifacts_root, last_commit, now_timestr
 from nemo_retriever.harness.benchmark_registry import get_benchmark, get_runset, runset_names
-from nemo_retriever.harness.contracts import EXIT_INVALID, EXIT_SUCCESS, FailurePayload, HarnessRunError, RunOutcome
+from nemo_retriever.harness.contracts import (
+    EXIT_INTERNAL_ERROR,
+    EXIT_INVALID,
+    EXIT_SUCCESS,
+    FailurePayload,
+    HarnessRunError,
+    RunOutcome,
+)
 from nemo_retriever.harness.dataset_paths import load_dataset_paths
 from nemo_retriever.harness.execution import preflight_benchmark, run_benchmark
 from nemo_retriever.harness.json_io import write_json
@@ -47,6 +54,12 @@ def _session_dir(runset: str, output_dir: str | None) -> Path:
     if output_dir:
         return Path(output_dir).expanduser().resolve()
     return (get_artifacts_root() / _session_id(runset)).resolve()
+
+
+def _remove_stale_session_summary(session_dir: Path) -> None:
+    summary_path = session_dir / "session_summary.json"
+    if summary_path.exists() or summary_path.is_symlink():
+        summary_path.unlink()
 
 
 def _runset_or_error(name: str):
@@ -109,6 +122,40 @@ def _run_outcome_summary(
     return payload
 
 
+def _failed_child_outcome(
+    *,
+    benchmark: str,
+    artifact_dir: Path,
+    dry_run: bool,
+    exc: BaseException,
+) -> RunOutcome:
+    if isinstance(exc, HarnessRunError):
+        exit_code = exc.exit_code
+        failure = exc.failure
+    else:
+        exit_code = EXIT_INTERNAL_ERROR
+        failure = FailurePayload(
+            failed_phase="resolve",
+            failure_reason="unexpected_internal_error",
+            retryable=False,
+            message=f"{type(exc).__name__}: {exc}",
+        )
+    result = redact(
+        {
+            "benchmark": benchmark,
+            "status": "failed",
+            "success": False,
+            "exit_code": exit_code,
+            "dry_run": bool(dry_run),
+            "summary_metrics": {},
+            "failure": failure.to_dict(),
+        }
+    )
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    write_json(artifact_dir / "results.json", result)
+    return RunOutcome(exit_code=exit_code, artifact_dir=artifact_dir, results=result)
+
+
 def _session_summary(
     *,
     session_type: str,
@@ -154,6 +201,7 @@ def run_runset(
     run_commit = last_commit()
     session_dir = _session_dir(runset, output_dir)
     session_dir.mkdir(parents=True, exist_ok=True)
+    _remove_stale_session_summary(session_dir)
     expanded_runs = [
         {
             "index": index,
@@ -178,15 +226,24 @@ def run_runset(
     run_results: list[dict[str, Any]] = []
     exit_code = EXIT_SUCCESS
     for expanded in expanded_runs:
-        outcome = run_benchmark(
-            str(expanded["benchmark"]),
-            output_dir=str(session_dir / str(expanded["artifact_dir"])),
-            run_id=f"{runset}_{expanded['index']:03d}_{expanded['benchmark']}",
-            mode=mode,
-            overrides=overrides,
-            requirements=requirements,
-            dry_run=dry_run,
-        )
+        artifact_dir = session_dir / str(expanded["artifact_dir"])
+        try:
+            outcome = run_benchmark(
+                str(expanded["benchmark"]),
+                output_dir=str(artifact_dir),
+                run_id=f"{runset}_{expanded['index']:03d}_{expanded['benchmark']}",
+                mode=mode,
+                overrides=overrides,
+                requirements=requirements,
+                dry_run=dry_run,
+            )
+        except Exception as exc:
+            outcome = _failed_child_outcome(
+                benchmark=str(expanded["benchmark"]),
+                artifact_dir=artifact_dir,
+                dry_run=dry_run,
+                exc=exc,
+            )
         run_results.append(_run_outcome_summary(str(expanded["benchmark"]), outcome, session_dir=session_dir))
         if exit_code == EXIT_SUCCESS and outcome.exit_code != EXIT_SUCCESS:
             exit_code = outcome.exit_code
@@ -260,6 +317,7 @@ def run_runfiles(
         )
 
     session_dir.mkdir(parents=True, exist_ok=True)
+    _remove_stale_session_summary(session_dir)
     write_json(
         session_dir / "expanded_runs.json",
         redact(
@@ -275,17 +333,26 @@ def run_runfiles(
     run_results: list[dict[str, Any]] = []
     exit_code = EXIT_SUCCESS
     for expanded, request in zip(expanded_runs, requests, strict=True):
-        outcome = run_benchmark(
-            request.benchmark,
-            output_dir=str(session_dir / str(expanded["artifact_dir"])),
-            run_id=f"{session_name}_{expanded['index']:03d}_{expanded['name']}",
-            mode=str(expanded["mode"]),
-            overrides=tuple(expanded["overrides"]),
-            requirements=tuple(expanded["requirements"]),
-            dry_run=bool(expanded["dry_run"]),
-            runfile_payload=dict(request.payload),
-            runfile_path=str(request.source_path),
-        )
+        artifact_dir = session_dir / str(expanded["artifact_dir"])
+        try:
+            outcome = run_benchmark(
+                request.benchmark,
+                output_dir=str(artifact_dir),
+                run_id=f"{session_name}_{expanded['index']:03d}_{expanded['name']}",
+                mode=str(expanded["mode"]),
+                overrides=tuple(expanded["overrides"]),
+                requirements=tuple(expanded["requirements"]),
+                dry_run=bool(expanded["dry_run"]),
+                runfile_payload=dict(request.payload),
+                runfile_path=str(request.source_path),
+            )
+        except Exception as exc:
+            outcome = _failed_child_outcome(
+                benchmark=request.benchmark,
+                artifact_dir=artifact_dir,
+                dry_run=bool(expanded["dry_run"]),
+                exc=exc,
+            )
         run_results.append(
             _run_outcome_summary(
                 request.benchmark,

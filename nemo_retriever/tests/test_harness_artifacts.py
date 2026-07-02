@@ -7,7 +7,12 @@ import json
 import pytest
 
 from nemo_retriever.harness.artifact_writer import artifact_paths, ArtifactWriter, capture_output_to_log, redact
-from nemo_retriever.harness.contracts import EXIT_INGEST_FAILURE, FailurePayload, HarnessRunError
+from nemo_retriever.harness.contracts import (
+    EXIT_ARTIFACT_WRITE_FAILURE,
+    EXIT_INGEST_FAILURE,
+    FailurePayload,
+    HarnessRunError,
+)
 from nemo_retriever.harness.diff import diff_artifact_dirs
 from nemo_retriever.harness.environment import collect_environment
 from nemo_retriever.harness.execution import _concise_message, _run_result_payload, _write_failure_result, run_benchmark
@@ -136,6 +141,30 @@ def test_failure_result_is_concise_and_points_to_full_log(tmp_path):
     assert status["failure"] == payload["failure"]
     assert status["results_path"] == "results.json"
     assert not writer.path("summary_metrics.json").exists()
+
+
+def test_run_benchmark_classifies_artifact_write_failures(monkeypatch, tmp_path):
+    import nemo_retriever.harness.execution as execution
+
+    original_write_json = execution.write_json
+
+    def fail_results_write(path, payload):
+        if path.name == "results.json":
+            raise OSError("disk full")
+        original_write_json(path, payload)
+
+    monkeypatch.setattr(execution, "write_json", fail_results_write)
+
+    outcome = run_benchmark(
+        "jp20_beir",
+        output_dir=str(tmp_path / "run"),
+        overrides=(f'dataset.path="{tmp_path}"',),
+        dry_run=True,
+    )
+
+    assert outcome.exit_code == EXIT_ARTIFACT_WRITE_FAILURE
+    assert outcome.results["failure"]["failure_reason"] == "artifact_write_failed"
+    assert outcome.results["failure"]["message"] == "OSError: disk full"
 
 
 def test_concise_message_prefers_nested_root_exception():
