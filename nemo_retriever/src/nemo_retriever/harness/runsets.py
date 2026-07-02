@@ -13,6 +13,7 @@ from nemo_retriever.harness.artifact_writer import redact
 from nemo_retriever.harness.artifacts import get_artifacts_root, last_commit, now_timestr
 from nemo_retriever.harness.benchmark_registry import get_benchmark, get_runset, runset_names
 from nemo_retriever.harness.contracts import (
+    EXIT_ARTIFACT_WRITE_FAILURE,
     EXIT_INTERNAL_ERROR,
     EXIT_INVALID,
     EXIT_SUCCESS,
@@ -140,19 +141,33 @@ def _failed_child_outcome(
             retryable=False,
             message=f"{type(exc).__name__}: {exc}",
         )
-    result = redact(
-        {
-            "benchmark": benchmark,
-            "status": "failed",
-            "success": False,
-            "exit_code": exit_code,
-            "dry_run": bool(dry_run),
-            "summary_metrics": {},
-            "failure": failure.to_dict(),
-        }
-    )
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    write_json(artifact_dir / "results.json", result)
+
+    def failure_result() -> dict[str, Any]:
+        return redact(
+            {
+                "benchmark": benchmark,
+                "status": "failed",
+                "success": False,
+                "exit_code": exit_code,
+                "dry_run": bool(dry_run),
+                "summary_metrics": {},
+                "failure": failure.to_dict(),
+            }
+        )
+
+    result = failure_result()
+    try:
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        write_json(artifact_dir / "results.json", result)
+    except Exception as write_exc:
+        exit_code = EXIT_ARTIFACT_WRITE_FAILURE
+        failure = FailurePayload(
+            failed_phase="write_artifacts",
+            failure_reason="artifact_write_failed",
+            retryable=False,
+            message=f"{type(write_exc).__name__}: {write_exc}",
+        )
+        result = failure_result()
     return RunOutcome(exit_code=exit_code, artifact_dir=artifact_dir, results=result)
 
 

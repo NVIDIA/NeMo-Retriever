@@ -7,7 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from nemo_retriever.harness.contracts import EXIT_MISSING_INPUT, FailurePayload, HarnessRunError, RunOutcome
+from nemo_retriever.harness.contracts import (
+    EXIT_ARTIFACT_WRITE_FAILURE,
+    EXIT_MISSING_INPUT,
+    FailurePayload,
+    HarnessRunError,
+    RunOutcome,
+)
 from nemo_retriever.harness.runsets import run_runfiles, run_runset
 
 
@@ -202,6 +208,56 @@ def test_run_files_converts_raised_child_failure_and_continues(monkeypatch, tmp_
     assert outcome.exit_code == EXIT_MISSING_INPUT
     assert [run["exit_code"] for run in outcome.results["runs"]] == [EXIT_MISSING_INPUT, 0]
     assert (session_dir / "001_jp20_beir" / "results.json").exists()
+    assert (session_dir / "session_summary.json").exists()
+
+
+def test_run_files_continues_when_failed_child_result_cannot_be_written(monkeypatch, tmp_path):
+    import nemo_retriever.harness.runsets as runsets
+
+    runfiles = []
+    for name in ("jp20_beir", "bo767_beir"):
+        path = tmp_path / f"{name}.json"
+        _write_json(path, {"schema_version": 1, "name": name, "benchmark": name})
+        runfiles.append(path)
+    calls = []
+
+    def fake_run_benchmark(benchmark, **kwargs):
+        calls.append(benchmark)
+        if benchmark == "jp20_beir":
+            raise HarnessRunError(
+                EXIT_MISSING_INPUT,
+                FailurePayload(
+                    failed_phase="resolve",
+                    failure_reason="dataset_missing",
+                    retryable=False,
+                    message="dataset disappeared",
+                ),
+            )
+        return _successful_outcome(benchmark, kwargs["output_dir"])
+
+    original_write_json = runsets.write_json
+
+    def fail_first_child_result(path, payload):
+        if path.name == "results.json" and path.parent.name == "001_jp20_beir":
+            raise OSError("child result unavailable")
+        original_write_json(path, payload)
+
+    monkeypatch.setattr(runsets, "run_benchmark", fake_run_benchmark)
+    monkeypatch.setattr(runsets, "write_json", fail_first_child_result)
+    session_dir = tmp_path / "session"
+
+    outcome = run_runfiles(
+        runfiles,
+        output_dir=str(session_dir),
+        overrides=(f'dataset.path="{tmp_path}"',),
+        dry_run=True,
+    )
+
+    assert calls == ["jp20_beir", "bo767_beir"]
+    assert outcome.exit_code == EXIT_ARTIFACT_WRITE_FAILURE
+    assert [run["exit_code"] for run in outcome.results["runs"]] == [EXIT_ARTIFACT_WRITE_FAILURE, 0]
+    assert outcome.results["runs"][0]["failure_reason"] == "OSError: child result unavailable"
+    assert not (session_dir / "001_jp20_beir" / "results.json").exists()
     assert (session_dir / "session_summary.json").exists()
 
 

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import re
 import time
 import traceback
@@ -65,6 +66,24 @@ def _concise_message(message: str) -> str:
 
 def _concise_exception_message(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {_concise_message(str(exc))}"
+
+
+def _artifact_write_failure(exc: BaseException) -> FailurePayload:
+    return FailurePayload(
+        failed_phase="write_artifacts",
+        failure_reason="artifact_write_failed",
+        retryable=False,
+        message=_concise_exception_message(exc),
+        debug_artifacts=("status.json", "events.jsonl", "run.log"),
+    )
+
+
+@contextmanager
+def _classify_artifact_write():
+    try:
+        yield
+    except Exception as exc:
+        raise HarnessRunError(EXIT_ARTIFACT_WRITE_FAILURE, _artifact_write_failure(exc)) from exc
 
 
 def _concise_failure(failure: FailurePayload) -> FailurePayload:
@@ -151,6 +170,40 @@ def _write_failure_result(
     return result
 
 
+def _failure_outcome(
+    writer: ArtifactWriter,
+    *,
+    failure: FailurePayload,
+    exit_code: int,
+    dry_run: bool,
+    resolved: dict[str, Any] | None,
+    summary_metrics: dict[str, Any] | None,
+) -> RunOutcome:
+    try:
+        result = _write_failure_result(
+            writer,
+            failure=failure,
+            exit_code=exit_code,
+            dry_run=dry_run,
+            resolved=resolved,
+            summary_metrics=summary_metrics,
+        )
+    except Exception as write_exc:
+        exit_code = EXIT_ARTIFACT_WRITE_FAILURE
+        failure = _artifact_write_failure(write_exc)
+        result = _run_result_payload(
+            writer,
+            status="failed",
+            success=False,
+            exit_code=exit_code,
+            dry_run=dry_run,
+            resolved=resolved,
+            summary_metrics=summary_metrics or {},
+            failure=failure,
+        )
+    return RunOutcome(exit_code=exit_code, artifact_dir=writer.artifact_dir, results=result)
+
+
 def _mark_dry_run_metrics_unavailable(summary_metrics: dict[str, Any]) -> None:
     static_keys = {"files", "pages"}
     for key in list(summary_metrics):
@@ -193,38 +246,41 @@ def run_benchmark(
         dry_run=dry_run,
     )
     effective_run_id = run_id or make_run_id(benchmark)
-    writer = ArtifactWriter(
-        artifact_dir=resolve_artifact_dir(benchmark, effective_run_id, output_dir),
-        run_id=effective_run_id,
-        benchmark=benchmark,
-    )
+    artifact_dir = resolve_artifact_dir(benchmark, effective_run_id, output_dir)
+    try:
+        writer = ArtifactWriter(
+            artifact_dir=artifact_dir,
+            run_id=effective_run_id,
+            benchmark=benchmark,
+        )
+    except OSError as exc:
+        raise HarnessRunError(EXIT_ARTIFACT_WRITE_FAILURE, _artifact_write_failure(exc)) from exc
     silence_noisy_libraries()
     summary_metrics: dict[str, Any] | None = None
-    current_phase = "resolve"
     try:
-        current_phase = "write_artifacts"
-        writer.status(status="planned", phase="resolve")
-        if runfile_payload is not None:
-            write_json(
-                writer.path("runfile.json"),
-                redact(
-                    {
-                        "source_path": runfile_path,
-                        "payload": runfile_payload,
-                    }
-                ),
-            )
-        # Keep the pre-plan config when request validation fails. build_ingest_request
-        # then adds artifact-local storage paths, so the final config is written again.
-        write_json(writer.path("resolved_benchmark.json"), redact(resolved))
-        write_json(writer.path("environment.json"), collect_environment())
+        environment = collect_environment()
+        with _classify_artifact_write():
+            writer.status(status="planned", phase="resolve")
+            if runfile_payload is not None:
+                write_json(
+                    writer.path("runfile.json"),
+                    redact(
+                        {
+                            "source_path": runfile_path,
+                            "payload": runfile_payload,
+                        }
+                    ),
+                )
+            # Keep the pre-plan config when request validation fails. build_ingest_request
+            # then adds artifact-local storage paths, so the final config is written again.
+            write_json(writer.path("resolved_benchmark.json"), redact(resolved))
+            write_json(writer.path("environment.json"), environment)
 
-        current_phase = "ingest_plan"
-        writer.status(status="running", phase="ingest_plan")
+        with _classify_artifact_write():
+            writer.status(status="running", phase="ingest_plan")
         ingest_request = build_ingest_request(resolved, dataset_path, writer.artifact_dir)
-        current_phase = "write_artifacts"
-        write_json(writer.path("resolved_benchmark.json"), redact(resolved))
-        current_phase = "ingest_plan"
+        with _classify_artifact_write():
+            write_json(writer.path("resolved_benchmark.json"), redact(resolved))
         try:
             ingest_plan = resolve_ingest_plan(ingest_request)
             ingest_plan_payload = run_ingest_workflow(ingest_plan, dry_run=True)
@@ -250,15 +306,16 @@ def run_benchmark(
                     debug_artifacts=("resolved_benchmark.json",),
                 ),
             ) from exc
-        current_phase = "write_artifacts"
-        write_json(writer.path("ingest_plan.json"), redact(ingest_plan_payload))
+        with _classify_artifact_write():
+            write_json(writer.path("ingest_plan.json"), redact(ingest_plan_payload))
 
-        current_phase = "query_plan"
-        writer.status(status="running", phase="query_plan")
+        with _classify_artifact_write():
+            writer.status(status="running", phase="query_plan")
         query_request = build_query_request(resolved, "")
         query_plan = resolve_query_plan(query_request)
-        current_phase = "write_artifacts"
-        write_json(writer.path("query_plan.json"), query_plan_payload(query_plan))
+        query_plan_data = query_plan_payload(query_plan)
+        with _classify_artifact_write():
+            write_json(writer.path("query_plan.json"), query_plan_data)
 
         ingest_summary: dict[str, Any] | None = None
         ingest_secs: float | None = None
@@ -267,12 +324,12 @@ def run_benchmark(
         query_count = 0
 
         if dry_run:
-            current_phase = "write_artifacts"
-            writer.event("write_artifacts", "dry_run", "Dry-run completed without executing ingest or query")
+            with _classify_artifact_write():
+                writer.event("write_artifacts", "dry_run", "Dry-run completed without executing ingest or query")
         else:
-            current_phase = "ingest"
-            writer.status(status="running", phase="ingest")
-            writer.event("ingest", "ingest_start", f"Ingesting {len(ingest_plan.documents)} document(s)")
+            with _classify_artifact_write():
+                writer.status(status="running", phase="ingest")
+                writer.event("ingest", "ingest_start", f"Ingesting {len(ingest_plan.documents)} document(s)")
             ingest_start = time.perf_counter()
             try:
                 with capture_output_to_log(writer.path("run.log"), label="ingest"):
@@ -291,7 +348,6 @@ def run_benchmark(
             ingest_secs = round(time.perf_counter() - ingest_start, 3)
 
             if (resolved.get("evaluation") or {}).get("mode") == "beir":
-                current_phase = "evaluate"
                 with capture_output_to_log(writer.path("run.log"), label="query_evaluate"):
                     query_latencies_ms, beir_metrics, query_count = run_beir_queries(
                         writer, resolved, query_plan, query_request
@@ -310,8 +366,8 @@ def run_benchmark(
         if dry_run:
             _mark_dry_run_metrics_unavailable(summary_metrics)
 
-        current_phase = "write_artifacts"
-        writer.status(status="running", phase="write_artifacts")
+        with _classify_artifact_write():
+            writer.status(status="running", phase="write_artifacts")
         skipped_metric_gates = enforce_metric_gates(summary_metrics, requirements, skip_missing=dry_run)
         result = _run_result_payload(
             writer,
@@ -325,75 +381,40 @@ def run_benchmark(
             metric_gates=list(requirements),
             skipped_metric_gates=list(skipped_metric_gates),
         )
-        write_json(writer.path("results.json"), result)
-        writer.status(
-            status="complete",
-            phase="write_artifacts",
-            results_path=writer.path("results.json"),
-        )
+        with _classify_artifact_write():
+            write_json(writer.path("results.json"), result)
+            writer.status(
+                status="complete",
+                phase="write_artifacts",
+                results_path=writer.path("results.json"),
+            )
         return RunOutcome(exit_code=EXIT_SUCCESS, artifact_dir=writer.artifact_dir, results=result)
     except HarnessRunError as exc:
-        try:
-            result = _write_failure_result(
-                writer,
-                failure=exc.failure,
-                exit_code=exc.exit_code,
-                dry_run=dry_run,
-                resolved=resolved,
-                summary_metrics=summary_metrics,
-            )
-            return RunOutcome(exit_code=exc.exit_code, artifact_dir=writer.artifact_dir, results=result)
-        except Exception as write_exc:
-            failure = FailurePayload(
-                failed_phase="write_artifacts",
-                failure_reason="artifact_write_failed",
-                retryable=False,
-                message=_concise_exception_message(write_exc),
-                debug_artifacts=("status.json", "events.jsonl", "run.log"),
-            )
-            result = _run_result_payload(
-                writer,
-                status="failed",
-                success=False,
-                exit_code=EXIT_ARTIFACT_WRITE_FAILURE,
-                dry_run=dry_run,
-                resolved=resolved,
-                summary_metrics=summary_metrics or {},
-                failure=failure,
-            )
-            return RunOutcome(exit_code=EXIT_ARTIFACT_WRITE_FAILURE, artifact_dir=writer.artifact_dir, results=result)
+        return _failure_outcome(
+            writer,
+            failure=exc.failure,
+            exit_code=exc.exit_code,
+            dry_run=dry_run,
+            resolved=resolved,
+            summary_metrics=summary_metrics,
+        )
     except Exception as exc:
         try:
             append_text(writer.path("run.log"), f"\n## {traceback.format_exc()}")
         except Exception:
             pass
-        artifact_write_failure = current_phase == "write_artifacts"
         failure = FailurePayload(
             failed_phase="write_artifacts",
-            failure_reason="artifact_write_failed" if artifact_write_failure else "unexpected_internal_error",
+            failure_reason="unexpected_internal_error",
             retryable=False,
             message=_concise_exception_message(exc),
             debug_artifacts=("status.json", "events.jsonl", "run.log"),
         )
-        exit_code = EXIT_ARTIFACT_WRITE_FAILURE if artifact_write_failure else EXIT_INTERNAL_ERROR
-        try:
-            result = _write_failure_result(
-                writer,
-                failure=failure,
-                exit_code=exit_code,
-                dry_run=dry_run,
-                resolved=resolved,
-                summary_metrics=summary_metrics,
-            )
-        except Exception:
-            result = _run_result_payload(
-                writer,
-                status="failed",
-                success=False,
-                exit_code=exit_code,
-                dry_run=dry_run,
-                resolved=resolved,
-                summary_metrics=summary_metrics or {},
-                failure=failure,
-            )
-        return RunOutcome(exit_code=exit_code, artifact_dir=writer.artifact_dir, results=result)
+        return _failure_outcome(
+            writer,
+            failure=failure,
+            exit_code=EXIT_INTERNAL_ERROR,
+            dry_run=dry_run,
+            resolved=resolved,
+            summary_metrics=summary_metrics,
+        )

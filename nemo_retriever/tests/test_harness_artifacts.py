@@ -10,6 +10,7 @@ from nemo_retriever.harness.artifact_writer import artifact_paths, ArtifactWrite
 from nemo_retriever.harness.contracts import (
     EXIT_ARTIFACT_WRITE_FAILURE,
     EXIT_INGEST_FAILURE,
+    EXIT_INTERNAL_ERROR,
     FailurePayload,
     HarnessRunError,
 )
@@ -165,6 +166,54 @@ def test_run_benchmark_classifies_artifact_write_failures(monkeypatch, tmp_path)
     assert outcome.exit_code == EXIT_ARTIFACT_WRITE_FAILURE
     assert outcome.results["failure"]["failure_reason"] == "artifact_write_failed"
     assert outcome.results["failure"]["message"] == "OSError: disk full"
+
+
+def test_run_benchmark_classifies_artifact_writer_initialization_failures(monkeypatch, tmp_path):
+    import nemo_retriever.harness.execution as execution
+
+    def fail_writer(**kwargs):
+        raise OSError("artifact directory unavailable")
+
+    monkeypatch.setattr(execution, "ArtifactWriter", fail_writer)
+
+    with pytest.raises(HarnessRunError) as error:
+        run_benchmark(
+            "jp20_beir",
+            output_dir=str(tmp_path / "run"),
+            overrides=(f'dataset.path="{tmp_path}"',),
+            dry_run=True,
+        )
+
+    assert error.value.exit_code == EXIT_ARTIFACT_WRITE_FAILURE
+    assert error.value.failure.failure_reason == "artifact_write_failed"
+    assert error.value.failure.message == "OSError: artifact directory unavailable"
+
+
+def test_run_benchmark_keeps_non_write_failures_internal(monkeypatch, tmp_path):
+    import nemo_retriever.harness.execution as execution
+
+    class FakeIngestPlan:
+        documents = ()
+
+    def fail_summary_metrics(*args, **kwargs):
+        raise RuntimeError("metrics exploded")
+
+    monkeypatch.setattr(execution, "resolve_ingest_plan", lambda request: FakeIngestPlan())
+    monkeypatch.setattr(execution, "run_ingest_workflow", lambda plan, dry_run: {})
+    monkeypatch.setattr(execution, "resolve_query_plan", lambda request: object())
+    monkeypatch.setattr(execution, "query_plan_payload", lambda plan: {})
+    monkeypatch.setattr(execution, "build_summary_metrics", fail_summary_metrics)
+
+    outcome = run_benchmark(
+        "jp20_beir",
+        output_dir=str(tmp_path / "run"),
+        overrides=(f'dataset.path="{tmp_path}"',),
+        dry_run=True,
+    )
+
+    assert outcome.exit_code == EXIT_INTERNAL_ERROR
+    assert outcome.results["failure"]["failure_reason"] == "unexpected_internal_error"
+    assert outcome.results["failure"]["message"] == "RuntimeError: metrics exploded"
 
 
 def test_concise_message_prefers_nested_root_exception():
