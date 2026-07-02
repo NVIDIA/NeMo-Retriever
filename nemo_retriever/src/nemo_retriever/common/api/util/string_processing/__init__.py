@@ -51,6 +51,17 @@ def ensure_openai_embeddings_http_url(endpoint_url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, parts.fragment))
 
 
+def prepend_model_name_prefix(model_name: str | None, model_name_prefix: str | None) -> str | None:
+    """Prepend a LiteLLM route/org prefix to a model identifier when configured."""
+    if model_name is None:
+        return None
+    model = str(model_name).strip()
+    prefix = str(model_name_prefix or "").strip().strip("/")
+    if not model or not prefix:
+        return model
+    return f"{prefix}/{model.lstrip('/')}"
+
+
 def generate_url(url) -> str:
     """Examines the user defined URL for http*://. If that
     pattern is detected the URL is used as provided by the user.

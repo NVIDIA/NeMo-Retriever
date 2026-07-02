@@ -384,6 +384,7 @@ class EmbedParams(_ParamsModel):
     embedding_endpoint: Optional[str] = None
     embed_invoke_url: Optional[str] = None
     embed_model_name: Optional[str] = None
+    embed_model_name_prefix: Optional[str] = None
     api_key: Optional[str] = None
     input_type: str = "passage"
     embed_modality: str = "text"  # "text", "image", or "text_image" — default for all element types

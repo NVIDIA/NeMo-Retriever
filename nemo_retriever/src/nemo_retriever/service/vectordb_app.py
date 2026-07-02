@@ -90,12 +90,14 @@ def _embed_queries_remote(
     embed_model: str,
     embed_endpoint: str,
     embed_api_key: str,
+    embed_model_name_prefix: str | None = None,
 ) -> list[list[float]]:
     from nemo_retriever.models.nim.util import infer_microservice
 
     return infer_microservice(
         texts,
         model_name=embed_model,
+        model_name_prefix=embed_model_name_prefix,
         embedding_endpoint=embed_endpoint,
         nvidia_api_key=embed_api_key or None,
         input_type="query",
@@ -117,6 +119,7 @@ class VectorDBState:
         embed_model: str,
         embed_api_key: str,
         *,
+        embed_model_name_prefix: str | None = None,
         local_embed: bool = False,
         local_embed_backend: str = "hf",
         hf_cache_dir: str | None = None,
@@ -127,6 +130,7 @@ class VectorDBState:
         self.table_name = table_name
         self.embed_endpoint = embed_endpoint
         self.embed_model = embed_model
+        self.embed_model_name_prefix = embed_model_name_prefix
         self.embed_api_key = embed_api_key
         self.local_embed = local_embed
         self.local_embed_backend = local_embed_backend
@@ -244,6 +248,7 @@ class VectorDBState:
             return _embed_queries_remote(
                 texts,
                 embed_model=self.embed_model,
+                embed_model_name_prefix=self.embed_model_name_prefix,
                 embed_endpoint=self.embed_endpoint,
                 embed_api_key=self.embed_api_key,
             )
@@ -268,6 +273,7 @@ def create_vectordb_app(
     table_name: str = "nemo_retriever",
     embed_endpoint: str = "",
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2",
+    embed_model_name_prefix: str | None = None,
     embed_api_key: str = "",
     *,
     local_embed: bool = False,
@@ -286,6 +292,7 @@ def create_vectordb_app(
             table_name=table_name,
             embed_endpoint=embed_endpoint,
             embed_model=embed_model,
+            embed_model_name_prefix=embed_model_name_prefix,
             embed_api_key=embed_api_key,
             local_embed=local_embed,
             local_embed_backend=local_embed_backend,
@@ -384,6 +391,7 @@ def main() -> None:
     parser.add_argument("--table-name", default="nemo_retriever", help="LanceDB table name")
     parser.add_argument("--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL")
     parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-vl-1b-v2")
+    parser.add_argument("--embed-model-name-prefix", default="", help="Optional LiteLLM route/org prefix")
     parser.add_argument("--embed-api-key", default="")
     parser.add_argument(
         "--local-embed",
@@ -422,6 +430,7 @@ def main() -> None:
         table_name=args.table_name,
         embed_endpoint=args.embed_endpoint,
         embed_model=args.embed_model,
+        embed_model_name_prefix=args.embed_model_name_prefix or None,
         embed_api_key=args.embed_api_key,
         local_embed=args.local_embed,
         local_embed_backend=args.local_embed_backend,

@@ -219,6 +219,7 @@ _SERVER_OWNED_KEYS: frozenset[str] = frozenset(
         "nemotron_parse_invoke_url",
         "embed_invoke_url",
         "embedding_endpoint",
+        "embed_model_name_prefix",
         "endpoint_url",
         "api_base",
         "auth_token",

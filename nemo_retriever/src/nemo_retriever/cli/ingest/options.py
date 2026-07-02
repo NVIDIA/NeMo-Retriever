@@ -288,6 +288,13 @@ EmbedModelNameOption = Annotated[
         help=f"Optional embedding model name override. Defaults to {DEFAULT_EMBED_MODEL} when omitted.",
     ),
 ]
+EmbedModelNamePrefixOption = Annotated[
+    str | None,
+    typer.Option(
+        "--embed-model-name-prefix",
+        help="Optional LiteLLM route/org prefix prepended to the remote embedding model name.",
+    ),
+]
 LocalIngestEmbedBackendOption = Annotated[
     LocalIngestEmbedBackendValue | None,
     typer.Option(

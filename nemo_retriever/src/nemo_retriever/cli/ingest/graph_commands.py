@@ -266,6 +266,7 @@ def _graph_ingest_command(
     table_output_format: opts.TableOutputFormatOption = None,
     embed_invoke_url: opts.EmbedInvokeUrlOption = None,
     embed_model_name: opts.EmbedModelNameOption = None,
+    embed_model_name_prefix: opts.EmbedModelNamePrefixOption = None,
     local_ingest_embed_backend: opts.LocalIngestEmbedBackendOption = None,
     embed_modality: opts.EmbedModalityOption = None,
     embed_granularity: opts.EmbedGranularityOption = None,

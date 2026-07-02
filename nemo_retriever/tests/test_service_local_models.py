@@ -27,6 +27,7 @@ def test_build_embed_params_from_nim_config() -> None:
     nim = NimEndpointsConfig(
         embed_invoke_url="http://embed-nim/v1/embeddings",
         embed_model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
+        embed_model_name_prefix="nvidia",
         api_key="k",
     )
     ep = build_embed_params(nim, LocalModelsConfig(enabled=True))
@@ -34,6 +35,7 @@ def test_build_embed_params_from_nim_config() -> None:
     assert ep.embed_invoke_url == "http://embed-nim/v1/embeddings"
     assert ep.model_name == "nvidia/llama-nemotron-embed-vl-1b-v2"
     assert ep.embed_model_name == "nvidia/llama-nemotron-embed-vl-1b-v2"
+    assert ep.embed_model_name_prefix == "nvidia"
     assert ep.api_key == "k"
 
 

@@ -174,6 +174,7 @@ def _local_command(
     table_name: opts.TableNameOption = "nemo-retriever",
     embed_invoke_url: opts.EmbedInvokeUrlOption = None,
     embed_model_name: opts.EmbedModelNameOption = None,
+    embed_model_name_prefix: opts.EmbedModelNamePrefixOption = None,
     reranker_invoke_url: opts.RerankerInvokeUrlOption = None,
     reranker_api_key_env: opts.RerankerApiKeyEnvOption = None,
     reranker_model_name: opts.RerankerModelNameOption = None,
@@ -220,6 +221,7 @@ def _local_command(
                 embed=QueryEmbedOptions(
                     embed_invoke_url=embed_invoke_url,
                     embed_model_name=embed_model_name,
+                    embed_model_name_prefix=embed_model_name_prefix,
                 ),
                 rerank=QueryRerankOptions(
                     enabled=rerank,
@@ -261,6 +263,7 @@ def _local_command(
                 embed=QueryEmbedOptions(
                     embed_invoke_url=embed_invoke_url,
                     embed_model_name=embed_model_name,
+                    embed_model_name_prefix=embed_model_name_prefix,
                 ),
                 rerank=QueryRerankOptions(
                     enabled=rerank,

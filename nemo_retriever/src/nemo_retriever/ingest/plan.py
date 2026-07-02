@@ -185,6 +185,7 @@ class IngestEmbedBatchOptions:
 class IngestEmbedOptions:
     embed_invoke_url: str | None = None
     embed_model_name: str | None = None
+    embed_model_name_prefix: str | None = None
     local_ingest_embed_backend: LocalIngestEmbedBackendValue | None = None
     embed_api_key: str | None = None
     embed_modality: str | None = None
@@ -642,6 +643,7 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         embed.embed_model_name,
         local_ingest_embed_backend=embed.local_ingest_embed_backend,
         embed_api_key=embed.embed_api_key,
+        embed_model_name_prefix=embed.embed_model_name_prefix,
         embed_modality=embed.embed_modality,
         text_elements_modality=embed.text_elements_modality,
         structured_elements_modality=embed.structured_elements_modality,
