@@ -814,9 +814,7 @@ def build_beir_run_from_ranked_doc_ids(
             seen_doc_ids.add(normalized_doc_id)
             ordered_doc_ids.append(normalized_doc_id)
 
-        run[str(query_id)] = {
-            doc_id: float(len(ordered_doc_ids) - rank) for rank, doc_id in enumerate(ordered_doc_ids)
-        }
+        run[str(query_id)] = {doc_id: float(len(ordered_doc_ids) - rank) for rank, doc_id in enumerate(ordered_doc_ids)}
 
     return run
 

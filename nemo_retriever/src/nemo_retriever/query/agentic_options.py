@@ -90,7 +90,10 @@ def agentic_temperature_error(
     max_value = agentic_temperature_max(invoke_url)
     if value < AGENTIC_TEMPERATURE_MIN or value > max_value:
         endpoint_label = "NVIDIA NIM" if is_nvidia_agentic_endpoint(invoke_url) else "OpenAI-compatible"
-        return f"{field_name} must be between {AGENTIC_TEMPERATURE_MIN:.1f} and {max_value:.1f} for {endpoint_label} endpoints"
+        return (
+            f"{field_name} must be between {AGENTIC_TEMPERATURE_MIN:.1f} "
+            f"and {max_value:.1f} for {endpoint_label} endpoints"
+        )
     return None
 
 
