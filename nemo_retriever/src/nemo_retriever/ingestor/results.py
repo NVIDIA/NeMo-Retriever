@@ -86,6 +86,33 @@ def _sanitize_returned_payload(val: Any) -> Any:
     return sanitize_cell_value(val)
 
 
+def _contains_requested_payload(val: Any, *, return_embeddings: bool, return_images: bool) -> bool:
+    if isinstance(val, dict):
+        for key, nested in val.items():
+            str_key = str(key)
+            if return_images and str_key in _RAW_IMAGE_FIELD_NAMES:
+                return True
+            if return_embeddings and str_key in _EMBEDDING_FIELD_NAMES:
+                return True
+            if _contains_requested_payload(
+                nested,
+                return_embeddings=return_embeddings,
+                return_images=return_images,
+            ):
+                return True
+        return False
+    if isinstance(val, (list, tuple)):
+        return any(
+            _contains_requested_payload(
+                item,
+                return_embeddings=return_embeddings,
+                return_images=return_images,
+            )
+            for item in val
+        )
+    return False
+
+
 def _sanitize_result_value(
     key: str,
     val: Any,
@@ -119,29 +146,31 @@ def _sanitize_result_value(
             for k, v in val.items()
         }
     if isinstance(val, list):
-        return sanitize_cell_value(
-            [
-                _sanitize_result_value(
-                    "",
-                    item,
-                    return_embeddings=return_embeddings,
-                    return_images=return_images,
-                )
-                for item in val
-            ]
-        )
+        sanitized = [
+            _sanitize_result_value(
+                "",
+                item,
+                return_embeddings=return_embeddings,
+                return_images=return_images,
+            )
+            for item in val
+        ]
+        if _contains_requested_payload(val, return_embeddings=return_embeddings, return_images=return_images):
+            return sanitized
+        return sanitize_cell_value(sanitized)
     if isinstance(val, tuple):
-        return sanitize_cell_value(
-            [
-                _sanitize_result_value(
-                    "",
-                    item,
-                    return_embeddings=return_embeddings,
-                    return_images=return_images,
-                )
-                for item in val
-            ]
-        )
+        sanitized = [
+            _sanitize_result_value(
+                "",
+                item,
+                return_embeddings=return_embeddings,
+                return_images=return_images,
+            )
+            for item in val
+        ]
+        if _contains_requested_payload(val, return_embeddings=return_embeddings, return_images=return_images):
+            return sanitized
+        return sanitize_cell_value(sanitized)
     return sanitize_cell_value(val)
 
 

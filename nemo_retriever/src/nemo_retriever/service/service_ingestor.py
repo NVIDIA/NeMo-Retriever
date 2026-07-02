@@ -508,7 +508,13 @@ class ServiceIngestor(ingestor):
             self._write_result_data_to_disk(document_id, result_data)
         return result_data if return_results else None
 
-    def _pipeline_payload(self, *, result_schema: ResultSchema = "legacy") -> dict[str, Any] | None:
+    def _pipeline_payload(
+        self,
+        *,
+        result_schema: ResultSchema = "legacy",
+        return_embeddings: bool = False,
+        return_images: bool = False,
+    ) -> dict[str, Any] | None:
         """Return the spec dict to send on the wire, or ``None`` when empty.
 
         The "empty" check mirrors :meth:`PipelineSpec.is_empty` server-side
@@ -516,9 +522,8 @@ class ServiceIngestor(ingestor):
         """
         spec = dict(self._pipeline_spec)
         spec["result_schema"] = result_schema
-        if result_schema == "legacy":
-            spec.setdefault("return_embeddings", False)
-            spec.setdefault("return_images", False)
+        spec["return_embeddings"] = bool(return_embeddings or spec.get("return_embeddings", False))
+        spec["return_images"] = bool(return_images or spec.get("return_images", False))
         is_empty = (
             spec.get("extraction_mode", "auto") in ("pdf", "auto")
             and not spec.get("stage_order")
@@ -1062,8 +1067,9 @@ class ServiceIngestor(ingestor):
             Optional :class:`IngestExecuteParams` (or plain ``dict``)
             carrying execute-time flags.  In service run_mode only
             ``return_failures`` / ``return_traces`` / ``return_results`` /
-            ``result_schema`` are honored — every other field is recorded
-            on the server-side pipeline spec.
+            ``result_schema`` / ``return_embeddings`` / ``return_images``
+            are honored — every other field is recorded on the server-side
+            pipeline spec.
         **kwargs
             Same execute-time flags may be passed individually.  Anything
             not recognised is silently ignored (server-side execution
@@ -1080,6 +1086,10 @@ class ServiceIngestor(ingestor):
             DataFrame column layout with bulky values stripped and emits
             a deprecation warning when result rows are retained.
             ``"compact"`` opts into the future compact row schema.
+        return_embeddings, return_images
+            When using legacy result rows, include embedding vectors and
+            raw image payloads instead of stripping them from transport
+            cells. Defaults remain ``False`` to avoid large responses.
 
         Returns
         -------
@@ -1096,7 +1106,9 @@ class ServiceIngestor(ingestor):
             of raw SSE event dicts observed during the run, useful for
             debugging pipeline behaviour without re-running the job.
         """
-        return_failures, return_traces, return_results, result_schema = self._resolve_execute_flags(params, kwargs)
+        return_failures, return_traces, return_results, result_schema, return_embeddings, return_images = (
+            self._resolve_execute_flags(params, kwargs)
+        )
         del params, kwargs
         retain_results = return_results or self._save_to_disk_dir is not None
         if retain_results and result_schema == "legacy":
@@ -1110,7 +1122,12 @@ class ServiceIngestor(ingestor):
         documents_failed = 0
         total_uploaded = 0
 
-        for evt in self.ingest_stream(retain_results=retain_results, result_schema=result_schema):
+        for evt in self.ingest_stream(
+            retain_results=retain_results,
+            result_schema=result_schema,
+            return_embeddings=return_embeddings,
+            return_images=return_images,
+        ):
             if return_traces:
                 traces.append(evt)
             event_type = evt.get("event")
@@ -1222,7 +1239,9 @@ class ServiceIngestor(ingestor):
         return schema  # type: ignore[return-value]
 
     @classmethod
-    def _resolve_execute_flags(cls, params: Any, kwargs: dict[str, Any]) -> tuple[bool, bool, bool, ResultSchema]:
+    def _resolve_execute_flags(
+        cls, params: Any, kwargs: dict[str, Any]
+    ) -> tuple[bool, bool, bool, ResultSchema, bool, bool]:
         """Read execute-time flags from ``params`` and/or ``kwargs``.
 
         kwargs take precedence over fields on ``params`` when both supply
@@ -1264,7 +1283,15 @@ class ServiceIngestor(ingestor):
             if "result_schema" in kwargs
             else _from_params_value("result_schema", default="legacy")
         )
-        return return_failures, return_traces, return_results, result_schema
+        return_embeddings = (
+            bool(kwargs["return_embeddings"])
+            if "return_embeddings" in kwargs
+            else _from_params("return_embeddings", default=False)
+        )
+        return_images = (
+            bool(kwargs["return_images"]) if "return_images" in kwargs else _from_params("return_images", default=False)
+        )
+        return return_failures, return_traces, return_results, result_schema, return_embeddings, return_images
 
     # ------------------------------------------------------------------
     # Execution — sync streaming
@@ -1275,6 +1302,8 @@ class ServiceIngestor(ingestor):
         *,
         retain_results: bool = False,
         result_schema: ResultSchema = "legacy",
+        return_embeddings: bool = False,
+        return_images: bool = False,
     ) -> Iterator[dict[str, Any]]:
         """Sync generator yielding events as documents are processed.
 
@@ -1288,7 +1317,12 @@ class ServiceIngestor(ingestor):
         * ``{"event": "job_finalized"|"job_partial"|"job_failed", "job_id": ..., ...}``
         """
         result_schema = self._normalize_result_schema(result_schema)
-        return self._ingest_stream_with_retain(retain_results, result_schema=result_schema)
+        return self._ingest_stream_with_retain(
+            retain_results,
+            result_schema=result_schema,
+            return_embeddings=return_embeddings,
+            return_images=return_images,
+        )
 
     # ------------------------------------------------------------------
     # Execution — async streaming
@@ -1299,6 +1333,8 @@ class ServiceIngestor(ingestor):
         *,
         retain_results: bool = False,
         result_schema: ResultSchema = "legacy",
+        return_embeddings: bool = False,
+        return_images: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
         """Async generator yielding events as documents are processed."""
         result_schema = self._normalize_result_schema(result_schema)
@@ -1311,6 +1347,8 @@ class ServiceIngestor(ingestor):
             files,
             retain_results=retain_results,
             result_schema=result_schema,
+            return_embeddings=return_embeddings,
+            return_images=return_images,
         ):
             if evt.get("event") == "upload_complete":
                 did = evt.get("document_id")
@@ -1327,6 +1365,8 @@ class ServiceIngestor(ingestor):
         retain_results: bool,
         *,
         result_schema: ResultSchema = "legacy",
+        return_embeddings: bool = False,
+        return_images: bool = False,
     ) -> Iterator[dict[str, Any]]:
         """Like :meth:`ingest_stream` but passes server-side retention to the HTTP client."""
         files = self._collect_inputs()
@@ -1343,7 +1383,13 @@ class ServiceIngestor(ingestor):
 
         def _factory():
             return self._wrap_for_capture(
-                self._aingest_stream_impl(files, retain_results=retain_results, result_schema=result_schema),
+                self._aingest_stream_impl(
+                    files,
+                    retain_results=retain_results,
+                    result_schema=result_schema,
+                    return_embeddings=return_embeddings,
+                    return_images=return_images,
+                ),
                 _record_doc_id,
             )
 
@@ -1356,6 +1402,8 @@ class ServiceIngestor(ingestor):
         *,
         retain_results: bool = False,
         result_schema: ResultSchema = "legacy",
+        return_embeddings: bool = False,
+        return_images: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
         from nemo_retriever.service.client import RetrieverServiceClient
 
@@ -1364,7 +1412,11 @@ class ServiceIngestor(ingestor):
             max_concurrency=self._max_concurrency,
             api_token=self._api_token,
         )
-        pipeline_payload = self._pipeline_payload(result_schema=result_schema)
+        pipeline_payload = self._pipeline_payload(
+            result_schema=result_schema,
+            return_embeddings=return_embeddings,
+            return_images=return_images,
+        )
         async for evt in client.aingest_documents_stream(
             files=files,
             pipeline_spec=pipeline_payload,
@@ -1393,6 +1445,8 @@ class ServiceIngestor(ingestor):
         return_traces: bool = False,
         return_results: bool = True,
         result_schema: ResultSchema = "legacy",
+        return_embeddings: bool = False,
+        return_images: bool = False,
     ) -> Any:
         """Run :meth:`ingest` on a background thread; return a ``Future``.
 
@@ -1409,6 +1463,8 @@ class ServiceIngestor(ingestor):
             return_traces=return_traces,
             return_results=return_results,
             result_schema=result_schema,
+            return_embeddings=return_embeddings,
+            return_images=return_images,
         )
 
     # ------------------------------------------------------------------

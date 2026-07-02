@@ -78,6 +78,16 @@ def test_transport_summarizes_long_lists_after_nested_sanitization() -> None:
     assert record["images"] == "<list len=21>"
 
 
+def test_transport_preserves_long_nested_image_lists_when_requested() -> None:
+    rows = [{"image_b64": "a" * 600, "label": "image"} for _ in range(21)]
+    df = pd.DataFrame({"path": ["/a.pdf"], "images": [rows]})
+
+    record = dataframe_to_transport_records(df, return_images=True)[0]
+
+    assert len(record["images"]) == 21
+    assert record["images"][0]["image_b64"] == "a" * 600
+
+
 def test_transport_compact_document_rows_drop_legacy_metadata_and_bbox() -> None:
     df = pd.DataFrame(
         {
