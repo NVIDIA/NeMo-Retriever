@@ -21,11 +21,25 @@ import pandas as pd
 
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
-from nemo_retriever.tools.recall.beir import VALID_BEIR_DOC_ID_FIELDS
+from nemo_retriever.query.agentic_options import (
+    agentic_backend_top_k_error,
+    agentic_int_min_error,
+    agentic_int_value,
+    agentic_temperature_error,
+)
+from nemo_retriever.tools.recall.beir import (
+    BeirDataset,
+    VALID_BEIR_DOC_ID_FIELDS,
+    build_beir_run_from_ranked_doc_ids,
+    compute_beir_metrics,
+    load_beir_dataset,
+)
 from nemo_retriever.tools.recall.beir import _extract_doc_id_from_hit as _beir_doc_id_from_hit
 from nemo_retriever.tools.recall.core import (
     _hit_to_audio_segment_key,
     _normalize_pdf_name,
+    _normalize_query_df,
+    _recall_at_k,
 )
 from nemo_retriever.graph.retriever import Retriever
 
@@ -129,9 +143,9 @@ class AgenticRetrievalConfig:
     text_truncation: int = AGENTIC_TEXT_TRUNCATION
     num_concurrent: int = AGENTIC_NUM_CONCURRENT
     # Forwarded verbatim as the OpenAI `reasoning_effort` field on every LLM
-    # call. Defaults to Path A's validated setting.
-    reasoning_effort: Optional[str] = "high"
-    # Backend retrieve-pool depth, Distinct from the per-call show count (AGENTIC_TARGET_TOP_K).
+    # call when explicitly configured.
+    reasoning_effort: Optional[str] = None
+    # Backend retrieve-pool depth, distinct from the final selected top_k.
     backend_top_k: int = AGENTIC_BACKEND_TOP_K
     # Sampling temperature sent on every agent LLM call (0.0 = greedy).
     temperature: float = AGENTIC_TEMPERATURE
@@ -143,12 +157,34 @@ class AgenticRetrievalConfig:
     def __post_init__(self) -> None:
         if self.llm_model is None or not str(self.llm_model).strip():
             raise ValueError("Agentic retrieval requires a non-empty llm_model.")
-        if int(self.react_max_steps) < 1:
-            raise ValueError("react_max_steps must be >= 1.")
-        if int(self.text_truncation) < 0:
-            raise ValueError("text_truncation must be >= 0.")
-        if int(self.top_k) < 1:
-            raise ValueError("top_k must be >= 1.")
+        for field_name, value, min_value in (
+            ("react_max_steps", self.react_max_steps, 1),
+            ("text_truncation", self.text_truncation, 0),
+            ("top_k", self.top_k, 1),
+            ("num_concurrent", self.num_concurrent, 1),
+        ):
+            integer_error = agentic_int_min_error(value, field_name=field_name, min_value=min_value)
+            if integer_error:
+                raise ValueError(integer_error)
+            object.__setattr__(self, field_name, agentic_int_value(value, field_name=field_name))
+
+        backend_error = agentic_backend_top_k_error(
+            self.backend_top_k,
+            target_top_k=int(self.top_k),
+            field_name="backend_top_k",
+        )
+        if backend_error:
+            raise ValueError(backend_error)
+        object.__setattr__(self, "backend_top_k", agentic_int_value(self.backend_top_k, field_name="backend_top_k"))
+
+        temperature_error = agentic_temperature_error(
+            self.temperature,
+            invoke_url=self.invoke_url,
+            field_name="temperature",
+        )
+        if temperature_error:
+            raise ValueError(temperature_error)
+        object.__setattr__(self, "temperature", float(self.temperature))
 
 
 class AgenticRetriever:
@@ -380,3 +416,116 @@ def _none_if_empty(value: Optional[str]) -> Optional[str]:
     if not stripped or stripped.lower() in {"none", "null"}:
         return None
     return stripped
+
+
+def _query_ids_from_normalized_query_df(df_query: pd.DataFrame) -> list[str]:
+    if "query_id" in df_query.columns:
+        return df_query["query_id"].astype(str).tolist()
+    return [str(idx) for idx in range(len(df_query.index))]
+
+
+def _agentic_result_to_ranked_doc_ids(query_ids: Sequence[str], result: pd.DataFrame) -> list[list[str]]:
+    ranked_by_qid: dict[str, list[str]] = {str(query_id): [] for query_id in query_ids}
+    seen_by_qid: dict[str, set[str]] = {str(query_id): set() for query_id in query_ids}
+    if result.empty:
+        return [ranked_by_qid[str(query_id)] for query_id in query_ids]
+
+    required = {"query_id", "doc_id", "rank"}
+    missing = required - set(result.columns)
+    if missing:
+        raise ValueError(f"Agentic result missing required columns: {sorted(missing)}")
+
+    for query_id, group in result.groupby("query_id", sort=False):
+        qid = str(query_id)
+        if qid not in ranked_by_qid:
+            continue
+        for _, row in group.sort_values("rank").iterrows():
+            doc_id = str(row.get("doc_id", "")).strip()
+            if not doc_id or doc_id in seen_by_qid[qid]:
+                continue
+            seen_by_qid[qid].add(doc_id)
+            ranked_by_qid[qid].append(doc_id)
+
+    return [ranked_by_qid[str(query_id)] for query_id in query_ids]
+
+
+def run_agentic_audio_recall_evaluation(
+    *,
+    query_csv: Path,
+    cfg: AgenticRetrievalConfig,
+    ks: Sequence[int] = (1, 5, 10),
+    audio_match_tolerance_secs: float = 2.0,
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str], list[list[str]], dict[str, float]]:
+    """Run agentic retrieval against an audio recall CSV and compute recall metrics."""
+
+    df_query = _normalize_query_df(pd.read_csv(query_csv), match_mode="audio_segment")
+    query_ids = _query_ids_from_normalized_query_df(df_query)
+    queries = df_query["query"].astype(str).tolist()
+    gold_doc_ids = df_query["golden_answer"].astype(str).tolist()
+
+    result = AgenticRetriever(cfg, match_mode="audio_segment").retrieve(query_ids, queries)
+    retrieved_doc_ids = _agentic_result_to_ranked_doc_ids(query_ids, result)
+    ks_sorted = sorted({int(k) for k in ks if int(k) > 0})
+    if not ks_sorted:
+        raise ValueError("ks must contain at least one positive integer")
+    metrics = {
+        f"recall@{k}": _recall_at_k(
+            gold_doc_ids,
+            retrieved_doc_ids,
+            k,
+            match_mode="audio_segment",
+            audio_match_tolerance_secs=float(audio_match_tolerance_secs),
+        )
+        for k in ks_sorted
+    }
+    return df_query, result, gold_doc_ids, retrieved_doc_ids, metrics
+
+
+def run_agentic_beir_evaluation(
+    *,
+    loader: str,
+    dataset_name: str,
+    cfg: AgenticRetrievalConfig,
+    split: str = "test",
+    query_language: str | None = None,
+    doc_id_field: str = "pdf_basename",
+    ks: Sequence[int] = (1, 3, 5, 10),
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, dict[str, int]], dict[str, dict[str, float]], dict[str, float]]:
+    """Load a BEIR-style dataset, run agentic retrieval, and compute metrics."""
+
+    dataset = load_beir_dataset(
+        loader,
+        dataset_name=dataset_name,
+        split=split,
+        query_language=query_language,
+        doc_id_field=doc_id_field,
+    )
+    result, ranked_doc_ids = agentic_beir_retrieve(dataset, cfg, doc_id_field=doc_id_field)
+    run = build_beir_run_from_ranked_doc_ids(dataset.query_ids, ranked_doc_ids)
+    metrics = compute_beir_metrics(dataset.qrels, run, ks=ks)
+    df_query = pd.DataFrame({"query_id": dataset.query_ids, "query": dataset.queries})
+    return df_query, result, dataset.qrels, run, metrics
+
+
+def agentic_beir_retrieve(
+    dataset: BeirDataset,
+    cfg: AgenticRetrievalConfig,
+    *,
+    doc_id_field: str = "pdf_basename",
+) -> tuple[pd.DataFrame, list[list[str]]]:
+    """Run agentic (ReAct) retrieval over a pre-loaded BEIR dataset.
+
+    Returns the raw agentic result DataFrame (``query_id``/``doc_id``/``rank``/…)
+    and the per-query ranked doc-id lists aligned to ``dataset.query_ids``.
+    Doc-id matching follows ``doc_id_field`` (BEIR semantics, applied inside the
+    agent's retrieve hop), so the ranked ids align with the qrels keys produced by
+    ``load_beir_dataset(..., doc_id_field=...)``. Splitting this out lets callers
+    that already hold a loaded dataset (e.g. the harness) reuse the agent's
+    retrieve+rank step without re-loading or re-implementing it.
+    """
+    result = AgenticRetriever(cfg, match_mode="pdf_page", doc_id_field=doc_id_field).retrieve(
+        list(dataset.query_ids),
+        list(dataset.queries),
+    )
+    ranked_doc_ids = _agentic_result_to_ranked_doc_ids(list(dataset.query_ids), result)
+    return result, ranked_doc_ids

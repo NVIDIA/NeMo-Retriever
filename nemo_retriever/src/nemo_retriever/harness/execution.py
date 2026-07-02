@@ -281,7 +281,9 @@ def run_benchmark(
 
             if (resolved.get("evaluation") or {}).get("mode") == "beir":
                 with capture_output_to_log(writer.path("run.log"), label="query_evaluate"):
-                    query_latencies_ms, beir_metrics, query_count = run_beir_queries(writer, resolved, query_plan)
+                    query_latencies_ms, beir_metrics, query_count = run_beir_queries(
+                        writer, resolved, query_plan, query_request
+                    )
 
         summary_metrics = build_summary_metrics(
             resolved,
