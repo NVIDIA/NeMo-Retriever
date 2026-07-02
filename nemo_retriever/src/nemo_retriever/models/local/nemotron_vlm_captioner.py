@@ -84,6 +84,9 @@ class NemotronVLMCaptioner(BaseModel):
         profile = get_caption_model_profile(model_path, target="local")
         model_path = profile.local_model_id
 
+        from nemo_retriever.models.inference.vllm import apply_vllm_startup_defaults
+
+        apply_vllm_startup_defaults()
         try:
             from vllm import LLM, SamplingParams  # noqa: F401
         except ImportError as e:
