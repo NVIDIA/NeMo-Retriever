@@ -148,11 +148,6 @@ uv run --project nemo_retriever retriever harness run-files \
   nemo_retriever/harness/runfiles/financebench_beir.json
 ```
 
-If model startup specifically reports that the DeepGEMM backend is unavailable,
-`VLLM_USE_DEEP_GEMM=0` can select fallback kernels. Do not set it preemptively;
-it can affect throughput. The harness records the setting in
-`environment.json` when present.
-
 `run-files` owns the session layout. Runfiles passed to this command cannot set
 their own `output_dir` or `run_id`. The session uses the following paths and
 identifiers:
