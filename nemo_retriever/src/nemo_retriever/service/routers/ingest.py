@@ -271,7 +271,7 @@ async def _enqueue_or_reject(pool_type: PoolType, item: WorkItem) -> None:
 async def _fetch_result_data_from_workers(document_id: str) -> list[dict[str, Any]] | None:
     """Read rows already handed off to this gateway's retained store."""
     try:
-        rows = get_result_data(document_id)
+        rows = await asyncio.to_thread(get_result_data, document_id)
     except ResultStoreTemporarilyUnavailable as exc:
         raise HTTPException(
             status_code=503,
@@ -1825,7 +1825,7 @@ async def job_callback(request: Request) -> JSONResponse:
             )
         if pre_rec is not None and result_rows and tracker.should_retain_results(pre_rec.job_id):
             try:
-                retained_rows = get_result_data(item_id)
+                retained_rows = await asyncio.to_thread(get_result_data, item_id)
             except ResultStoreTemporarilyUnavailable as exc:
                 raise HTTPException(
                     status_code=503,

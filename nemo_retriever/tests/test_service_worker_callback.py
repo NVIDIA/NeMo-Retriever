@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import errno
 import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -357,6 +358,23 @@ def test_gateway_fetch_returns_retryable_503_when_shared_store_is_unavailable(
     assert error.value.headers == {"Retry-After": "60"}
 
 
+def test_gateway_fetch_reads_shared_result_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_retriever.service.routers import ingest
+
+    event_loop_thread = threading.get_ident()
+    read_threads: list[int] = []
+    rows = [{"text": "gateway"}]
+
+    def read_result(_: str) -> list[dict[str, Any]]:
+        read_threads.append(threading.get_ident())
+        return rows
+
+    monkeypatch.setattr(ingest, "get_result_data", read_result)
+
+    assert asyncio.run(ingest._fetch_result_data_from_workers("doc-gateway")) == rows
+    assert read_threads and read_threads[0] != event_loop_thread
+
+
 def test_gateway_fetches_shared_result_before_proxy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from nemo_retriever.service.routers.ingest import _fetch_result_data_from_workers
 
@@ -518,6 +536,12 @@ def test_gateway_callback_copies_result_before_completing(
 
     rows = [{"text": "owned by worker 10.1.2.3"}]
     requested_urls: list[str] = []
+    to_thread_calls: list[tuple[Any, tuple[Any, ...]]] = []
+    original_to_thread = asyncio.to_thread
+
+    async def record_to_thread(func: Any, /, *args: Any, **kwargs: Any) -> Any:
+        to_thread_calls.append((func, args))
+        return await original_to_thread(func, *args, **kwargs)
 
     class _Resp:
         status_code = 200
@@ -547,6 +571,7 @@ def test_gateway_callback_copies_result_before_completing(
         tracker.register_document("handoff-doc", job_id="handoff-job")
         tracker.mark_processing("handoff-doc")
 
+        monkeypatch.setattr(ingest.asyncio, "to_thread", record_to_thread)
         monkeypatch.setattr(ingest.httpx, "AsyncClient", _Client)
         response = client.post(
             "/v1/internal/job-callback",
@@ -559,6 +584,7 @@ def test_gateway_callback_copies_result_before_completing(
         )
 
         assert response.status_code == 200
+        assert (ingest.get_result_data, ("handoff-doc",)) in to_thread_calls
         assert requested_urls == ["http://10.1.2.3:7670/v1/internal/document-result/handoff-doc"]
         record = tracker.get_document("handoff-doc")
         assert record is not None
