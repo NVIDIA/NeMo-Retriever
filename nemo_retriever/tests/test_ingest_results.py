@@ -49,21 +49,24 @@ def test_transport_preserves_column_layout_and_strips_bulky_payloads() -> None:
 
 
 def test_transport_can_return_legacy_bulk_payloads_when_requested() -> None:
+    base64_image = "a" * 600
+    embedding = [float(i) for i in range(64)]
+    embedding_array = __import__("numpy").array(embedding)
     df = pd.DataFrame(
         {
-            "page_image": [{"image_b64": "raw-page", "stored_image_uri": "file:///stored/page.png"}],
-            "images": [[{"image_b64": "raw-crop"}]],
-            "text_embeddings_1b_v2": [{"embedding": [0.1, 0.2]}],
-            "metadata": [{"embedding": [0.3, 0.4]}],
+            "page_image": [{"image_b64": base64_image, "stored_image_uri": "file:///stored/page.png"}],
+            "images": [[{"image_b64": base64_image}]],
+            "text_embeddings_1b_v2": [{"embedding": embedding}],
+            "metadata": [{"embedding": embedding_array}],
         }
     )
 
     record = dataframe_to_transport_records(df, return_embeddings=True, return_images=True)[0]
 
-    assert record["page_image"]["image_b64"] == "raw-page"
-    assert record["images"][0]["image_b64"] == "raw-crop"
-    assert record["text_embeddings_1b_v2"] == {"embedding": [0.1, 0.2]}
-    assert record["metadata"] == {"embedding": [0.3, 0.4]}
+    assert record["page_image"]["image_b64"] == base64_image
+    assert record["images"][0]["image_b64"] == base64_image
+    assert record["text_embeddings_1b_v2"] == {"embedding": embedding}
+    assert record["metadata"] == {"embedding": embedding}
 
 
 def test_transport_summarizes_long_lists_after_nested_sanitization() -> None:

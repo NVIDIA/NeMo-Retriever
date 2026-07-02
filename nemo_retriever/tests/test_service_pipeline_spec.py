@@ -87,6 +87,18 @@ def test_legacy_pipeline_payload_disables_bulk_result_payloads() -> None:
     assert spec.return_images is False
 
 
+def test_legacy_pipeline_payload_preserves_explicit_bulk_result_flags() -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing._pipeline_spec["return_embeddings"] = True
+    ing._pipeline_spec["return_images"] = True
+
+    payload = ing._pipeline_payload(result_schema="legacy")
+
+    assert payload is not None
+    assert payload["return_embeddings"] is True
+    assert payload["return_images"] is True
+
+
 def test_execute_time_result_schema_overrides_stored_spec_value() -> None:
     ing = ServiceIngestor(base_url="http://example:7670")
     ing._pipeline_spec["result_schema"] = "compact"

@@ -67,6 +67,25 @@ def sanitize_cell_value(val: Any) -> Any:
     return val
 
 
+def _sanitize_returned_payload(val: Any) -> Any:
+    """Convert explicitly requested bulky payloads without size summarization."""
+    if _is_missing(val):
+        return None
+    if isinstance(val, (np.integer,)):
+        return int(val)
+    if isinstance(val, (np.floating,)):
+        return float(val)
+    if isinstance(val, np.ndarray):
+        return _sanitize_returned_payload(val.tolist())
+    if isinstance(val, dict):
+        return {str(k): _sanitize_returned_payload(v) for k, v in val.items()}
+    if isinstance(val, (list, tuple)):
+        return [_sanitize_returned_payload(item) for item in val]
+    if isinstance(val, str):
+        return val
+    return sanitize_cell_value(val)
+
+
 def _sanitize_result_value(
     key: str,
     val: Any,
@@ -81,12 +100,14 @@ def _sanitize_result_value(
     them in service results dominates memory use. Keep the surrounding
     keys/columns stable and null only the bulky payload values.
     """
-    if key in _RAW_IMAGE_FIELD_NAMES and not return_images:
-        return None
-    if key in _EMBEDDING_FIELD_NAMES and not return_embeddings:
-        return None
+    if key in _RAW_IMAGE_FIELD_NAMES:
+        return _sanitize_returned_payload(val) if return_images else None
+    if key in _EMBEDDING_FIELD_NAMES:
+        return _sanitize_returned_payload(val) if return_embeddings else None
     if key in _EMBEDDING_PAYLOAD_COLUMNS and not isinstance(val, dict) and not return_embeddings:
         return None
+    if key in _EMBEDDING_PAYLOAD_COLUMNS and not isinstance(val, dict):
+        return _sanitize_returned_payload(val)
     if isinstance(val, dict):
         return {
             str(k): _sanitize_result_value(

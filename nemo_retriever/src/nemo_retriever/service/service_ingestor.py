@@ -517,8 +517,8 @@ class ServiceIngestor(ingestor):
         spec = dict(self._pipeline_spec)
         spec["result_schema"] = result_schema
         if result_schema == "legacy":
-            spec["return_embeddings"] = False
-            spec["return_images"] = False
+            spec.setdefault("return_embeddings", False)
+            spec.setdefault("return_images", False)
         is_empty = (
             spec.get("extraction_mode", "auto") in ("pdf", "auto")
             and not spec.get("stage_order")
