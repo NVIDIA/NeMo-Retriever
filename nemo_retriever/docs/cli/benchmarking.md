@@ -13,46 +13,47 @@ per-stage micro-benchmarks.
 
 ## Harness (development / experimental)
 
-Run from the repository root (or any directory; pass `--config` if needed). Uses
-`--dataset` and `--preset` against `nemo_retriever/harness/test_configs.yaml`.
+Run from the repository root or any directory. The harness uses code-owned
+benchmark names from `nemo_retriever.harness.benchmark_registry`; use
+`retriever harness list` to discover the available benchmarks and runsets.
 
 ```bash
-# Named dataset from nemo_retriever/harness/test_configs.yaml
-retriever harness run --dataset bo767 --preset PE_GE_OCR_TE_DENSE
+# List benchmark registry entries, optionally including runsets
+retriever harness list
+retriever harness list --runsets
 
-# Default active profile (jp20 + single_gpu in test_configs.yaml)
-retriever harness run --dataset jp20
+# Inspect one concrete benchmark spec
+retriever harness show jp20_beir
 
-# Custom directory on disk
-retriever harness run --dataset /path/to/your/data
+# Run one benchmark and write stable artifacts
+retriever harness run jp20_beir
 
-# Override a single config key
-retriever harness run --dataset bo767 --override run_mode=inprocess
+# Run one benchmark in batch mode
+retriever harness run bo767_beir --mode batch
+
+# Override a resolved config key for this run
+retriever harness run bo767_beir --set query.top_k=5
+
+# Expand and run a code-owned benchmark runset
+retriever harness run-set jp20_core
 ```
 
 Related commands:
 
 ```bash
-retriever harness --help       # run, sweep, nightly, summary, compare, portal
+retriever harness --help
+retriever harness list --help
+retriever harness show --help
 retriever harness run --help
-retriever harness sweep --help
-retriever harness nightly --help
-retriever harness summary --help
-retriever harness compare --help
-```
-
-Sweep and nightly examples:
-
-```bash
-retriever harness sweep --runs-config nemo_retriever/harness/nightly_config.yaml
-retriever harness nightly --runs-config nemo_retriever/harness/nightly_config.yaml --dry-run
+retriever harness run-set --help
+retriever harness diff --help
 ```
 
 ### Agentic BEIR evaluation
 
 Harness runs use the standard dense retrieval path unless agentic retrieval is
-enabled in the resolved benchmark query config. Set `query.agentic: true` in the
-benchmark or dataset config, or use `--override query.agentic=true` on the CLI.
+enabled in the resolved benchmark query config. Set `query.agentic: true` in a
+code-owned benchmark or runfile, or use repeatable `--set` overrides on the CLI.
 The agentic harness path runs the same ReAct retrieval graph used by root query,
 but only after ingest and only for BEIR evaluation (`evaluation.mode: beir`).
 `retriever pipeline run` does not expose agentic evaluation flags.
@@ -60,9 +61,9 @@ but only after ingest and only for BEIR evaluation (`evaluation.mode: beir`).
 Minimal BEIR override example:
 
 ```bash
-retriever harness run --dataset jp20 --preset single_gpu \
-  --override query.agentic=true \
-  --override query.agentic_llm_model=nvidia/llama-3.3-nemotron-super-49b-v1.5
+retriever harness run jp20_beir \
+  --set query.agentic=true \
+  --set query.agentic_llm_model=nvidia/llama-3.3-nemotron-super-49b-v1.5
 ```
 
 Useful agentic query overrides:
@@ -119,10 +120,11 @@ Each benchmark reports rows/sec (or chunk rows/sec for audio) for its actor.
 
 ## Notes
 
-- **Configuration:** `retriever harness` uses `--dataset` / `--preset` /
-  `--override KEY=VALUE` against
-  `nemo_retriever/harness/test_configs.yaml`.
-- **Launcher:** for internal benchmarking, `retriever harness run …` is the
-  benchmark orchestration entry point (development / experimental; no guarantees).
+- **Configuration:** `retriever harness` uses code-owned benchmarks/runsets from
+  `nemo_retriever.harness.benchmark_registry`; use `--set KEY=VALUE` for small
+  per-run config overrides.
+- **Launcher:** for internal benchmarking, `retriever harness run BENCHMARK` and
+  `retriever harness run-set RUNSET` are the benchmark orchestration entry points
+  (development / experimental; no guarantees).
 - **Stage benchmarks:** `retriever benchmark …` is specific to the retriever CLI and
   covers per-stage throughput rather than full harness orchestration.
