@@ -6,10 +6,10 @@ import json
 import pytest
 
 from nemo_retriever.harness.artifact_writer import artifact_paths, ArtifactWriter, capture_output_to_log
-from nemo_retriever.harness.contracts import EXIT_INGEST_FAILURE, FailurePayload
+from nemo_retriever.harness.contracts import EXIT_INGEST_FAILURE, FailurePayload, HarnessRunError
 from nemo_retriever.harness.diff import diff_artifact_dirs
 from nemo_retriever.harness.environment import collect_environment
-from nemo_retriever.harness.execution import _concise_message, _run_result_payload, _write_failure_result
+from nemo_retriever.harness.execution import _concise_message, _run_result_payload, _write_failure_result, run_benchmark
 
 
 def _write_json(path, payload):
@@ -43,6 +43,23 @@ def test_artifact_writer_removes_only_stale_harness_outputs(tmp_path):
     assert not (tmp_path / "beir_metrics.json").exists()
     assert not (tmp_path / "lancedb").exists()
     assert (tmp_path / "keep-me.txt").read_text(encoding="utf-8") == "user-owned"
+
+
+def test_invalid_run_config_preserves_existing_artifacts(tmp_path):
+    (tmp_path / "results.json").write_text('{"old": true}', encoding="utf-8")
+    (tmp_path / "lancedb").mkdir()
+    (tmp_path / "lancedb" / "old-index").write_text("existing", encoding="utf-8")
+
+    with pytest.raises(HarnessRunError):
+        run_benchmark(
+            "jp20_beir",
+            output_dir=str(tmp_path),
+            requirements=("not-a-gate",),
+            dry_run=True,
+        )
+
+    assert json.loads((tmp_path / "results.json").read_text(encoding="utf-8")) == {"old": True}
+    assert (tmp_path / "lancedb" / "old-index").read_text(encoding="utf-8") == "existing"
 
 
 def test_result_payload_is_a_small_terminal_manifest(tmp_path):

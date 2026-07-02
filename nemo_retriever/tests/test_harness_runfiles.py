@@ -40,6 +40,8 @@ def test_run_files_applies_machine_paths_then_cli_overrides(monkeypatch, tmp_pat
     )
     documents = tmp_path / "datasets" / "jp20"
     query_file = tmp_path / "datasets" / "jp20_query_gt.csv"
+    documents.mkdir(parents=True)
+    query_file.write_text("query_id,query\n1,test\n", encoding="utf-8")
     dataset_paths = tmp_path / "dataset_paths.yaml"
     dataset_paths.write_text(
         "\n".join(
@@ -121,12 +123,54 @@ def test_run_files_completes_remaining_runs_and_preserves_first_failure(monkeypa
 
     monkeypatch.setattr("nemo_retriever.harness.runsets.run_benchmark", fake_run_benchmark)
 
-    outcome = run_runfiles(runfiles, output_dir=str(tmp_path / "session"))
+    outcome = run_runfiles(
+        runfiles,
+        output_dir=str(tmp_path / "session"),
+        overrides=(f'dataset.path="{tmp_path}"',),
+        dry_run=True,
+    )
 
     assert calls == ["jp20_beir", "bo767_beir"]
     assert outcome.exit_code == 10
     assert outcome.results["all_passed"] is False
     assert [run["exit_code"] for run in outcome.results["runs"]] == [10, 0]
+
+
+def test_run_files_preflights_every_run_before_execution(monkeypatch, tmp_path):
+    valid = tmp_path / "valid.json"
+    invalid = tmp_path / "invalid.json"
+    _write_json(
+        valid,
+        {
+            "schema_version": 1,
+            "name": "jp20",
+            "benchmark": "jp20_beir",
+            "set": {"dataset.path": str(tmp_path)},
+        },
+    )
+    _write_json(
+        invalid,
+        {
+            "schema_version": 1,
+            "name": "bo767",
+            "benchmark": "bo767_beir",
+            "set": {"dataset.path": str(tmp_path), "query.nope": 1},
+        },
+    )
+    calls = []
+
+    def fake_run_benchmark(benchmark, **kwargs):
+        calls.append(benchmark)
+        return _successful_outcome(benchmark, kwargs["output_dir"])
+
+    monkeypatch.setattr("nemo_retriever.harness.runsets.run_benchmark", fake_run_benchmark)
+    session_dir = tmp_path / "session"
+
+    with pytest.raises(HarnessRunError):
+        run_runfiles([valid, invalid], output_dir=str(session_dir), dry_run=True)
+
+    assert calls == []
+    assert not session_dir.exists()
 
 
 def test_run_files_redacts_sensitive_overrides_from_session_plan(monkeypatch, tmp_path):
@@ -137,10 +181,7 @@ def test_run_files_redacts_sensitive_overrides_from_session_plan(monkeypatch, tm
             "schema_version": 1,
             "name": "jp20_beir",
             "benchmark": "jp20_beir",
-            "set": [
-                "query.reranker_api_key=runfile-secret",
-                "notifications.webhook_url=https://hooks.example.invalid/runfile-secret",
-            ],
+            "set": ["query.reranker_api_key=runfile-secret"],
         },
     )
     calls = []
@@ -154,19 +195,19 @@ def test_run_files_redacts_sensitive_overrides_from_session_plan(monkeypatch, tm
     outcome = run_runfiles(
         [runfile],
         output_dir=str(tmp_path / "session"),
-        overrides=("query.reranker_api_key=cli-secret",),
+        overrides=(f'dataset.path="{tmp_path}"', "query.reranker_api_key=cli-secret"),
+        dry_run=True,
     )
 
     assert calls[0]["overrides"] == (
         "query.reranker_api_key=runfile-secret",
-        "notifications.webhook_url=https://hooks.example.invalid/runfile-secret",
+        f'dataset.path="{tmp_path}"',
         "query.reranker_api_key=cli-secret",
     )
     expanded_text = (outcome.artifact_dir / "expanded_runs.json").read_text(encoding="utf-8")
     assert "runfile-secret" not in expanded_text
     assert "cli-secret" not in expanded_text
-    assert "hooks.example.invalid" not in expanded_text
-    assert expanded_text.count("<redacted>") == 3
+    assert expanded_text.count("<redacted>") == 2
 
 
 @pytest.mark.parametrize(
@@ -175,6 +216,7 @@ def test_run_files_redacts_sensitive_overrides_from_session_plan(monkeypatch, tm
         ("name", "unsafe/../../../escape"),
         ("output_dir", "/tmp/run-owned-output"),
         ("run_id", "run-owned-id"),
+        ("dry_run", True),
     ),
 )
 def test_run_files_rejects_unsafe_or_run_owned_layout(field, value, tmp_path):

@@ -9,6 +9,7 @@ from nemo_retriever.harness.cli import app
 from nemo_retriever.harness.slack import (
     DEFAULT_SLACK_METRIC_KEYS,
     build_slack_payload,
+    load_replay_report,
     load_session_report,
     post_slack_payload,
 )
@@ -128,6 +129,25 @@ def test_session_report_resolves_child_artifacts_after_session_is_moved(tmp_path
     assert report.results[0].artifact_dir == moved / "001_jp20_beir"
     assert report.results[0].dataset == "jp20"
     assert report.results[0].run_metadata["gpu_count"] == 8
+
+
+def test_session_report_rejects_malformed_run_entries(tmp_path):
+    summary = tmp_path / "session_summary.json"
+    _write_json(summary, {"session_name": "corrupt", "all_passed": True, "runs": ["not-an-object"]})
+
+    with pytest.raises(ValueError, match="run at index 0 must be an object"):
+        load_session_report(summary)
+
+
+def test_run_artifact_replay_has_deterministic_identity(tmp_path):
+    session_dir = _write_session(tmp_path)
+    results_path = session_dir / "001_jp20_beir" / "results.json"
+
+    first = load_replay_report([results_path])
+    second = load_replay_report([results_path])
+
+    assert first.session_name == second.session_name == "artifact_replay"
+    assert first.timestamp is second.timestamp is None
 
 
 def test_slack_transport_error_does_not_expose_webhook(monkeypatch):

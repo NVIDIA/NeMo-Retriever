@@ -109,7 +109,10 @@ def run_command(
         list[str] | None,
         typer.Option("--require", help="Require a summary metric gate, e.g. recall_5>=0.80. Repeatable."),
     ] = None,
-    dry_run: Annotated[bool, typer.Option("--dry-run", help="Resolve plans and artifacts without execution.")] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Resolve configuration and write plans without executing ingest or query."),
+    ] = False,
     json_output: Annotated[bool, typer.Option("--json", help="Emit results JSON to stdout.")] = False,
 ) -> None:
     """Run one registered benchmark and write stable artifacts."""
@@ -187,7 +190,10 @@ def run_set_command(
         list[str] | None,
         typer.Option("--require", help="Require a summary metric gate for every run. Repeatable."),
     ] = None,
-    dry_run: Annotated[bool, typer.Option("--dry-run", help="Resolve plans and artifacts without execution.")] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Resolve configuration and write plans without executing ingest or query."),
+    ] = False,
     json_output: Annotated[bool, typer.Option("--json", help="Emit session summary JSON to stdout.")] = False,
 ) -> None:
     """Run a code-owned benchmark group using registry dataset paths."""
@@ -236,7 +242,10 @@ def run_files_command(
         list[str] | None,
         typer.Option("--require", help="Require a summary metric gate for every run. Repeatable."),
     ] = None,
-    dry_run: Annotated[bool, typer.Option("--dry-run", help="Resolve plans and artifacts without execution.")] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Resolve configuration and write plans without executing ingest or query."),
+    ] = False,
     json_output: Annotated[bool, typer.Option("--json", help="Emit session summary JSON to stdout.")] = False,
 ) -> None:
     """Run one or more runfiles, optionally with machine-local dataset paths."""

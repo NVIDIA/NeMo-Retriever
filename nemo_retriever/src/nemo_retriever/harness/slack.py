@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from nemo_retriever.harness.artifacts import now_timestr
 from nemo_retriever.harness.json_io import read_json_object
 
 DEFAULT_USERNAME = "nemo_retriever Harness"
@@ -208,11 +207,13 @@ def load_session_report(session_summary_path: Path) -> HarnessSessionReport:
     raw_results = payload.get("runs", payload.get("results", []))
     if not isinstance(raw_results, list):
         raise ValueError(f"'results' or 'runs' must be a list in {resolved_summary_path}")
-    results = [
-        _normalize_run_report(dict(item), session_dir=resolved_summary_path.parent)
-        for item in raw_results
-        if isinstance(item, dict)
-    ]
+    if not raw_results:
+        raise ValueError(f"Session contains no runs in {resolved_summary_path}")
+    results: list[HarnessRunReport] = []
+    for index, item in enumerate(raw_results):
+        if not isinstance(item, dict):
+            raise ValueError(f"Session run at index {index} must be an object in {resolved_summary_path}")
+        results.append(_normalize_run_report(item, session_dir=resolved_summary_path.parent))
     latest_commit = (
         payload.get("run_commit")
         or payload.get("latest_commit")
@@ -285,10 +286,10 @@ def load_replay_report(replay_paths: list[Path]) -> HarnessSessionReport:
 
     session_dir = resolved_paths[0].parent if resolved_paths else Path.cwd()
     return HarnessSessionReport(
-        session_name=f"replay_{now_timestr()}",
+        session_name="artifact_replay",
         session_dir=session_dir,
         session_type="artifact_replay",
-        timestamp=now_timestr(),
+        timestamp=None,
         latest_commit=latest_commit,
         all_passed=all(run.success for run in run_reports),
         dry_run=dry_run,

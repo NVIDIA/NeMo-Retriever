@@ -276,6 +276,8 @@ Machine-specific document and query paths belong in a separate, untracked
 dataset path map. `run-files --dataset-paths <file>` applies that map after
 runfile overrides and before CLI `--set` overrides. Passing one runfile creates
 a one-dataset session; passing multiple runfiles creates a suite session.
+`run-files` owns dry-run behavior for the session so a session cannot mix
+planned and executed children.
 
 ### Ablations
 

@@ -148,8 +148,9 @@ uv run --project nemo_retriever retriever harness run-files \
   nemo_retriever/harness/runfiles/financebench_beir.json
 ```
 
-`run-files` owns the session layout. Runfiles passed to this command cannot set
-their own `output_dir` or `run_id`. The session uses the following paths and
+`run-files` owns the session layout and execution mode. Runfiles passed to this
+command cannot set their own `output_dir`, `run_id`, or `dry_run`; use the
+session-level `--dry-run` flag instead. The session uses the following paths and
 identifiers:
 
 ```text
@@ -371,8 +372,12 @@ New runs keep summary metrics inside `results.json`; they do not emit a separate
 `summary_metrics.json`. `diff` and `post-slack` retain read compatibility with
 older harness artifacts.
 
-Dry-runs write only planning artifacts. They do not create empty `run.log`,
-`beir_metrics.json`, `beir_run.trec`, `query_results.jsonl`, or `lancedb/`.
+Dry-runs write the terminal status/result manifests and planning artifacts. They
+do not create empty `run.log`, `beir_metrics.json`, `beir_run.trec`,
+`query_results.jsonl`, or `lancedb/`.
+Treat `--dry-run` as configuration preflight, not execution evidence. When model
+startup or runtime behavior changes, follow it with a real run of the smallest
+appropriate registered benchmark.
 
 ## Gates
 
@@ -407,8 +412,9 @@ For automated harness work:
    available on the current machine.
 4. Use `run-files --dataset-paths ...` with one runfile for one dataset or
    multiple runfiles for a suite.
-5. Always set `--output-dir`, and use `--dry-run` before expensive execution
-   when changing paths, overrides, or gates.
+5. Always set `--output-dir`. Use `--dry-run` to preflight paths, overrides, and
+   gates before expensive execution, then use a small real benchmark when
+   runtime behavior needs validation.
 6. Use explicit `--require` gates from `EXPECTED_RESULTS.md`.
 7. Decide success from the process exit code and `results.json` for one run or
    `session_summary.json` for a session.

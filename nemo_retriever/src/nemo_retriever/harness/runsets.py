@@ -14,7 +14,7 @@ from nemo_retriever.harness.artifacts import get_artifacts_root, last_commit, no
 from nemo_retriever.harness.benchmark_registry import get_benchmark, get_runset, runset_names
 from nemo_retriever.harness.contracts import EXIT_INVALID, EXIT_SUCCESS, FailurePayload, HarnessRunError, RunOutcome
 from nemo_retriever.harness.dataset_paths import load_dataset_paths
-from nemo_retriever.harness.execution import run_benchmark
+from nemo_retriever.harness.execution import preflight_benchmark, run_benchmark
 from nemo_retriever.harness.json_io import write_json
 from nemo_retriever.harness.runfile import load_runfile
 
@@ -143,6 +143,14 @@ def run_runset(
     dry_run: bool = False,
 ) -> RunOutcome:
     spec = _runset_or_error(runset)
+    for benchmark in spec.runs:
+        preflight_benchmark(
+            benchmark,
+            mode=mode,
+            overrides=overrides,
+            requirements=requirements,
+            dry_run=dry_run,
+        )
     run_commit = last_commit()
     session_dir = _session_dir(runset, output_dir)
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -217,17 +225,24 @@ def run_runfiles(
     expanded_runs: list[dict[str, Any]] = []
     for index, request in enumerate(requests, start=1):
         run_name = _validate_session_label(request.name or request.benchmark, field="Runfile name")
-        if request.output_dir is not None or request.run_id is not None:
+        if request.output_dir is not None or request.run_id is not None or request.dry_run is not None:
             raise _invalid_runfile(
-                f"Runfile {request.source_path} cannot set 'output_dir' or 'run_id' when used with run-files; "
-                "the session owns artifact paths and run IDs."
+                f"Runfile {request.source_path} cannot set 'output_dir', 'run_id', or 'dry_run' when used with "
+                "run-files; the session owns artifact paths, run IDs, and dry-run behavior."
             )
-        try:
-            dataset_name = get_benchmark(request.benchmark).dataset
-        except KeyError:
-            dataset_name = None
-        dataset_paths = local_dataset_paths.get(dataset_name) if dataset_name is not None else None
+        dataset_name = get_benchmark(request.benchmark).dataset
+        dataset_paths = local_dataset_paths.get(dataset_name)
         dataset_overrides = dataset_paths.overrides() if dataset_paths is not None else ()
+        effective_mode = mode or request.mode or "local"
+        effective_overrides = (*request.overrides, *dataset_overrides, *overrides)
+        effective_requirements = (*request.requirements, *requirements)
+        preflight_benchmark(
+            request.benchmark,
+            mode=effective_mode,
+            overrides=effective_overrides,
+            requirements=effective_requirements,
+            dry_run=dry_run,
+        )
         expanded_runs.append(
             {
                 "index": index,
@@ -236,11 +251,11 @@ def run_runfiles(
                 "dataset": dataset_name,
                 "runfile_path": str(request.source_path),
                 "artifact_dir": f"{index:03d}_{run_name}",
-                "mode": mode or request.mode or "local",
+                "mode": effective_mode,
                 "dataset_paths": dataset_paths.to_dict() if dataset_paths is not None else None,
-                "overrides": [*request.overrides, *dataset_overrides, *overrides],
-                "requirements": [*request.requirements, *requirements],
-                "dry_run": bool(dry_run or request.dry_run),
+                "overrides": list(effective_overrides),
+                "requirements": list(effective_requirements),
+                "dry_run": bool(dry_run),
             }
         )
 
@@ -287,7 +302,7 @@ def run_runfiles(
     session_summary = _session_summary(
         session_type="runfiles",
         exit_code=exit_code,
-        dry_run=any(bool(expanded["dry_run"]) for expanded in expanded_runs),
+        dry_run=dry_run,
         run_results=run_results,
         run_commit=run_commit,
         session_name=session_name,

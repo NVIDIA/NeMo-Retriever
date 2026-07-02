@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 import time
 import traceback
+from pathlib import Path
 from typing import Any, Sequence
 
 from nemo_retriever.cli.ingest_workflow import run_ingest_workflow
@@ -156,6 +157,21 @@ def _mark_dry_run_metrics_unavailable(summary_metrics: dict[str, Any]) -> None:
             summary_metrics[key] = None
 
 
+def preflight_benchmark(
+    benchmark: str,
+    *,
+    mode: str,
+    overrides: Sequence[str],
+    requirements: Sequence[str],
+    dry_run: bool,
+) -> tuple[dict[str, Any], Path]:
+    """Resolve and validate one run without creating or replacing artifacts."""
+    parse_metric_gates(requirements)
+    resolved = resolve_benchmark(benchmark, mode=mode, overrides=overrides)
+    dataset_path, _query_path = validate_dataset_inputs(resolved, dry_run=dry_run)
+    return resolved, dataset_path
+
+
 def run_benchmark(
     benchmark: str,
     *,
@@ -168,6 +184,13 @@ def run_benchmark(
     runfile_payload: dict[str, Any] | None = None,
     runfile_path: str | None = None,
 ) -> RunOutcome:
+    resolved, dataset_path = preflight_benchmark(
+        benchmark,
+        mode=mode,
+        overrides=overrides,
+        requirements=requirements,
+        dry_run=dry_run,
+    )
     effective_run_id = run_id or make_run_id(benchmark)
     writer = ArtifactWriter(
         artifact_dir=resolve_artifact_dir(benchmark, effective_run_id, output_dir),
@@ -175,7 +198,6 @@ def run_benchmark(
         benchmark=benchmark,
     )
     silence_noisy_libraries()
-    resolved: dict[str, Any] | None = None
     summary_metrics: dict[str, Any] | None = None
     try:
         writer.status(status="planned", phase="resolve")
@@ -189,11 +211,8 @@ def run_benchmark(
                     }
                 ),
             )
-        parse_metric_gates(requirements)
-        resolved = resolve_benchmark(benchmark, mode=mode, overrides=overrides)
         write_json(writer.path("resolved_benchmark.json"), redact(resolved))
         write_json(writer.path("environment.json"), collect_environment())
-        dataset_path, _query_path = validate_dataset_inputs(resolved, dry_run=dry_run)
 
         writer.status(status="running", phase="ingest_plan")
         ingest_request = build_ingest_request(resolved, dataset_path, writer.artifact_dir)

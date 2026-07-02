@@ -16,7 +16,8 @@ the harness.
   overrides.
 - `run-set` executes a code-owned benchmark group using registry paths.
 - `run-files` executes one or more checked-in runfiles and can apply a
-  machine-local dataset path map. It is the portable suite entry point.
+  machine-local dataset path map. It is the portable suite entry point and owns
+  dry-run behavior for the complete session.
 - `post-slack` only reads completed artifacts. It does not execute benchmarks
   or mutate their results.
 - Scheduling, deployment, retries, locking, and secret distribution are outside
