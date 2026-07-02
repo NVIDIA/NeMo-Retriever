@@ -516,6 +516,9 @@ class ServiceIngestor(ingestor):
         """
         spec = dict(self._pipeline_spec)
         spec["result_schema"] = result_schema
+        if result_schema == "legacy":
+            spec["return_embeddings"] = False
+            spec["return_images"] = False
         is_empty = (
             spec.get("extraction_mode", "auto") in ("pdf", "auto")
             and not spec.get("stage_order")
@@ -534,6 +537,8 @@ class ServiceIngestor(ingestor):
                 )
             )
             and spec.get("result_schema", "legacy") == "legacy"
+            and not spec.get("return_embeddings", False)
+            and not spec.get("return_images", False)
         )
         return None if is_empty else spec
 

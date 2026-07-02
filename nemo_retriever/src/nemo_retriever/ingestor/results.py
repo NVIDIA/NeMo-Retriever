@@ -67,7 +67,13 @@ def sanitize_cell_value(val: Any) -> Any:
     return val
 
 
-def _sanitize_result_value(key: str, val: Any) -> Any:
+def _sanitize_result_value(
+    key: str,
+    val: Any,
+    *,
+    return_embeddings: bool = False,
+    return_images: bool = False,
+) -> Any:
     """Convert a result value to JSON-safe transport form.
 
     Raw image and embedding payloads are useful inside the pipeline for
@@ -75,18 +81,46 @@ def _sanitize_result_value(key: str, val: Any) -> Any:
     them in service results dominates memory use. Keep the surrounding
     keys/columns stable and null only the bulky payload values.
     """
-    if key in _RAW_IMAGE_FIELD_NAMES:
+    if key in _RAW_IMAGE_FIELD_NAMES and not return_images:
         return None
-    if key in _EMBEDDING_FIELD_NAMES:
+    if key in _EMBEDDING_FIELD_NAMES and not return_embeddings:
         return None
-    if key in _EMBEDDING_PAYLOAD_COLUMNS and not isinstance(val, dict):
+    if key in _EMBEDDING_PAYLOAD_COLUMNS and not isinstance(val, dict) and not return_embeddings:
         return None
     if isinstance(val, dict):
-        return {str(k): _sanitize_result_value(str(k), v) for k, v in val.items()}
+        return {
+            str(k): _sanitize_result_value(
+                str(k),
+                v,
+                return_embeddings=return_embeddings,
+                return_images=return_images,
+            )
+            for k, v in val.items()
+        }
     if isinstance(val, list):
-        return sanitize_cell_value([_sanitize_result_value("", item) for item in val])
+        return sanitize_cell_value(
+            [
+                _sanitize_result_value(
+                    "",
+                    item,
+                    return_embeddings=return_embeddings,
+                    return_images=return_images,
+                )
+                for item in val
+            ]
+        )
     if isinstance(val, tuple):
-        return sanitize_cell_value([_sanitize_result_value("", item) for item in val])
+        return sanitize_cell_value(
+            [
+                _sanitize_result_value(
+                    "",
+                    item,
+                    return_embeddings=return_embeddings,
+                    return_images=return_images,
+                )
+                for item in val
+            ]
+        )
     return sanitize_cell_value(val)
 
 
@@ -294,12 +328,18 @@ def compact_result_record(row: dict[str, Any]) -> dict[str, Any]:
     return record
 
 
-def dataframe_to_transport_records(df: Any, *, result_schema: ResultSchema = "legacy") -> list[dict[str, Any]]:
+def dataframe_to_transport_records(
+    df: Any,
+    *,
+    result_schema: ResultSchema = "legacy",
+    return_embeddings: bool = False,
+    return_images: bool = False,
+) -> list[dict[str, Any]]:
     """Serialize a pipeline DataFrame to JSON-safe row dicts.
 
     ``result_schema="legacy"`` retains all columns so the reconstructed
-    frame matches ``GraphIngestor.ingest()`` output; only cell values are
-    sanitized to stay within service memory/transport limits.
+    frame matches ``GraphIngestor.ingest()`` output; by default raw image
+    and embedding payload values are nulled before transport.
 
     ``result_schema="compact"`` returns the future compact public schema:
     extracted text, source provenance, element type, page number or media
@@ -314,7 +354,18 @@ def dataframe_to_transport_records(df: Any, *, result_schema: ResultSchema = "le
     records = df.to_dict(orient="records")
     if result_schema == "compact":
         return [compact_result_record(row) for row in records]
-    return [{k: _sanitize_result_value(str(k), v) for k, v in row.items()} for row in records]
+    return [
+        {
+            k: _sanitize_result_value(
+                str(k),
+                v,
+                return_embeddings=return_embeddings,
+                return_images=return_images,
+            )
+            for k, v in row.items()
+        }
+        for row in records
+    ]
 
 
 def dataframe_from_transport_records(records: list[dict[str, Any]]) -> Any:

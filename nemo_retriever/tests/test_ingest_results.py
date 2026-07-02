@@ -48,6 +48,24 @@ def test_transport_preserves_column_layout_and_strips_bulky_payloads() -> None:
     assert record["images"][0] == {"image_b64": None, "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4]}
 
 
+def test_transport_can_return_legacy_bulk_payloads_when_requested() -> None:
+    df = pd.DataFrame(
+        {
+            "page_image": [{"image_b64": "raw-page", "stored_image_uri": "file:///stored/page.png"}],
+            "images": [[{"image_b64": "raw-crop"}]],
+            "text_embeddings_1b_v2": [{"embedding": [0.1, 0.2]}],
+            "metadata": [{"embedding": [0.3, 0.4]}],
+        }
+    )
+
+    record = dataframe_to_transport_records(df, return_embeddings=True, return_images=True)[0]
+
+    assert record["page_image"]["image_b64"] == "raw-page"
+    assert record["images"][0]["image_b64"] == "raw-crop"
+    assert record["text_embeddings_1b_v2"] == {"embedding": [0.1, 0.2]}
+    assert record["metadata"] == {"embedding": [0.3, 0.4]}
+
+
 def test_transport_summarizes_long_lists_after_nested_sanitization() -> None:
     rows = [{"image_b64": f"raw-{idx}", "label": "image"} for idx in range(21)]
     df = pd.DataFrame({"path": ["/a.pdf"], "images": [rows]})
@@ -140,6 +158,16 @@ def test_sanitize_result_data_accepts_compact_schema() -> None:
     assert _sanitize_result_data(df, result_schema="compact") == dataframe_to_transport_records(
         df,
         result_schema="compact",
+    )
+
+
+def test_sanitize_result_data_forwards_legacy_payload_flags() -> None:
+    df = pd.DataFrame({"metadata": [{"embedding": [0.1]}], "page_image": [{"image_b64": "raw"}]})
+
+    assert _sanitize_result_data(df, return_embeddings=True, return_images=True) == dataframe_to_transport_records(
+        df,
+        return_embeddings=True,
+        return_images=True,
     )
 
 
