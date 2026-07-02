@@ -52,6 +52,39 @@ def test_artifact_writer_removes_only_stale_harness_outputs(tmp_path):
     assert (tmp_path / "keep-me.txt").read_text(encoding="utf-8") == "user-owned"
 
 
+def test_write_json_preserves_previous_file_when_publish_fails(monkeypatch, tmp_path):
+    import nemo_retriever.harness.json_io as json_io
+
+    target = tmp_path / "status.json"
+    target.write_text('{"status": "old"}\n', encoding="utf-8")
+
+    def fail_replace(source, destination):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(json_io.os, "replace", fail_replace)
+
+    with pytest.raises(HarnessRunError) as error:
+        json_io.write_json(target, {"status": "new"})
+
+    assert error.value.exit_code == EXIT_ARTIFACT_WRITE_FAILURE
+    assert target.read_text(encoding="utf-8") == '{"status": "old"}\n'
+    assert list(tmp_path.glob(".status.json.*.tmp")) == []
+
+
+def test_write_json_classifies_serialization_failures(tmp_path):
+    from nemo_retriever.harness.json_io import write_json
+
+    class Unserializable:
+        def __str__(self):
+            raise ValueError("cannot serialize")
+
+    with pytest.raises(HarnessRunError) as error:
+        write_json(tmp_path / "status.json", {"value": Unserializable()})
+
+    assert error.value.exit_code == EXIT_ARTIFACT_WRITE_FAILURE
+    assert not (tmp_path / "status.json").exists()
+
+
 def test_redact_recurses_into_structured_override_values():
     override = 'query={"reranker_api_key":"secret-value","top_k":10}'
 

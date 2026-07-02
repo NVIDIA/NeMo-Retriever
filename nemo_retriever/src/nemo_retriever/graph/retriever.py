@@ -94,8 +94,6 @@ class Retriever:
 
     _cached_graph: Any = field(default=None, init=False, repr=False, compare=False)
     _cache_key: Any = field(default=None, init=False, repr=False, compare=False)
-    _cached_resolved_graph: Any = field(default=None, init=False, repr=False, compare=False)
-    _resolved_graph_source: Any = field(default=None, init=False, repr=False, compare=False)
     _lancedb_capabilities_cache: dict[tuple[str, str], LanceTableCapabilities] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
@@ -187,20 +185,6 @@ class Retriever:
         self._cache_key = key
         return g
 
-    def _get_resolved_graph(self, graph: Any) -> Any:
-        """Resolve *graph* once and retain its stateful local operator delegates."""
-        # A caller-owned custom graph may be mutated in place between queries.
-        # Preserve the historical resolve-per-call behavior for that surface;
-        # Retriever-owned default graphs are immutable and safe to cache.
-        if self.graph is not None:
-            return graph.resolve_for_local_execution()
-        if self._cached_resolved_graph is not None and self._resolved_graph_source is graph:
-            return self._cached_resolved_graph
-        resolved = graph.resolve_for_local_execution()
-        self._cached_resolved_graph = resolved
-        self._resolved_graph_source = graph
-        return resolved
-
     def _execute_queries_graph(
         self,
         query_texts: list[str],
@@ -218,21 +202,21 @@ class Retriever:
         # with the embedded rows produced from ``df``. If this query graph grows
         # distributed/shuffled stages, carry row-local query text or IDs instead.
         graph = self._get_graph(embed_extra=embed_extra)
-        if not callable(getattr(graph, "resolve_for_local_execution", None)):
-            raise TypeError("graph must provide resolve_for_local_execution() (e.g. pipeline_graph.Graph)")
 
         exec_kwargs: dict[str, Any] = {
             **filter_retrieval_kwargs(dict(vdb_call_kwargs or {})),
             "top_k": int(retrieval_top_k),
             "query_texts": query_texts,
         }
-        resolved = self._get_resolved_graph(graph)
-        execute_resolved = getattr(resolved, "execute_resolved", None)
-        if callable(execute_resolved):
-            leaves = execute_resolved(df, **exec_kwargs)
+        if self.graph is None:
+            leaves = graph.execute_in_place(df, **exec_kwargs)
         else:
-            # Compatibility for graph-like custom objects predating
-            # ``Graph.execute_resolved``.
+            # Preserve resolve-per-query behavior for caller-owned graphs, which
+            # may be mutated between calls.
+            resolve = getattr(graph, "resolve_for_local_execution", None)
+            if not callable(resolve):
+                raise TypeError("graph must provide resolve_for_local_execution() (e.g. pipeline_graph.Graph)")
+            resolved = resolve()
             leaves = resolved.execute(df, **exec_kwargs)
         if len(leaves) != 1:
             raise RuntimeError(

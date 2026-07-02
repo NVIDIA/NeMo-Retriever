@@ -26,6 +26,18 @@ the harness.
 The harness must not route these commands through `retriever pipeline run` or
 `nemo_retriever.examples.graph_pipeline`.
 
+## Implementation Map
+
+- `runfile.py` parses one portable run request; `dataset_paths.py` resolves the
+  machine-local dataset map.
+- `execution.py` preflights and executes one benchmark.
+- `runsets.py` converts runsets or runfiles into prepared runs, then executes
+  both through one session loop.
+- `json_io.py` atomically publishes JSON artifacts; `artifact_writer.py` owns
+  per-run status, events, logs, and artifact cleanup.
+- `slack.py` reads completed artifacts and renders or posts a report. It does
+  not participate in benchmark execution.
+
 ## Configuration Ownership
 
 The Python registry owns benchmark and dataset semantics. Checked-in runfiles

@@ -4,10 +4,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from difflib import get_close_matches
 from pathlib import Path
 import re
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from nemo_retriever.harness.artifact_writer import redact
 from nemo_retriever.harness.artifacts import get_artifacts_root, last_commit, now_timestr
@@ -22,11 +23,23 @@ from nemo_retriever.harness.contracts import (
     RunOutcome,
 )
 from nemo_retriever.harness.dataset_paths import load_dataset_paths
-from nemo_retriever.harness.execution import preflight_benchmark, run_benchmark
-from nemo_retriever.harness.json_io import write_json
+from nemo_retriever.harness.execution import PreparedBenchmark, preflight_benchmark, run_prepared_benchmark
+from nemo_retriever.harness.json_io import artifact_write_error, write_json
 from nemo_retriever.harness.runfile import load_runfile
 
 _SESSION_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+
+@dataclass(frozen=True)
+class PreparedRun:
+    """One preflighted child in a runset or runfile session."""
+
+    name: str
+    artifact_name: str
+    prepared: PreparedBenchmark
+    runfile_payload: dict[str, Any] | None = None
+    runfile_path: str | None = None
+    summary_mode: str | None = None
 
 
 def _invalid_runfile(message: str) -> HarnessRunError:
@@ -59,8 +72,11 @@ def _session_dir(runset: str, output_dir: str | None) -> Path:
 
 def _remove_stale_session_summary(session_dir: Path) -> None:
     summary_path = session_dir / "session_summary.json"
-    if summary_path.exists() or summary_path.is_symlink():
-        summary_path.unlink()
+    try:
+        if summary_path.exists() or summary_path.is_symlink():
+            summary_path.unlink()
+    except OSError as exc:
+        raise artifact_write_error(exc) from exc
 
 
 def _runset_or_error(name: str):
@@ -91,12 +107,15 @@ def _run_outcome_summary(
 ) -> dict[str, Any]:
     failure = outcome.results.get("failure")
     artifact_dir = outcome.artifact_dir.resolve()
-    try:
-        artifact_dir_value = artifact_dir.relative_to(session_dir.resolve()).as_posix()
-        results_path_value = f"{artifact_dir_value}/results.json"
-    except ValueError:
-        artifact_dir_value = str(artifact_dir)
-        results_path_value = str(artifact_dir / "results.json")
+
+    def session_path(path: Path) -> str:
+        resolved_path = path.resolve()
+        try:
+            return resolved_path.relative_to(session_dir.resolve()).as_posix()
+        except ValueError:
+            return str(resolved_path)
+
+    artifact_dir_value = session_path(artifact_dir)
     payload = {
         "run_name": run_name or benchmark,
         "benchmark": benchmark,
@@ -104,8 +123,9 @@ def _run_outcome_summary(
         "exit_code": outcome.exit_code,
         "success": outcome.exit_code == EXIT_SUCCESS,
         "summary_metrics": outcome.results.get("summary_metrics", {}),
-        "results_path": results_path_value,
     }
+    if outcome.results_path is not None:
+        payload["results_path"] = session_path(outcome.results_path)
     dataset = outcome.results.get("dataset")
     if not dataset:
         try:
@@ -123,12 +143,32 @@ def _run_outcome_summary(
     return payload
 
 
+def _failed_result_payload(
+    *,
+    benchmark: str,
+    dry_run: bool,
+    exit_code: int,
+    failure: FailurePayload,
+) -> dict[str, Any]:
+    return redact(
+        {
+            "benchmark": benchmark,
+            "status": "failed",
+            "success": False,
+            "exit_code": exit_code,
+            "dry_run": bool(dry_run),
+            "summary_metrics": {},
+            "failure": failure.to_dict(),
+        }
+    )
+
+
 def _failed_child_outcome(
     *,
     benchmark: str,
     artifact_dir: Path,
     dry_run: bool,
-    exc: BaseException,
+    exc: Exception,
 ) -> RunOutcome:
     if isinstance(exc, HarnessRunError):
         exit_code = exc.exit_code
@@ -142,33 +182,40 @@ def _failed_child_outcome(
             message=f"{type(exc).__name__}: {exc}",
         )
 
-    def failure_result() -> dict[str, Any]:
-        return redact(
-            {
-                "benchmark": benchmark,
-                "status": "failed",
-                "success": False,
-                "exit_code": exit_code,
-                "dry_run": bool(dry_run),
-                "summary_metrics": {},
-                "failure": failure.to_dict(),
-            }
-        )
-
-    result = failure_result()
+    result = _failed_result_payload(
+        benchmark=benchmark,
+        dry_run=dry_run,
+        exit_code=exit_code,
+        failure=failure,
+    )
     try:
         artifact_dir.mkdir(parents=True, exist_ok=True)
-        write_json(artifact_dir / "results.json", result)
+        results_path: Path | None = artifact_dir / "results.json"
+        write_json(results_path, result)
     except Exception as write_exc:
         exit_code = EXIT_ARTIFACT_WRITE_FAILURE
-        failure = FailurePayload(
-            failed_phase="write_artifacts",
-            failure_reason="artifact_write_failed",
-            retryable=False,
-            message=f"{type(write_exc).__name__}: {write_exc}",
+        if isinstance(write_exc, HarnessRunError) and write_exc.exit_code == EXIT_ARTIFACT_WRITE_FAILURE:
+            failure = write_exc.failure
+        else:
+            failure = FailurePayload(
+                failed_phase="write_artifacts",
+                failure_reason="artifact_write_failed",
+                retryable=False,
+                message=f"{type(write_exc).__name__}: {write_exc}",
+            )
+        result = _failed_result_payload(
+            benchmark=benchmark,
+            dry_run=dry_run,
+            exit_code=exit_code,
+            failure=failure,
         )
-        result = failure_result()
-    return RunOutcome(exit_code=exit_code, artifact_dir=artifact_dir, results=result)
+        results_path = None
+    return RunOutcome(
+        exit_code=exit_code,
+        artifact_dir=artifact_dir,
+        results=result,
+        results_path=results_path,
+    )
 
 
 def _session_summary(
@@ -195,6 +242,74 @@ def _session_summary(
     }
 
 
+def _run_session(
+    *,
+    session_type: str,
+    session_name: str,
+    session_dir: Path,
+    runs: Sequence[PreparedRun],
+    expanded_payload: Mapping[str, Any],
+    run_commit: str,
+    dry_run: bool,
+    summary_extra: Mapping[str, Any],
+) -> RunOutcome:
+    try:
+        session_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise artifact_write_error(exc) from exc
+    _remove_stale_session_summary(session_dir)
+    write_json(session_dir / "expanded_runs.json", redact(dict(expanded_payload)))
+
+    run_results: list[dict[str, Any]] = []
+    exit_code = EXIT_SUCCESS
+    for run in runs:
+        artifact_dir = session_dir / run.artifact_name
+        try:
+            outcome = run_prepared_benchmark(
+                run.prepared,
+                output_dir=str(artifact_dir),
+                run_id=f"{session_name}_{run.artifact_name}",
+                runfile_payload=run.runfile_payload,
+                runfile_path=run.runfile_path,
+            )
+        except Exception as exc:
+            outcome = _failed_child_outcome(
+                benchmark=run.prepared.benchmark,
+                artifact_dir=artifact_dir,
+                dry_run=run.prepared.dry_run,
+                exc=exc,
+            )
+        run_results.append(
+            _run_outcome_summary(
+                run.prepared.benchmark,
+                outcome,
+                session_dir=session_dir,
+                run_name=run.name,
+                runfile_path=run.runfile_path,
+                mode=run.summary_mode,
+            )
+        )
+        if exit_code == EXIT_SUCCESS and outcome.exit_code != EXIT_SUCCESS:
+            exit_code = outcome.exit_code
+
+    session_summary = _session_summary(
+        session_type=session_type,
+        exit_code=exit_code,
+        dry_run=dry_run,
+        run_results=run_results,
+        run_commit=run_commit,
+        **dict(summary_extra),
+    )
+    summary_path = session_dir / "session_summary.json"
+    write_json(summary_path, session_summary)
+    return RunOutcome(
+        exit_code=exit_code,
+        artifact_dir=session_dir,
+        results=session_summary,
+        results_path=summary_path,
+    )
+
+
 def run_runset(
     runset: str,
     *,
@@ -205,74 +320,45 @@ def run_runset(
     dry_run: bool = False,
 ) -> RunOutcome:
     spec = _runset_or_error(runset)
-    for benchmark in spec.runs:
-        preflight_benchmark(
+    runs: list[PreparedRun] = []
+    expanded_runs: list[dict[str, Any]] = []
+    for index, benchmark in enumerate(spec.runs, start=1):
+        prepared = preflight_benchmark(
             benchmark,
             mode=mode,
             overrides=overrides,
             requirements=requirements,
             dry_run=dry_run,
         )
-    run_commit = last_commit()
-    session_dir = _session_dir(runset, output_dir)
-    session_dir.mkdir(parents=True, exist_ok=True)
-    _remove_stale_session_summary(session_dir)
-    expanded_runs = [
-        {
-            "index": index,
-            "benchmark": benchmark,
-            "artifact_dir": f"{index:03d}_{benchmark}",
-            "mode": mode,
-            "overrides": list(overrides),
-            "dry_run": bool(dry_run),
-        }
-        for index, benchmark in enumerate(spec.runs, start=1)
-    ]
-    write_json(
-        session_dir / "expanded_runs.json",
-        redact(
+        artifact_name = f"{index:03d}_{benchmark}"
+        runs.append(
+            PreparedRun(
+                name=benchmark,
+                artifact_name=artifact_name,
+                prepared=prepared,
+            )
+        )
+        expanded_runs.append(
             {
-                "runset": spec.to_dict(),
-                "runs": expanded_runs,
+                "index": index,
+                "benchmark": benchmark,
+                "artifact_dir": artifact_name,
+                "mode": mode,
+                "overrides": list(overrides),
+                "dry_run": bool(dry_run),
             }
-        ),
-    )
+        )
 
-    run_results: list[dict[str, Any]] = []
-    exit_code = EXIT_SUCCESS
-    for expanded in expanded_runs:
-        artifact_dir = session_dir / str(expanded["artifact_dir"])
-        try:
-            outcome = run_benchmark(
-                str(expanded["benchmark"]),
-                output_dir=str(artifact_dir),
-                run_id=f"{runset}_{expanded['index']:03d}_{expanded['benchmark']}",
-                mode=mode,
-                overrides=overrides,
-                requirements=requirements,
-                dry_run=dry_run,
-            )
-        except Exception as exc:
-            outcome = _failed_child_outcome(
-                benchmark=str(expanded["benchmark"]),
-                artifact_dir=artifact_dir,
-                dry_run=dry_run,
-                exc=exc,
-            )
-        run_results.append(_run_outcome_summary(str(expanded["benchmark"]), outcome, session_dir=session_dir))
-        if exit_code == EXIT_SUCCESS and outcome.exit_code != EXIT_SUCCESS:
-            exit_code = outcome.exit_code
-
-    session_summary = _session_summary(
+    return _run_session(
         session_type="runset",
-        exit_code=exit_code,
+        session_name=runset,
+        session_dir=_session_dir(runset, output_dir),
+        runs=runs,
+        expanded_payload={"runset": spec.to_dict(), "runs": expanded_runs},
+        run_commit=last_commit(),
         dry_run=dry_run,
-        run_results=run_results,
-        run_commit=run_commit,
-        runset=spec.name,
+        summary_extra={"runset": spec.name},
     )
-    write_json(session_dir / "session_summary.json", session_summary)
-    return RunOutcome(exit_code=exit_code, artifact_dir=session_dir, results=session_summary)
 
 
 def run_runfiles(
@@ -293,7 +379,7 @@ def run_runfiles(
     run_commit = last_commit()
     local_dataset_paths = load_dataset_paths(dataset_paths_file)
     requests = [load_runfile(path) for path in runfiles]
-    session_dir = _session_dir(session_name, output_dir)
+    runs: list[PreparedRun] = []
     expanded_runs: list[dict[str, Any]] = []
     for index, request in enumerate(requests, start=1):
         run_name = _validate_session_label(request.name or request.benchmark, field="Runfile name")
@@ -308,12 +394,23 @@ def run_runfiles(
         effective_mode = mode or request.mode or "local"
         effective_overrides = (*request.overrides, *dataset_overrides, *overrides)
         effective_requirements = (*request.requirements, *requirements)
-        preflight_benchmark(
+        prepared = preflight_benchmark(
             request.benchmark,
             mode=effective_mode,
             overrides=effective_overrides,
             requirements=effective_requirements,
             dry_run=dry_run,
+        )
+        artifact_name = f"{index:03d}_{run_name}"
+        runs.append(
+            PreparedRun(
+                name=run_name,
+                artifact_name=artifact_name,
+                prepared=prepared,
+                runfile_payload=dict(request.payload),
+                runfile_path=str(request.source_path),
+                summary_mode=effective_mode,
+            )
         )
         expanded_runs.append(
             {
@@ -322,7 +419,7 @@ def run_runfiles(
                 "benchmark": request.benchmark,
                 "dataset": dataset_name,
                 "runfile_path": str(request.source_path),
-                "artifact_dir": f"{index:03d}_{run_name}",
+                "artifact_dir": artifact_name,
                 "mode": effective_mode,
                 "dataset_paths": dataset_paths.to_dict() if dataset_paths is not None else None,
                 "overrides": list(effective_overrides),
@@ -331,64 +428,22 @@ def run_runfiles(
             }
         )
 
-    session_dir.mkdir(parents=True, exist_ok=True)
-    _remove_stale_session_summary(session_dir)
-    write_json(
-        session_dir / "expanded_runs.json",
-        redact(
-            {
-                "session_name": session_name,
-                "run_commit": run_commit,
-                "dataset_paths_file": str(dataset_paths_file.expanduser().resolve()) if dataset_paths_file else None,
-                "runfiles": expanded_runs,
-            }
-        ),
-    )
-
-    run_results: list[dict[str, Any]] = []
-    exit_code = EXIT_SUCCESS
-    for expanded, request in zip(expanded_runs, requests, strict=True):
-        artifact_dir = session_dir / str(expanded["artifact_dir"])
-        try:
-            outcome = run_benchmark(
-                request.benchmark,
-                output_dir=str(artifact_dir),
-                run_id=f"{session_name}_{expanded['index']:03d}_{expanded['name']}",
-                mode=str(expanded["mode"]),
-                overrides=tuple(expanded["overrides"]),
-                requirements=tuple(expanded["requirements"]),
-                dry_run=bool(expanded["dry_run"]),
-                runfile_payload=dict(request.payload),
-                runfile_path=str(request.source_path),
-            )
-        except Exception as exc:
-            outcome = _failed_child_outcome(
-                benchmark=request.benchmark,
-                artifact_dir=artifact_dir,
-                dry_run=bool(expanded["dry_run"]),
-                exc=exc,
-            )
-        run_results.append(
-            _run_outcome_summary(
-                request.benchmark,
-                outcome,
-                session_dir=session_dir,
-                run_name=str(expanded["name"]),
-                runfile_path=str(request.source_path),
-                mode=str(expanded["mode"]),
-            )
-        )
-        if exit_code == EXIT_SUCCESS and outcome.exit_code != EXIT_SUCCESS:
-            exit_code = outcome.exit_code
-
-    session_summary = _session_summary(
+    dataset_paths_value = str(dataset_paths_file.expanduser().resolve()) if dataset_paths_file else None
+    return _run_session(
         session_type="runfiles",
-        exit_code=exit_code,
-        dry_run=dry_run,
-        run_results=run_results,
-        run_commit=run_commit,
         session_name=session_name,
-        dataset_paths_file=str(dataset_paths_file.expanduser().resolve()) if dataset_paths_file else None,
+        session_dir=_session_dir(session_name, output_dir),
+        runs=runs,
+        expanded_payload={
+            "session_name": session_name,
+            "run_commit": run_commit,
+            "dataset_paths_file": dataset_paths_value,
+            "runfiles": expanded_runs,
+        },
+        run_commit=run_commit,
+        dry_run=dry_run,
+        summary_extra={
+            "session_name": session_name,
+            "dataset_paths_file": dataset_paths_value,
+        },
     )
-    write_json(session_dir / "session_summary.json", session_summary)
-    return RunOutcome(exit_code=exit_code, artifact_dir=session_dir, results=session_summary)

@@ -17,7 +17,7 @@ import traceback
 from typing import Any, Mapping
 
 from nemo_retriever.harness.contracts import FailurePayload, PHASE_VALUES, STATUS_VALUES
-from nemo_retriever.harness.json_io import jsonable, write_json
+from nemo_retriever.harness.json_io import artifact_write_error, jsonable, write_json
 
 _ARTIFACT_NAMES = {
     "status": "status.json",
@@ -41,9 +41,12 @@ def utc_now() -> str:
 
 
 def append_jsonl(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(jsonable(payload), sort_keys=False) + "\n")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(jsonable(payload), sort_keys=False) + "\n")
+    except Exception as exc:
+        raise artifact_write_error(exc) from exc
 
 
 def append_text(path: Path, text: str) -> None:

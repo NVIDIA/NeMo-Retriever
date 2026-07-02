@@ -42,24 +42,18 @@ def _make_retriever(**overrides: Any) -> Retriever:
 
 def _install_mock_graph(monkeypatch: pytest.MonkeyPatch, hits: list[list[dict[str, Any]]]) -> MagicMock:
     """Avoid constructing real LanceDB / embed operators."""
-    resolved = MagicMock()
     # Resolved graph execution returns one entry per graph leaf; retrieval output
     # is ``list[list[dict]]``.
-    resolved.execute_resolved.return_value = [hits]
-
     graph = MagicMock()
-    graph.resolve_for_local_execution.return_value = resolved
-
-    monkeypatch.setattr(Retriever, "_build_default_graph", lambda self: graph)
+    graph.execute_in_place.return_value = [hits]
 
     # bypass instance cache from other tests
     def fresh_get(self: Retriever, *, embed_extra: Any = None) -> MagicMock:
-        graph.resolve_for_local_execution.return_value = resolved
         return graph
 
     monkeypatch.setattr(Retriever, "_get_graph", fresh_get)
     monkeypatch.setattr(Retriever, "_resolve_lancedb_query_mode", lambda self, runtime_vdb_kwargs: None)
-    return resolved
+    return graph
 
 
 class TestQueriesGraphExecution:
@@ -71,12 +65,12 @@ class TestQueriesGraphExecution:
 
     def test_queries_thread_top_k_and_vdb_kwargs(self, monkeypatch: pytest.MonkeyPatch) -> None:
         hit = [[{"text": "retrieved", "source": "doc.pdf", "page_number": 1}]]
-        resolved = _install_mock_graph(monkeypatch, hit)
+        graph = _install_mock_graph(monkeypatch, hit)
         retriever = _make_retriever(top_k=11)
         out = retriever.queries(["q"], vdb_kwargs={"where": "x"})
         assert out == hit
-        resolved.execute_resolved.assert_called_once()
-        _args, kw = resolved.execute_resolved.call_args
+        graph.execute_in_place.assert_called_once()
+        _args, kw = graph.execute_in_place.call_args
         assert kw["top_k"] == 11
         assert kw["query_texts"] == ["q"]
         assert kw["where"] == "x"
@@ -100,12 +94,12 @@ class TestQueriesGraphExecution:
         assert p.local_ingest_embed_backend == "vllm"
 
     def test_rerank_inflates_retrieval_top_k(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        resolved = _install_mock_graph(monkeypatch, [[{"text": "x"}]])
+        graph = _install_mock_graph(monkeypatch, [[{"text": "x"}]])
         retriever = _make_retriever(top_k=3, rerank=True, rerank_kwargs={"refine_factor": 4})
         retriever._cached_graph = None
         retriever._cache_key = None
         retriever.queries(["q"])
-        assert resolved.execute_resolved.call_args.kwargs["top_k"] == 12
+        assert graph.execute_in_place.call_args.kwargs["top_k"] == 12
 
     def test_rerank_dataframe_output_orders_hits_by_score(self, monkeypatch: pytest.MonkeyPatch) -> None:
         vector_hits = [
@@ -115,7 +109,7 @@ class TestQueriesGraphExecution:
         execute_kwargs: list[dict[str, Any]] = []
 
         class FakeResolvedGraph:
-            def execute_resolved(self, _df: pd.DataFrame, **kwargs: Any) -> list[Any]:
+            def execute(self, _df: pd.DataFrame, **kwargs: Any) -> list[Any]:
                 execute_kwargs.append(kwargs)
                 return [
                     pd.DataFrame(
@@ -158,18 +152,16 @@ class TestQueriesGraphExecution:
 
     def test_candidate_k_widens_retrieval_before_final_truncation(self, monkeypatch: pytest.MonkeyPatch) -> None:
         hits = [[{"text": f"hit {i}", "page_number": i} for i in range(5)]]
-        resolved = _install_mock_graph(monkeypatch, hits)
+        graph = _install_mock_graph(monkeypatch, hits)
         out = _make_retriever(top_k=2).queries(["q"], candidate_k=5)
 
         assert [hit["text"] for hit in out[0]] == ["hit 0", "hit 1"]
-        assert resolved.execute_resolved.call_args.kwargs["top_k"] == 5
+        assert graph.execute_in_place.call_args.kwargs["top_k"] == 5
 
-    def test_repeated_queries_reuse_resolved_graph(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_repeated_queries_reuse_cached_graph(self, monkeypatch: pytest.MonkeyPatch) -> None:
         hits = [[{"text": "retrieved", "source": "doc.pdf", "page_number": 1}]]
-        resolved = MagicMock()
-        resolved.execute_resolved.return_value = [hits]
         graph = MagicMock()
-        graph.resolve_for_local_execution.return_value = resolved
+        graph.execute_in_place.return_value = [hits]
         build = MagicMock(return_value=graph)
         monkeypatch.setattr(Retriever, "_build_default_graph", build)
         monkeypatch.setattr(Retriever, "_resolve_lancedb_query_mode", lambda self, runtime_vdb_kwargs: None)
@@ -179,8 +171,7 @@ class TestQueriesGraphExecution:
         assert retriever.query("second") == hits[0]
 
         build.assert_called_once()
-        graph.resolve_for_local_execution.assert_called_once()
-        assert resolved.execute_resolved.call_count == 2
+        assert graph.execute_in_place.call_count == 2
 
     def test_custom_graph_preserves_resolve_per_query_behavior(self, monkeypatch: pytest.MonkeyPatch) -> None:
         hits = [[{"text": "retrieved", "source": "doc.pdf", "page_number": 1}]]
@@ -199,16 +190,12 @@ class TestQueriesGraphExecution:
 
         assert graph.resolve_for_local_execution.call_count == 2
 
-    def test_embed_override_invalidates_resolved_graph_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_embed_override_invalidates_graph_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
         hits = [[{"text": "retrieved", "source": "doc.pdf", "page_number": 1}]]
-        resolved_one = MagicMock()
-        resolved_one.execute_resolved.return_value = [hits]
         graph_one = MagicMock()
-        graph_one.resolve_for_local_execution.return_value = resolved_one
-        resolved_two = MagicMock()
-        resolved_two.execute_resolved.return_value = [hits]
+        graph_one.execute_in_place.return_value = [hits]
         graph_two = MagicMock()
-        graph_two.resolve_for_local_execution.return_value = resolved_two
+        graph_two.execute_in_place.return_value = [hits]
         build = MagicMock(side_effect=(graph_one, graph_two))
         monkeypatch.setattr(Retriever, "_build_default_graph", build)
         monkeypatch.setattr(Retriever, "_resolve_lancedb_query_mode", lambda self, runtime_vdb_kwargs: None)
@@ -218,10 +205,8 @@ class TestQueriesGraphExecution:
         retriever.query("same configuration")
         retriever.query("different configuration", embed_kwargs={"model_name": "different"})
 
-        graph_one.resolve_for_local_execution.assert_called_once()
-        graph_two.resolve_for_local_execution.assert_called_once()
-        assert resolved_one.execute_resolved.call_count == 2
-        resolved_two.execute_resolved.assert_called_once()
+        assert graph_one.execute_in_place.call_count == 2
+        graph_two.execute_in_place.assert_called_once()
         assert build.call_count == 2
 
     def test_candidate_k_must_cover_top_k(self) -> None:

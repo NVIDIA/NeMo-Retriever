@@ -562,17 +562,17 @@ class TestGraphExecute:
 
         assert g.execute(7) == [12]
 
-    def test_execute_resolved_reuses_archetype_delegate(self, monkeypatch):
+    def test_execute_in_place_reuses_archetype_delegate(self, monkeypatch):
         resources = Resources(cpu_count=8, gpu_count=0)
         monkeypatch.setattr(
             "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
             lambda: resources,
         )
         CountingCPUAdaptiveAddOperator.constructions = 0
-        resolved = (Graph() >> CountingAdaptiveAddOperator(5)).resolve(resources)
+        graph = Graph() >> CountingAdaptiveAddOperator(5)
 
-        assert resolved.execute_resolved(7) == [12]
-        assert resolved.execute_resolved(8) == [13]
+        assert graph.execute_in_place(7) == [12]
+        assert graph.execute_in_place(8) == [13]
         assert CountingCPUAdaptiveAddOperator.constructions == 1
 
     def test_single_node(self):
