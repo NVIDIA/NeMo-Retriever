@@ -8,18 +8,20 @@ from __future__ import annotations
 
 import inspect
 import logging
+import time
 from abc import abstractmethod
 from collections.abc import Mapping
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from copy import deepcopy
 from typing import Any, ClassVar
 
 import pandas as pd
 
 from pydantic import BaseModel
-from nemo_retriever.common.params import TextGenerationParams
+from nemo_retriever.common.params import LLMInferenceParams, TextGenerationParams
 from nemo_retriever.models.llm.clients import LiteLLMClient
-from nemo_retriever.models.llm.tasks import GenerationTask
-from nemo_retriever.models.llm.types import CompletionClient, GeneratedTextResult
+from nemo_retriever.models.llm.tasks import GenerationTask, GenerationTaskError
+from nemo_retriever.models.llm.types import GeneratedTextResult, TextCompletionClient
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 
@@ -29,10 +31,11 @@ logger = logging.getLogger(__name__)
 class TextGenerationOperator(AbstractOperator, CPUOperator):
     """Base operator for one text-generation request per DataFrame row.
 
-    Subclasses bind a concrete :class:`GenerationTask` through
-    :meth:`_create_task`. The base owns the common DataFrame concerns: column
-    validation, bounded threaded execution, positional result ordering, and
-    standard output metadata.
+    Concrete operators construct an immutable :class:`GenerationTask` before
+    calling this base. The task and client are runtime-only state; graph
+    reconstruction uses only defensive constructor state. The base owns
+    validation, safe bounded execution, positional ordering, and stable
+    output metadata.
 
     ``input_columns`` maps each task-level input name to a physical DataFrame
     column. Results are tracked by row position rather than index label so
@@ -46,14 +49,16 @@ class TextGenerationOperator(AbstractOperator, CPUOperator):
         self,
         params: TextGenerationParams,
         *,
+        task: GenerationTask,
         input_columns: Mapping[str, str],
         output_column: str,
         latency_column: str | None = None,
         model_column: str | None = None,
         error_column: str | None = None,
         overwrite: bool = False,
-        client: CompletionClient | None = None,
+        client: TextCompletionClient | None = None,
     ) -> None:
+        copied_params = params.model_copy(deep=True)
         logical_columns = dict(input_columns)
         self._validate_input_mapping(logical_columns)
 
@@ -70,7 +75,7 @@ class TextGenerationOperator(AbstractOperator, CPUOperator):
 
         super().__init__()
 
-        self._params = params
+        self._params = copied_params
         self._input_columns = logical_columns
         self._output_column = output_column
         self._latency_column = resolved_latency_column
@@ -80,31 +85,30 @@ class TextGenerationOperator(AbstractOperator, CPUOperator):
         self._model_column_arg = model_column
         self._error_column_arg = error_column
         self._overwrite = overwrite
-        self._max_workers = params.max_workers
-        self._configured_model = params.transport.model
+        self._max_workers = copied_params.max_workers
+        self._configured_model = copied_params.transport.model
 
         self.required_columns = tuple(dict.fromkeys(logical_columns.values()))
         self.output_columns = output_columns
 
-        self._task = self._create_task(params, tuple(logical_columns))
+        self._task = task
         missing_inputs = [name for name in self._task.required_inputs if name not in logical_columns]
         if missing_inputs:
             raise ValueError(f"{type(self).__name__} is missing task input mappings: {missing_inputs}")
 
         if client is None:
-            sampling = params.resolve_sampling(self._task.default_sampling)
-            self._client: CompletionClient = LiteLLMClient(transport=params.transport, sampling=sampling)
+            sampling = copied_params.resolve_sampling(self._task.default_sampling)
+            self._client: TextCompletionClient = self._create_client(copied_params, sampling)
         else:
             self._client = client
 
-    @abstractmethod
-    def _create_task(
+    def _create_client(
         self,
         params: TextGenerationParams,
-        logical_inputs: tuple[str, ...],
-    ) -> GenerationTask:
-        """Create the stateless task bound to this concrete operator."""
-        ...
+        sampling: LLMInferenceParams,
+    ) -> TextCompletionClient:
+        """Create the default client without introducing a global registry."""
+        return LiteLLMClient(transport=params.transport, sampling=sampling)
 
     @abstractmethod
     def _get_generation_constructor_kwargs(self) -> dict[str, Any]:
@@ -156,7 +160,10 @@ class TextGenerationOperator(AbstractOperator, CPUOperator):
             signature.bind(None, **kwargs)
         except TypeError as exc:
             raise TypeError(f"{type(self).__name__} returned invalid graph constructor kwargs: {exc}") from exc
-        return kwargs
+        try:
+            return deepcopy(kwargs)
+        except Exception as exc:
+            raise TypeError(f"{type(self).__name__} graph constructor kwargs could not be copied safely") from exc
 
     @staticmethod
     def _validate_input_mapping(input_columns: Mapping[str, str]) -> None:
@@ -230,10 +237,24 @@ class TextGenerationOperator(AbstractOperator, CPUOperator):
 
     def _execute_task(self, inputs: dict[str, Any]) -> GeneratedTextResult:
         """Execute the configured task; subclasses may adapt legacy clients."""
-        return self._task.execute(self._client, **inputs)
+        return self._task.invoke(self._client, **inputs)
 
     def _execute_row(self, position: int, inputs: dict[str, Any]) -> tuple[int, GeneratedTextResult]:
-        return position, self._execute_task(inputs)
+        started_at = time.monotonic()
+        try:
+            result = self._execute_task(inputs)
+        except GenerationTaskError as exc:
+            # Keep the strict task's measured lifecycle while covering custom
+            # adapters that report a shorter or zero failure duration.
+            elapsed = max(exc.latency_s, time.monotonic() - started_at)
+            result = self._failure_result(exc.code, elapsed)
+            logger.warning("Row %d generation failed (%s)", position, exc.code)
+        except Exception:
+            # Unexpected adapter/client failures remain isolated by row. Raw
+            # provider exception text is never persisted or logged.
+            result = self._failure_result("request_error", time.monotonic() - started_at)
+            logger.warning("Row %d generation failed (request_error)", position)
+        return position, result
 
     def _failure_model(self) -> str:
         try:
@@ -242,13 +263,22 @@ class TextGenerationOperator(AbstractOperator, CPUOperator):
             return self._configured_model
         return model if isinstance(model, str) and model else self._configured_model
 
-    def _failure_result(self, exc: Exception) -> GeneratedTextResult:
+    def _failure_result(self, error: str, latency_s: float) -> GeneratedTextResult:
         return GeneratedTextResult(
             text="",
-            latency_s=0.0,
+            latency_s=latency_s,
             model=self._failure_model(),
-            error=str(exc),
+            error=error,
         )
+
+    def _effective_max_workers(self, row_count: int) -> int:
+        """Return safe concurrency for the current runtime client."""
+        try:
+            supports_concurrency = getattr(self._client, "supports_concurrent_calls", False) is True
+        except Exception:
+            supports_concurrency = False
+        configured_workers = self._max_workers if supports_concurrency else 1
+        return min(configured_workers, row_count)
 
     def process(self, data: Any, **kwargs: Any) -> pd.DataFrame:
         df, input_positions = self._validate_and_resolve_dataframe(data)
@@ -256,7 +286,7 @@ class TextGenerationOperator(AbstractOperator, CPUOperator):
 
         if len(df):
             futures: dict[Future[tuple[int, GeneratedTextResult]], int] = {}
-            with ThreadPoolExecutor(max_workers=min(self._max_workers, len(df))) as pool:
+            with ThreadPoolExecutor(max_workers=self._effective_max_workers(len(df))) as pool:
                 for position in range(len(df)):
                     inputs = {
                         name: df.iat[position, column_position] for name, column_position in input_positions.items()
@@ -274,9 +304,9 @@ class TextGenerationOperator(AbstractOperator, CPUOperator):
                                 f"submitted position {position}"
                             )
                         results[position] = result
-                    except Exception as exc:
-                        logger.warning("Row %d generation failed: %s", position, exc)
-                        results[position] = self._failure_result(exc)
+                    except Exception:
+                        logger.warning("Row %d generation failed (request_error)", position)
+                        results[position] = self._failure_result("request_error", 0.0)
 
         # Every non-empty row is assigned either a task result or a failure
         # result above. The cast-free local assertion catches future changes to
@@ -286,10 +316,12 @@ class TextGenerationOperator(AbstractOperator, CPUOperator):
         completed_results = [result for result in results if result is not None]
 
         out = df.copy()
-        out[self._output_column] = [result.text for result in completed_results]
-        out[self._latency_column] = [result.latency_s for result in completed_results]
-        out[self._model_column] = [result.model for result in completed_results]
-        out[self._error_column] = [result.error for result in completed_results]
+        # Explicit dtypes keep empty and non-empty Ray/Arrow batches
+        # schema-compatible while retaining positional duplicate-index writes.
+        out[self._output_column] = pd.array([result.text for result in completed_results], dtype="object")
+        out[self._latency_column] = pd.array([result.latency_s for result in completed_results], dtype="float64")
+        out[self._model_column] = pd.array([result.model for result in completed_results], dtype="object")
+        out[self._error_column] = pd.array([result.error for result in completed_results], dtype="object")
         return out
 
     def postprocess(self, data: Any, **kwargs: Any) -> Any:

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from string import Formatter
 from typing import Any, ClassVar, Optional, Sequence
 
@@ -58,8 +59,14 @@ def _validate_prompt_template(prompt: str, input_names: tuple[str, ...]) -> None
         raise ValueError(f"prompt contains undeclared placeholders: {sorted(undeclared)}")
 
 
+@dataclass(frozen=True, init=False)
 class GenericPromptTask(GenerationTask):
     """Render declared row inputs into a validated prompt template."""
+
+    prompt: str
+    required_inputs: tuple[str, ...]
+    system_prompt: Optional[str]
+    reasoning_enabled: Optional[bool]
 
     _default_sampling: ClassVar[dict[str, Any]] = {
         "temperature": 1.0,
@@ -79,10 +86,10 @@ class GenericPromptTask(GenerationTask):
             raise TypeError("input_names must be a sequence of names, not a string")
         names = tuple(input_names)
         _validate_prompt_template(prompt, names)
-        self.prompt = prompt
-        self.required_inputs = names
-        self.system_prompt = system_prompt
-        self.reasoning_enabled = reasoning_enabled
+        object.__setattr__(self, "prompt", prompt)
+        object.__setattr__(self, "required_inputs", names)
+        object.__setattr__(self, "system_prompt", system_prompt)
+        object.__setattr__(self, "reasoning_enabled", reasoning_enabled)
 
     def build_request(self, **inputs: object) -> GenerationRequest:
         """Render declared inputs and build one completion request."""

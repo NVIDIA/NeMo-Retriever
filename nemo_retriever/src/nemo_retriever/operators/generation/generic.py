@@ -9,8 +9,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from nemo_retriever.common.params import TextGenerationParams
-from nemo_retriever.models.llm.tasks import GenerationTask, GenericPromptTask
-from nemo_retriever.models.llm.types import CompletionClient
+from nemo_retriever.models.llm.tasks import GenericPromptTask
+from nemo_retriever.models.llm.types import TextCompletionClient
 from nemo_retriever.operators.generation.base import TextGenerationOperator
 
 
@@ -27,11 +27,23 @@ class GenericGenerationOperator(TextGenerationOperator):
         model_column: str | None = None,
         error_column: str | None = None,
         overwrite: bool = False,
-        client: CompletionClient | None = None,
+        client: TextCompletionClient | None = None,
     ) -> None:
         normalized_input_columns = dict(input_columns)
+        if params.prompt is None:
+            raise ValueError("GenericGenerationOperator requires params.prompt")
+        reasoning_enabled = (
+            params.reasoning_enabled if params.reasoning_enabled is not None else params.transport.reasoning_enabled
+        )
+        task = GenericPromptTask(
+            prompt=params.prompt,
+            input_names=tuple(normalized_input_columns),
+            system_prompt=params.system_prompt,
+            reasoning_enabled=reasoning_enabled,
+        )
         super().__init__(
             params,
+            task=task,
             input_columns=normalized_input_columns,
             output_column=output_column,
             latency_column=latency_column,
@@ -43,28 +55,11 @@ class GenericGenerationOperator(TextGenerationOperator):
 
     def _get_generation_constructor_kwargs(self) -> dict[str, object]:
         return {
-            "params": self._params,
-            "input_columns": dict(self._input_columns),
+            "params": self._params.model_copy(deep=True),
+            "input_columns": self._input_columns.copy(),
             "output_column": self._output_column,
             "latency_column": self._latency_column_arg,
             "model_column": self._model_column_arg,
             "error_column": self._error_column_arg,
             "overwrite": self._overwrite,
         }
-
-    def _create_task(
-        self,
-        params: TextGenerationParams,
-        logical_inputs: tuple[str, ...],
-    ) -> GenerationTask:
-        if params.prompt is None:
-            raise ValueError("GenericGenerationOperator requires params.prompt")
-        reasoning_enabled = (
-            params.reasoning_enabled if params.reasoning_enabled is not None else params.transport.reasoning_enabled
-        )
-        return GenericPromptTask(
-            prompt=params.prompt,
-            input_names=logical_inputs,
-            system_prompt=params.system_prompt,
-            reasoning_enabled=reasoning_enabled,
-        )

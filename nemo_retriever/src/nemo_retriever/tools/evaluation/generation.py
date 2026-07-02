@@ -6,11 +6,17 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+import time
 from typing import Any, ClassVar, Optional
 
 from nemo_retriever.common.params import TextGenerationParams
-from nemo_retriever.models.llm.tasks import GenerationTask, RagAnswerTask
-from nemo_retriever.models.llm.types import CompletionClient, GeneratedTextResult, LLMClient
+from nemo_retriever.models.llm.tasks import GenerationTaskError, RagAnswerTask
+from nemo_retriever.models.llm.types import (
+    GeneratedTextResult,
+    LLMClient,
+    TextCompletionClient,
+)
 from nemo_retriever.operators.generation import TextGenerationOperator
 
 
@@ -24,7 +30,12 @@ class QAGenerationOperator(TextGenerationOperator):
     """
 
     required_columns: ClassVar[tuple[str, ...]] = ("query", "context")
-    output_columns: ClassVar[tuple[str, ...]] = ("answer", "latency_s", "model", "gen_error")
+    output_columns: ClassVar[tuple[str, ...]] = (
+        "answer",
+        "latency_s",
+        "model",
+        "gen_error",
+    )
 
     def __init__(
         self,
@@ -58,8 +69,18 @@ class QAGenerationOperator(TextGenerationOperator):
             rag_system_prompt_prefix=rag_system_prompt_prefix,
             reasoning_enabled=reasoning_enabled,
         )
+        task_reasoning_enabled = (
+            params.reasoning_enabled if params.reasoning_enabled is not None else params.transport.reasoning_enabled
+        )
+        task = RagAnswerTask(
+            prompt=params.prompt,
+            system_prompt=params.transport.rag_system_prompt,
+            system_prompt_prefix=params.transport.rag_system_prompt_prefix,
+            reasoning_enabled=task_reasoning_enabled,
+        )
         super().__init__(
             params,
+            task=task,
             input_columns={"query": "query", "chunks": "context"},
             output_column="answer",
             latency_column="latency_s",
@@ -67,53 +88,58 @@ class QAGenerationOperator(TextGenerationOperator):
             error_column="gen_error",
             overwrite=True,
         )
-        self._qa_constructor_kwargs = {
-            "model": model,
-            "api_base": api_base,
-            "api_key": api_key,
-            "temperature": temperature,
-            "top_p": top_p,
-            "max_tokens": max_tokens,
-            "extra_params": extra_params,
-            "num_retries": num_retries,
-            "timeout": timeout,
-            "max_workers": max_workers,
-            "rag_system_prompt": rag_system_prompt,
-            "rag_system_prompt_prefix": rag_system_prompt_prefix,
-            "reasoning_enabled": reasoning_enabled,
-        }
+        self._qa_constructor_kwargs = deepcopy(
+            {
+                "model": model,
+                "api_base": api_base,
+                "api_key": api_key,
+                "temperature": temperature,
+                "top_p": top_p,
+                "max_tokens": max_tokens,
+                "extra_params": extra_params,
+                "num_retries": num_retries,
+                "timeout": timeout,
+                "max_workers": max_workers,
+                "rag_system_prompt": rag_system_prompt,
+                "rag_system_prompt_prefix": rag_system_prompt_prefix,
+                "reasoning_enabled": reasoning_enabled,
+            }
+        )
 
     def _get_generation_constructor_kwargs(self) -> dict[str, Any]:
         """Preserve the legacy flat QA constructor contract for graph workers."""
-        return dict(self._qa_constructor_kwargs)
+        return deepcopy(self._qa_constructor_kwargs)
 
     def _execute_task(self, inputs: dict[str, Any]) -> GeneratedTextResult:
         """Prefer completion tasks while adapting legacy generate-only clients."""
         client = self._client
-        if isinstance(client, CompletionClient):
+        if isinstance(client, TextCompletionClient):
             return super()._execute_task(inputs)
         if isinstance(client, LLMClient):
-            result = client.generate(inputs["query"], inputs["chunks"])
+            started_at = time.monotonic()
+            failure: GenerationTaskError | None = None
+            try:
+                result = client.generate(inputs["query"], inputs["chunks"])
+            except Exception:
+                failure = GenerationTaskError(
+                    code="transport_error",
+                    phase="transport",
+                    retryable=False,
+                    public_message="Legacy text generation request failed.",
+                    latency_s=time.monotonic() - started_at,
+                )
+            if failure is not None:
+                raise failure
             return GeneratedTextResult(
                 text=result.answer,
                 latency_s=result.latency_s,
                 model=result.model,
                 error=result.error,
             )
-        raise TypeError("QAGenerationOperator client must implement CompletionClient or LLMClient")
-
-    def _create_task(
-        self,
-        params: TextGenerationParams,
-        logical_inputs: tuple[str, ...],
-    ) -> GenerationTask:
-        del logical_inputs
-        reasoning_enabled = (
-            params.reasoning_enabled if params.reasoning_enabled is not None else params.transport.reasoning_enabled
-        )
-        return RagAnswerTask(
-            prompt=params.prompt,
-            system_prompt=params.transport.rag_system_prompt,
-            system_prompt_prefix=params.transport.rag_system_prompt_prefix,
-            reasoning_enabled=reasoning_enabled,
+        raise GenerationTaskError(
+            code="request_error",
+            phase="request",
+            retryable=False,
+            public_message=("QAGenerationOperator client must implement " "TextCompletionClient or LLMClient."),
+            latency_s=0.0,
         )

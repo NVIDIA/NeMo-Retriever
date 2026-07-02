@@ -4,16 +4,25 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional, Sequence, Tuple
-from urllib.parse import urlparse
-
+import os
+import re
 import warnings
+from typing import Any, ClassVar, Literal, Optional, Sequence, Tuple
+from urllib.parse import urlparse
 
 
 from upath import UPath
 
 from nemo_retriever.tabular_data.sql_database import SQLDatabase
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_serializer, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
@@ -26,10 +35,142 @@ NO_API_KEY = ""
 
 _REDACTED = "***"
 
+ENVIRONMENT_REFERENCE_PREFIX = "os.environ/"
+_ENVIRONMENT_VARIABLE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+PROTECTED_LLM_REQUEST_KEYS = frozenset(
+    {
+        "model",
+        "messages",
+        "api_key",
+        "api_base",
+        "timeout",
+        "num_retries",
+        "temperature",
+        "top_p",
+        "max_tokens",
+        "tools",
+        "tool_choice",
+        "parallel_tool_calls",
+        "functions",
+        "function_call",
+        "stream",
+        "n",
+    }
+)
+
+
+def environment_reference_name(value: object) -> Optional[str]:
+    """Return and validate the variable name in an ``os.environ/NAME`` reference."""
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped.startswith(ENVIRONMENT_REFERENCE_PREFIX):
+        return None
+    if stripped != value:
+        raise ValueError("environment references must not contain surrounding whitespace")
+    name = stripped.removeprefix(ENVIRONMENT_REFERENCE_PREFIX)
+    if not _ENVIRONMENT_VARIABLE_PATTERN.fullmatch(name):
+        raise ValueError("environment references must use os.environ/VARIABLE_NAME with a valid variable name")
+    return name
+
+
+def resolve_environment_reference(value: Optional[str]) -> Optional[str]:
+    """Resolve an explicit environment reference, leaving literal values unchanged."""
+    name = environment_reference_name(value)
+    if name is None:
+        return value
+    resolved = (os.environ.get(name) or "").strip()
+    if not resolved:
+        raise ValueError(f"required credential environment variable {name!r} is not set")
+    return resolved
+
+
+def validate_llm_extra_params(extra_params: Optional[dict[str, Any]], *, source: str) -> None:
+    """Reject extension parameters that would replace protected request state."""
+    if extra_params is None:
+        return
+    if not isinstance(extra_params, dict):
+        raise TypeError(f"{source} must be a dictionary")
+    protected = sorted(PROTECTED_LLM_REQUEST_KEYS.intersection(extra_params))
+    if protected:
+        raise ValueError(f"{source} may not override protected request fields: {', '.join(protected)}")
+
 
 def _is_api_key_field(field_name: str) -> bool:
     """Return True when ``field_name`` should be masked in ``repr`` / logs."""
     return field_name == "api_key" or field_name.endswith("_api_key")
+
+
+def _is_secret_display_field(field_name: str) -> bool:
+    """Return whether a nested diagnostic field may contain credentials."""
+    normalized = field_name.lower().replace("-", "_")
+    compact = normalized.replace("_", "")
+    parts = set(normalized.split("_"))
+    if _is_api_key_field(normalized):
+        return True
+    if parts & {
+        "authorization",
+        "bearer",
+        "cookie",
+        "credentials",
+        "password",
+        "passwd",
+        "secret",
+        "token",
+    }:
+        return True
+    return (
+        "accesskey" in compact
+        or "accountkey" in compact
+        or compact.startswith(("authorization", "bearer", "cookie", "credential", "password", "secret"))
+        or compact.endswith(("token", "privatekey", "secretkey"))
+        or compact.endswith("apikey")
+    )
+
+
+def _redact_param_display(
+    value: Any,
+    *,
+    field_name: Optional[str] = None,
+    seen: Optional[set[int]] = None,
+) -> Any:
+    """Build a recursively redacted, repr-safe diagnostic value."""
+    if field_name is not None and _is_secret_display_field(field_name):
+        return _REDACTED
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if seen is None:
+        seen = set()
+    value_id = id(value)
+    if value_id in seen:
+        return "<recursive>"
+    seen.add(value_id)
+    if isinstance(value, BaseModel):
+        return {
+            name: _redact_param_display(
+                getattr(value, name),
+                field_name=name,
+                seen=seen,
+            )
+            for name in type(value).model_fields
+        }
+    if isinstance(value, dict):
+        redacted: dict[Any, Any] = {}
+        for key, item in value.items():
+            display_key = (
+                key
+                if isinstance(key, (str, int, float, bool)) or key is None
+                else f"<{type(key).__module__}.{type(key).__qualname__}>"
+            )
+            redacted[display_key] = _redact_param_display(
+                item,
+                field_name=key if isinstance(key, str) else None,
+                seen=seen,
+            )
+        return redacted
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_redact_param_display(item, seen=seen) for item in value]
+    return f"<{type(value).__module__}.{type(value).__qualname__}>"
 
 
 class _ParamsModel(BaseModel):
@@ -48,12 +189,15 @@ class _ParamsModel(BaseModel):
       so no downstream consumer needs changes.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     # Keep the explicit no-auth intent after NO_API_KEY is normalized to
     # None for existing runtime consumers. Graph persistence uses this
     # private provenance to distinguish no-auth from worker-side env lookup.
     _no_api_key_fields: set[str] = PrivateAttr(default_factory=set)
+    _api_key_env_references: dict[str, str] = PrivateAttr(default_factory=dict)
+    _api_key_env_values: dict[str, str] = PrivateAttr(default_factory=dict)
+    _auto_resolve_unset_api_keys: ClassVar[bool] = True
 
     @model_validator(mode="after")
     def _resolve_api_keys(self) -> "_ParamsModel":
@@ -63,13 +207,54 @@ class _ParamsModel(BaseModel):
                 if value is None:
                     if field_name in self._no_api_key_fields:
                         continue
-                    setattr(self, field_name, resolve_remote_api_key())
+                    if not type(self)._auto_resolve_unset_api_keys:
+                        self._api_key_env_references.pop(field_name, None)
+                        self._api_key_env_values.pop(field_name, None)
+                        continue
+                    resolved = resolve_remote_api_key()
+                    setattr(self, field_name, resolved)
+                    source_name = next(
+                        (name for name in ("NVIDIA_API_KEY", "NGC_API_KEY") if (os.environ.get(name) or "").strip()),
+                        None,
+                    )
+                    if resolved and source_name:
+                        self._api_key_env_references[field_name] = f"{ENVIRONMENT_REFERENCE_PREFIX}{source_name}"
+                        self._api_key_env_values[field_name] = resolved
+                    else:
+                        self._api_key_env_references.pop(field_name, None)
+                        self._api_key_env_values.pop(field_name, None)
                 elif value == NO_API_KEY:
                     self._no_api_key_fields.add(field_name)
+                    self._api_key_env_references.pop(field_name, None)
+                    self._api_key_env_values.pop(field_name, None)
                     setattr(self, field_name, None)
                 else:
                     self._no_api_key_fields.discard(field_name)
+                    explicit_reference = environment_reference_name(value)
+                    if explicit_reference is not None:
+                        self._api_key_env_references[field_name] = value
+                        if type(self)._auto_resolve_unset_api_keys:
+                            value = resolve_environment_reference(value)
+                            setattr(self, field_name, value)
+                        self._api_key_env_values[field_name] = value
+                    else:
+                        prior_value = self._api_key_env_values.get(field_name)
+                        if prior_value != value:
+                            self._api_key_env_references.pop(field_name, None)
+                            self._api_key_env_values.pop(field_name, None)
         return self
+
+    def _api_key_env_reference(self, field_name: str) -> Optional[str]:
+        """Return the exact environment reference that supplied an API key."""
+        value = getattr(self, field_name, None)
+        if isinstance(value, str) and value.startswith(ENVIRONMENT_REFERENCE_PREFIX):
+            return value
+        reference = self._api_key_env_references.get(field_name)
+        if reference is None:
+            return None
+        if self._api_key_env_values.get(field_name) != value:
+            return None
+        return reference
 
     def _uses_no_api_key(self, field_name: str) -> bool:
         """Return whether an API-key field was explicitly disabled.
@@ -83,12 +268,16 @@ class _ParamsModel(BaseModel):
         parts: list[str] = []
         for field_name in type(self).model_fields:
             value = getattr(self, field_name, None)
-            if _is_api_key_field(field_name) and value:
-                parts.append(f"{field_name}={_REDACTED}")
+            if _is_api_key_field(field_name):
+                if value:
+                    parts.append(f"{field_name}={_REDACTED}")
+                else:
+                    parts.append(f"{field_name}={value!r}")
             elif field_name == "storage_options" and value:
                 parts.append(f"{field_name}={_REDACTED}")
             else:
-                parts.append(f"{field_name}={value!r}")
+                display_value = _redact_param_display(value, field_name=field_name)
+                parts.append(f"{field_name}={display_value!r}")
         return f"{type(self).__name__}({', '.join(parts)})"
 
     __str__ = __repr__
@@ -383,8 +572,14 @@ class ExtractParams(_ParamsModel):
             raise ValueError("ocr_lang is only supported when ocr_version='v2'.")
         if not self.use_page_elements:
             consumers = [
-                ("use_table_structure", self.use_table_structure and self.extract_tables),
-                ("use_graphic_elements", self.use_graphic_elements and self.extract_charts),
+                (
+                    "use_table_structure",
+                    self.use_table_structure and self.extract_tables,
+                ),
+                (
+                    "use_graphic_elements",
+                    self.use_graphic_elements and self.extract_charts,
+                ),
             ]
             enabled = [name for name, on in consumers if on]
             if enabled:
@@ -431,7 +626,10 @@ class EmbedParams(_ParamsModel):
     @field_validator("local_ingest_embed_backend", mode="before")
     @classmethod
     def _validate_local_ingest_embed_backend(cls, v: str) -> str:
-        from nemo_retriever.models import _LOCAL_INGEST_EMBED_BACKENDS, normalize_backend
+        from nemo_retriever.models import (
+            _LOCAL_INGEST_EMBED_BACKENDS,
+            normalize_backend,
+        )
 
         return normalize_backend(
             str(v) if v is not None else None,
@@ -440,7 +638,12 @@ class EmbedParams(_ParamsModel):
             default="vllm",
         )
 
-    @field_validator("embed_modality", "text_elements_modality", "structured_elements_modality", mode="before")
+    @field_validator(
+        "embed_modality",
+        "text_elements_modality",
+        "structured_elements_modality",
+        mode="before",
+    )
     @classmethod
     def _validate_modality(cls, v: str | None) -> str | None:
         if v is None:
@@ -609,9 +812,11 @@ class LLMRemoteClientParams(_ParamsModel):
     """Transport / connection parameters for any remote LLM client.
 
     Pairs with :class:`LLMInferenceParams` (sampling) to fully specify a
-    call.  ``api_key`` is auto-resolved from the environment by
-    :class:`_ParamsModel` when left as ``None``.
+    call. ``api_key=None`` is left unset so LiteLLM can perform provider-native
+    environment lookup on the worker.
     """
+
+    _auto_resolve_unset_api_keys: ClassVar[bool] = False
 
     model: str
     api_base: Optional[str] = None
@@ -622,6 +827,12 @@ class LLMRemoteClientParams(_ParamsModel):
     rag_system_prompt: Optional[str] = None
     rag_system_prompt_prefix: Optional[str] = None
     reasoning_enabled: bool = True
+
+    @field_validator("extra_params")
+    @classmethod
+    def _check_extra_params(cls, value: dict[str, Any]) -> dict[str, Any]:
+        validate_llm_extra_params(value, source="LLMRemoteClientParams.extra_params")
+        return value
 
     @field_validator("num_retries")
     @classmethod

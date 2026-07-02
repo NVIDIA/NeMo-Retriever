@@ -7,8 +7,8 @@
 from __future__ import annotations
 
 from nemo_retriever.common.params import TextGenerationParams
-from nemo_retriever.models.llm.tasks import GenerationTask, SummarizeTask
-from nemo_retriever.models.llm.types import CompletionClient
+from nemo_retriever.models.llm.tasks import SummarizeTask
+from nemo_retriever.models.llm.types import TextCompletionClient
 from nemo_retriever.operators.generation.base import TextGenerationOperator
 
 
@@ -25,10 +25,19 @@ class SummarizationOperator(TextGenerationOperator):
         model_column: str | None = None,
         error_column: str | None = None,
         overwrite: bool = False,
-        client: CompletionClient | None = None,
+        client: TextCompletionClient | None = None,
     ) -> None:
+        reasoning_enabled = (
+            params.reasoning_enabled if params.reasoning_enabled is not None else params.transport.reasoning_enabled
+        )
+        task = SummarizeTask(
+            prompt=params.prompt,
+            system_prompt=params.system_prompt,
+            reasoning_enabled=reasoning_enabled,
+        )
         super().__init__(
             params,
+            task=task,
             input_columns={"text": input_column},
             output_column=output_column,
             latency_column=latency_column,
@@ -40,7 +49,7 @@ class SummarizationOperator(TextGenerationOperator):
 
     def _get_generation_constructor_kwargs(self) -> dict[str, object]:
         return {
-            "params": self._params,
+            "params": self._params.model_copy(deep=True),
             "input_column": self._input_columns["text"],
             "output_column": self._output_column,
             "latency_column": self._latency_column_arg,
@@ -48,18 +57,3 @@ class SummarizationOperator(TextGenerationOperator):
             "error_column": self._error_column_arg,
             "overwrite": self._overwrite,
         }
-
-    def _create_task(
-        self,
-        params: TextGenerationParams,
-        logical_inputs: tuple[str, ...],
-    ) -> GenerationTask:
-        del logical_inputs
-        reasoning_enabled = (
-            params.reasoning_enabled if params.reasoning_enabled is not None else params.transport.reasoning_enabled
-        )
-        return SummarizeTask(
-            prompt=params.prompt,
-            system_prompt=params.system_prompt,
-            reasoning_enabled=reasoning_enabled,
-        )
