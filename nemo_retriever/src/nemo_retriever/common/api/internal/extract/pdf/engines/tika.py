@@ -15,13 +15,14 @@
 # limitations under the License.
 
 import io
+import os
 from typing import Dict, Any, Optional, List
 
 import pandas as pd
 
 import requests
 
-TIKA_URL = "http://tika:9998/tika"
+TIKA_URL = os.environ.get("TIKA_URL", "http://tika:9998/tika")
 
 
 def tika_extractor(
