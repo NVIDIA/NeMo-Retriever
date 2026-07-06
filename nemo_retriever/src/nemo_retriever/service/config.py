@@ -141,10 +141,10 @@ class NimEndpointsConfig(RichModel):
             "Server-owned — clients cannot override the deployed embed NIM SKU."
         ),
     )
-    embed_model_name_prefix: str | None = Field(
+    embed_model_provider_prefix: str | None = Field(
         default=None,
         description=(
-            "Optional LiteLLM route/org prefix prepended to embed_model_name for "
+            "Optional LiteLLM provider prefix prepended to embed_model_name for "
             "remote embedding endpoints that require namespaced model IDs."
         ),
     )
@@ -300,7 +300,7 @@ class VectorDbConfig(RichModel):
     lancedb_uri: str = "/data/vectordb"
     table_name: str = "nemo_retriever"
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
-    embed_model_name_prefix: str | None = None
+    embed_model_provider_prefix: str | None = None
     vectordb_url: str = Field(
         default="http://nemo-retriever-vectordb:7671",
         description="URL of the vectordb service (for workers to POST embeddings to)",

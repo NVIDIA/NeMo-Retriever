@@ -55,16 +55,16 @@ def test_image_modalities_constant():
     assert isinstance(IMAGE_MODALITIES, frozenset)
 
 
-def test_build_embed_option_kwargs_applies_remote_model_name_prefix():
+def test_build_embed_option_kwargs_applies_remote_model_provider_prefix():
     kwargs = build_embed_option_kwargs(
         "https://litellm.example.com/v1/embeddings",
         "nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_model_name_prefix="nvidia",
+        embed_model_provider_prefix="nvidia",
     )
 
     assert kwargs["model_name"] == "nvidia/nvidia/llama-nemotron-embed-vl-1b-v2"
     assert kwargs["embed_model_name"] == "nvidia/nvidia/llama-nemotron-embed-vl-1b-v2"
-    assert "embed_model_name_prefix" not in kwargs
+    assert "embed_model_provider_prefix" not in kwargs
 
 
 def test_build_embed_option_kwargs_leaves_model_unchanged_without_prefix():
@@ -81,7 +81,7 @@ def test_build_embed_option_kwargs_prefix_supports_other_vendor_namespaces():
     kwargs = build_embed_option_kwargs(
         "https://litellm.example.com/v1/embeddings",
         "mistral/embed-small",
-        embed_model_name_prefix="acme",
+        embed_model_provider_prefix="acme",
     )
 
     assert kwargs["model_name"] == "acme/mistral/embed-small"
@@ -92,7 +92,7 @@ def test_build_embed_option_kwargs_prefix_supports_bare_model_name():
     kwargs = build_embed_option_kwargs(
         "https://litellm.example.com/v1/embeddings",
         "nv-embedqa-e5-v5",
-        embed_model_name_prefix="nvidia",
+        embed_model_provider_prefix="nvidia",
     )
 
     assert kwargs["model_name"] == "nvidia/nv-embedqa-e5-v5"
@@ -103,12 +103,12 @@ def test_build_embed_option_kwargs_prefix_is_remote_only():
     kwargs = build_embed_option_kwargs(
         None,
         "nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_model_name_prefix="nvidia",
+        embed_model_provider_prefix="nvidia",
     )
 
     assert kwargs["model_name"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
     assert kwargs["embed_model_name"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
-    assert "embed_model_name_prefix" not in kwargs
+    assert "embed_model_provider_prefix" not in kwargs
 
 
 # ===================================================================

@@ -95,9 +95,9 @@ spec:
             {{- end }}
             - --embed-model
             - {{ .Values.serviceConfig.vectordb.embedModel | default $localModels.embed.modelName | quote }}
-            {{- if .Values.serviceConfig.vectordb.embedModelNamePrefix }}
-            - --embed-model-name-prefix
-            - {{ .Values.serviceConfig.vectordb.embedModelNamePrefix | quote }}
+            {{- if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}
+            - --embed-model-provider-prefix
+            - {{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}
             {{- end }}
             - --port
             - {{ $vdb.port | quote }}

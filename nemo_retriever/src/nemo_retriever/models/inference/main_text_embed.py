@@ -50,7 +50,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 import pandas as pd
 from nemo_retriever.common.api.util.string_processing import (
     ensure_openai_embeddings_http_url,
-    prepend_model_name_prefix,
+    prepend_model_provider_prefix,
 )
 
 from nemo_retriever.models import _DEFAULT_EMBED_MODEL
@@ -75,7 +75,7 @@ class TextEmbeddingConfig:
     api_key: Optional[str] = None
     embedding_nim_endpoint: Optional[str] = None  # e.g. "http://host:8000/v1"
     embedding_model: str = _DEFAULT_EMBED_MODEL
-    embedding_model_prefix: Optional[str] = None
+    embedding_model_provider_prefix: Optional[str] = None
     encoding_format: str = "float"  # OpenAI-compatible embeddings often accept "float"
     input_type: str = "passage"
     truncate: str = "END"
@@ -297,7 +297,7 @@ def _http_embed_openai_compat(
     encoding_format: str,
     input_type: str,
     truncate: str,
-    model_name_prefix: Optional[str] = None,
+    model_provider_prefix: Optional[str] = None,
     dimensions: Optional[int] = None,
     timeout_s: float = 600.0,
 ) -> List[Optional[List[float]]]:
@@ -313,7 +313,7 @@ def _http_embed_openai_compat(
         raise RuntimeError("Remote embedding requested but `httpx` is not installed.") from e
 
     url = _normalize_embeddings_endpoint(_pick_embed_endpoint(endpoint_url))
-    model_name = prepend_model_name_prefix(model_name, model_name_prefix) or model_name
+    model_name = prepend_model_provider_prefix(model_name, model_provider_prefix) or model_name
     headers: Dict[str, str] = {"accept": "application/json", "content-type": "application/json"}
     token = (api_key or "").strip()
     if token:
@@ -359,7 +359,7 @@ def _make_async_request(
     api_key: Optional[str],
     embedding_nim_endpoint: str,
     embedding_model: str,
-    embedding_model_prefix: Optional[str],
+    embedding_model_provider_prefix: Optional[str],
     encoding_format: str,
     input_type: str,
     truncate: str,
@@ -384,7 +384,7 @@ def _make_async_request(
             api_key=api_key,
             endpoint_url=str(embedding_nim_endpoint),
             model_name=str(embedding_model),
-            model_name_prefix=embedding_model_prefix,
+            model_provider_prefix=embedding_model_provider_prefix,
             encoding_format=str(encoding_format),
             input_type=str(input_type),
             truncate=str(truncate),
@@ -407,7 +407,7 @@ def _async_request_handler(
     api_key: Optional[str],
     embedding_nim_endpoint: str,
     embedding_model: str,
-    embedding_model_prefix: Optional[str],
+    embedding_model_provider_prefix: Optional[str],
     encoding_format: str,
     input_type: str,
     truncate: str,
@@ -429,7 +429,7 @@ def _async_request_handler(
                 api_key=api_key or None,
                 embedding_nim_endpoint=str(embedding_nim_endpoint),
                 embedding_model=str(embedding_model),
-                embedding_model_prefix=embedding_model_prefix,
+                embedding_model_provider_prefix=embedding_model_provider_prefix,
                 encoding_format=str(encoding_format),
                 input_type=str(input_type),
                 truncate=str(truncate),
@@ -450,7 +450,7 @@ def _async_runner(
     api_key: Optional[str],
     embedding_nim_endpoint: str,
     embedding_model: str,
-    embedding_model_prefix: Optional[str],
+    embedding_model_provider_prefix: Optional[str],
     encoding_format: str,
     input_type: str,
     truncate: str,
@@ -465,7 +465,7 @@ def _async_runner(
         api_key,
         embedding_nim_endpoint,
         embedding_model,
-        embedding_model_prefix,
+        embedding_model_provider_prefix,
         encoding_format,
         input_type,
         truncate,
@@ -592,10 +592,10 @@ def create_text_embeddings_for_df(
         task_config["endpoint_url"] if "endpoint_url" in task_config else transform_config.embedding_nim_endpoint
     )
     model_name = task_config["model_name"] if "model_name" in task_config else transform_config.embedding_model
-    model_name_prefix = (
-        task_config["model_name_prefix"]
-        if "model_name_prefix" in task_config
-        else task_config.get("embed_model_name_prefix", transform_config.embedding_model_prefix)
+    model_provider_prefix = (
+        task_config["model_provider_prefix"]
+        if "model_provider_prefix" in task_config
+        else task_config.get("embed_model_provider_prefix", transform_config.embedding_model_provider_prefix)
     )
     dimensions = task_config["dimensions"] if "dimensions" in task_config else transform_config.dimensions
 
@@ -688,7 +688,7 @@ def create_text_embeddings_for_df(
                 api_key,
                 str(endpoint_url),
                 str(model_name),
-                model_name_prefix,
+                model_provider_prefix,
                 str(transform_config.encoding_format),
                 str(transform_config.input_type),
                 str(transform_config.truncate),
@@ -711,7 +711,7 @@ def create_text_embeddings_for_df(
                     api_key,
                     str(endpoint_url),
                     str(model_name),
-                    model_name_prefix,
+                    model_provider_prefix,
                     str(transform_config.encoding_format),
                     str(transform_config.input_type),
                     str(transform_config.truncate),

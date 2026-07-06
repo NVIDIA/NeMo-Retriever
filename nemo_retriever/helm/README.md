@@ -331,7 +331,7 @@ The retriever service picks up the in-cluster ASR endpoint when `nimOperator.aud
 | `serviceConfig.vectordb.enabled`                  | `true`  | Deploy the LanceDB vectordb Pod. When `true` the chart **requires** a resolvable embed endpoint (refer to [VectorDB and the embed endpoint](#vectordb-and-the-embed-endpoint)); `helm install` / `helm upgrade` fails fast otherwise. |
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
 | `serviceConfig.vectordb.embedModel`               | `nvidia/llama-nemotron-embed-vl-1b-v2` | Passed to vectordb + worker `embed_model_name`. |
-| `serviceConfig.vectordb.embedModelNamePrefix`     | `""` | Optional LiteLLM route/org prefix prepended to the remote embed model name. |
+| `serviceConfig.vectordb.embedModelProviderPrefix` | `""` | Optional LiteLLM provider prefix prepended to the remote embed model name. |
 
 #### VectorDB and the embed endpoint { #vectordb-and-the-embed-endpoint }
 

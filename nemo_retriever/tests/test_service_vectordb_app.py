@@ -100,13 +100,13 @@ def test_remote_embed_queries_delegates_model_prefix(monkeypatch) -> None:
         embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
         embed_endpoint="https://litellm.example.com/v1/embeddings",
         embed_api_key="k",
-        embed_model_name_prefix="nvidia",
+        embed_model_provider_prefix="nvidia",
     )
 
     assert vectors == [[0.1, 0.2]]
     assert calls["data"] == ["hello"]
     assert calls["model_name"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
-    assert calls["model_name_prefix"] == "nvidia"
+    assert calls["model_provider_prefix"] == "nvidia"
     assert calls["embedding_endpoint"] == "https://litellm.example.com/v1/embeddings"
 
 

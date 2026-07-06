@@ -434,7 +434,7 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
             "http://embed:8000/v1/embeddings",
             "--embed-model-name",
             "nvidia/llama-nemotron-embed-1b-v2",
-            "--embed-model-name-prefix",
+            "--embed-model-provider-prefix",
             "nvidia",
         ],
     )

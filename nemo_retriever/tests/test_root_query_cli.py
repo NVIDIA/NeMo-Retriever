@@ -136,7 +136,7 @@ def test_root_query_passes_embed_options(monkeypatch) -> None:
             "http://embed:8000/v1/embeddings",
             "--embed-model-name",
             "nvidia/llama-nemotron-embed-1b-v2",
-            "--embed-model-name-prefix",
+            "--embed-model-provider-prefix",
             "nvidia",
         ],
     )

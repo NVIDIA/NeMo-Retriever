@@ -67,7 +67,7 @@ nim_endpoints:
   ocr_invoke_url: {{ .ocrURL | quote }}
   embed_invoke_url: {{ .embedURL | quote }}
   embed_model_name: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
-  embed_model_name_prefix: {{ if .Values.serviceConfig.vectordb.embedModelNamePrefix }}{{ .Values.serviceConfig.vectordb.embedModelNamePrefix | quote }}{{ else }}null{{ end }}
+  embed_model_provider_prefix: {{ if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}{{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}{{ else }}null{{ end }}
   caption_invoke_url: {{ if .captionURL }}{{ .captionURL | quote }}{{ else }}null{{ end }}
   caption_model_name: {{ if .captionModelName }}{{ .captionModelName | quote }}{{ else }}null{{ end }}
   audio_grpc_endpoint: {{ if .audioGrpcEndpoint }}{{ .audioGrpcEndpoint | quote }}{{ else }}null{{ end }}
@@ -141,7 +141,7 @@ vectordb:
   lancedb_uri: {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
   table_name: {{ .Values.serviceConfig.vectordb.tableName | quote }}
   embed_model: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
-  embed_model_name_prefix: {{ if .Values.serviceConfig.vectordb.embedModelNamePrefix }}{{ .Values.serviceConfig.vectordb.embedModelNamePrefix | quote }}{{ else }}null{{ end }}
+  embed_model_provider_prefix: {{ if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}{{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}{{ else }}null{{ end }}
   vectordb_url: "http://{{ .vectordbSvc }}:{{ .vectordbPort }}"
 {{- else }}
 vectordb:

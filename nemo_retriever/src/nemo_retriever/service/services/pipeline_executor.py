@@ -318,7 +318,7 @@ _TRUST_OWNED_EMBED_KEYS: tuple[str, ...] = (
     "embedding_endpoint",
     "api_key",
     "embed_model_name",
-    "embed_model_name_prefix",
+    "embed_model_provider_prefix",
     "model_name",
 )
 # Trust-owned caption keys. ``endpoint_url`` / ``api_key`` /
@@ -852,8 +852,8 @@ def build_embed_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | No
         if nim.embed_model_name:
             kwargs["model_name"] = nim.embed_model_name
             kwargs["embed_model_name"] = nim.embed_model_name
-        if nim.embed_model_name_prefix:
-            kwargs["embed_model_name_prefix"] = nim.embed_model_name_prefix
+        if nim.embed_model_provider_prefix:
+            kwargs["embed_model_provider_prefix"] = nim.embed_model_provider_prefix
         if nim.api_key:
             kwargs["api_key"] = nim.api_key
         return EmbedParams(**kwargs)

@@ -15,7 +15,7 @@ from nemo_retriever.models.nim.primitives.nim_client import get_nim_client_manag
 from nemo_retriever.models.nim.primitives.nim_model_interface import ModelInterface
 from nemo_retriever.common.api.util.string_processing import (
     ensure_openai_embeddings_http_url,
-    prepend_model_name_prefix,
+    prepend_model_provider_prefix,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,7 +141,7 @@ def infer_microservice(
     input_type: str = "passage",
     truncate: str = "END",
     batch_size: int = 8191,
-    model_name_prefix: str | None = None,
+    model_provider_prefix: str | None = None,
     grpc: bool = False,
     input_names: list = ["text"],
     output_names: list = ["embeddings"],
@@ -204,7 +204,7 @@ def infer_microservice(
         )
     else:
         embedding_endpoint = ensure_openai_embeddings_http_url(str(embedding_endpoint))
-        model_name = prepend_model_name_prefix(model_name, model_name_prefix)
+        model_name = prepend_model_provider_prefix(model_name, model_provider_prefix)
         client = NimClient(
             model_interface=EmbeddingModelInterface(),
             protocol="http",

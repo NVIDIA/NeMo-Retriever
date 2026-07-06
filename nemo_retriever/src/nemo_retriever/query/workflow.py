@@ -105,7 +105,7 @@ def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
     embed_kwargs = build_embed_option_kwargs(
         request.embed.embed_invoke_url,
         request.embed.embed_model_name,
-        embed_model_name_prefix=request.embed.embed_model_name_prefix,
+        embed_model_provider_prefix=request.embed.embed_model_provider_prefix,
     )
     rerank_kwargs = _build_rerank_kwargs(request.rerank) if request.rerank.enabled else {}
     content_types = request.retrieval.content_types
@@ -183,8 +183,8 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
     }
     if request.embed.embed_model_name:
         cfg_kwargs["query_embedder"] = request.embed.embed_model_name
-    if request.embed.embed_model_name_prefix:
-        cfg_kwargs["query_embedder_prefix"] = request.embed.embed_model_name_prefix
+    if request.embed.embed_model_provider_prefix:
+        cfg_kwargs["query_embedder_provider_prefix"] = request.embed.embed_model_provider_prefix
     if request.rerank.enabled:
         # `reranker` doubles as the on/off gate (rerank=bool(cfg.reranker)) and the
         # model name, so fall back to the default model when only --rerank is given.
