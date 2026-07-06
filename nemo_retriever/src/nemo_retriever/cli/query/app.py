@@ -10,7 +10,7 @@ from typing import cast
 
 import click
 import typer
-from typer.core import TyperGroup
+from typer.core import TyperCommand, TyperGroup
 
 from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
@@ -40,7 +40,7 @@ from nemo_retriever.query.options import (
 from nemo_retriever.query.service import query_documents as query_service_documents
 
 _DEFAULT_COMMAND = "_local"
-_GROUP_OPTIONS = {"--help", "-h", "--install-completion", "--show-completion"}
+_GROUP_OPTIONS = {"--install-completion", "--show-completion"}
 _RETRIEVAL_MODES: set[str] = {"auto", "dense", "hybrid", "sparse"}
 
 
@@ -51,11 +51,17 @@ class DefaultLocalQueryGroup(TyperGroup):
         return super().parse_args(ctx, args)
 
 
+class DefaultLocalQueryCommand(TyperCommand):
+    def format_usage(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        command_path = ctx.command_path.removesuffix(f" {_DEFAULT_COMMAND}")
+        formatter.write_usage(command_path, " ".join(self.collect_usage_pieces(ctx)))
+
+
 app = typer.Typer(
     cls=DefaultLocalQueryGroup,
     help=(
-        "Query Retriever indexes. The local root CLI supports LanceDB indexes; "
-        "use the SDK VDB interface for other backends."
+        "Query Retriever indexes. Use retriever query QUERY for LanceDB indexes produced by local or batch ingest, "
+        "or retriever query service QUERY for a service deployment."
     ),
     no_args_is_help=True,
 )
@@ -161,10 +167,13 @@ def _retrieval_options(
 
 @app.command(
     "_local",
+    cls=DefaultLocalQueryCommand,
     hidden=True,
     help=(
-        f"Query a local LanceDB index. Default embedding model: {opts.DEFAULT_EMBED_MODEL}. "
-        f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}."
+        "Query a LanceDB index produced by local or batch ingest.\n\n"
+        f"Default embedding model: {opts.DEFAULT_EMBED_MODEL}.\n\n"
+        f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}.\n\n"
+        "For a service deployment, use retriever query service --help."
     ),
 )
 def _local_command(
@@ -303,7 +312,7 @@ def _local_command(
     _emit_query_output(hits, strategies=strategies, output_format=output_format, max_text_chars=max_text_chars)
 
 
-@app.command("service")
+@app.command("service", help="Query a Retriever service deployment.")
 def _service_command(
     query: opts.QueryArgument,
     service_url: opts.ServiceUrlOption = "http://localhost:7670",
