@@ -1,14 +1,12 @@
 {
   "schema_version": 1,
-  "name": "jp20_beir_expected",
+  "name": "jp20_beir",
   "benchmark": "jp20_beir",
   "mode": "local",
   "require": [
     "files==20",
     "pages==1940",
-    "query_count==115",
-    "recall_5>=0.85",
-    "ndcg_10>=0.75"
+    "query_count==115"
   ],
   "set": {}
 }

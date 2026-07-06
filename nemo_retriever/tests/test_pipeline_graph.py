@@ -204,6 +204,22 @@ class AdaptiveAddOperator(ArchetypeOperator):
         self.value = value
 
 
+class CountingCPUAdaptiveAddOperator(CPUAdaptiveAddOperator):
+    constructions = 0
+
+    def __init__(self, value: int = 1) -> None:
+        type(self).constructions += 1
+        super().__init__(value=value)
+
+
+class CountingAdaptiveAddOperator(ArchetypeOperator):
+    _cpu_variant_class = CountingCPUAdaptiveAddOperator
+
+    def __init__(self, value: int = 1) -> None:
+        super().__init__(value=value)
+        self.value = value
+
+
 # =====================================================================
 # Node tests
 # =====================================================================
@@ -545,6 +561,19 @@ class TestGraphExecute:
         g = Graph() >> AdaptiveAddOperator(5)
 
         assert g.execute(7) == [12]
+
+    def test_execute_in_place_reuses_archetype_delegate(self, monkeypatch):
+        resources = Resources(cpu_count=8, gpu_count=0)
+        monkeypatch.setattr(
+            "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
+            lambda: resources,
+        )
+        CountingCPUAdaptiveAddOperator.constructions = 0
+        graph = Graph() >> CountingAdaptiveAddOperator(5)
+
+        assert graph.execute_in_place(7) == [12]
+        assert graph.execute_in_place(8) == [13]
+        assert CountingCPUAdaptiveAddOperator.constructions == 1
 
     def test_single_node(self):
         g = Graph()
