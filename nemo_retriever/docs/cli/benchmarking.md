@@ -1,15 +1,11 @@
 # Benchmarking with the `retriever` CLI
 
-`retriever benchmark` and `retriever harness` are development and experimental subcommands
-with no guarantees — see [Supported vs development / experimental subcommands](README.md#supported-vs-development--experimental-subcommands).
-
 This page covers benchmark workflows for NeMo Retriever Library. See also
 `docs/docs/extraction/benchmarking.md` for published extraction benchmark notes and
 [`nemo_retriever/harness/HANDOFF.md`](../../harness/HANDOFF.md) for operator-oriented
 notes on `retriever harness`.
 
-Use `retriever harness` for benchmark orchestration and `retriever benchmark` for
-per-stage micro-benchmarks.
+`retriever harness` is the single CLI entry point for benchmark orchestration.
 
 ## Harness (development / experimental)
 
@@ -56,7 +52,6 @@ enabled in the resolved benchmark query config. Set `query.agentic: true` in a
 code-owned benchmark or runfile, or use repeatable `--set` overrides on the CLI.
 The agentic harness path runs the same ReAct retrieval graph used by root query,
 but only after ingest and only for BEIR evaluation (`evaluation.mode: beir`).
-`retriever pipeline run` does not expose agentic evaluation flags.
 
 Minimal BEIR override example:
 
@@ -89,34 +84,9 @@ Useful agentic query overrides:
 ### Image storage
 
 For normal ingest, configure image persistence on `retriever ingest` with
-`--store-images-uri <uri>` (local path or fsspec URI). The harness does not
-configure store directly; `retriever pipeline run --store-images-uri <uri>`
-remains available for pipeline-specific compatibility workflows. Stored assets
-follow `--embed-granularity` (page vs element images).
-
-## Per-stage micro-benchmarks
-
-Stage throughput benchmarks on the main CLI (no full harness required):
-
-```bash
-retriever benchmark --help           # split, extract, audio-extract, page-elements, ocr, all
-retriever benchmark split --help
-retriever benchmark extract --help
-retriever benchmark audio-extract --help
-retriever benchmark page-elements --help
-retriever benchmark ocr --help
-retriever benchmark all --help
-```
-
-Example — PDF extraction actor:
-
-```bash
-retriever benchmark extract ./data/pdf_corpus \
-  --pdf-extract-batch-size 8 \
-  --pdf-extract-actors 4
-```
-
-Each benchmark reports rows/sec (or chunk rows/sec for audio) for its actor.
+`--store-images-uri <uri>` (local path or fsspec URI). Stored assets follow
+`--embed-granularity` (page vs element images). Benchmark-specific ingest
+settings belong in the harness benchmark spec or a small `--set` override.
 
 ## Notes
 
@@ -126,5 +96,3 @@ Each benchmark reports rows/sec (or chunk rows/sec for audio) for its actor.
 - **Launcher:** for internal benchmarking, `retriever harness run BENCHMARK` and
   `retriever harness run-set RUNSET` are the benchmark orchestration entry points
   (development / experimental; no guarantees).
-- **Stage benchmarks:** `retriever benchmark …` is specific to the retriever CLI and
-  covers per-stage throughput rather than full harness orchestration.

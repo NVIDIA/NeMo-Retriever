@@ -2,18 +2,17 @@
 
 Read this only after you hit one of the named errors below. Don't read it pre-emptively.
 
-## If the index is missing or `retriever query` returns empty `evidence`
+## If ingest fails or the index is missing
 
-Means ingest didn't complete (e.g. the text-only pipeline still hit the turn wall, or the table is empty). Tight fallback using the retriever's own pdfium-based extractor (always available — same binary the agent just used for `retriever query`):
+Stay on `retriever ingest`; do not switch to format-specific, stage, or pipeline
+commands.
 
-1. `ls ./pdfs/` (one call) to see filenames.
-2. Pick the SINGLE PDF whose name best matches the question.
-3. ONE call: `<RETRIEVER_VENV>/bin/retriever pdf stage page-elements ./pdfs --method pdfium --json-output-dir /tmp/pdf_text --compact-json`. This emits a JSON sidecar per PDF at `/tmp/pdf_text/<basename>.pdf.pdf_extraction.json` containing per-page text primitives — pdfium only, no OCR, no NIM, fast.
-4. `Read` `/tmp/pdf_text/<name>.pdf.pdf_extraction.json` for the chosen PDF and synthesize from the per-page text. If the answer isn't there, still write your best guess based on the filename + extracted pages plus a one-sentence acknowledgement of uncertainty in `final_answer`. Then stop.
-
-Do NOT keep doing text-extract calls across many PDFs to hunt — that exhausts the turn budget. Better to answer partially than to time out. Never re-run `retriever ingest`.
-
-For an unlisted subcommand: `<RETRIEVER_VENV>/bin/retriever <subcommand> --help`.
+1. Read the surfaced error. If more context is needed, rerun the same ingest once
+   with `--no-quiet`.
+2. On a CPU-only host, verify that `NVIDIA_API_KEY` or `NGC_API_KEY` is non-empty
+   without printing its value. The default hosted embedding endpoint is automatic.
+3. Use `--embed-invoke-url` only when the user supplied a different endpoint.
+4. Do not install `torch` or `transformers` merely to process HTML/TXT.
 
 ## Failure modes (expected, not errors)
 
@@ -29,15 +28,15 @@ For an unlisted subcommand: `<RETRIEVER_VENV>/bin/retriever <subcommand> --help`
 `retriever ingest` auto-detects supported input types from file extensions. It
 supports `.pdf`, `.docx`, `.pptx`, `.txt`, `.html`, `.jpg`, `.jpeg`, `.png`,
 `.tiff`, `.tif`, `.bmp`, `.svg`, `.mp3`, `.wav`, `.m4a`, `.mp4`, `.mov`, and
-`.mkv`. Treat other extensions such as `.flac`, `.rtf`, `.eml`, `.py`, `.jsonl`,
-and `.zip` as setup issues. Before ingest, inventory:
+`.mkv`. Other extensions such as `.md`, `.flac`, `.rtf`, `.eml`, `.py`, `.jsonl`,
+and `.zip` are skipped. Before ingest, inventory:
 
 ```bash
 find <dir> -type f -name '*.*' | sed 's/.*\.//' | sort -u
 ```
 
-If unsupported extensions appear, name them in your reply and ask the user
-whether to skip or convert them.
+Ingest all supported files in the same directory command and report which
+unsupported extensions were skipped. Convert them only if the user asks.
 
 ## You ran more than 2 Bash calls on a query turn
 

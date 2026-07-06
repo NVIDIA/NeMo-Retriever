@@ -10,8 +10,8 @@ If flags below look stale, re-check the main help:
 <RETRIEVER_VENV>/bin/retriever ingest --help
 ```
 
-The main help lists available modes and points to mode-specific help when
-those options are needed.
+The main help shows the default local workflow directly and points to explicit
+batch or service help when those modes are needed.
 
 ## Default usage
 
@@ -95,6 +95,7 @@ when available, and an embedding vector.
 | `--table-name` | `nemo-retriever` | LanceDB table to write into. |
 | `--profile` | `auto` | `fast-text` disables expensive PDF extraction stages for a text-only fallback. |
 | `--overwrite/--append` | overwrite | Use `--append` only when duplicates are acceptable. |
+| `--index-mode` | `dense` | Use `hybrid` for vector + BM25/FTS retrieval or `sparse` for FTS-only indexing. |
 | `--caption` | `false` | Optional VLM captioning stage after extraction. |
 | `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, local/default caption behavior is used. |
 | `--caption-context-text-max-chars` | default | Include nearby extracted text in caption prompts. |
@@ -107,10 +108,8 @@ when available, and an embedding vector.
 The root ingest entrypoint expands inputs, builds a manifest, resolves the
 selected profile into typed ingest options, and calls the canonical ingest
 execution path. The manifest planner routes PDF/document, image, text, HTML,
-audio, and video branches without relying on `retriever pipeline run`.
-
-Use `retriever pipeline run` only for legacy or development behavior such as
-intermediate Parquet artifacts, pipeline reports, eval, recall, or harness work.
+audio, and video branches. Do not call format-specific or internal pipeline
+commands.
 
 ## Common failure modes
 
@@ -121,9 +120,9 @@ intermediate Parquet artifacts, pipeline reports, eval, recall, or harness work.
   CUDA-graph capture for the embedder. One-shot CLI invocations pay this cost.
 - **`No existing dataset at .../nemo-retriever.lance, it will be created`** -
   expected on the first ingest into a new DB.
-- **HuggingFace download on first run** - the embedder and page-element detector
-  may pull weights to `~/.cache/huggingface`. They need network the first time
-  and use cache afterwards.
+- **CPU-only host** - with `NVIDIA_API_KEY` or `NGC_API_KEY`, the default hosted
+  embedding endpoint is automatic. Do not install local model dependencies or
+  pass `--embed-invoke-url` unless using a different endpoint.
 
 ## Related
 

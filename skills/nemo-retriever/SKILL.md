@@ -7,9 +7,11 @@ allowed-tools: Bash Write Read
 
 # nemo-retriever
 
-The `retriever` CLI indexes a folder of PDFs into LanceDB (`retriever ingest`) and serves vector search over it (`retriever query`). For any task about searching/answering questions across a folder of PDFs, use this CLI — do not write a custom RAG.
+The `retriever` CLI extracts and indexes supported documents and media into LanceDB (`retriever ingest`) and searches the index (`retriever query`). For tasks across document collections, use these end-to-end commands instead of writing a custom RAG.
 
 **Beyond PDFs and beyond semantic search.** `retriever ingest` also handles images, Office, HTML, TXT, audio, and video — see `references/setup.md` for the per-format recipe and `references/install.md` for the install extras (`[multimedia]`, libreoffice, ffmpeg). The query turn is two retrieval passes — see **§Query turn** below (inline, no reference read needed); `references/cli/query.md` holds only the fallback detail (exact-term, chart text-extract, compose-reply). Don't fall back to native Read/Grep/Python on non-PDF inputs.
+
+**Extraction means `retriever ingest`.** File formats are inputs, not subcommands. For requests to extract, parse, transcribe, or index HTML/TXT/PDF/media, run `retriever ingest <files-or-directory>`. Never substitute format-specific, internal-stage, or pipeline commands. On a CPU-only host with `NVIDIA_API_KEY` or `NGC_API_KEY`, use the same ingest command: the CLI selects NVIDIA's hosted embedding endpoint automatically. Do not install local model dependencies or pass `--embed-invoke-url` unless the user supplied a different endpoint.
 
 ## Install (if `retriever` is missing)
 
@@ -28,7 +30,7 @@ If `command -v retriever` returns nothing, follow `references/install.md` to ins
 Run two complementary passes — these are your FIRST calls; don't `ls`/`find`/`sed`/Read to orient first. Semantic hybrid finds topically-relevant pages; a **lexical (sparse/BM25) pass on the exact term** finds the precise page a number/code/proper-noun lives on, which dense retrieval often misses:
 
 - **Semantic pass** — the full question, hybrid (dense + lexical fusion):
-  `<RETRIEVER_VENV>/bin/retriever query "<question>" --format evidence --hybrid --top-k 10`
+  `<RETRIEVER_VENV>/bin/retriever query "<question>" --format evidence --retrieval-mode hybrid --top-k 10`
 - **Lexical pass** — the EXACT term/figure/code/proper-noun the question targets (just the term, not the whole question — that's what makes BM25 precise):
   `<RETRIEVER_VENV>/bin/retriever query "<exact term, e.g. Management VaR / Level 3 / a code>" --format evidence --retrieval-mode sparse --top-k 10`
 
@@ -42,7 +44,7 @@ Each returns `{ evidence: [ { text, source, locator, modality, fidelity, score, 
 
 For the full `retriever ingest` CLI spec, see `references/cli/ingest.md`. For `retriever query` flags, `<RETRIEVER_VENV>/bin/retriever query --help` is authoritative (and faster) — you do not need it for routine turns.
 
-Before ingesting a mixed folder, inventory extensions (`find <dir> -name '*.*' | sed 's/.*\.//' | sort -u`) — `--input-type=auto` silently drops anything outside the supported set. See `references/troubleshooting.md` "Unsupported file types".
+Before ingesting a mixed folder, inventory extensions (`find <dir> -name '*.*' | sed 's/.*\.//' | sort -u`). Ingest the supported files in one command and report any unsupported extensions that were skipped. Do not invent an `--input-type` flag or switch to format-specific commands. See `references/troubleshooting.md` "Unsupported file types".
 
 ## Hard limits (apply to every turn)
 

@@ -4,13 +4,13 @@
 # SPDX-License-Identifier: Apache-2.0
 """Verify the installed `retriever` engine satisfies the skill's contract.
 
-Usage: <RETRIEVER_VENV>/bin/python skills/retriever/scripts/doctor.py
+Usage: <RETRIEVER_VENV>/bin/python skills/nemo-retriever/scripts/doctor.py
 Exits 0 if all checks pass, 1 otherwise. Always runs a LIVE ingest+query probe.
 
-The skill's one primitive is `retriever query --format evidence --hybrid` ->
+The skill's one primitive is `retriever query --format evidence --retrieval-mode hybrid` ->
 {evidence, coverage}; this doctor gates on THAT invocation and result shape. `query`'s
-DEFAULTS are unchanged (legacy `hits` output, vector-only) — `evidence`/`hybrid` are
-opt-in flags the skill passes, so neither is gated here.
+DEFAULTS are unchanged (`hits` output and automatic index detection) — the skill
+passes evidence format and hybrid retrieval explicitly.
 """
 import json
 import os
@@ -63,7 +63,9 @@ def main():
 
     bin_path = retriever_bin()
     check(
-        bin_path is not None, "retriever CLI on PATH", "" if bin_path else "run skills/retriever/references/install.md"
+        bin_path is not None,
+        "retriever CLI on PATH",
+        "" if bin_path else "run skills/nemo-retriever/references/install.md",
     )
     if not bin_path:
         return report()
@@ -111,6 +113,8 @@ def main():
                 uri,
                 "--embed-model-name",
                 EMBED_MODEL,
+                "--index-mode",
+                "hybrid",
                 "--quiet",
             ],
             capture_output=True,
@@ -134,6 +138,8 @@ def main():
                 uri,
                 "--embed-model-name",
                 EMBED_MODEL,
+                "--retrieval-mode",
+                "hybrid",
             ],
             capture_output=True,
             text=True,

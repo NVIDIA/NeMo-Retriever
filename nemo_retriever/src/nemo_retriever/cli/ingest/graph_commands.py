@@ -83,39 +83,12 @@ def _validate_graph_ingest_mode_options(values: Mapping[str, Any], *, run_mode: 
         raise ValueError(f"Batch-only option(s) require `retriever ingest batch`: {joined_flags}")
 
 
-def _parameter_was_provided(ctx: typer.Context, parameter_name: str) -> bool:
-    source = ctx.get_parameter_source(parameter_name)
-    return source is not None and getattr(source, "name", "") != "DEFAULT"
-
-
-def _resolve_index_mode_option(
-    ctx: typer.Context,
-    *,
-    index_mode: str,
-    hybrid: bool,
-    sparse: bool,
-) -> IngestIndexModeValue:
+def _resolve_index_mode_option(index_mode: str) -> IngestIndexModeValue:
     try:
-        resolved = validate_ingest_index_mode(index_mode)
+        return validate_ingest_index_mode(index_mode)
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
-
-    has_index_mode = _parameter_was_provided(ctx, "index_mode")
-    has_hybrid_alias = _parameter_was_provided(ctx, "hybrid")
-    has_sparse_alias = _parameter_was_provided(ctx, "sparse")
-    provided_modes = [has_index_mode, has_hybrid_alias, has_sparse_alias]
-    if sum(provided_modes) > 1:
-        typer.echo(
-            "Error: pass only one index mode option: --index-mode, deprecated --hybrid, or deprecated --sparse.",
-            err=True,
-        )
-        raise typer.Exit(1)
-    if has_hybrid_alias and hybrid:
-        return "hybrid"
-    if has_sparse_alias and sparse:
-        return "sparse"
-    return resolved
 
 
 def _matching_option_values(values: Mapping[str, Any], options_type: type[Any]) -> dict[str, Any]:
@@ -229,9 +202,6 @@ def _graph_ingest_command(
     extract_charts: opts.ExtractChartsOption = None,
     extract_infographics: opts.ExtractInfographicsOption = None,
     extract_page_as_image: opts.ExtractPageAsImageOption = None,
-    use_page_elements: opts.UsePageElementsOption = None,
-    use_graphic_elements: opts.UseGraphicElementsOption = None,
-    use_table_structure: opts.UseTableStructureOption = None,
     segment_audio: opts.SegmentAudioOption = None,
     audio_split_type: opts.AudioSplitTypeOption = "size",
     audio_split_interval: opts.AudioSplitIntervalOption = None,
@@ -253,15 +223,12 @@ def _graph_ingest_command(
     store_images_uri: opts.StoreImagesUriOption = None,
     overwrite: opts.OverwriteOption = True,
     index_mode: opts.IndexModeOption = "dense",
-    hybrid: opts.HybridOption = False,
-    sparse: opts.SparseOption = False,
     ray_address: opts.RayAddressOption = None,
     ray_log_to_driver: opts.RayLogToDriverOption = None,
     page_elements_invoke_url: opts.PageElementsInvokeUrlOption = None,
     ocr_invoke_url: opts.OcrInvokeUrlOption = None,
     ocr_version: opts.OcrVersionOption = None,
     ocr_lang: opts.OcrLangOption = None,
-    graphic_elements_invoke_url: opts.GraphicElementsInvokeUrlOption = None,
     table_structure_invoke_url: opts.TableStructureInvokeUrlOption = None,
     table_output_format: opts.TableOutputFormatOption = None,
     embed_invoke_url: opts.EmbedInvokeUrlOption = None,
@@ -300,5 +267,5 @@ def _graph_ingest_command(
     quiet: opts.QuietOption = True,
 ) -> None:
     parsed_options = dict(ctx.params)
-    parsed_options["index_mode"] = _resolve_index_mode_option(ctx, index_mode=index_mode, hybrid=hybrid, sparse=sparse)
+    parsed_options["index_mode"] = _resolve_index_mode_option(index_mode)
     _run_graph_ingest_from_parsed_options(parsed_options, run_mode=_graph_run_mode_for_command(ctx))

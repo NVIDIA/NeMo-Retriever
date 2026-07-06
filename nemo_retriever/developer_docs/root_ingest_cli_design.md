@@ -39,7 +39,8 @@ Behavior intentionally preserved:
 - Local and batch success summaries report files and LanceDB rows.
 - Service success summaries report files, service URL, and service-returned row
   count when available.
-- `retriever pipeline run` compatibility behavior is left in place.
+- Legacy stage and pipeline applications remain importable where compatibility
+  callers need them, but they are not registered on the root CLI.
 
 Behavior intentionally changed:
 
@@ -50,6 +51,8 @@ Behavior intentionally changed:
   `--run-mode service`.
 - Service-local invalid options are parser-level unknown options instead of
   runtime-denied options.
+- Internal graph-stage selectors such as `use_page_elements` and
+  `use_table_structure` are not public root CLI options.
 
 ## Why Not `--run-mode`
 
@@ -143,8 +146,10 @@ retriever ingest service docs/
 
 ## Handling The Large Option Surface
 
-The large number of flags is real public surface area, so the CLI keeps it
-visible. The cleanup is how those values move inward:
+The remaining flags are real public surface area, so the CLI keeps them visible.
+Internal graph-stage selectors are resolved by profiles and high-level format
+choices instead of being exposed beside user capabilities. The cleanup is how
+the remaining values move inward:
 
 - Typer command signatures declare the public knobs explicitly.
 - `options.py` centralizes repeated Typer metadata only when the flag spelling,
@@ -210,20 +215,13 @@ image-store URI, dry-run, and quiet output.
 Service-backed query support belongs in the query CLI/service boundary, not in
 the ingest CLI.
 
-## Pipeline Compatibility
+## CLI Boundary
 
-`retriever pipeline run` is not the future public ingest interface. It remains
-the compatibility and development command for
-pipeline-only behavior such as:
-
-- intermediate Parquet artifacts
-- pipeline reports and runtime metrics
-- eval, recall, harness, BEIR/QA workflows
-- legacy callers not yet migrated to root ingest/query
-
-For graph ingest paths, pipeline compatibility should continue to reuse the
-canonical ingest plan/execution layer instead of shelling out to root CLI
-commands.
+`retriever ingest` is the only root CLI path for document ingestion. Legacy
+stage and pipeline applications may remain as importable implementation modules
+while internal callers migrate, but they are deliberately not registered as
+`retriever` subcommands. Benchmark orchestration uses `retriever harness` and
+shares the canonical ingest plan/execution layer directly.
 
 ## Adding Or Changing A Flag
 
