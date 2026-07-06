@@ -617,6 +617,8 @@ def validate_pipeline_spec(
         and spec.split_config is None
         and spec.pdf_split is None
         and not spec.stage_order
+        and not spec.return_embeddings
+        and not spec.return_images
     )
     if result_schema_only:
         return spec

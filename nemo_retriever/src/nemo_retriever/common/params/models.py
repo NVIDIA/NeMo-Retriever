@@ -120,6 +120,8 @@ class IngestExecuteParams(_ParamsModel):
     return_traces: bool = False
     return_results: bool = True
     result_schema: Literal["legacy", "compact"] = "legacy"
+    return_embeddings: bool = False
+    return_images: bool = False
     parallel: bool = False
     max_workers: Optional[int] = None
     gpu_devices: list[str] = Field(default_factory=list)
