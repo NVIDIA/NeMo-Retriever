@@ -259,7 +259,15 @@ class TextGenerationOperator(AbstractOperator, CPUOperator):
     def _failure_model(self) -> str:
         try:
             model = self._client.model
-        except Exception:
+        except Exception as exc:
+            # Failure reporting must remain best-effort, but a broken client
+            # property should still be diagnosable. Log only the exception
+            # type: provider messages may contain request data or credentials.
+            exc_type = f"{type(exc).__module__}.{type(exc).__qualname__}"
+            logger.debug(
+                "Unable to read generation client model metadata (%s); using configured model",
+                exc_type,
+            )
             return self._configured_model
         return model if isinstance(model, str) and model else self._configured_model
 
@@ -296,17 +304,16 @@ class TextGenerationOperator(AbstractOperator, CPUOperator):
 
                 for future in as_completed(futures):
                     position = futures[future]
-                    try:
-                        result_position, result = future.result()
-                        if result_position != position:
-                            raise RuntimeError(
-                                f"generation result position {result_position} does not match "
-                                f"submitted position {position}"
-                            )
-                        results[position] = result
-                    except Exception:
-                        logger.warning("Row %d generation failed (request_error)", position)
-                        results[position] = self._failure_result("request_error", 0.0)
+                    # _execute_row owns per-row failure collection. Exceptions
+                    # or position mismatches here are executor/programming
+                    # failures and must not be silently converted into row data.
+                    result_position, result = future.result()
+                    if result_position != position:
+                        raise RuntimeError(
+                            f"generation result position {result_position} does not match "
+                            f"submitted position {position}"
+                        )
+                    results[position] = result
 
         # Every non-empty row is assigned either a task result or a failure
         # result above. The cast-free local assertion catches future changes to

@@ -465,6 +465,35 @@ class TestTextGenerationOperators:
             "summary_error": "object",
         }
 
+    def test_failure_model_fallback_logs_only_sanitized_exception_type(self, caplog):
+        from nemo_retriever.operators.generation import SummarizationOperator
+
+        class BrokenModelClient(FakeCompletionClient):
+            @property
+            def model(self):
+                raise RuntimeError("must-not-appear: secret-provider-message")
+
+        operator = SummarizationOperator(_params(), client=BrokenModelClient())
+
+        with caplog.at_level("DEBUG", logger="nemo_retriever.operators.generation.base"):
+            assert operator._failure_model() == "fake/model"
+
+        assert "builtins.RuntimeError" in caplog.text
+        assert "secret-provider-message" not in caplog.text
+
+    def test_result_position_mismatch_is_an_operator_failure(self):
+        from nemo_retriever.operators.generation import SummarizationOperator
+
+        class MisroutedResultOperator(SummarizationOperator):
+            def _execute_row(self, position, inputs):
+                _, result = super()._execute_row(position, inputs)
+                return position + 1, result
+
+        operator = MisroutedResultOperator(_params(), client=FakeCompletionClient())
+
+        with pytest.raises(RuntimeError, match="result position 1 does not match submitted position 0"):
+            operator.run(pd.DataFrame({"text": ["source"]}))
+
 
 class TestQACompatibility:
     def test_qa_run_preserves_schema_order_and_overwrites_legacy_outputs(self):
@@ -751,6 +780,30 @@ class TestQALegacyClientRemediation:
         assert out.loc[0, "answer"] == "legacy answer"
         assert out.loc[0, "model"] == "legacy/model"
         assert out.loc[0, "gen_error"] is None
+
+    def test_generate_only_client_receives_operator_reasoning_setting(self):
+        from nemo_retriever.models.llm.types import GenerationResult
+        from nemo_retriever.tools.evaluation.generation import QAGenerationOperator
+
+        class LegacyClient:
+            def __init__(self):
+                self.reasoning_values: list[bool | None] = []
+
+            def generate(self, query, chunks, *, reasoning_enabled=None):
+                self.reasoning_values.append(reasoning_enabled)
+                return GenerationResult("legacy answer", 0.2, "legacy/model")
+
+        client = LegacyClient()
+        operator = QAGenerationOperator(
+            model="configured/model",
+            api_key="",
+            reasoning_enabled=False,
+        )
+        operator._client = client
+
+        operator.run(pd.DataFrame({"query": ["q"], "context": [["c"]]}))
+
+        assert client.reasoning_values == [False]
 
     def test_generate_only_failure_uses_configured_model(self):
         from nemo_retriever.tools.evaluation.generation import QAGenerationOperator

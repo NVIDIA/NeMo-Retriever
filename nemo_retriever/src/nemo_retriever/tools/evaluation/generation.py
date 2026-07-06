@@ -119,7 +119,11 @@ class QAGenerationOperator(TextGenerationOperator):
             started_at = time.monotonic()
             failure: GenerationTaskError | None = None
             try:
-                result = client.generate(inputs["query"], inputs["chunks"])
+                result = client.generate(
+                    inputs["query"],
+                    inputs["chunks"],
+                    reasoning_enabled=self._task.reasoning_enabled,
+                )
             except Exception:
                 failure = GenerationTaskError(
                     code="transport_error",
