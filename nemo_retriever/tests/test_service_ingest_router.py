@@ -33,13 +33,33 @@ from nemo_retriever.service.config import (
     ServiceConfig,
 )
 from nemo_retriever.service import tracing
+from nemo_retriever.common.schemas.requests import IngestRequest
+from nemo_retriever.service.routers import ingest as ingest_router
 from nemo_retriever.service.services.pipeline_pool import WorkItem
+from nemo_retriever.service.services.pipeline_pool import PoolType
+from nemo_retriever.service.utils.file_type import FileCategory
 from .conftest import create_test_job
 
 
 @pytest.fixture
 def captured_items() -> list[WorkItem]:
     return []
+
+
+def test_route_by_page_count_skips_pdf_probe_for_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fail_pdf_probe(_file_bytes: bytes) -> int:
+        raise AssertionError("non-PDF uploads should not be opened by PDFium")
+
+    monkeypatch.setattr(ingest_router, "_count_pdf_pages", _fail_pdf_probe)
+
+    route = ingest_router._route_by_page_count(
+        b"hello",
+        IngestRequest(filename="doc.txt"),
+        file_category=FileCategory.TEXT,
+        file_suffix=".txt",
+    )
+
+    assert route is PoolType.REALTIME
 
 
 class _CollectingExporter:

@@ -12,6 +12,8 @@ import logging
 import os
 import re
 import shutil
+import signal
+import socket
 import stat
 import subprocess
 import time
@@ -21,13 +23,16 @@ from dataclasses import asdict, dataclass, field
 from importlib.resources import files as pkg_files
 from pathlib import Path
 from typing import Any
+from urllib import request as urlrequest
 
+from nemo_retriever.harness.config import REPO_ROOT
 from nemo_retriever.tools.skill_eval.dataset import DatasetEntry
 
 logger = logging.getLogger(__name__)
 
 BASE_CONDITION = "c1_base"
-CONDITIONS = ("c1_base", "c2_retriever", "c3_retriever_skill")
+MCP_CONDITION = "c4_mcp_service"
+CONDITIONS = ("c1_base", "c2_retriever", "c3_retriever_skill", MCP_CONDITION)
 SUPPORTED_AGENTS = ("claude", "codex")
 DEFAULT_AGENT_MODELS = {
     "claude": "claude-opus-4-7",
@@ -37,7 +42,7 @@ DEFAULT_AGENT_MODELS = {
 
 @functools.lru_cache(maxsize=8)
 def _load_prompt_template(name: str) -> str:
-    return Path(str(pkg_files("nemo_retriever.skill_eval").joinpath(f"prompts/{name}"))).read_text(encoding="utf-8")
+    return Path(str(pkg_files("nemo_retriever.tools.skill_eval").joinpath(f"prompts/{name}"))).read_text(encoding="utf-8")
 
 
 @dataclass
@@ -104,7 +109,12 @@ def _remap_pdf_paths(text: str, prefixes: tuple[str, ...]) -> str:
 
 
 def _render_prompt(entry: DatasetEntry, condition: str, testdata_prefixes: tuple[str, ...] = ()) -> str:
-    tpl_name = "trial_user_slash.j2" if condition == "c3_retriever_skill" else "trial_user_nl.j2"
+    if condition == MCP_CONDITION:
+        tpl_name = "trial_user_mcp.j2"
+    elif condition == "c3_retriever_skill":
+        tpl_name = "trial_user_slash.j2"
+    else:
+        tpl_name = "trial_user_nl.j2"
     text = _load_prompt_template(tpl_name)
     return text.replace(
         "{{ paraphrased_prompt }}", _remap_pdf_paths(entry.paraphrased_prompt, testdata_prefixes)
@@ -112,7 +122,12 @@ def _render_prompt(entry: DatasetEntry, condition: str, testdata_prefixes: tuple
 
 
 def _render_setup_prompt(condition: str, domain_label: str = "PDFs") -> str:
-    tpl_name = "setup_slash.j2" if condition == "c3_retriever_skill" else "setup_nl.j2"
+    if condition == MCP_CONDITION:
+        tpl_name = "setup_mcp.j2"
+    elif condition == "c3_retriever_skill":
+        tpl_name = "setup_slash.j2"
+    else:
+        tpl_name = "setup_nl.j2"
     text = _load_prompt_template(tpl_name)
     return text.replace("{{ domain_label }}", domain_label)
 
@@ -159,6 +174,8 @@ def _write_setup_context(workdir: Path, *, agent: str, condition: str) -> Path:
     ]
     if condition == BASE_CONDITION:
         lines.append("- The `retriever` CLI is intentionally blocked for this baseline condition.")
+    elif condition == MCP_CONDITION:
+        lines.append("- A local Retriever service is running. Use the Retriever MCP tools, not the `retriever` CLI.")
     else:
         lines.append("- The `retriever` CLI and nemo-retriever skill are available for this condition.")
     lines += ["", "## Top-level setup artifacts"]
@@ -299,6 +316,223 @@ def _env_for(condition: str, workdir: Path) -> dict[str, str]:
     return env
 
 
+
+
+@dataclass
+class MCPServiceRun:
+    service_url: str
+    vdb_url: str
+    service_proc: subprocess.Popen[str] | None = None
+    vdb_proc: subprocess.Popen[str] | None = None
+    service_log: Any = None
+    vdb_log: Any = None
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _get_json(url: str, timeout: float = 5.0) -> dict[str, Any]:
+    with urlrequest.urlopen(url, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _wait_health(url: str, *, timeout_s: float, require_warm: bool = False) -> dict[str, Any]:
+    started = time.monotonic()
+    last_error: str | None = None
+    while time.monotonic() - started < timeout_s:
+        try:
+            body = _get_json(url, timeout=5.0)
+            if body.get("status") == "ok" and (not require_warm or body.get("models_warm") is True):
+                return body
+        except Exception as exc:  # noqa: BLE001 - health polling should keep retrying.
+            last_error = str(exc)
+        time.sleep(2.0)
+    raise TimeoutError(f"Timed out waiting for {url}; last_error={last_error}")
+
+
+def _start_logged_process(args: list[str], log_path: Path, *, env: dict[str, str] | None = None) -> tuple[subprocess.Popen[str], Any]:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log = log_path.open("w", encoding="utf-8")
+    proc = subprocess.Popen(
+        args,
+        cwd=str(REPO_ROOT),
+        env=env,
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        text=True,
+        start_new_session=True,
+    )
+    return proc, log
+
+
+def _stop_process(proc: subprocess.Popen[str] | None, log: Any = None, *, timeout: float = 30.0) -> None:
+    if proc is not None and proc.poll() is None:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+            proc.wait(timeout=timeout)
+        except Exception:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except Exception:
+                pass
+    if log is not None:
+        try:
+            log.close()
+        except Exception:
+            pass
+
+
+def _start_mcp_service(workdir: Path, *, condition: str) -> MCPServiceRun | None:
+    if condition != MCP_CONDITION:
+        return None
+
+    uv = Path(os.environ.get("NEMO_RETRIEVER_SKILL_EVAL_UV", "/home/nfs/mwason/.local/bin/uv"))
+    project = Path(os.environ.get("NEMO_RETRIEVER_SKILL_EVAL_PROJECT", str(REPO_ROOT / "nemo_retriever")))
+    hf_cache = Path(os.environ.get("NEMO_RETRIEVER_SKILL_EVAL_HF_CACHE", "/raid/mwason/.cache/huggingface"))
+    gpu = os.environ.get("NEMO_RETRIEVER_SKILL_EVAL_GPU", "5")
+    model = os.environ.get("NEMO_RETRIEVER_SKILL_EVAL_EMBED_MODEL", "nvidia/llama-nemotron-embed-vl-1b-v2")
+    warmup = os.environ.get("NEMO_RETRIEVER_SKILL_EVAL_MCP_WARMUP", "false").lower() in {"1", "true", "yes"}
+    startup_timeout = float(os.environ.get("NEMO_RETRIEVER_SKILL_EVAL_MCP_STARTUP_TIMEOUT", "900"))
+
+    service_port = _free_port()
+    vdb_port = _free_port()
+    service_url = f"http://127.0.0.1:{service_port}"
+    vdb_url = f"http://127.0.0.1:{vdb_port}"
+    service_dir = workdir / ".mcp_service"
+    service_dir.mkdir(parents=True, exist_ok=True)
+    config_path = service_dir / "service.yaml"
+    config_text = f'''mode: standalone
+
+server:
+  host: "127.0.0.1"
+  port: {service_port}
+
+logging:
+  level: "INFO"
+  file: "{service_dir / 'service-file.log'}"
+
+local_models:
+  enabled: true
+  hf_cache_dir: "{hf_cache}"
+  warmup_on_startup: {str(warmup).lower()}
+  max_process_pool_workers: 1
+  extract:
+    enabled: true
+    use_table_structure: false
+    use_graphic_elements: false
+    ocr_version: v2
+  embed:
+    enabled: true
+    model_name: {model}
+    local_ingest_embed_backend: hf
+  asr:
+    enabled: false
+
+pipeline:
+  realtime_workers: 1
+  realtime_queue_size: 64
+  batch_workers: 1
+  batch_queue_size: 64
+
+resources:
+  gpu_devices: ["{gpu}"]
+
+vectordb:
+  enabled: true
+  lancedb_uri: "{service_dir / 'lancedb'}"
+  table_name: "nemo_retriever_mcp_eval"
+  embed_model: {model}
+  vectordb_url: "{vdb_url}"
+
+mcp:
+  enabled: true
+  path: "/mcp"
+  base_url: "{service_url}"
+  enable_write_tools: true
+  max_concurrency: 4
+  request_timeout_s: 240.0
+  ingest_timeout_s: 7200.0
+  poll_interval_s: 0.5
+'''
+    config_path.write_text(config_text, encoding="utf-8")
+
+    vdb_env = os.environ.copy()
+    vdb_env["CUDA_VISIBLE_DEVICES"] = gpu
+    run = MCPServiceRun(service_url=service_url, vdb_url=vdb_url)
+    run.vdb_proc, run.vdb_log = _start_logged_process(
+        [
+            str(uv),
+            "run",
+            "--project",
+            str(project),
+            "python",
+            "-m",
+            "nemo_retriever.service.vectordb_app",
+            "--lancedb-uri",
+            str(service_dir / "lancedb"),
+            "--table-name",
+            "nemo_retriever_mcp_eval",
+            "--local-embed",
+            "--local-embed-backend",
+            "hf",
+            "--hf-cache-dir",
+            str(hf_cache),
+            "--device",
+            "cuda:0",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(vdb_port),
+            "--log-level",
+            "INFO",
+        ],
+        service_dir / "vectordb.log",
+        env=vdb_env,
+    )
+    _wait_health(vdb_url + "/v1/health", timeout_s=startup_timeout)
+
+    run.service_proc, run.service_log = _start_logged_process(
+        [
+            str(uv),
+            "run",
+            "--project",
+            str(project),
+            "retriever",
+            "service",
+            "start",
+            "--config",
+            str(config_path),
+        ],
+        service_dir / "service.log",
+    )
+    _wait_health(service_url + "/v1/health", timeout_s=startup_timeout, require_warm=warmup)
+    (workdir / "mcp_service_context.md").write_text(
+        "\n".join(
+            [
+                "# Retriever MCP Service Context",
+                "",
+                f"- Service URL: `{service_url}`",
+                f"- VectorDB URL: `{vdb_url}`",
+                "- Use Retriever MCP tools for ingest/query/answer.",
+                "- Do not use the `retriever` CLI in this condition.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return run
+
+
+def _stop_mcp_service(run: MCPServiceRun | None) -> None:
+    if run is None:
+        return
+    _stop_process(run.service_proc, run.service_log)
+    _stop_process(run.vdb_proc, run.vdb_log)
+
+
 def _build_claude_command(
     condition: str,
     model: str,
@@ -351,6 +585,8 @@ def _build_codex_command(
     workdir: Path,
     *,
     resume: bool = False,
+    condition: str = "",
+    mcp_service_url: str | None = None,
 ) -> list[str]:
     """Build a non-interactive Codex command.
 
@@ -366,6 +602,13 @@ def _build_codex_command(
         "--ignore-rules",
         "--dangerously-bypass-approvals-and-sandbox",
     ]
+    if condition == MCP_CONDITION and mcp_service_url:
+        common.extend(
+            [
+                "-c",
+                f'mcp_servers.retriever.url="{mcp_service_url}/mcp/"',
+            ]
+        )
     if resume:
         return ["codex", "exec", "resume", *common, session_uuid, "-"]
     return [
@@ -393,7 +636,14 @@ def _build_command(
     if agent == "claude":
         return _build_claude_command(condition, model, budget_usd, session_uuid, workdir, resume=resume)
     if agent == "codex":
-        return _build_codex_command(model, session_uuid, workdir, resume=resume)
+        return _build_codex_command(
+            model,
+            session_uuid,
+            workdir,
+            resume=resume,
+            condition=condition,
+            mcp_service_url=os.environ.get("NEMO_RETRIEVER_ACTIVE_MCP_SERVICE_URL"),
+        )
     raise ValueError(f"unsupported agent: {agent}")
 
 
@@ -1038,6 +1288,26 @@ def _scan_codex_transcript_for_signals(
         payload = ev.get("payload") or {}
         if not isinstance(payload, dict) or payload.get("type") != "function_call":
             continue
+        tool_name = str(payload.get("name") or "")
+        if condition == MCP_CONDITION:
+            is_retriever_tool = tool_name.startswith("mcp__retriever__") or tool_name in {
+                "health",
+                "pipeline_config",
+                "get_job",
+                "list_job_documents",
+                "get_document",
+                "query",
+                "answer",
+                "ingest_content",
+                "ingest_documents",
+            }
+            if not is_retriever_tool:
+                continue
+            attempted = True
+            call_id = payload.get("call_id")
+            if isinstance(call_id, str) and call_id in outputs_by_call and "error" not in outputs_by_call[call_id].lower():
+                succeeded = True
+            continue
         if not _retriever_in_command(_codex_tool_command(payload), condition):
             continue
         attempted = True
@@ -1239,7 +1509,7 @@ def _run_one_turn(
     result.retriever_succeeded = succeeded
     # c1 has the skill unavailable; leave skill_fired=None to distinguish from
     # "loaded but didn't fire".
-    if condition in ("c2_retriever", "c3_retriever_skill"):
+    if condition in ("c2_retriever", "c3_retriever_skill", MCP_CONDITION):
         result.skill_fired = attempted and (first_use is not None) and first_use <= 2
     return result
 
@@ -1305,6 +1575,19 @@ def run_condition(
     execution_mode = "parallel_isolated" if query_parallelism > 1 else "linear_session"
 
     workdir = _build_condition_workdir(agent, condition, workdir_root, pdf_source, skill_source, domain=domain)
+    mcp_service = _start_mcp_service(workdir, condition=condition)
+    previous_mcp_service_url = os.environ.get("NEMO_RETRIEVER_ACTIVE_MCP_SERVICE_URL")
+    if mcp_service is not None:
+        os.environ["NEMO_RETRIEVER_ACTIVE_MCP_SERVICE_URL"] = mcp_service.service_url
+
+    def _finish(run: ConditionRun) -> ConditionRun:
+        if previous_mcp_service_url is None:
+            os.environ.pop("NEMO_RETRIEVER_ACTIVE_MCP_SERVICE_URL", None)
+        else:
+            os.environ["NEMO_RETRIEVER_ACTIVE_MCP_SERVICE_URL"] = previous_mcp_service_url
+        _stop_mcp_service(mcp_service)
+        return run
+
     session_uuid = str(uuid.uuid4())
     env = _env_for(condition, workdir)
     logger.info(
@@ -1369,7 +1652,7 @@ def run_condition(
             domain or "default",
             len(entries),
         )
-        return run
+        return _finish(run)
 
     _write_setup_context(workdir, agent=agent, condition=condition)
     session_uuid = setup_result.session_id or session_uuid
@@ -1408,7 +1691,7 @@ def run_condition(
             _apply_judge(judge, entry, result)
             results.append(result)
             result_workdirs[result.trial_id] = workdir
-        return run
+        return _finish(run)
 
     query_contexts: list[dict[str, Any]] = []
     for i, entry in enumerate(entries):
@@ -1500,7 +1783,7 @@ def run_condition(
         if entry is not None:
             _apply_judge(judge, entry, result)
     results.extend(query_results)
-    return run
+    return _finish(run)
 
 
 def save_trial(result: TrialResult, session_dir: Path) -> Path:

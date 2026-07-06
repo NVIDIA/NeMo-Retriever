@@ -1,0 +1,21 @@
+{{ paraphrased_prompt }}
+
+Use the native Retriever MCP tools to answer. Prefer `query` with `format="evidence"` and `top_k=10` so you can inspect citation-ready evidence. Use `answer` only if it helps, but still populate `ranked_retrieved` from retrieved evidence pages.
+
+Do not run the `retriever` CLI. Do not use `curl`, raw HTTP, or manual JSON-RPC calls to the MCP endpoint. This condition is testing native MCP tool use. If native Retriever MCP tools are not available, write an output.json with an empty `final_answer`, empty `ranked_retrieved`, and an explanation in an `error` field.
+
+When complete, write the final result to ./output.json with EXACTLY this schema:
+
+{
+  "final_answer": "<natural-language answer to the question>",
+  "ranked_retrieved": [
+    {"doc_id": "<PDF filename without .pdf>", "page_number": <0-indexed int>, "rank": 1},
+    ... up to 10 entries, ranked by relevance to the question
+  ]
+}
+
+Notes:
+- `doc_id` is the base filename of the source PDF without the `.pdf` extension. Example: for a file named `Foo_Report.pdf`, the doc_id is `Foo_Report`.
+- `page_number` in output.json is 0-indexed: the first page of a PDF is page 0. Retriever MCP evidence citations like `p.42` or locators like `{"kind": "page", "value": 42}` are 1-indexed PDF page labels, so subtract 1 before writing `page_number`.
+- `ranked_retrieved` must be ordered by relevance and contain up to 10 (doc_id, page_number) pairs.
+- After writing the file, simply stop. Do not print the file contents or summarize.

@@ -11,7 +11,13 @@ import pytest
 import typer
 
 import nemo_retriever.cli.pipeline as pipeline_pkg
-from nemo_retriever.ingest.service import ServiceIngestRequest, build_service_ingestor
+from nemo_retriever.ingest.service import (
+    ServiceIngestPlanRequest,
+    ServiceIngestRequest,
+    ServiceIngestSourceOptions,
+    build_service_ingestor,
+    resolve_service_ingest_request,
+)
 from nemo_retriever.common.params import EmbedParams, ExtractParams, TextChunkParams
 from nemo_retriever.cli.pipeline.__main__ import (
     _build_embed_params,
@@ -90,6 +96,27 @@ def test_build_service_ingestor_wires_extract_embed_and_chunking(tmp_path: Path)
         PipelineSpec.model_validate(ingestor._pipeline_spec),
         PipelineOverridesConfig().to_policy(),
     )
+
+
+def test_service_ingest_request_suppresses_env_api_keys(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "dummy-client-key")
+    monkeypatch.setenv("NGC_API_KEY", "dummy-client-key")
+    txt = tmp_path / "doc.txt"
+    txt.write_text("hello", encoding="utf-8")
+
+    request = resolve_service_ingest_request(
+        ServiceIngestPlanRequest(
+            source=ServiceIngestSourceOptions(documents=[str(txt)], input_type="txt"),
+        )
+    )
+    ingestor = build_service_ingestor(request)
+    payload = ingestor._pipeline_payload()
+
+    assert payload is not None
+    assert "api_key" not in payload.get("extract_params", {})
+    assert "page_elements_api_key" not in payload.get("extract_params", {})
+    assert "ocr_api_key" not in payload.get("extract_params", {})
+    assert "api_key" not in payload.get("embed_params", {})
 
 
 def test_resolve_file_patterns_returns_existing_file_verbatim(tmp_path: Path) -> None:

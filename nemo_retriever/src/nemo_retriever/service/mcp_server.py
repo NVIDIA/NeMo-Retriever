@@ -32,13 +32,17 @@ logger = logging.getLogger(__name__)
 
 
 class MCPDocumentInput(BaseModel):
-    """Document payload accepted by the MCP ``ingest_documents`` tool."""
+    """Content payload accepted by the MCP ingest tools."""
 
     model_config = ConfigDict(extra="forbid")
 
     path: str | None = Field(
         default=None,
-        description="Path to a document visible to the MCP server process.",
+        description=(
+            "Path to content visible to the MCP server process. Supports the same "
+            "file types as service ingestion, including PDFs, images, Office files, "
+            "HTML/TXT, audio, and video."
+        ),
     )
     filename: str | None = Field(
         default=None,
@@ -46,7 +50,7 @@ class MCPDocumentInput(BaseModel):
     )
     content_base64: str | None = Field(
         default=None,
-        description="Base64-encoded document bytes for remote agents.",
+        description="Base64-encoded content bytes for remote agents.",
     )
     content_type: str | None = Field(
         default=None,
@@ -248,6 +252,7 @@ class ServiceMCPClient:
         pipeline_spec: dict[str, Any] | None = None,
         retain_results: bool = False,
         include_result_data: bool = False,
+        wait_until_done: bool = True,
     ) -> dict[str, Any]:
         if not self._settings.enable_write_tools:
             raise RuntimeError("MCP write tools are disabled for this service.")
@@ -278,18 +283,20 @@ class ServiceMCPClient:
             document_ids = [
                 item["document_id"] for item in upload_results if item.get("ok") and item.get("document_id")
             ]
-            documents_page = await self._poll_documents_until_terminal(
-                client,
-                job_id,
-                document_ids,
-                timeout_at=timeout_at,
-            )
+            documents_page: dict[str, Any] = {"items": [], "total": 0, "timed_out": False}
+            if wait_until_done:
+                documents_page = await self._poll_documents_until_terminal(
+                    client,
+                    job_id,
+                    document_ids,
+                    timeout_at=timeout_at,
+                )
 
-            if include_result_data:
-                for item in documents_page.get("items", []):
-                    if item.get("status") in {"completed", "failed"}:
-                        detail = await self._get_document_with_client(client, job_id, item["document_id"])
-                        item["result_data"] = detail.get("result_data")
+                if include_result_data:
+                    for item in documents_page.get("items", []):
+                        if item.get("status") in {"completed", "failed"}:
+                            detail = await self._get_document_with_client(client, job_id, item["document_id"])
+                            item["result_data"] = detail.get("result_data")
 
         upload_errors = [item for item in upload_results if not item.get("ok")]
         return {
@@ -299,6 +306,7 @@ class ServiceMCPClient:
             "upload_errors": upload_errors,
             "documents": documents_page,
             "timed_out": bool(documents_page.get("timed_out")),
+            "wait_until_done": wait_until_done,
         }
 
     async def _upload_documents(
@@ -447,8 +455,8 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
         "NeMo Retriever Service",
         instructions=(
             "Use these tools to interact with a running NVIDIA NeMo Retriever "
-            "service. Ingest documents, check job status, query the configured "
-            "VectorDB, and ask the configured answer-generation endpoint."
+            "service. Ingest multimodal content, check job status, query the "
+            "configured VectorDB, and ask the configured answer-generation endpoint."
         ),
     )
 
@@ -489,9 +497,10 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
     @mcp.tool(
         name="query",
         description=(
-            "Search ingested documents through the service VectorDB endpoint. "
-            "format='hits' (default) returns raw retrieval hits; format='evidence' "
-            "returns the fidelity-tagged, citation-ready {evidence, coverage} shape."
+            "Search ingested content through the service VectorDB endpoint. "
+            "Use format='evidence' when an agent needs citation-ready evidence with "
+            "fidelity tags and coverage/thin-spot signals; use format='hits' for "
+            "raw retrieval hits. Extra /v1/query JSON fields can be passed in payload."
         ),
     )
     async def query(
@@ -502,7 +511,14 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
     ) -> dict[str, Any]:
         return await service.query(query, top_k=top_k, format=format, payload=payload)
 
-    @mcp.tool(name="answer", description="Search ingested documents and generate an answer.")
+    @mcp.tool(
+        name="answer",
+        description=(
+            "Search ingested content and generate an answer with the service's "
+            "configured LLM endpoint. Use query(format='evidence') instead when "
+            "the agent should compose the answer itself from retrieved evidence."
+        ),
+    )
     async def answer(
         query: str,
         top_k: int = 5,
@@ -524,11 +540,60 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
 
     if settings.enable_write_tools:
 
+        async def _ingest_content(
+            documents: list[MCPDocumentInput],
+            label: str | None = None,
+            job_metadata: dict[str, Any] | None = None,
+            pipeline_spec: dict[str, Any] | None = None,
+            retain_results: bool = False,
+            include_result_data: bool = False,
+            wait_until_done: bool = True,
+        ) -> dict[str, Any]:
+            return await service.ingest_documents(
+                documents,
+                label=label,
+                job_metadata=job_metadata,
+                pipeline_spec=pipeline_spec,
+                retain_results=retain_results,
+                include_result_data=include_result_data,
+                wait_until_done=wait_until_done,
+            )
+
+        ingest_description = (
+            "Upload multimodal content to the retriever service for ingestion. "
+            "Each item must provide exactly one source: a server-visible path or "
+            "base64 content bytes with a filename. Supported inputs follow the "
+            "service ingest stack: PDFs, images, Office files, HTML/TXT, audio, "
+            "and video. Optional pipeline_spec is forwarded to the service and "
+            "is still constrained by server-side policy. Set wait_until_done=false "
+            "to submit long jobs quickly, then poll get_job/list_job_documents."
+        )
+
+        @mcp.tool(name="ingest_content", description=ingest_description)
+        async def ingest_content(
+            documents: list[MCPDocumentInput],
+            label: str | None = None,
+            job_metadata: dict[str, Any] | None = None,
+            pipeline_spec: dict[str, Any] | None = None,
+            retain_results: bool = False,
+            include_result_data: bool = False,
+            wait_until_done: bool = True,
+        ) -> dict[str, Any]:
+            return await _ingest_content(
+                documents,
+                label=label,
+                job_metadata=job_metadata,
+                pipeline_spec=pipeline_spec,
+                retain_results=retain_results,
+                include_result_data=include_result_data,
+                wait_until_done=wait_until_done,
+            )
+
         @mcp.tool(
             name="ingest_documents",
             description=(
-                "Upload documents to the retriever service. Each document can "
-                "reference a server-visible path or provide base64 content."
+                "Compatibility alias for ingest_content. Prefer ingest_content "
+                "for new agents because the service handles more than documents."
             ),
         )
         async def ingest_documents(
@@ -538,14 +603,16 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
             pipeline_spec: dict[str, Any] | None = None,
             retain_results: bool = False,
             include_result_data: bool = False,
+            wait_until_done: bool = True,
         ) -> dict[str, Any]:
-            return await service.ingest_documents(
+            return await _ingest_content(
                 documents,
                 label=label,
                 job_metadata=job_metadata,
                 pipeline_spec=pipeline_spec,
                 retain_results=retain_results,
                 include_result_data=include_result_data,
+                wait_until_done=wait_until_done,
             )
 
     return mcp

@@ -1,0 +1,7 @@
+I have a folder of {{ domain_label }} at ./pdfs/. Set up a way to search and answer questions over them using the native Retriever MCP tools exposed to this agent.
+
+Use the Retriever MCP `health` tool first. Then ingest every PDF in ./pdfs/ with the Retriever MCP `ingest_content` tool using server-visible `path` inputs. Pass `wait_until_done=false` so long ingestion jobs return a `job_id` quickly. After each submit, poll `get_job` or `list_job_documents` until every submitted document is completed or failed.
+
+Do not run the `retriever` CLI. Do not use `curl`, raw HTTP, or manual JSON-RPC calls to the MCP endpoint. This condition is testing whether native MCP tools help the agent use Retriever correctly. If native Retriever MCP tools are not available, stop and report that; do not work around it.
+
+When ingestion is complete, simply stop. Do not write output.json during setup.

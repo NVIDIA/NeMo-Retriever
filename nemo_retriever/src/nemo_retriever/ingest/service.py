@@ -29,6 +29,7 @@ from nemo_retriever.common.params import (
     StoreParams,
     TextChunkParams,
 )
+from nemo_retriever.common.params.models import NO_API_KEY
 from nemo_retriever.common.input_files import expand_input_file_patterns, input_type_for_path
 
 logger = logging.getLogger(__name__)
@@ -195,6 +196,12 @@ def resolve_service_ingest_request(request: ServiceIngestPlanRequest) -> Service
     )
     if request.extract.table_output_format == "markdown":
         extract_kwargs["use_table_structure"] = True
+    # Service mode owns extraction endpoints and credentials. Suppress the
+    # shared params model's client-side NVIDIA_API_KEY auto-resolution so a
+    # caller's shell environment does not become a per-request override.
+    extract_kwargs.setdefault("api_key", NO_API_KEY)
+    extract_kwargs.setdefault("page_elements_api_key", NO_API_KEY)
+    extract_kwargs.setdefault("ocr_api_key", NO_API_KEY)
 
     embed_kwargs = {
         key: value
@@ -206,6 +213,7 @@ def resolve_service_ingest_request(request: ServiceIngestPlanRequest) -> Service
         }.items()
         if value is not None
     }
+    embed_kwargs.setdefault("api_key", NO_API_KEY)
     enable_text_chunk, text_chunk_kwargs = build_text_chunk_kwargs(
         enabled=request.chunk.enabled,
         text_chunk_max_tokens=request.chunk.text_chunk_max_tokens,
@@ -217,7 +225,7 @@ def resolve_service_ingest_request(request: ServiceIngestPlanRequest) -> Service
         documents=documents,
         input_type=input_type,
         extract_params=ExtractParams(**extract_kwargs),
-        embed_params=EmbedParams(**embed_kwargs) if embed_kwargs else EmbedParams(),
+        embed_params=EmbedParams(**embed_kwargs),
         text_chunk_params=text_chunk_params,
         enable_text_chunk=enable_text_chunk,
         dedup_params=build_dedup_params(enabled=request.dedup.enabled, iou_threshold=request.dedup.iou_threshold),
@@ -261,7 +269,7 @@ def build_service_ingestor(request: ServiceIngestRequest) -> Any:
     if request.caption_params is not None:
         ingestor = ingestor.caption(_sanitize_service_caption_params(request.caption_params))
 
-    ingestor = ingestor.embed(request.embed_params)
+    ingestor = ingestor.embed(_strip_service_api_key_fields(request.embed_params, {"api_key"}))
 
     if request.store_params is not None:
         ingestor = ingestor.store(request.store_params)
@@ -332,6 +340,22 @@ def _service_extraction_mode(input_type: str) -> str:
     }.get(input_type, "auto")
 
 
+def _strip_service_api_key_fields(params: Any, keys: set[str]) -> Any:
+    """Return params without client-resolved API keys for service-owned stages."""
+
+    if params is None:
+        return None
+    if hasattr(params, "model_dump"):
+        data = params.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+    elif isinstance(params, dict):
+        data = {key: value for key, value in params.items() if value is not None}
+    else:
+        return params
+    for key in keys:
+        data.pop(key, None)
+    return data
+
+
 def _service_text_chunk_dict(text_chunk_params: TextChunkParams) -> dict[str, Any]:
     """Serialize text-chunk knobs allowed by the service split_config policy."""
 
@@ -353,13 +377,17 @@ def _attach_service_extract_stage(
     """Wire the extraction stage for the remote service ingestor."""
 
     chunk_dict = _service_text_chunk_dict(text_chunk_params) if enable_text_chunk else None
+    service_extract_params = _strip_service_api_key_fields(
+        extract_params,
+        {"api_key", "page_elements_api_key", "ocr_api_key"},
+    )
     if input_type == "image":
         return ingestor.extract_image_files(
-            extract_params,
+            service_extract_params,
             split_config={"image": chunk_dict} if chunk_dict else None,
         )
     return ingestor.extract(
-        extract_params,
+        service_extract_params,
         split_config=_split_config_for_input_type(input_type, chunk_dict, documents=documents),
         extraction_mode=_service_extraction_mode(input_type),
     )

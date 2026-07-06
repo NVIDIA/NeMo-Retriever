@@ -389,6 +389,7 @@ def _route_by_page_count(
     file_bytes: bytes,
     meta: IngestRequest,
     file_category: FileCategory | None = None,
+    file_suffix: str = "",
 ) -> PoolType:
     """Route uploads to realtime or batch based on file type and page count.
 
@@ -396,9 +397,10 @@ def _route_by_page_count(
       heavyweight ASR / frame-extraction pipelines.
     * Image files are always routed to **realtime** — they are single-page
       and latency-sensitive.
-    * Documents (PDF, DOCX, PPTX) and other types use the original
-      page-count heuristic: small docs (<threshold pages) go to realtime,
-      larger ones to batch.
+    * PDF documents use the original page-count heuristic: small docs
+      (<threshold pages) go to realtime, larger ones to batch.
+    * Other supported document/text formats route realtime, matching the
+      previous PDFium-error fallback without logging a misleading warning.
 
     When the client requested PDF page-chunking via
     :attr:`PipelineSpec.pdf_split`, we route to **batch** as soon as the
@@ -410,6 +412,8 @@ def _route_by_page_count(
     if file_category == FileCategory.IMAGE:
         return PoolType.REALTIME
     if meta.page_number is not None:
+        return PoolType.REALTIME
+    if file_category != FileCategory.DOCUMENT or file_suffix.lower() != ".pdf":
         return PoolType.REALTIME
     pages = _count_pdf_pages(file_bytes)
     if meta.pipeline and meta.pipeline.pdf_split is not None:
@@ -825,7 +829,12 @@ async def submit_document_to_job(
             file_size = _file_size_from_upload(file, request)
 
             file_bytes = await file.read()
-            route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
+            route = _route_by_page_count(
+                file_bytes,
+                meta,
+                file_category=classification.category,
+                file_suffix=classification.suffix,
+            )
 
             document_id = uuid.uuid4().hex
             content_sha256 = hashlib.sha256(file_bytes).hexdigest()
@@ -878,7 +887,12 @@ async def submit_document_to_job(
         enforce_media_dependencies(classification)
 
         file_bytes = await file.read()
-        route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
+        route = _route_by_page_count(
+            file_bytes,
+            meta,
+            file_category=classification.category,
+            file_suffix=classification.suffix,
+        )
         content_sha256 = hashlib.sha256(file_bytes).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 

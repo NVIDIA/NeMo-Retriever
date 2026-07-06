@@ -139,5 +139,5 @@ def load_eval_manifest(path: Path) -> list[DatasetEntry]:
 
 def load_config(path: Path | None = None) -> dict[str, Any]:
     if path is None:
-        path = Path(str(pkg_files("nemo_retriever.skill_eval").joinpath("configs/skill_eval.yaml")))
+        path = Path(str(pkg_files("nemo_retriever.tools.skill_eval").joinpath("configs/skill_eval.yaml")))
     return _read_yaml_mapping(Path(path))

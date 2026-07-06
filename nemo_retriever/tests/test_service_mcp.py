@@ -24,6 +24,7 @@ from nemo_retriever.service.mcp_server import (
     MCPDocumentInput,
     ServiceMCPClient,
     ServiceMCPSettings,
+    build_mcp,
     settings_from_service_config,
 )
 from nemo_retriever.service.services.pipeline_pool import WorkItem
@@ -168,6 +169,17 @@ def test_ingest_documents_accepts_inline_base64_upload() -> None:
         ("POST", "/v1/ingest/job/job-1/document"),
         ("GET", "/v1/ingest/job/job-1/documents"),
     ]
+
+
+def test_mcp_tools_expose_generic_ingest_content_and_legacy_alias() -> None:
+    tools = _run(build_mcp().list_tools())
+    by_name = {tool.name: tool for tool in tools}
+
+    assert "ingest_content" in by_name
+    assert "ingest_documents" in by_name
+    assert "PDFs, images, Office files, HTML/TXT, audio, and video" in by_name["ingest_content"].description
+    assert "Compatibility alias" in by_name["ingest_documents"].description
+    assert "format='evidence'" in by_name["query"].description
 
 
 def test_service_start_mounts_mcp_and_auth_protects_it(monkeypatch, tmp_path) -> None:

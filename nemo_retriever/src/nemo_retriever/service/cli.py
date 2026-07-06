@@ -184,14 +184,14 @@ def mcp_stdio(
         "--auth-header-name",
         help="Header used for bearer-token authentication.",
     ),
-    concurrency: int = typer.Option(8, "--concurrency", min=1, help="Max concurrent MCP document uploads."),
+    concurrency: int = typer.Option(8, "--concurrency", min=1, help="Max concurrent MCP content uploads."),
     request_timeout_s: float = typer.Option(60.0, "--request-timeout", min=0.1, help="HTTP request timeout."),
     ingest_timeout_s: float = typer.Option(1800.0, "--ingest-timeout", min=1.0, help="Document ingest timeout."),
     poll_interval_s: float = typer.Option(2.0, "--poll-interval", min=0.1, help="Status polling interval."),
     enable_write_tools: bool = typer.Option(
         True,
         "--write-tools/--read-only",
-        help="Expose write-capable MCP tools such as ingest_documents.",
+        help="Expose write-capable MCP tools such as ingest_content.",
     ),
 ) -> None:
     """Run the retriever service MCP server over stdio for local agents."""
