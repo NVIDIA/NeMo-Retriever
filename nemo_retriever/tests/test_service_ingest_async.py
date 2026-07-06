@@ -82,14 +82,25 @@ def stub_ingestor() -> Iterator[ServiceIngestor]:
     """A ``ServiceIngestor`` whose stream yields a fixed event sequence."""
     ing = ServiceIngestor(base_url="http://example:7670")
     events = _stub_event_sequence()
+    stream_calls: list[dict[str, Any]] = []
+    setattr(ing, "_stream_calls", stream_calls)
 
     def _fake_stream(
         self: ServiceIngestor,
         *,
         retain_results: bool = False,
         result_schema: str = "legacy",
+        return_embeddings: bool = False,
+        return_images: bool = False,
     ) -> Iterator[dict[str, Any]]:
-        _ = retain_results, result_schema
+        stream_calls.append(
+            {
+                "retain_results": retain_results,
+                "result_schema": result_schema,
+                "return_embeddings": return_embeddings,
+                "return_images": return_images,
+            }
+        )
         return iter(events)
 
     with (
@@ -195,6 +206,25 @@ def test_ingest_return_results_kwargs_override_params(stub_ingestor: ServiceInge
     result = stub_ingestor.ingest(params=params, return_results=True, result_schema="compact")
     assert result.dataframe is not None
     assert len(result.dataframe) == 1
+
+
+def test_ingest_forwards_bulk_result_flags_from_kwargs(stub_ingestor: ServiceIngestor) -> None:
+    with pytest.warns(DeprecationWarning, match="legacy result rows are deprecated"):
+        stub_ingestor.ingest(return_embeddings=True, return_images=True)
+
+    stream_calls = getattr(stub_ingestor, "_stream_calls")
+    assert stream_calls[-1]["return_embeddings"] is True
+    assert stream_calls[-1]["return_images"] is True
+
+
+def test_ingest_forwards_bulk_result_flags_from_params_model(stub_ingestor: ServiceIngestor) -> None:
+    params = IngestExecuteParams(return_embeddings=True, return_images=True)
+    with pytest.warns(DeprecationWarning, match="legacy result rows are deprecated"):
+        stub_ingestor.ingest(params=params)
+
+    stream_calls = getattr(stub_ingestor, "_stream_calls")
+    assert stream_calls[-1]["return_embeddings"] is True
+    assert stream_calls[-1]["return_images"] is True
 
 
 # ----------------------------------------------------------------------
