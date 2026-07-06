@@ -30,7 +30,38 @@ __all__ = [
     "ingestor",
     "retriever",
     "RetrieverServiceCompatibilityError",
+    # Simple, verb-first API (see nemo_retriever.simple).
+    "extract",
+    "extract_documents",
+    "extract_text",
+    "extract_web_pages",
+    "extract_images",
+    "extract_audio",
+    "extract_video",
+    "ingest",
+    "search",
+    "ask",
+    "supported_media",
+    "MEDIA_TYPES",
 ]
+
+# Names re-exported lazily from the verb-first :mod:`nemo_retriever.simple` API.
+_SIMPLE_EXPORTS = frozenset(
+    {
+        "extract",
+        "extract_documents",
+        "extract_text",
+        "extract_web_pages",
+        "extract_images",
+        "extract_audio",
+        "extract_video",
+        "ingest",
+        "search",
+        "ask",
+        "supported_media",
+        "MEDIA_TYPES",
+    }
+)
 
 retriever = _retriever_cls()
 
@@ -60,4 +91,8 @@ def __getattr__(name: str):
         from nemo_retriever.service.client import RetrieverServiceCompatibilityError
 
         return RetrieverServiceCompatibilityError
+    if name in _SIMPLE_EXPORTS:
+        from nemo_retriever import simple
+
+        return getattr(simple, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
