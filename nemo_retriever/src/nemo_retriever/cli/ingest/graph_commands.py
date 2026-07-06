@@ -11,6 +11,7 @@ import typer
 
 from nemo_retriever.cli.ingest import options as opts
 from nemo_retriever.cli.ingest.shared import run_cli_workflow
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
 from nemo_retriever.cli.ingest_workflow import run_ingest_workflow
 from nemo_retriever.ingest.plan import (
     IngestCaptionOptions,
@@ -219,7 +220,7 @@ def _graph_ingest_command(
     documents: opts.DocumentsArgument,
     profile: opts.ProfileOption = "auto",
     lancedb_uri: opts.LanceDbUriOption = "lancedb",
-    table_name: opts.TableNameOption = "nemo-retriever",
+    table_name: opts.TableNameOption = DEFAULT_LANCEDB_TABLE_NAME,
     dry_run: opts.DryRunOption = False,
     method: opts.MethodOption = None,
     dpi: opts.DpiOption = None,

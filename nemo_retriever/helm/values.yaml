@@ -658,7 +658,7 @@ serviceConfig:
   vectordb:
     enabled: true
     lancedbUri: "/data/vectordb"
-    tableName: "nemo_retriever"
+    tableName: "nemo-retriever"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
 
   # Optional bearer-token authentication. When apiToken is set, every

@@ -14,6 +14,7 @@ import yaml
 from pydantic import ConfigDict, Field, model_validator
 
 from nemo_retriever.common.schemas.base import RichModel
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
 
 ServiceMode = Literal["standalone", "gateway", "realtime", "batch"]
 
@@ -291,7 +292,7 @@ class VectorDbConfig(RichModel):
 
     enabled: bool = False
     lancedb_uri: str = "/data/vectordb"
-    table_name: str = "nemo_retriever"
+    table_name: str = DEFAULT_LANCEDB_TABLE_NAME
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
     vectordb_url: str = Field(
         default="http://nemo-retriever-vectordb:7671",

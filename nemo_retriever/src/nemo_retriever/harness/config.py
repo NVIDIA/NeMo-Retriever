@@ -11,6 +11,8 @@ from typing import Any
 
 import yaml
 
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
+
 NEMO_RETRIEVER_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = NEMO_RETRIEVER_ROOT.parent
 DEFAULT_TEST_CONFIG_PATH = NEMO_RETRIEVER_ROOT / "harness" / "test_configs.yaml"
@@ -103,7 +105,7 @@ class HarnessConfig:
     artifacts_dir: str | None = None
     ray_address: str | None = None
     lancedb_uri: str = "lancedb"
-    lancedb_table_name: str = "nv-ingest"
+    lancedb_table_name: str = DEFAULT_LANCEDB_TABLE_NAME
     hybrid: bool = False
     embed_model_name: str = "nvidia/llama-nemotron-embed-1b-v2"
     embed_modality: str = "text"
