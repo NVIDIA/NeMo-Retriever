@@ -5,13 +5,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Literal, Tuple
+from typing import TYPE_CHECKING, Any, Tuple
 
 if TYPE_CHECKING:
     import torch.nn as nn
-
-
-ModelRunMode = Literal["local", "NIM", "build-endpoint"]
 
 
 class BaseModel(ABC):
@@ -37,12 +34,6 @@ class BaseModel(ABC):
     @abstractmethod
     def model_type(self) -> str:
         """Model category/type (e.g. llm, vision, embedding)."""
-        pass
-
-    @property
-    @abstractmethod
-    def model_runmode(self) -> ModelRunMode:
-        """Execution mode: local, NIM, or build-endpoint."""
         pass
 
     # ---- I/O contract ----

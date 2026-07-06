@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.models.hf_model_registry import get_hf_revision
-from nemo_retriever.models.model import BaseModel, ModelRunMode
+from nemo_retriever.models.model import BaseModel
 
 
 _DEFAULT_MODEL = "nvidia/llama-nemotron-rerank-1b-v2"
@@ -93,10 +93,6 @@ class NemotronRerankV2(BaseModel):
     @property
     def model_type(self) -> str:
         return "reranker"
-
-    @property
-    def model_runmode(self) -> ModelRunMode:
-        return "local"
 
     @property
     def input(self):

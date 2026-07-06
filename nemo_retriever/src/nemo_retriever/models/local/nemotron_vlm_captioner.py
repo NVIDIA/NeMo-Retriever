@@ -21,7 +21,7 @@ from nemo_retriever.common.modality.caption.model_profiles import (
     supported_caption_models_by_variant,
 )
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
-from nemo_retriever.models.model import BaseModel, ModelRunMode
+from nemo_retriever.models.model import BaseModel
 
 _DEFAULT_MAX_NUM_SEQS = 256
 
@@ -207,10 +207,6 @@ class NemotronVLMCaptioner(BaseModel):
     @property
     def model_type(self) -> str:
         return "vlm-captioner"
-
-    @property
-    def model_runmode(self) -> ModelRunMode:
-        return "local"
 
     @property
     def input(self) -> Any:
