@@ -104,30 +104,35 @@ def test_media_families_are_the_expected_plain_language_names() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Top-level exposure
+# Public surface
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        "extract",
-        "extract_documents",
-        "extract_text",
-        "extract_web_pages",
-        "extract_images",
-        "extract_audio",
-        "extract_video",
-        "ingest",
-        "search",
-        "ask",
-        "supported_media",
-        "MEDIA_TYPES",
-    ],
-)
-def test_verbs_are_exposed_at_package_top_level(name: str) -> None:
-    assert name in nemo_retriever.__all__
-    assert getattr(nemo_retriever, name) is getattr(simple, name)
+_PUBLIC_VERBS = [
+    "extract",
+    "extract_documents",
+    "extract_text",
+    "extract_web_pages",
+    "extract_images",
+    "extract_audio",
+    "extract_video",
+    "ingest",
+    "search",
+    "ask",
+    "supported_media",
+    "MEDIA_TYPES",
+]
+
+
+@pytest.mark.parametrize("name", _PUBLIC_VERBS)
+def test_verbs_are_part_of_the_public_surface(name: str) -> None:
+    assert name in simple.__all__
+    assert hasattr(simple, name)
+
+
+def test_simple_module_is_reachable_from_the_package() -> None:
+    # ``from nemo_retriever import simple`` is the documented entry point.
+    assert nemo_retriever.simple is simple
 
 
 # ---------------------------------------------------------------------------
@@ -258,9 +263,7 @@ def test_ask_writes_an_answer_from_the_library(monkeypatch) -> None:
             return cls()
 
     monkeypatch.setattr("nemo_retriever.graph.retriever.Retriever", _FakeRetriever)
-    monkeypatch.setattr(
-        "nemo_retriever.models.llm.clients.litellm.LiteLLMClient", _FakeWriter, raising=False
-    )
+    monkeypatch.setattr("nemo_retriever.models.llm.clients.litellm.LiteLLMClient", _FakeWriter, raising=False)
 
     reply = simple.ask("my-library", "How did revenue change?", model="some-model")
 

@@ -7,7 +7,7 @@
 This module is the friendliest way to use the library. It reads like plain
 English and hides every moving part behind a handful of verbs:
 
-    import nemo_retriever as nr
+    from nemo_retriever import simple as nr
 
     # See what is inside your files.
     content = nr.extract("reports/")
