@@ -177,7 +177,7 @@ def _vidore_v3_ingest() -> dict[str, Any]:
 def _vidore_v3_benchmark(dataset_name: str) -> BenchmarkSpec:
     dataset = DATASETS[dataset_name]
     domain = VIDORE_V3_PUBLIC_DATASETS[dataset_name]
-    domain_tags = ("finance",) if dataset_name.startswith("vidore_v3_finance_") else ()
+    domain_tags = ("finance",) if "finance" in domain.lower() else ()
     return BenchmarkSpec(
         name=f"{dataset_name}_beir",
         dataset=dataset_name,

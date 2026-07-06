@@ -50,6 +50,7 @@ def test_vidore_v3_benchmarks_use_page_level_multimodal_defaults(dataset_name: s
     assert benchmark.query["embed_model_name"] == VIDORE_V3_EMBED_MODEL
     assert benchmark.evaluation["dataset_name"] == dataset_name
     assert benchmark.evaluation["doc_id_field"] == "pdf_page"
+    assert ("finance" in benchmark.tags) is ("finance" in VIDORE_V3_PUBLIC_DATASETS[dataset_name].lower())
 
 
 @pytest.mark.parametrize(("dataset_name", "facts"), VIDORE_V3_DATASET_FACTS.items())
