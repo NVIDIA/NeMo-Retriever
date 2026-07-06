@@ -373,6 +373,8 @@ def run_prepared_benchmark(
                 with capture_output_to_log(writer.path("run.log"), label="ingest"):
                     ingest_summary = run_ingest_workflow(ingest_plan, dry_run=False)
             except Exception as exc:
+                if isinstance(exc, HarnessRunError) and exc.exit_code == EXIT_ARTIFACT_WRITE_FAILURE:
+                    raise
                 raise HarnessRunError(
                     EXIT_INGEST_FAILURE,
                     FailurePayload(
