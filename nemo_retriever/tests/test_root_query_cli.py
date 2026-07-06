@@ -555,10 +555,10 @@ def test_root_query_max_text_chars_truncates_and_omits(monkeypatch) -> None:
 
 
 def test_root_query_help_defaults_to_local_command() -> None:
-    result = RUNNER.invoke(cli_main.app, ["query", "--help"])
+    result = RUNNER.invoke(cli_main.app, ["query", "--help"], prog_name="retriever")
 
     assert result.exit_code == 0
-    assert "Usage: root query [OPTIONS] QUERY" in result.output
+    assert "Usage: retriever query [OPTIONS] QUERY" in result.output
     assert "_local" not in result.output
     assert "Query a LanceDB index produced by local or batch ingest" in result.output
     assert "For a service deployment" in result.output

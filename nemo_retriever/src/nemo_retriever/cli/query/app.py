@@ -53,7 +53,8 @@ class DefaultLocalQueryGroup(TyperGroup):
 
 class DefaultLocalQueryCommand(TyperCommand):
     def format_usage(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
-        command_path = ctx.command_path.removesuffix(f" {_DEFAULT_COMMAND}")
+        # Hide this command's internal dispatch name from the public usage line.
+        command_path = ctx.command_path.removesuffix(f" {ctx.info_name}")
         formatter.write_usage(command_path, " ".join(self.collect_usage_pieces(ctx)))
 
 
