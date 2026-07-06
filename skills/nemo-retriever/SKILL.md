@@ -11,8 +11,6 @@ The `retriever` CLI extracts and indexes supported documents and media into Lanc
 
 **Beyond PDFs and beyond semantic search.** `retriever ingest` also handles images, Office, HTML, TXT, audio, and video — see `references/setup.md` for the per-format recipe and `references/install.md` for the install extras (`[multimedia]`, libreoffice, ffmpeg). The query turn is two retrieval passes — see **§Query turn** below (inline, no reference read needed); `references/cli/query.md` holds only the fallback detail (exact-term, chart text-extract, compose-reply). Don't fall back to native Read/Grep/Python on non-PDF inputs.
 
-**Extraction means `retriever ingest`.** File formats are inputs, not subcommands. For requests to extract, parse, transcribe, or index HTML/TXT/PDF/media, run `retriever ingest <files-or-directory>`. Never substitute format-specific, internal-stage, or pipeline commands. On a CPU-only host with `NVIDIA_API_KEY` or `NGC_API_KEY`, use the same ingest command: the CLI selects NVIDIA's hosted embedding endpoint automatically. Do not install local model dependencies or pass `--embed-invoke-url` unless the user supplied a different endpoint.
-
 ## Install (if `retriever` is missing)
 
 If `command -v retriever` returns nothing, follow `references/install.md` to install the NeMo Retriever Library before proceeding. It prints `RETRIEVER_VENV=<path>`; substitute that path for `<RETRIEVER_VENV>` in every example in this skill (setup, query, troubleshooting, and the CLI references).
@@ -43,8 +41,6 @@ Each returns `{ evidence: [ { text, source, locator, modality, fidelity, score, 
 - Open `references/cli/query.md` ONLY for the fallback path (chart text-extract, compose-reply detail).
 
 For the full `retriever ingest` CLI spec, see `references/cli/ingest.md`. For `retriever query` flags, `<RETRIEVER_VENV>/bin/retriever query --help` is authoritative (and faster) — you do not need it for routine turns.
-
-Before ingesting a mixed folder, inventory extensions (`find <dir> -name '*.*' | sed 's/.*\.//' | sort -u`). Ingest the supported files in one command and report any unsupported extensions that were skipped. Do not invent an `--input-type` flag or switch to format-specific commands. See `references/troubleshooting.md` "Unsupported file types".
 
 ## Hard limits (apply to every turn)
 
