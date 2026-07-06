@@ -6,18 +6,13 @@
 Unit tests for nemo_retriever.common.modality.txt.split: split_text_by_tokens and txt_file_to_chunks_df.
 """
 
+import tempfile  # noqa: F401
 from pathlib import Path
-import sys
 
 import pandas as pd
 import pytest
 
-from nemo_retriever.common.modality.txt.split import (
-    TextChunkParams,
-    _get_tokenizer,
-    split_text_by_tokens,
-    txt_file_to_chunks_df,
-)
+from nemo_retriever.common.modality.txt.split import split_text_by_tokens, txt_file_to_chunks_df, TextChunkParams
 
 
 class _MockTokenizer:
@@ -62,20 +57,8 @@ def test_split_text_by_tokens_max_tokens_positive():
         split_text_by_tokens("hello", tokenizer=tokenizer, max_tokens=0)
 
 
-def test_tokenizer_fallback_does_not_require_transformers(monkeypatch):
-    monkeypatch.setitem(sys.modules, "transformers", None)
-
-    tokenizer = _get_tokenizer("unused")
-    chunks = split_text_by_tokens(
-        "First paragraph. Second paragraph.",
-        tokenizer=tokenizer,
-        max_tokens=2,
-    )
-
-    assert chunks == ["First paragraph. ", "Second paragraph."]
-
-
 def test_txt_file_to_chunks_df(tmp_path: Path, monkeypatch):
+    pytest.importorskip("transformers")
     monkeypatch.setattr(
         "nemo_retriever.common.modality.txt.split._get_tokenizer", lambda model_id, cache_dir=None: _MockTokenizer()
     )
@@ -95,6 +78,7 @@ def test_txt_file_to_chunks_df(tmp_path: Path, monkeypatch):
 
 
 def test_txt_file_to_chunks_df_empty_file(tmp_path: Path):
+    pytest.importorskip("transformers")
     f = tmp_path / "empty.txt"
     f.write_text("", encoding="utf-8")
     df = txt_file_to_chunks_df(str(f), params=TextChunkParams(max_tokens=512))

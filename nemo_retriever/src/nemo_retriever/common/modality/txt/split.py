@@ -11,7 +11,6 @@ and the LanceDB row builder (text, path, page_number, metadata).
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -23,39 +22,18 @@ DEFAULT_MAX_TOKENS = 1024
 DEFAULT_OVERLAP_TOKENS = 0
 
 
-class _FallbackWordTokenizer:
-    """Dependency-free chunker used when the optional HF tokenizer is unavailable.
-
-    The fallback preserves the original text and treats each non-whitespace run
-    plus its trailing whitespace as one approximate token. The configured local
-    or remote backend still produces embeddings; this object only determines
-    extraction-time chunk boundaries.
-    """
-
-    def encode(self, text: str, *, add_special_tokens: bool = False) -> list[str]:
-        _ = add_special_tokens
-        return re.findall(r"\S+\s*|\s+", text)
-
-    def decode(self, token_ids: list[str], *, skip_special_tokens: bool = True) -> str:
-        _ = skip_special_tokens
-        return "".join(token_ids)
-
-
 def _get_tokenizer(model_id: str, cache_dir: Optional[str] = None):  # noqa: ANN201
-    """Lazy-load the HF tokenizer, with a dependency-free fallback."""
-    try:
-        from transformers import AutoTokenizer
+    """Lazy-load HuggingFace tokenizer."""
+    from transformers import AutoTokenizer
 
-        from nemo_retriever.models.hf_model_registry import get_hf_revision
+    from nemo_retriever.models.hf_model_registry import get_hf_revision
 
-        return AutoTokenizer.from_pretrained(
-            model_id,
-            revision=get_hf_revision(model_id),
-            cache_dir=cache_dir,
-            trust_remote_code=True,
-        )
-    except (ImportError, OSError):
-        return _FallbackWordTokenizer()
+    return AutoTokenizer.from_pretrained(
+        model_id,
+        revision=get_hf_revision(model_id),
+        cache_dir=cache_dir,
+        trust_remote_code=True,
+    )
 
 
 def split_text_by_tokens(

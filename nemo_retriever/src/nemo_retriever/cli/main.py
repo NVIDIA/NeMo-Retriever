@@ -4,12 +4,16 @@
 
 from __future__ import annotations
 
+import importlib
+import logging
+
 import typer
 
 from nemo_retriever.cli.ingest import app as ingest_app
 from nemo_retriever.cli.query import app as query_app
-from nemo_retriever.harness import app as harness_app
 from nemo_retriever.version import get_version_info
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer(
     help=(
@@ -24,7 +28,31 @@ from nemo_retriever.service.cli import app as service_app  # noqa: E402
 app.add_typer(service_app, name="service")
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(query_app, name="query")
-app.add_typer(harness_app, name="harness")
+
+# Keep compatibility commands callable while hiding them from the product help
+# surface. HTML and TXT are intentionally absent: they are ingest input formats,
+# not standalone workflows.
+_LAZY_SUBAPPS: list[tuple[str, str, str, bool]] = [
+    ("harness", "nemo_retriever.harness", "app", False),
+    ("audio", "nemo_retriever.cli.audio.cli", "app", True),
+    ("image", "nemo_retriever.cli.image", "app", True),
+    ("pdf", "nemo_retriever.cli.pdf.__main__", "app", True),
+    ("local", "nemo_retriever.cli.local", "app", True),
+    ("chart", "nemo_retriever.cli.chart.commands", "app", True),
+    ("compare", "nemo_retriever.cli.compare", "app", True),
+    ("eval", "nemo_retriever.tools.evaluation.cli", "app", True),
+    ("benchmark", "nemo_retriever.tools.benchmark", "app", True),
+    ("recall", "nemo_retriever.tools.recall", "app", True),
+    ("skill-eval", "nemo_retriever.tools.skill_eval", "app", True),
+    ("pipeline", "nemo_retriever.cli.pipeline.__main__", "app", True),
+]
+
+for _name, _module, _attr, _hidden in _LAZY_SUBAPPS:
+    try:
+        _mod = importlib.import_module(_module)
+        app.add_typer(getattr(_mod, _attr), name=_name, hidden=_hidden)
+    except Exception:
+        logger.debug("Skipping '%s' sub-command (import failed)", _name)
 
 
 def _version_callback(value: bool) -> None:

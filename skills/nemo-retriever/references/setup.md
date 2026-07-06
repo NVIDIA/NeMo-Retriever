@@ -2,21 +2,16 @@
 
 Use this when `./lancedb/nemo-retriever.lance` does not exist yet.
 
-`retriever ingest ./documents/` runs extraction, embedding, and LanceDB insert as
-one workflow. Always use root ingest unless the user explicitly asks for a
-different mode or profile. File formats are inputs, not commands.
-
-For extraction-only tasks, use the defaults:
-
-```bash
-<RETRIEVER_VENV>/bin/retriever ingest ./documents/
-```
-
-For search or question-answering tasks that will use this skill's hybrid and
-sparse query passes, build the matching hybrid index explicitly:
+`retriever ingest ./pdfs/` runs the full local ingest workflow: text extraction,
+page-element detection, OCR where needed, embedding, and LanceDB insert. Always
+use the default root ingest path unless the user explicitly asks for a different
+mode or profile.
 
 ```bash
-<RETRIEVER_VENV>/bin/retriever ingest ./documents/ --index-mode hybrid
+<RETRIEVER_VENV>/bin/retriever ingest ./pdfs/ \
+  --index-mode hybrid \
+  --extract-tables --table-output-format markdown \
+  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
 The command writes the default LanceDB table:
@@ -24,19 +19,12 @@ The command writes the default LanceDB table:
 Keep `--lancedb-uri` and `--table-name` aligned if you override either one.
 `--index-mode hybrid` builds a full-text BM25 index alongside vectors so
 `retriever query --retrieval-mode hybrid` can fuse exact-term and vector
-retrieval. For table-heavy documents, explicitly add
-`--extract-tables --table-output-format markdown`; do not treat structured tables
-or hybrid indexing as engine defaults.
-
-## Local versus hosted inference
-
-- On a supported GPU host with the `[local]` extra, the default command may run
-  embedding locally.
-- On a CPU-only host with `NVIDIA_API_KEY` or `NGC_API_KEY`, run the same command.
-  Retriever automatically uses NVIDIA's hosted default embedding endpoint.
-- Use `--embed-invoke-url` only for a different endpoint supplied by the user or
-  deployment. Do not pass NVIDIA's default URL manually.
-- Do not install `torch` or `transformers` merely to ingest HTML/TXT on CPU.
+retrieval. `--extract-tables --table-output-format markdown` runs the
+table-structure model so tables are indexed as **markdown with row/column
+headers**. Without it tables default to `pseudo_markdown` — cells flattened into
+space-separated text, where a figure can't be tied to its row+column label, so
+answers on financial tables pull the wrong cell. Always enable it for documents
+with tables.
 
 `retriever ingest` is quiet by default. Quiet mode suppresses progress bars,
 HuggingFace download logs, vLLM init noise, Ray worker stdout, and INFO-level
@@ -47,8 +35,9 @@ on error. On success you should see one summary line similar to:
 Ingested N file(s) -> M row(s) in LanceDB lancedb/nemo-retriever.
 ```
 
-Do not pre-OCR, pre-chunk, or write Python extraction wrappers. The CLI handles
-extraction, embedding, and LanceDB insert in one shot.
+Do not pre-OCR, do not pre-chunk, and do not write Python wrappers. The CLI
+handles extraction, optional page-element detection/OCR, embedding, and LanceDB
+insert in one shot.
 
 After the setup command returns successfully, stop. Do not run smoke queries to
 warm up the index; the first query turn does that naturally.

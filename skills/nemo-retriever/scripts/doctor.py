@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Verify the installed `retriever` engine satisfies the skill's contract.
 
-Usage: <RETRIEVER_VENV>/bin/python skills/nemo-retriever/scripts/doctor.py
+Usage: <RETRIEVER_VENV>/bin/python skills/retriever/scripts/doctor.py
 Exits 0 if all checks pass, 1 otherwise. Always runs a LIVE ingest+query probe.
 
 The skill's one primitive is `retriever query --format evidence --retrieval-mode hybrid` ->
@@ -63,9 +63,7 @@ def main():
 
     bin_path = retriever_bin()
     check(
-        bin_path is not None,
-        "retriever CLI on PATH",
-        "" if bin_path else "run skills/nemo-retriever/references/install.md",
+        bin_path is not None, "retriever CLI on PATH", "" if bin_path else "run skills/retriever/references/install.md"
     )
     if not bin_path:
         return report()

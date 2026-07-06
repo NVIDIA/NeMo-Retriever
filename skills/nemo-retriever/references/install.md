@@ -8,10 +8,10 @@ The recipe below detects the host capabilities and picks the right install:
 - **GPU present and CUDA 13.x** → installs the local-GPU torch wheels from
   the `cu130` index plus the `[local]` extra, so the bundled
   `nvidia/llama-nemotron-embed-1b-v2` embedder can run locally on GPU.
-- **No GPU, or a non-CUDA-13 driver** → installs the package without `[local]`.
-  With `NVIDIA_API_KEY` or `NGC_API_KEY` set, Retriever automatically uses
-  NVIDIA's hosted default embedding endpoint. Use `--embed-invoke-url` only for
-  a different endpoint supplied by the user or deployment.
+- **No GPU, or a non-CUDA-13 driver** → installs the package without
+  `[local]`. Torch is pulled from PyPI defaults; the local-GPU embedder is
+  unavailable. Provide a remote NIM endpoint at query/ingest time via
+  `--embed-invoke-url` (or set `EMBED_INVOKE_URL`).
 
 ## When to use this
 

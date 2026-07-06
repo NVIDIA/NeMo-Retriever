@@ -97,6 +97,7 @@ The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and i
 
 > **Note:** `retriever ingest` defaults to local, in-process execution. Use `retriever ingest batch ...` for Ray Data scale-out on larger workloads.
 > File formats and internal extraction stages are not separate root commands; configure supported behavior through `retriever ingest`.
+> `retriever pipeline run` remains callable for compatibility while existing callers migrate, but it is hidden from root help.
 
 The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, refer to [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
 

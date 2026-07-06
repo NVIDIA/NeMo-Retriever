@@ -15,6 +15,10 @@ Format names and internal stages are not root commands. Use `retriever ingest`
 for PDF, HTML, TXT, image, Office, audio, and video inputs; it owns extraction,
 embedding, and index creation as one workflow.
 
+`retriever pipeline run` remains callable as hidden compatibility while existing
+development callers migrate. It is not shown in root help and is not the
+preferred product ingest path.
+
 ## Public ingest shape
 
 `retriever ingest` defaults to local, in-process ingest:
@@ -64,9 +68,10 @@ Then query the default LanceDB table:
 retriever query "What is in this document?"
 ```
 
-By default, local ingest writes to `lancedb/nemo-retriever` and `retriever query`
-reads from the same table and auto-detects supported input formats. Use explicit
-high-level options when a task needs behavior beyond the current ingest defaults.
+By default, local ingest auto-detects supported input formats and writes to
+`lancedb/nemo-retriever`; `retriever query` reads from the same table. Use
+explicit high-level options when a task needs behavior beyond the current ingest
+defaults.
 
 The plain `retriever query` examples below apply to local and batch ingest output
 written to LanceDB. Use `retriever query service` to query a Retriever service.
@@ -344,9 +349,15 @@ Ingested 20 file(s) -> 1940 row(s) through retriever service http://localhost:76
 Use `--dry-run` on any ingest mode to inspect the resolved request without
 creating an ingestor or contacting the service.
 
-## CLI boundary
+## Development / compatibility command
 
-The root CLI intentionally exposes only end-to-end ingest/query workflows, the
-benchmark harness, and service operation. Internal stage utilities and Python
-evaluation modules remain implementation tools rather than alternate document
-ingestion commands.
+`retriever pipeline run` remains available, but hidden from root help, for
+pipeline-specific behavior such as:
+
+- `--save-intermediate` Parquet artifacts.
+- runtime metrics and pipeline reports.
+- eval, recall, harness, or BEIR/QA workflows.
+- legacy compatibility while callers migrate to `retriever ingest` and
+  `retriever query`.
+
+Run `retriever pipeline run --help` for the compatibility command flag list.

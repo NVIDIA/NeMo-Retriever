@@ -39,8 +39,8 @@ Behavior intentionally preserved:
 - Local and batch success summaries report files and LanceDB rows.
 - Service success summaries report files, service URL, and service-returned row
   count when available.
-- Legacy stage and pipeline applications remain importable where compatibility
-  callers need them, but they are not registered on the root CLI.
+- Legacy stage and pipeline applications remain callable for compatibility but
+  are hidden from root help while callers migrate.
 
 Behavior intentionally changed:
 
@@ -215,13 +215,20 @@ image-store URI, dry-run, and quiet output.
 Service-backed query support belongs in the query CLI/service boundary, not in
 the ingest CLI.
 
-## CLI Boundary
+## Pipeline Compatibility
 
-`retriever ingest` is the only root CLI path for document ingestion. Legacy
-stage and pipeline applications may remain as importable implementation modules
-while internal callers migrate, but they are deliberately not registered as
-`retriever` subcommands. Benchmark orchestration uses `retriever harness` and
-shares the canonical ingest plan/execution layer directly.
+`retriever pipeline run` is not the future public ingest interface. It remains
+callable, but hidden from root help, for compatibility and development behavior
+such as:
+
+- intermediate Parquet artifacts
+- pipeline reports and runtime metrics
+- eval, recall, harness, BEIR/QA workflows
+- legacy callers not yet migrated to root ingest/query
+
+For graph ingest paths, pipeline compatibility should continue to reuse the
+canonical ingest plan/execution layer instead of shelling out to root CLI
+commands.
 
 ## Adding Or Changing A Flag
 

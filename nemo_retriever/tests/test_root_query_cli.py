@@ -541,14 +541,12 @@ def test_root_query_max_text_chars_truncates_and_omits(monkeypatch) -> None:
     assert meta_hit["page_number"] == 1
 
 
-def test_root_query_help_shows_default_command_options() -> None:
+def test_root_query_help_lists_service_mode() -> None:
     result = RUNNER.invoke(cli_main.app, ["query", "--help"], env={"COLUMNS": "200"})
 
     assert result.exit_code == 0
-    assert "retriever query service --help" in result.output
+    assert "│ service " in result.output
     assert "--run-mode" not in result.output
-    assert "--lancedb-uri" in result.output
-    assert "--retrieval-mode" in result.output
 
 
 def test_root_query_local_help_shows_retrieval_mode_not_hybrid() -> None:

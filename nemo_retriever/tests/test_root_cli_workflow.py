@@ -92,25 +92,14 @@ def test_root_help_lists_only_product_workflows() -> None:
         assert f"│ {developer_command} " not in result.output
 
 
-@pytest.mark.parametrize(
-    "removed_command",
-    (
-        "audio",
-        "image",
-        "pdf",
-        "local",
-        "chart",
-        "compare",
-        "eval",
-        "benchmark",
-        "recall",
-        "skill-eval",
-        "txt",
-        "html",
-        "pipeline",
-    ),
-)
-def test_non_product_root_commands_are_not_callable(removed_command: str) -> None:
+def test_pipeline_compatibility_command_is_hidden_but_callable() -> None:
+    result = RUNNER.invoke(cli_main.app, ["pipeline", "--help"])
+
+    assert result.exit_code == 0
+
+
+@pytest.mark.parametrize("removed_command", ("txt", "html"))
+def test_format_specific_root_commands_are_not_callable(removed_command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [removed_command, "--help"])
 
     assert result.exit_code == 2
@@ -1030,15 +1019,15 @@ def test_root_ingest_routes_text_inputs_by_default_to_auto_planner(monkeypatch, 
     assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
-def test_root_ingest_help_shows_default_command_options() -> None:
+def test_root_ingest_help_lists_explicit_modes() -> None:
     result = RUNNER.invoke(cli_main.app, ["ingest", "--help"], env={"COLUMNS": "200"})
 
     assert result.exit_code == 0
-    assert "retriever ingest batch --help" in result.output
-    assert "retriever ingest service --help" in result.output
+    assert "Omitting a mode runs local ingest" in result.output
+    assert "│ local " in result.output
+    assert "│ batch " in result.output
+    assert "│ service " in result.output
     assert "--run-mode" not in result.output
-    assert "--profile" in result.output
-    assert "--index-mode" in result.output
 
 
 def test_root_ingest_local_help_uses_shared_graph_contract() -> None:

@@ -8,9 +8,10 @@ import json
 import os
 from typing import cast
 
+import click
 import typer
+from typer.core import TyperGroup
 
-from nemo_retriever.cli.default_command import DefaultCommand, DefaultCommandGroup
 from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
@@ -38,11 +39,16 @@ from nemo_retriever.query.options import (
 )
 from nemo_retriever.query.service import query_documents as query_service_documents
 
+_DEFAULT_COMMAND = "_local"
+_GROUP_OPTIONS = {"--help", "-h", "--install-completion", "--show-completion"}
 _RETRIEVAL_MODES: set[str] = {"auto", "dense", "hybrid", "sparse"}
 
 
-class DefaultLocalQueryGroup(DefaultCommandGroup):
-    default_command = "_local"
+class DefaultLocalQueryGroup(TyperGroup):
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        if args and args[0] not in self.commands and args[0] not in _GROUP_OPTIONS:
+            args = [_DEFAULT_COMMAND, *args]
+        return super().parse_args(ctx, args)
 
 
 app = typer.Typer(
@@ -141,7 +147,6 @@ def _retrieval_options(
 
 @app.command(
     "_local",
-    cls=DefaultCommand,
     hidden=True,
     help=(
         f"Run the default query against a local LanceDB index; retrieval mode auto-detects the index. "

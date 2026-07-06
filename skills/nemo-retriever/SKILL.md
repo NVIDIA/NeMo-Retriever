@@ -7,7 +7,7 @@ allowed-tools: Bash Write Read
 
 # nemo-retriever
 
-The `retriever` CLI extracts and indexes supported documents and media into LanceDB (`retriever ingest`) and searches the index (`retriever query`). For tasks across document collections, use these end-to-end commands instead of writing a custom RAG.
+The `retriever` CLI indexes a folder of PDFs into LanceDB (`retriever ingest`) and serves vector search over it (`retriever query`). For any task about searching/answering questions across a folder of PDFs, use this CLI — do not write a custom RAG.
 
 **Beyond PDFs and beyond semantic search.** `retriever ingest` also handles images, Office, HTML, TXT, audio, and video — see `references/setup.md` for the per-format recipe and `references/install.md` for the install extras (`[multimedia]`, libreoffice, ffmpeg). The query turn is two retrieval passes — see **§Query turn** below (inline, no reference read needed); `references/cli/query.md` holds only the fallback detail (exact-term, chart text-extract, compose-reply). Don't fall back to native Read/Grep/Python on non-PDF inputs.
 

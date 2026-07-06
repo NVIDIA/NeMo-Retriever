@@ -4,16 +4,24 @@
 
 from __future__ import annotations
 
+import click
 import typer
+from typer.core import TyperGroup
 
-from nemo_retriever.cli.default_command import DefaultCommand, DefaultCommandGroup
 from nemo_retriever.cli.ingest.graph_commands import _graph_ingest_command
 from nemo_retriever.cli.ingest.service import _service_command
 from nemo_retriever.cli.ingest.options import DEFAULT_CAPTION_MODEL, DEFAULT_EMBED_MODEL
 
 
-class DefaultLocalIngestGroup(DefaultCommandGroup):
-    default_command = "local"
+_DEFAULT_COMMAND = "local"
+_GROUP_OPTIONS = {"--help", "-h"}
+
+
+class DefaultLocalIngestGroup(TyperGroup):
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        if args and args[0] not in self.commands and args[0] not in _GROUP_OPTIONS:
+            args = [_DEFAULT_COMMAND, *args]
+        return super().parse_args(ctx, args)
 
 
 app = typer.Typer(
@@ -29,7 +37,6 @@ app = typer.Typer(
 
 app.command(
     "local",
-    cls=DefaultCommand,
     help=(
         f"Run the default local ingest into a LanceDB index. Default embedding model: {DEFAULT_EMBED_MODEL}. "
         f"Default caption model when captioning: {DEFAULT_CAPTION_MODEL}. Use "

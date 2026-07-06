@@ -40,8 +40,7 @@ loudly with a remediation hint.
 
 ## Changelog
 - **0.1.1** — replace deprecated index/retrieval aliases with canonical
-  `--index-mode hybrid` for ingest and `--retrieval-mode hybrid` for query; make
-  CPU-hosted inference and the single `retriever ingest` extraction path explicit.
+  `--index-mode hybrid` for ingest and `--retrieval-mode hybrid` for query.
 - **0.1.0** — initial skill-first `{ evidence, coverage }` query contract
   (validated against `query-result.schema.json`). The gated subcommands are
   `ingest` and `query`; evidence output and hybrid retrieval are explicit opt-ins.
