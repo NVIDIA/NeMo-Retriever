@@ -18,6 +18,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 
@@ -36,7 +37,7 @@ class LanceDBWriteOperator(AbstractOperator, CPUOperator):
         self,
         *,
         uri: str = "/var/lib/nemo-retriever/lancedb",
-        table_name: str = "nv-ingest",
+        table_name: str = DEFAULT_LANCEDB_TABLE_NAME,
         hybrid: bool = False,
         embedding_column: str = "text_embeddings_1b_v2",
         embedding_key: str = "embedding",

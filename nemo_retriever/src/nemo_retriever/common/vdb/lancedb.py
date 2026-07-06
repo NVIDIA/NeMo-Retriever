@@ -15,6 +15,7 @@ import lancedb
 import pyarrow as pa
 import pyarrow.compute as pc
 
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
 from nemo_retriever.common.vdb.adt_vdb import VDB
 
 
@@ -391,7 +392,7 @@ class LanceDB(VDB):
         self,
         uri: str | None = None,
         overwrite: bool = True,
-        table_name: str = "nv-ingest",
+        table_name: str = DEFAULT_LANCEDB_TABLE_NAME,
         index_type: str = "IVF_HNSW_SQ",
         metric: str = "l2",
         num_partitions: int = 16,
@@ -433,7 +434,7 @@ class LanceDB(VDB):
         self.validate_vector_length = bool(validate_vector_length)
         super().__init__(**kwargs)
 
-    def create_index(self, records=None, table_name: str = "nv-ingest", **kwargs):
+    def create_index(self, records=None, table_name: str = DEFAULT_LANCEDB_TABLE_NAME, **kwargs):
         """Create or update a LanceDB table and populate it with transformed records.
 
         Validates per-row vector shape (when ``validate_vector_length`` is set

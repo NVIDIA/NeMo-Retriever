@@ -10,6 +10,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
 from nemo_retriever.common.vdb.lancedb_bulk import LanceDBConfig, write_text_embeddings_dir_to_lancedb
 
 console = Console()
@@ -29,7 +30,7 @@ def run(
     recursive: bool = typer.Option(False, "--recursive/--no-recursive", help="Scan subdirectories too."),
     limit: Optional[int] = typer.Option(None, "--limit", min=1, help="Optionally limit number of input files."),
     lancedb_uri: str = typer.Option("lancedb", "--lancedb-uri", help="LanceDB database URI (directory path)."),
-    table_name: str = typer.Option("nv-ingest", "--table-name", help="LanceDB table name."),
+    table_name: str = typer.Option(DEFAULT_LANCEDB_TABLE_NAME, "--table-name", help="LanceDB table name."),
     overwrite: bool = typer.Option(
         True,
         "--overwrite/--append",

@@ -16,6 +16,7 @@ from nemo_retriever.tabular_data.sql_database import SQLDatabase
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
 
 IngestorRunMode = Literal["inprocess", "batch", "service"]
 
@@ -247,7 +248,7 @@ class AudioVisualFuseParams(_ParamsModel):
 
 class LanceDbParams(_ParamsModel):
     lancedb_uri: str = "lancedb"
-    table_name: str = "nv-ingest"
+    table_name: str = DEFAULT_LANCEDB_TABLE_NAME
     overwrite: bool = True
     create_index: bool = True
     index_type: str = "IVF_HNSW_SQ"

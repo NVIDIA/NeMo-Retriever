@@ -14,7 +14,7 @@ import torch
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.models.hf_model_registry import install_pinned_hf_hub_download
 from nemo_retriever.common.nvtx import gpu_inference_range
-from nemo_retriever.models.model import BaseModel, ModelRunMode
+from nemo_retriever.models.model import BaseModel
 
 from PIL import Image
 
@@ -215,11 +215,6 @@ class NemotronOCRV1(BaseModel):
     def model_type(self) -> str:
         """Model category/type."""
         return "ocr"
-
-    @property
-    def model_runmode(self) -> ModelRunMode:
-        """Execution mode: local, NIM, or build-endpoint."""
-        return "local"
 
     @property
     def input(self) -> Any:

@@ -8,11 +8,12 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
 from nemo_retriever.harness.benchmark_specs import BenchmarkSpec, DatasetSpec, RunSet
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_EMBED_MODEL = "nvidia/llama-nemotron-embed-1b-v2"
-DEFAULT_TABLE_NAME = "nemo-retriever"
+DEFAULT_TABLE_NAME = DEFAULT_LANCEDB_TABLE_NAME
 DEFAULT_SUMMARY_KEYS: tuple[str, ...] = (
     "files",
     "pages",

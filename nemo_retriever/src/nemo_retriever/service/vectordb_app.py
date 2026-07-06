@@ -41,6 +41,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
 from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.service.query_schema import (
     EvidenceQueryResponse,
@@ -265,7 +266,7 @@ MAX_CONCURRENT_QUERIES = 4
 
 def create_vectordb_app(
     lancedb_uri: str = "/data/vectordb",
-    table_name: str = "nemo_retriever",
+    table_name: str = DEFAULT_LANCEDB_TABLE_NAME,
     embed_endpoint: str = "",
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2",
     embed_api_key: str = "",
@@ -381,7 +382,7 @@ def create_vectordb_app(
 def main() -> None:
     parser = argparse.ArgumentParser(description="NeMo Retriever VectorDB service")
     parser.add_argument("--lancedb-uri", default="/data/vectordb", help="LanceDB directory")
-    parser.add_argument("--table-name", default="nemo_retriever", help="LanceDB table name")
+    parser.add_argument("--table-name", default=DEFAULT_LANCEDB_TABLE_NAME, help="LanceDB table name")
     parser.add_argument("--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL")
     parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-vl-1b-v2")
     parser.add_argument("--embed-api-key", default="")

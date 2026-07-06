@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import lancedb
 import pandas as pd
 
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
 from nemo_retriever.common.vdb.lancedb import LanceDB
 from nemo_retriever.common.vdb.lancedb_schema import build_lancedb_row, infer_vector_dim, lancedb_schema
 
@@ -31,7 +32,7 @@ class LanceDBConfig:
     """
 
     uri: str = "lancedb"
-    table_name: str = "nv-ingest"
+    table_name: str = DEFAULT_LANCEDB_TABLE_NAME
     overwrite: bool = True
 
     # Optional index creation (recommended for recall/search runs).

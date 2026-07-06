@@ -11,7 +11,7 @@ from typing import Any, List, Optional, Sequence
 
 from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
 from nemo_retriever.models.hf_model_registry import get_hf_revision
-from nemo_retriever.models.model import BaseModel, ModelRunMode
+from nemo_retriever.models.model import BaseModel
 
 from nemo_retriever.models import VL_RERANK_MODEL
 
@@ -134,10 +134,6 @@ class NemotronRerankVLV2VLLM(BaseModel):
     @property
     def model_type(self) -> str:
         return "vl_reranker"
-
-    @property
-    def model_runmode(self) -> ModelRunMode:
-        return "local"
 
     @property
     def input(self):

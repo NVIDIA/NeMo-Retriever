@@ -51,10 +51,6 @@ class TestNemotronRerankVLV2Properties:
         obj = self._make_instance()
         assert obj.model_type == "vl_reranker"
 
-    def test_model_runmode(self):
-        obj = self._make_instance()
-        assert obj.model_runmode == "local"
-
     def test_input_batch_size(self):
         obj = self._make_instance()
         assert obj.input_batch_size == 32

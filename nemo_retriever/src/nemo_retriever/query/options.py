@@ -7,6 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Sequence
 
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
+
 QueryRetrievalMode = Literal["auto", "dense", "hybrid", "sparse"]
 
 
@@ -39,7 +41,7 @@ class QueryRerankOptions:
 @dataclass(frozen=True)
 class QueryStorageOptions:
     lancedb_uri: str = "lancedb"
-    table_name: str = "nemo-retriever"
+    table_name: str = DEFAULT_LANCEDB_TABLE_NAME
 
 
 @dataclass(frozen=True)

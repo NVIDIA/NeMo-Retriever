@@ -16,6 +16,7 @@ from nemo_retriever.ingestor.manifest import (
     plan_extraction_branches,
 )
 from nemo_retriever.common.modality.ocr.config import OCRLang, OCRVersion
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
 from nemo_retriever.common.params import (
     ASRParams,
     AudioChunkParams,
@@ -203,7 +204,7 @@ class IngestImageStoreOptions:
 @dataclass(frozen=True)
 class IngestStorageOptions:
     lancedb_uri: str = "lancedb"
-    table_name: str = "nemo-retriever"
+    table_name: str = DEFAULT_LANCEDB_TABLE_NAME
     overwrite: bool = True
     index_mode: IngestIndexModeValue = "dense"
 

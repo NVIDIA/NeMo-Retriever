@@ -12,6 +12,7 @@ import click
 import typer
 from typer.core import TyperGroup
 
+from nemo_retriever.common.vdb import DEFAULT_LANCEDB_TABLE_NAME
 from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
@@ -175,7 +176,7 @@ def _local_command(
     page_dedup: opts.PageDedupOption = False,
     content_types: opts.ContentTypesOption = None,
     lancedb_uri: opts.LanceDbUriOption = "lancedb",
-    table_name: opts.TableNameOption = "nemo-retriever",
+    table_name: opts.TableNameOption = DEFAULT_LANCEDB_TABLE_NAME,
     embed_invoke_url: opts.EmbedInvokeUrlOption = None,
     embed_model_name: opts.EmbedModelNameOption = None,
     reranker_invoke_url: opts.RerankerInvokeUrlOption = None,
