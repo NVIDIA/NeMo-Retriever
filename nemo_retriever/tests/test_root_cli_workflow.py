@@ -494,6 +494,8 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
             "http://embed:8000/v1/embeddings",
             "--embed-model-name",
             "nvidia/llama-nemotron-embed-1b-v2",
+            "--embed-model-provider-prefix",
+            "nvidia",
         ],
     )
 
@@ -509,8 +511,8 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
     assert isinstance(embed_params, EmbedParams)
     assert embed_params.embed_invoke_url == "http://embed:8000/v1/embeddings"
     assert embed_params.embedding_endpoint == "http://embed:8000/v1/embeddings"
-    assert embed_params.model_name == "nvidia/llama-nemotron-embed-1b-v2"
-    assert embed_params.embed_model_name == "nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_params.model_name == "nvidia/nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_params.embed_model_name == "nvidia/nvidia/llama-nemotron-embed-1b-v2"
 
 
 def test_root_ingest_passes_embedding_overrides_without_stage_flags(monkeypatch, tmp_path) -> None:
