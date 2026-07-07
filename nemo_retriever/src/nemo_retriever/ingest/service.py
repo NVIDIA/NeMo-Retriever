@@ -29,6 +29,7 @@ from nemo_retriever.common.params import (
     StoreParams,
     TextChunkParams,
 )
+from nemo_retriever.common.params.models import NO_API_KEY
 from nemo_retriever.common.input_files import expand_input_file_patterns, input_type_for_path
 
 logger = logging.getLogger(__name__)
@@ -372,8 +373,8 @@ def _attach_service_extract_stage(
     )
 
 
-def _sanitize_service_stage_params(params: Any, *, stage: str) -> dict[str, Any] | None:
-    """Keep only client-overridable fields before environment API keys reach the wire client."""
+def _sanitize_service_stage_params(params: Any, *, stage: str) -> ExtractParams | EmbedParams:
+    """Keep typed client overrides while preventing environment API keys from reaching the wire client."""
 
     from nemo_retriever.common.policy import _DEFAULT_ALLOWED_EMBED_KEYS, _DEFAULT_ALLOWED_EXTRACT_KEYS
 
@@ -383,7 +384,14 @@ def _sanitize_service_stage_params(params: Any, *, stage: str) -> dict[str, Any]
     }[stage]
     raw = params.model_dump(mode="json", exclude_none=True, exclude_unset=True)
     sanitized = {key: value for key, value in raw.items() if key in allowed}
-    return sanitized or None
+    if stage == "extract":
+        return ExtractParams(
+            **sanitized,
+            api_key=NO_API_KEY,
+            page_elements_api_key=NO_API_KEY,
+            ocr_api_key=NO_API_KEY,
+        )
+    return EmbedParams(**sanitized, api_key=NO_API_KEY)
 
 
 def _split_config_for_input_type(

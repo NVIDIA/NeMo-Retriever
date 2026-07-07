@@ -100,7 +100,9 @@ def run_command(
     runfile: Annotated[Path | None, typer.Option("--runfile", help="JSON/YAML file for one concrete run.")] = None,
     output_dir: Annotated[str | None, typer.Option("--output-dir", help="Directory for run artifacts.")] = None,
     run_id: Annotated[str | None, typer.Option("--run-id", help="Stable run identifier.")] = None,
-    mode: Annotated[str | None, typer.Option("--mode", help="System-under-test mode: local, batch, or service.")] = None,
+    mode: Annotated[
+        str | None, typer.Option("--mode", help="System-under-test mode: local, batch, or service.")
+    ] = None,
     service_endpoint: Annotated[
         str | None,
         typer.Option("--service-endpoint", help="Machine-local Retriever service URL for service mode."),

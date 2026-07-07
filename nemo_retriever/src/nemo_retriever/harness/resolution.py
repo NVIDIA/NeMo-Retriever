@@ -498,9 +498,7 @@ def build_service_ingest_plan_request(
             service_api_token=service_api_token,
         ),
         extract=ServiceIngestExtractOptions(**_service_kwargs(ServiceIngestExtractOptions, extract)),
-        caption=ServiceIngestCaptionOptions(
-            **_service_kwargs(ServiceIngestCaptionOptions, ingest.get("caption"))
-        ),
+        caption=ServiceIngestCaptionOptions(**_service_kwargs(ServiceIngestCaptionOptions, ingest.get("caption"))),
         dedup=ServiceIngestDedupOptions(**_service_kwargs(ServiceIngestDedupOptions, ingest.get("dedup"))),
         chunk=ServiceIngestChunkOptions(**_service_kwargs(ServiceIngestChunkOptions, ingest.get("chunk"))),
         embed=ServiceIngestEmbedOptions(**_service_kwargs(ServiceIngestEmbedOptions, embed)),

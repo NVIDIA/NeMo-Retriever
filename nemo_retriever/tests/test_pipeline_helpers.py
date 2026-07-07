@@ -101,6 +101,20 @@ def test_build_service_ingestor_does_not_forward_environment_api_key(monkeypatch
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF-1.4")
     monkeypatch.setenv("NGC_API_KEY", "environment-secret")
+    stage_params: dict[str, object] = {}
+    original_extract = ServiceIngestor.extract
+    original_embed = ServiceIngestor.embed
+
+    def capture_extract(self, params=None, **kwargs):
+        stage_params["extract"] = params
+        return original_extract(self, params, **kwargs)
+
+    def capture_embed(self, params=None, **kwargs):
+        stage_params["embed"] = params
+        return original_embed(self, params, **kwargs)
+
+    monkeypatch.setattr(ServiceIngestor, "extract", capture_extract)
+    monkeypatch.setattr(ServiceIngestor, "embed", capture_embed)
 
     ingestor = build_service_ingestor(
         ServiceIngestRequest(
@@ -113,6 +127,8 @@ def test_build_service_ingestor_does_not_forward_environment_api_key(monkeypatch
 
     payload = ingestor._pipeline_payload()
     assert payload is not None
+    assert isinstance(stage_params["extract"], ExtractParams)
+    assert isinstance(stage_params["embed"], EmbedParams)
     assert payload["extract_params"]["method"] == "pdfium"
     assert payload["extract_params"]["use_table_structure"] is True
     assert payload["embed_params"]["embed_granularity"] == "page"

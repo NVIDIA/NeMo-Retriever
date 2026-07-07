@@ -439,7 +439,9 @@ def run_prepared_benchmark(
             writer.event("ingest", "ingest_start", f"Ingesting {len(ingest_documents)} document(s)")
             ingest_start = time.perf_counter()
             try:
-                with capture_output_to_log(writer.path("run.log"), label="service_ingest" if service_mode else "ingest"):
+                with capture_output_to_log(
+                    writer.path("run.log"), label="service_ingest" if service_mode else "ingest"
+                ):
                     if service_mode:
                         ingest_summary = execute_service_ingest_request(ingest_request).to_summary_dict()
                     else:

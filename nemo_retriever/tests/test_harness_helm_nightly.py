@@ -169,13 +169,14 @@ def test_service_beir_queries_each_dataset_query(monkeypatch, tmp_path: Path) ->
     monkeypatch.setattr(
         beir_runner,
         "query_service_documents",
-        lambda request: seen_queries.append(request.query)
-        or [{"pdf_basename": f"{request.query}.pdf", "_score": 1.0}],
+        lambda request: seen_queries.append(request.query) or [{"pdf_basename": f"{request.query}.pdf", "_score": 1.0}],
     )
     monkeypatch.setattr(
         beir_runner,
         "build_beir_run_from_hits",
-        lambda query_ids, hits, **_kwargs: {query_id: {hit[0]["pdf_basename"]: 1.0} for query_id, hit in zip(query_ids, hits)},
+        lambda query_ids, hits, **_kwargs: {
+            query_id: {hit[0]["pdf_basename"]: 1.0} for query_id, hit in zip(query_ids, hits)
+        },
     )
     monkeypatch.setattr(beir_runner, "compute_beir_metrics", lambda *_args, **_kwargs: {"Recall@5": 1.0})
     writer = ArtifactWriter(artifact_dir=tmp_path, run_id="run", benchmark="jp20_beir")
@@ -292,8 +293,7 @@ def test_helm_runner_forwards_endpoint_and_always_tears_down(tmp_path: Path) -> 
         [tmp_path / "run.yaml"],
         output_dir=tmp_path / "session",
         manager_factory=lambda _config: manager,
-        command_runner=lambda command, **_kwargs: commands.append(command)
-        or subprocess.CompletedProcess(command, 0),
+        command_runner=lambda command, **_kwargs: commands.append(command) or subprocess.CompletedProcess(command, 0),
     )
 
     assert rc == 0
