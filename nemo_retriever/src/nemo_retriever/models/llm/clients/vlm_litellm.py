@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -19,22 +19,39 @@ Supported URI schemes for image_uri:
 from __future__ import annotations
 
 import base64
+import ipaddress
 import logging
+import mimetypes
+import os
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from nemo_retriever.models.llm.clients.litellm import (
+    _NO_REASONING_EXTRA_PARAMS,
     LiteLLMClient,
     _format_rag_system_prompt,
     _with_no_reasoning_controls,
-    _NO_REASONING_EXTRA_PARAMS,
 )
 from nemo_retriever.models.llm.text_utils import strip_think_tags
-from nemo_retriever.models.llm.types import GenerationResult, MultimodalChunk
+from nemo_retriever.models.llm.types import VISUAL_CONTENT_TYPES, GenerationResult, MultimodalChunk
 from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
 
 logger = logging.getLogger(__name__)
 
-_VISUAL_CONTENT_TYPES = frozenset({"image", "chart", "infographic", "table"})
+# Images larger than this are skipped to avoid OOM; logged as a warning.
+_MAX_IMAGE_BYTES = 50 * 1024 * 1024  # 50 MB
+
+# Cloud/infrastructure metadata endpoints that must never be fetched.
+_BLOCKED_HOSTS = frozenset(
+    {
+        "169.254.169.254",  # AWS / GCP instance metadata
+        "169.254.170.2",  # ECS task metadata
+        "metadata.google.internal",
+        "metadata.azure.com",
+    }
+)
+
+_ALLOWED_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".tiff", ".tif", ".bmp"})
 
 _VLM_RAG_SYSTEM_PROMPT = (
     "You are a precise question-answering assistant. "
@@ -43,6 +60,39 @@ _VLM_RAG_SYSTEM_PROMPT = (
     "If the context does not contain enough information to answer, say so clearly. "
     "Be concise and factual."
 )
+
+
+def _mime_type_from_uri(uri: str) -> str:
+    """Infer MIME type from the URI path extension; fall back to image/png."""
+    mime, _ = mimetypes.guess_type(uri)
+    return mime or "image/png"
+
+
+def _validate_http_uri(uri: str) -> bool:
+    """Return False and log a warning for SSRF-risk URIs."""
+    parsed = urlparse(uri)
+    host = parsed.hostname or ""
+    if host in _BLOCKED_HOSTS:
+        logger.warning("Blocked request to known metadata endpoint: %s", host)
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            logger.warning("Blocked request to private/loopback address: %s", host)
+            return False
+    except ValueError:
+        pass  # hostname rather than a bare IP — allow through
+    return True
+
+
+def _validate_local_path(path: str) -> bool:
+    """Return False and log a warning for paths that look like non-image files."""
+    resolved = os.path.realpath(path)
+    ext = os.path.splitext(resolved)[1].lower()
+    if ext not in _ALLOWED_IMAGE_EXTENSIONS:
+        logger.warning("Rejected non-image local path (extension %r): %s", ext, path)
+        return False
+    return True
 
 
 def _load_image_as_base64(uri: str) -> Optional[str]:
@@ -59,19 +109,39 @@ def _load_image_as_base64(uri: str) -> Optional[str]:
                 parts = uri[5:].split("/", 1)
                 bucket, key = parts[0], parts[1] if len(parts) > 1 else ""
                 s3 = boto3.client("s3")
+                head = s3.head_object(Bucket=bucket, Key=key)
+                if head.get("ContentLength", 0) > _MAX_IMAGE_BYTES:
+                    logger.warning("Skipping oversized S3 image (%d bytes): %s", head["ContentLength"], uri)
+                    return None
                 response = s3.get_object(Bucket=bucket, Key=key)
                 data = response["Body"].read()
             except ImportError:
                 logger.warning("boto3 not installed; skipping image at %s", uri)
                 return None
         elif uri.startswith("http://") or uri.startswith("https://"):
+            if not _validate_http_uri(uri):
+                return None
             import urllib.request
 
-            with urllib.request.urlopen(uri, timeout=10) as resp:  # noqa: S310
-                data = resp.read()
+            req = urllib.request.Request(uri)  # noqa: S310
+            with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+                content_length = int(resp.headers.get("Content-Length") or 0)
+                if content_length > _MAX_IMAGE_BYTES:
+                    logger.warning("Skipping oversized HTTP image (%d bytes): %s", content_length, uri)
+                    return None
+                data = resp.read(_MAX_IMAGE_BYTES + 1)
+                if len(data) > _MAX_IMAGE_BYTES:
+                    logger.warning("Skipping oversized HTTP image (>%d bytes): %s", _MAX_IMAGE_BYTES, uri)
+                    return None
         else:
             # Local path — strip optional file:// scheme
             path = uri.removeprefix("file://")
+            if not _validate_local_path(path):
+                return None
+            size = os.path.getsize(path)
+            if size > _MAX_IMAGE_BYTES:
+                logger.warning("Skipping oversized local image (%d bytes): %s", size, uri)
+                return None
             with open(path, "rb") as fh:
                 data = fh.read()
 
@@ -103,17 +173,18 @@ def _build_multimodal_rag_prompt(
         user_content.append({"type": "text", "text": "Context:\n"})
         for i, chunk in enumerate(chunks):
             label = f"[{i + 1}] ({chunk.content_type})"
-            if chunk.image_uri and chunk.content_type in _VISUAL_CONTENT_TYPES:
+            if chunk.image_uri and chunk.content_type in VISUAL_CONTENT_TYPES:
                 b64 = _load_image_as_base64(chunk.image_uri)
                 if b64:
                     if chunk.text:
                         user_content.append({"type": "text", "text": f"{label} {chunk.text}\n"})
                     else:
                         user_content.append({"type": "text", "text": f"{label}\n"})
+                    mime = _mime_type_from_uri(chunk.image_uri)
                     user_content.append(
                         {
                             "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{b64}"},
+                            "image_url": {"url": f"data:{mime};base64,{b64}"},
                         }
                     )
                 else:
@@ -146,7 +217,7 @@ class LiteVLMClient(LiteLLMClient):
             api_base="https://integrate.api.nvidia.com/v1",
             api_key="nvapi-...",
         )
-        result = retriever.answer_multimodal(query, llm=client)
+        result = retriever.answer(query, llm=client, multimodal=True)
     """
 
     _DEFAULT_MODEL: str = "openai/meta/llama-4-scout-17b-16e-instruct"
@@ -195,7 +266,12 @@ class LiteVLMClient(LiteLLMClient):
                 )
             return GenerationResult(answer=answer, latency_s=latency, model=self.transport.model)
         except Exception as exc:
-            logger.debug("VLM generation failed for model=%s: %s", self.transport.model, exc)
+            logger.warning(
+                "VLM generation failed for model=%s: %s",
+                self.transport.model,
+                exc,
+                exc_info=True,
+            )
             return GenerationResult(
                 answer="",
                 latency_s=0.0,
