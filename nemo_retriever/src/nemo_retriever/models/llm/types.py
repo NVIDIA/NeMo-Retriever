@@ -39,6 +39,10 @@ class LLMClient(Protocol):
     ) -> "GenerationResult": ...
 
 
+VISUAL_CONTENT_TYPES: frozenset[str] = frozenset({"image", "chart", "infographic", "table"})
+"""Content types whose retrieved hits carry an image alongside their text caption."""
+
+
 @dataclass
 class MultimodalChunk:
     """A retrieved chunk that may carry an image alongside its text.

@@ -38,8 +38,6 @@ if TYPE_CHECKING:
         RetrievalResult,
     )
 
-_VISUAL_CONTENT_TYPES = frozenset({"image", "chart", "infographic", "table"})
-
 
 def _hits_to_multimodal_chunks(hits: list[RetrievalHit]) -> list["MultimodalChunk"]:
     """Convert raw retrieval hits to MultimodalChunk objects.
@@ -48,13 +46,13 @@ def _hits_to_multimodal_chunks(hits: list[RetrievalHit]) -> list["MultimodalChun
     stored_image_uri carry both the text caption and the image path.
     All other hits carry text only.
     """
-    from nemo_retriever.models.llm.types import MultimodalChunk
+    from nemo_retriever.models.llm.types import MultimodalChunk, VISUAL_CONTENT_TYPES
 
     chunks: list[MultimodalChunk] = []
     for hit in hits:
         content_type = str(hit.get("content_type") or "text")
         image_uri: Optional[str] = hit.get("stored_image_uri")  # type: ignore[assignment]
-        use_image = content_type in _VISUAL_CONTENT_TYPES and bool(image_uri)
+        use_image = content_type in VISUAL_CONTENT_TYPES and bool(image_uri)
         chunks.append(
             MultimodalChunk(
                 text=str(hit.get("text", "")),
