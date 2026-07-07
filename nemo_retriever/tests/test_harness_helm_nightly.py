@@ -282,15 +282,16 @@ class _FakeManager:
         return self.stop_rc
 
 
-def test_helm_runner_forwards_endpoint_and_always_tears_down(tmp_path: Path) -> None:
+def test_helm_runner_reuses_canonical_runfile_forwards_endpoint_and_always_tears_down(tmp_path: Path) -> None:
     config_path = tmp_path / "helm.yaml"
     _write_helm_config(config_path)
     manager = _FakeManager()
     commands = []
+    runfile = Path(__file__).resolve().parents[1] / "harness" / "runfiles" / "jp20_beir.json"
 
     rc = run_helm_session(
         config_path,
-        [tmp_path / "run.yaml"],
+        [runfile],
         output_dir=tmp_path / "session",
         manager_factory=lambda _config: manager,
         command_runner=lambda command, **_kwargs: commands.append(command) or subprocess.CompletedProcess(command, 0),
@@ -301,6 +302,9 @@ def test_helm_runner_forwards_endpoint_and_always_tears_down(tmp_path: Path) -> 
     endpoint_index = commands[0].index("--service-endpoint")
     assert commands[0][endpoint_index + 1] == "http://localhost:17670"
     assert "run-files" in commands[0]
+    mode_index = commands[0].index("--mode")
+    assert commands[0][mode_index + 1] == "service"
+    assert commands[0][-1] == str(runfile)
 
 
 @pytest.mark.parametrize(
@@ -343,14 +347,3 @@ def test_port_forward_permission_error_does_not_abort_cleanup(monkeypatch) -> No
 
     manager.stop_port_forwards()
     assert manager.port_forward_processes == []
-
-
-def test_service_runfile_contains_only_benchmark_intent() -> None:
-    payload = Path("harness/runfiles/jp20_helm_nightly.yaml")
-    if not payload.exists():
-        payload = Path("nemo_retriever/harness/runfiles/jp20_helm_nightly.yaml")
-    text = payload.read_text(encoding="utf-8")
-    assert "mode: service" in text
-    assert "target:" not in text
-    assert "helm_config:" not in text
-    assert "summary_metrics.json" not in text

@@ -212,26 +212,35 @@ underscores, and hyphens. Other characters fail validation before execution.
 ## Provision A Service With Helm
 
 Helm is one way to provision the service under test; it is not a benchmark
-execution mode or part of the runfile schema. The checked-in
-[`run_helm_nightly.sh`](run_helm_nightly.sh) wrapper loads the non-secret
+execution mode or part of the runfile schema. `helm_runner` loads the non-secret
 deployment settings in
 [`examples/managed-helm-main.yaml`](examples/managed-helm-main.yaml), deploys an
 explicit immutable image, waits for readiness and establishes a port-forward,
-invokes `run-files` with the JP20 service runfile, collects `service_logs/` on
-failure, and always tears the release down.
+invokes `run-files` with an existing portable runfile, collects `service_logs/`
+on failure, and always tears the release down.
 
 Set `HARNESS_HELM_SERVICE_IMAGE_REPOSITORY` and
-`HARNESS_HELM_SERVICE_IMAGE_TAG`, plus `NEMO_RETRIEVER_HELM_OUTPUT_DIR` and
-`NEMO_RETRIEVER_HELM_CONFIG` when their defaults are not suitable, then run:
+`HARNESS_HELM_SERVICE_IMAGE_TAG` to an immutable image built from the checkout.
+The external scheduler owns recurrence and the output directory. For JP20, run:
 
 ```bash
-nemo_retriever/harness/run_helm_nightly.sh \
-  --dataset-paths /local/path/to/dataset_paths.yaml
+export RETRIEVER_SESSION_DIR=/local/path/to/retriever-artifacts/helm-jp20-$(date -u +%Y%m%d_%H%M%S_UTC)
+
+uv run --project nemo_retriever \
+  python -m nemo_retriever.harness.helm_runner \
+  --config nemo_retriever/harness/examples/managed-helm-main.yaml \
+  --output-dir "$RETRIEVER_SESSION_DIR" \
+  --session-name helm_jp20 \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
+  nemo_retriever/harness/runfiles/jp20_beir.json
 ```
 
-The wrapper never reads a Slack webhook. After the terminal session exists,
-read each child's `results.json` for metrics and optionally invoke
-`post-slack --preview` or `post-slack` as a separate operation.
+`helm_runner` overrides the runfile mode to `service`; the shared JP20 runfile
+continues to own its dataset-integrity gates. Recall and nDCG are recorded in
+the standard artifacts without adding Helm-specific quality gates. The runner
+never reads a Slack webhook. After the terminal session exists, read each
+child's `results.json` for metrics and optionally invoke `post-slack --preview`
+or `post-slack` as a separate operation.
 
 ## Post Results to Slack
 
