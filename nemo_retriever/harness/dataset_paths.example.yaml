@@ -12,5 +12,19 @@ datasets:
   financebench:
     path: /path/to/datasets/nv-ingest/foundation_rag/financebench
     query_file: /path/to/NeMo-Retriever/data/financebench_train.json
+  vidore_v3_computer_science:
+    path: /path/to/datasets/nv-ingest/vidore_v3/vidore_v3_computer_science
+  vidore_v3_energy:
+    path: /path/to/datasets/nv-ingest/vidore_v3/vidore_v3_energy
   vidore_v3_finance_en:
     path: /path/to/datasets/nv-ingest/vidore_v3/vidore_v3_finance_en
+  vidore_v3_finance_fr:
+    path: /path/to/datasets/nv-ingest/vidore_v3/vidore_v3_finance_fr
+  vidore_v3_hr:
+    path: /path/to/datasets/nv-ingest/vidore_v3/vidore_v3_hr
+  vidore_v3_industrial:
+    path: /path/to/datasets/nv-ingest/vidore_v3/vidore_v3_industrial
+  vidore_v3_pharmaceuticals:
+    path: /path/to/datasets/nv-ingest/vidore_v3/vidore_v3_pharmaceuticals
+  vidore_v3_physics:
+    path: /path/to/datasets/nv-ingest/vidore_v3/vidore_v3_physics

@@ -148,6 +148,43 @@ uv run --project nemo_retriever retriever harness run-files \
   nemo_retriever/harness/runfiles/financebench_beir.json
 ```
 
+The ViDoRe v3 library follows the same runfile-first contract. Each benchmark
+uses the VL embed model with `text_image` page embeddings and page-level BEIR
+scoring. Run one domain while validating a machine or configuration:
+
+```bash
+uv run --project nemo_retriever retriever harness run-files \
+  --session-name vidore_v3_computer_science \
+  --output-dir /local/path/to/retriever-artifacts/vidore-v3-computer-science \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
+  --json \
+  nemo_retriever/harness/runfiles/vidore_v3_computer_science_beir.json
+```
+
+After single-domain validation, run all eight public ViDoRe v3 domains as one
+portable session:
+
+```bash
+uv run --project nemo_retriever retriever harness run-files \
+  --session-name vidore_v3_all \
+  --output-dir /local/path/to/retriever-artifacts/vidore-v3-all \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
+  --json \
+  nemo_retriever/harness/runfiles/vidore_v3_computer_science_beir.json \
+  nemo_retriever/harness/runfiles/vidore_v3_energy_beir.json \
+  nemo_retriever/harness/runfiles/vidore_v3_finance_en_beir.json \
+  nemo_retriever/harness/runfiles/vidore_v3_finance_fr_beir.json \
+  nemo_retriever/harness/runfiles/vidore_v3_hr_beir.json \
+  nemo_retriever/harness/runfiles/vidore_v3_industrial_beir.json \
+  nemo_retriever/harness/runfiles/vidore_v3_pharmaceuticals_beir.json \
+  nemo_retriever/harness/runfiles/vidore_v3_physics_beir.json
+```
+
+The code-owned `vidore_v3_all` runset is also available when the registry's
+default dataset paths are mounted. Prefer the checked-in runfiles for nightly
+or other orchestrated sessions because they carry per-dataset integrity gates
+and accept a machine-local path map.
+
 `run-files` owns the session layout and execution mode. Runfiles passed to this
 command cannot set their own `output_dir`, `run_id`, or `dry_run`; use the
 session-level `--dry-run` flag instead. The session uses the following paths and

@@ -37,6 +37,9 @@ nim_endpoints:
   embed_invoke_url: null
   # Model name for the remote embed NIM (server-owned; must match the SKU).
   embed_model_name: null
+  # Optional LiteLLM provider prefix prepended to embed_model_name for
+  # proxies that require provider/model IDs.
+  embed_model_provider_prefix: null
   # gRPC endpoint for the Parakeet ASR NIM (e.g. parakeet-nim:50051).
   # When set, audio/video pipelines use remote ASR instead of loading
   # the local Parakeet model (which requires torch + GPU).
