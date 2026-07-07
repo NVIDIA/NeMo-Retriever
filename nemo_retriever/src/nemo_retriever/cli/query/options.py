@@ -221,3 +221,72 @@ ServiceApiTokenOption = Annotated[
         help="Bearer token for authenticating with the retriever service. Falls back to $NEMO_RETRIEVER_API_TOKEN.",
     ),
 ]
+
+# ── Answer / generation options ────────────────────────────────────────────────
+
+LlmModelOption = Annotated[
+    str | None,
+    typer.Option(
+        "--llm-model",
+        help=(
+            "LLM model string for RAG generation. Uses the litellm provider prefix convention "
+            "(e.g. 'nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1.5', 'openai/gpt-4o'). "
+            "Defaults to the client's built-in default when omitted."
+        ),
+    ),
+]
+LlmInvokeUrlOption = Annotated[
+    str | None,
+    typer.Option(
+        "--llm-invoke-url",
+        help="OpenAI-compatible chat-completions endpoint for generation (e.g. https://integrate.api.nvidia.com/v1).",
+    ),
+]
+LlmApiKeyEnvOption = Annotated[
+    str | None,
+    typer.Option(
+        "--llm-api-key-env",
+        help=(
+            "Environment variable containing the API key for --llm-invoke-url. "
+            "Falls back to NVIDIA_API_KEY / NGC_API_KEY when omitted."
+        ),
+    ),
+]
+LlmMaxTokensOption = Annotated[
+    int,
+    typer.Option("--llm-max-tokens", min=1, help="Maximum tokens for the generated answer."),
+]
+LlmTemperatureOption = Annotated[
+    float,
+    typer.Option("--llm-temperature", min=0.0, help="Sampling temperature for generation (0.0 = greedy)."),
+]
+ReasoningOption = Annotated[
+    bool | None,
+    typer.Option(
+        "--reasoning/--no-reasoning",
+        help=("Enable or disable chain-of-thought reasoning on Nemotron models. " "Omit to use the model's default."),
+    ),
+]
+ReferenceOption = Annotated[
+    str | None,
+    typer.Option(
+        "--reference",
+        help=(
+            "Gold answer for automatic scoring (token F1, exact match, context coverage). "
+            "Scoring is skipped when omitted."
+        ),
+    ),
+]
+MultimodalOption = Annotated[
+    bool,
+    typer.Option(
+        "--multimodal",
+        is_flag=True,
+        help=(
+            "Enable Vision-Language Model (VLM) generation. Visual chunks (image, chart, "
+            "infographic, table) that have a stored image URI are loaded and sent to the "
+            "VLM inline alongside their text captions. Requires --llm-model to point to a "
+            "multimodal-capable endpoint."
+        ),
+    ),
+]

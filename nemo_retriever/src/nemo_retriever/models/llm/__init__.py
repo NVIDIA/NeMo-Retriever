@@ -42,6 +42,8 @@ from nemo_retriever.models.llm.types import (
     GenerationResult,
     JudgeResult,
     LLMClient,
+    MultimodalChunk,
+    MultimodalLLMClient,
     RetrievalResult,
     RetrieverStrategy,
 )
@@ -50,6 +52,7 @@ from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteCli
 _LAZY_IMPORTS = {
     "LiteLLMClient": "nemo_retriever.llm.clients.litellm",
     "LLMJudge": "nemo_retriever.llm.clients.judge",
+    "LiteVLMClient": "nemo_retriever.models.llm.clients",
 }
 
 
@@ -66,16 +69,19 @@ __all__ = [
     # Protocols
     "AnswerJudge",
     "LLMClient",
+    "MultimodalLLMClient",
     "RetrieverStrategy",
     # Request/result models
     "AnswerRequest",
     "AnswerResult",
     "GenerationResult",
     "JudgeResult",
+    "MultimodalChunk",
     "RetrievalResult",
     # Concrete clients (lazy-loaded)
     "LLMJudge",
     "LiteLLMClient",
+    "LiteVLMClient",
     # Transport / sampling params (re-exported for ergonomics)
     "LLMInferenceParams",
     "LLMRemoteClientParams",

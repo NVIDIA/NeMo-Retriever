@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from nemo_retriever.models.llm.clients.judge import LLMJudge
 from nemo_retriever.models.llm.clients.litellm import LiteLLMClient, _build_rag_prompt
+from nemo_retriever.models.llm.clients.vlm_litellm import LiteVLMClient
 
 _REGISTRY: dict[str, type] = {}
 
@@ -52,11 +53,13 @@ def get_client(name: str) -> type:
 
 
 register_client("litellm", LiteLLMClient)
+register_client("vlm_litellm", LiteVLMClient)
 
 
 __all__ = [
     "LLMJudge",
     "LiteLLMClient",
+    "LiteVLMClient",
     "_build_rag_prompt",
     "get_client",
     "register_client",

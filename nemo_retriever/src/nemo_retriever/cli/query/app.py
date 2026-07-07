@@ -34,6 +34,7 @@ from nemo_retriever.query.options import (
     ServiceQueryRequest,
 )
 from nemo_retriever.query.service import query_documents as query_service_documents
+from nemo_retriever.query.workflow import resolve_query_plan
 
 _DEFAULT_COMMAND = "_local"
 _GROUP_OPTIONS = {"--help", "-h", "--install-completion", "--show-completion"}
@@ -322,3 +323,164 @@ def _service_command(
         raise typer.Exit(1) from exc
 
     _emit_query_output(hits, strategies=["semantic"], output_format=output_format, max_text_chars=max_text_chars)
+
+
+# ── Shared helpers for answer commands ────────────────────────────────────────
+
+
+def _build_request_for_answer(
+    query: str,
+    *,
+    top_k: int,
+    candidate_k: int | None,
+    page_dedup: bool,
+    content_types: str | None,
+    lancedb_uri: str,
+    table_name: str,
+    embed_invoke_url: str | None,
+    embed_model_name: str | None,
+    reranker_invoke_url: str | None,
+    reranker_api_key: str | None,
+    reranker_model_name: str | None,
+    reranker_backend: str | None,
+    rerank: bool,
+    retrieval_mode: str,
+) -> "QueryRequest":
+    return QueryRequest(
+        query=query,
+        retrieval=_retrieval_options(
+            top_k=top_k,
+            candidate_k=candidate_k,
+            page_dedup=page_dedup,
+            content_types=content_types,
+            retrieval_mode=cast("QueryRetrievalMode", retrieval_mode),
+        ),
+        embed=QueryEmbedOptions(
+            embed_invoke_url=embed_invoke_url,
+            embed_model_name=embed_model_name,
+        ),
+        rerank=QueryRerankOptions(
+            enabled=rerank,
+            reranker_invoke_url=reranker_invoke_url,
+            reranker_model_name=reranker_model_name,
+            reranker_backend=reranker_backend,
+            reranker_api_key=reranker_api_key,
+        ),
+        storage=QueryStorageOptions(
+            lancedb_uri=lancedb_uri,
+            table_name=table_name,
+        ),
+    )
+
+
+def _emit_answer_output(result: object) -> None:
+    """Print AnswerResult as JSON, omitting None fields."""
+    data = {k: v for k, v in result.__dict__.items() if v is not None}
+    # chunks can be large; keep them but let the user pipe | jq if needed
+    typer.echo(json.dumps(data, indent=2, sort_keys=True, default=str))
+
+
+# ── retriever query answer ─────────────────────────────────────────────────────
+
+_ANSWER_HELP = (
+    "Retrieve context from a local LanceDB index and generate an answer with an LLM. "
+    "Add --multimodal to use a Vision-Language Model: visual chunks (image, chart, "
+    "infographic, table) that have a stored image URI are loaded and sent inline alongside "
+    "their text captions. Outputs JSON with 'answer', 'model', 'latency_s', 'chunk_count'. "
+    "Pass --reference to add automatic token-F1 / context-coverage scoring."
+)
+
+
+@app.command("answer", help=_ANSWER_HELP)
+def _answer_command(
+    ctx: typer.Context,
+    query: opts.QueryArgument,
+    top_k: opts.TopKOption = 5,
+    candidate_k: opts.CandidateKOption = None,
+    page_dedup: opts.PageDedupOption = False,
+    content_types: opts.ContentTypesOption = None,
+    lancedb_uri: opts.LanceDbUriOption = "lancedb",
+    table_name: opts.TableNameOption = "nemo-retriever",
+    embed_invoke_url: opts.EmbedInvokeUrlOption = None,
+    embed_model_name: opts.EmbedModelNameOption = None,
+    reranker_invoke_url: opts.RerankerInvokeUrlOption = None,
+    reranker_api_key_env: opts.RerankerApiKeyEnvOption = None,
+    reranker_model_name: opts.RerankerModelNameOption = None,
+    reranker_backend: opts.RerankerBackendOption = None,
+    rerank: opts.RerankOption = False,
+    retrieval_mode: opts.RetrievalModeOption = "auto",
+    hybrid: opts.HybridOption = False,
+    llm_model: opts.LlmModelOption = None,
+    llm_invoke_url: opts.LlmInvokeUrlOption = None,
+    llm_api_key_env: opts.LlmApiKeyEnvOption = None,
+    llm_max_tokens: opts.LlmMaxTokensOption = 4096,
+    llm_temperature: opts.LlmTemperatureOption = 0.0,
+    reasoning: opts.ReasoningOption = None,
+    reference: opts.ReferenceOption = None,
+    multimodal: opts.MultimodalOption = False,
+) -> None:
+    from nemo_retriever.models.llm.clients.litellm import LiteLLMClient
+    from nemo_retriever.models.llm.clients.vlm_litellm import LiteVLMClient
+
+    if reranker_invoke_url is None:
+        reranker_invoke_url = os.environ.get("RERANKER_INVOKE_URL") or None
+    if embed_invoke_url is None:
+        embed_invoke_url = os.environ.get("EMBED_INVOKE_URL") or None
+    rerank = rerank or bool(reranker_invoke_url) or bool(reranker_model_name) or bool(reranker_backend)
+    silence_noisy_libraries()
+
+    try:
+        reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None
+        llm_api_key = _api_key_from_env_option(llm_api_key_env)
+        effective_retrieval_mode = _query_retrieval_mode(ctx, retrieval_mode, hybrid)
+
+        request = _build_request_for_answer(
+            query,
+            top_k=top_k,
+            candidate_k=candidate_k,
+            page_dedup=page_dedup,
+            content_types=content_types,
+            lancedb_uri=lancedb_uri,
+            table_name=table_name,
+            embed_invoke_url=embed_invoke_url,
+            embed_model_name=embed_model_name,
+            reranker_invoke_url=reranker_invoke_url,
+            reranker_api_key=reranker_api_key,
+            reranker_model_name=reranker_model_name,
+            reranker_backend=reranker_backend,
+            rerank=rerank,
+            retrieval_mode=effective_retrieval_mode,
+        )
+        plan = resolve_query_plan(request)
+        retriever = plan.create_retriever()
+
+        llm_kwargs: dict[str, object] = {
+            "temperature": llm_temperature,
+            "max_tokens": llm_max_tokens,
+        }
+        if llm_model:
+            llm_kwargs["model"] = llm_model
+        if llm_invoke_url:
+            llm_kwargs["api_base"] = llm_invoke_url
+        if llm_api_key:
+            llm_kwargs["api_key"] = llm_api_key
+        if reasoning is not None:
+            llm_kwargs["reasoning_enabled"] = reasoning
+
+        client_cls = LiteVLMClient if multimodal else LiteLLMClient
+        llm = client_cls.from_kwargs(**llm_kwargs)  # type: ignore[arg-type]
+
+        with quiet_capture():
+            result = retriever.answer(
+                query,
+                llm=llm,
+                top_k=top_k,
+                reference=reference,
+                reasoning_enabled=reasoning,
+                multimodal=multimodal,
+            )
+    except ROOT_CLI_ERRORS as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    _emit_answer_output(result)
