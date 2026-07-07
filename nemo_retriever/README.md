@@ -21,7 +21,7 @@ Before starting, make sure your system meets the following requirements:
 - The host is running CUDA 13.x so that `libcudart.so.13` is available.
 - Your GPUs are visible to the system and compatible with CUDA 13.x.
 ​
-If optical character recognition (OCR) fails with a `libcudart.so.13` error, install the CUDA 13 runtime for your platform and update `LD_LIBRARY_PATH` to include the CUDA lib64 directory, then rerun the pipeline. 
+If optical character recognition (OCR) fails with a `libcudart.so.13` error, install the CUDA 13 runtime for your platform and update `LD_LIBRARY_PATH` to include the CUDA lib64 directory, then rerun the pipeline.
 
 For example, the following command can be used to update the `LD_LIBRARY_PATH` value.
 
@@ -44,7 +44,15 @@ For **local GPU inference** (Nemotron models running on your GPU), install with 
 ```bash
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install "nemo-retriever[local]==26.5.0"
+uv pip install "nemo-retriever[local]"
+```
+
+The `[local]` extra resolves stable Nemotron extraction packages by default. To
+try prerelease/nightly Nemotron packages from PyPI within the same supported
+major-version windows, opt in with `--pre`:
+
+```bash
+uv pip install --pre "nemo-retriever[local]==26.05-RC1"
 ```
 
 Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (refer to the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
@@ -55,7 +63,7 @@ For **remote NIM inference only** (no local GPU required), the base package is s
 uv python install 3.12
 uv venv retriever --python 3.12
 source retriever/bin/activate
-uv pip install nemo-retriever==26.5.0
+uv pip install nemo-retriever
 ```
 
 Install matching **ingestion client** and **ingestion runtime** wheels at the same version when your workflow expects them (refer to the [NeMo Retriever Library prerequisites](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/) for the exact PyPI coordinates for your release).
@@ -65,7 +73,7 @@ This creates a dedicated Python environment and installs the `nemo-retriever` Py
 If your PDF pipeline uses `extract_method="nemotron_parse"`, install the Nemotron Parse client dependencies with the `nemotron-parse` extra:
 
 ```bash
-uv pip install "nemo-retriever[nemotron-parse]==26.5.0"
+uv pip install "nemo-retriever[nemotron-parse]"
 ```
 
 For local GPU inference with Nemotron Parse, combine the extras as `nemo-retriever[local,nemotron-parse]`.
@@ -87,9 +95,10 @@ Skip this step if you are using remote NIM inference only.
 
 The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
 
-> **Note:** `batch` is the primary intended run_mode of operation for this library. Other modes are experimental and subject to change or removal.
+> **Note:** `retriever ingest` defaults to local, in-process execution. Use `retriever ingest batch ...` for Ray Data scale-out on larger workloads.
+> `retriever pipeline run` keeps its legacy `--run-mode` flag for compatibility and development workflows.
 
-The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, see [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
+The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, refer to [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
 
 ### Ingest a test pdf
 ```python
@@ -159,7 +168,7 @@ used in [Run a recall query](#run-a-recall-query) below. With the
 and embedding. For a realistic retrieval corpus, see
 [QA evaluation -- Step 1](./src/nemo_retriever/evaluation/README.md#step-1-ingest-and-embed-pdfs-nemo-retriever).
 
-**No local GPU?** Set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) (see [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)) and route extraction and embedding
+**No local GPU?** Set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)) and route extraction and embedding
 through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
 
 ```bash
@@ -426,7 +435,7 @@ ingestor = (
 ### Render results as markdown
 
 If you want a readable markdown view of extracted results, pass a single document's extraction
-records to `nemo_retriever.io.to_markdown`. The helper returns one markdown string (or `None`
+records to `nemo_retriever.common.io.to_markdown`. The helper returns one markdown string (or `None`
 if there is no content), with per-page sections joined under a single document heading.
 
 For multi-document runs, pass one document at a time—for example, `to_markdown(results[0])`.
@@ -508,7 +517,7 @@ ingestor = (
   .embed(
     model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
     #works with plain "text"s, "image"s, and "text_image" pairs
-    embed_modality="text_image"  
+    embed_modality="text_image"
   )
 )
 ```
@@ -520,7 +529,7 @@ ingestor = ingestor.files(documents).extract(method="nemotron_parse")
 
 ## Run with remote inference, no local GPU required:
 
-For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) as an environment variable (see [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)). 
+For build.nvidia.com hosted inference, set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) as an environment variable (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)).
 
 ```python
 ingestor = (
@@ -625,38 +634,22 @@ sudo apt install python3.12-dev
 
 After installing the headers, restart the pipeline.
 
-## ViDoRe Harness Sweep
+## Retriever Harness
 
-The harness includes BEIR-style ViDoRe dataset presets in `nemo_retriever/harness/test_configs.yaml` and a ready-made sweep definition in `nemo_retriever/harness/vidore_sweep.yaml`.
+The developer harness runs code-owned benchmarks through `retriever harness`.
+Use `retriever harness list --runsets` to see available benchmark names and
+runsets, then run one benchmark with `retriever harness run <benchmark>`.
 
-The ViDoRe harness datasets are configured to:
+### Ingest image storage
 
-- read PDFs from `/datasets/retrieval-eval/vidore_v3_corpus_pdf/...`
-- ingest with `embed_modality: text_image`
-- embed at `embed_granularity: page`
-- enable `extract_page_as_image: true` and `extract_infographics: true`
-- evaluate with BEIR-style `ndcg` and `recall` metrics
-
-To run the full ViDoRe sweep:
-
-```bash
-cd ~/NeMo-Retriever/nemo_retriever
-retriever-harness sweep --runs-config harness/vidore_sweep.yaml
-```
-
-The same commands also work under the main CLI as `retriever harness ...` if you prefer a single top-level command namespace.
-
-### Pipeline image storage
-
-Use the pipeline CLI to persist extracted image assets to local storage or any
+Use root ingest to persist extracted image assets to local storage or any
 fsspec-compatible URI:
 
 ```bash
-retriever pipeline run ./data \
+retriever ingest ./data \
   --store-images-uri ./processed_docs/images
 ```
 
-The store stage writes the image payloads produced by the configured pipeline.
-With `--embed-granularity page`, stored assets are page images. With
-`--embed-granularity element`, stored assets are element images. Store is not
-currently configured through the harness.
+The store stage writes the image payloads produced by ingest. With
+`--embed-granularity page`, stored assets are page images. With
+`--embed-granularity element`, stored assets are element images.
