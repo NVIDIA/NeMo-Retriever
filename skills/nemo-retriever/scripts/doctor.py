@@ -4,14 +4,16 @@
 # SPDX-License-Identifier: Apache-2.0
 """Verify the installed `retriever` engine satisfies the skill's contract.
 
-Usage: <RETRIEVER_VENV>/bin/python skills/retriever/scripts/doctor.py
-Exits 0 if all checks pass, 1 otherwise. Always runs a LIVE ingest+query probe.
+Usage: <RETRIEVER_VENV>/bin/python skills/nemo-retriever/scripts/doctor.py [--static-only]
+Exits 0 if all checks pass, 1 otherwise. By default it runs static CLI checks
+plus a LIVE ingest+query probe; ``--static-only`` skips the live probe.
 
 The skill's one primitive is `retriever query --format evidence --retrieval-mode hybrid` ->
 {evidence, coverage}; this doctor gates on THAT invocation and result shape. `query`'s
 DEFAULTS are unchanged (`hits` output and automatic index detection) — the skill
 passes evidence format and hybrid retrieval explicitly.
 """
+import argparse
 import json
 import os
 import shutil
@@ -42,31 +44,52 @@ def retriever_bin():
     return shutil.which("retriever")
 
 
-def help_text(bin_path, subcmd):
+def help_text(bin_path, *command_path):
     # Force a wide terminal so the rich/click help box does not truncate long
     # flag names (e.g. "--embed-model-na…"), which would break substring checks.
     env = dict(os.environ, COLUMNS="200")
     try:
-        out = subprocess.run([bin_path, subcmd, "--help"], capture_output=True, text=True, timeout=60, env=env)
+        out = subprocess.run(
+            [bin_path, *command_path, "--help"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=env,
+        )
         return (out.stdout or "") + (out.stderr or "")
     except Exception as e:  # noqa: BLE001
         return f"__ERROR__ {e}"
 
 
-def main():
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Verify the installed retriever against the skill contract.")
+    parser.add_argument(
+        "--static-only",
+        action="store_true",
+        help="Check the CLI command and flag surface without running ingest or query.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(*, static_only=False):
+    results.clear()
     with open(os.path.join(CONTRACT_DIR, "cli-contract.json")) as _f:
         contract = json.load(_f)
-    with open(os.path.join(CONTRACT_DIR, "query-result.schema.json")) as _f:
+    contract_version = contract["contract_version"]
+    result_schema = contract["query"]["result_schema"]
+    with open(os.path.join(CONTRACT_DIR, result_schema)) as _f:
         rr_schema = json.load(_f)
     item_schema = rr_schema["$defs"]["evidence_item"]
     cov_schema = rr_schema["$defs"]["coverage"]
 
     bin_path = retriever_bin()
     check(
-        bin_path is not None, "retriever CLI on PATH", "" if bin_path else "run skills/retriever/references/install.md"
+        bin_path is not None,
+        "retriever CLI on PATH",
+        "" if bin_path else "run skills/nemo-retriever/references/install.md",
     )
     if not bin_path:
-        return report()
+        return report(contract_version)
 
     # --- Required subcommands exist (static, no GPU) ---
     for sub in contract.get("subcommands_required", []):
@@ -76,22 +99,32 @@ def main():
             rc = 1
         check(rc == 0, f"subcommand `{sub}` exists")
 
-    # --- query flag surface: required flags present (static). `query` is now both the
-    # skill primitive and the power-user tool, so strategy knobs are allowed. ---
+    # PRs can land independently: use the public help when it exposes the local
+    # flags, otherwise inspect the hidden local implementation. The live probe
+    # below always exercises the public root invocation.
     rhelp = help_text(bin_path, "query")
+    if not all(flag in rhelp for flag in contract["query"]["required_flags"]):
+        rhelp = help_text(bin_path, "query", "_local")
     for flag in contract["query"]["required_flags"]:
         check(flag in rhelp, f"query has {flag}")
 
     # --- ingest flag surface (static, no GPU) ---
-    ihelp = help_text(bin_path, "ingest")
+    # Ingest has explicit local, batch, and service modes. The default root
+    # invocation dispatches to local, whose help owns the contracted flags.
+    ihelp = help_text(bin_path, "ingest", "local")
     for flag in contract["ingest"]["required_flags"]:
         check(flag in ihelp, f"ingest has {flag}")
     for flag in contract["ingest"]["forbidden_flags"]:
         check(
-            flag not in ihelp, f"ingest does NOT have {flag}", "engine changed: skill assumes single-pass auto-detect"
+            flag not in ihelp,
+            f"ingest does NOT have {flag}",
+            "engine changed: skill assumes single-pass auto-detect",
         )
 
-    # --- Live probe: ingest tiny fixture, retrieve, validate result shape (GPU) ---
+    if static_only:
+        return report(contract_version)
+
+    # --- Live probe: ingest tiny fixture, retrieve, validate result shape ---
     tmp = tempfile.mkdtemp(prefix="retriever_doctor_")
     try:
         corpus = os.path.join(tmp, "corpus")
@@ -168,7 +201,7 @@ def main():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    return report()
+    return report(contract_version)
 
 
 def validate(obj, schema):
@@ -199,14 +232,18 @@ def validate(obj, schema):
                     continue
                 pytypes.extend(mapped if isinstance(mapped, tuple) else [mapped])
             if pytypes and not isinstance(obj[name], tuple(pytypes)):
-                return False, f"field '{name}' should be {spec['type']}, got {type(obj[name]).__name__}"
+                return (
+                    False,
+                    f"field '{name}' should be {spec['type']}, got {type(obj[name]).__name__}",
+                )
         if "enum" in spec and obj[name] not in spec["enum"]:
             return False, f"field '{name}'={obj[name]!r} not in {spec['enum']}"
     return True, ""
 
 
-def report():
+def report(contract_version):
     failed = [r for r in results if not r[0]]
+    print(f"Retriever skill contract {contract_version}")
     for ok, label, detail in results:
         mark = "PASS" if ok else "FAIL"
         line = f"[{mark}] {label}"
@@ -218,4 +255,5 @@ def report():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    args = parse_args()
+    sys.exit(main(static_only=args.static_only))

@@ -1,20 +1,12 @@
 {
-  "contract_version": "0.1.1",
-  "primitive": "query",
+  "contract_version": "1.0.0",
   "subcommands_required": ["ingest", "query"],
-  "requires_hybrid_index": true,
   "query": {
-    "required_flags": ["--top-k", "--retrieval-mode", "--format"],
-    "operator_flags": ["--lancedb-uri", "--table-name", "--embed-model-name"],
-    "skill_invocation": "retriever query \"<question>\" --format evidence --retrieval-mode hybrid",
-    "engine_default_format": "hits",
-    "engine_default_retrieval_mode": "auto",
+    "required_flags": ["--top-k", "--retrieval-mode", "--format", "--lancedb-uri", "--table-name", "--embed-model-name"],
     "result_schema": "query-result.schema.json"
   },
   "ingest": {
     "required_flags": ["--append", "--overwrite", "--index-mode", "--ocr-version", "--ocr-lang", "--table-name", "--lancedb-uri", "--embed-model-name"],
-    "forbidden_flags": ["--input-type"],
-    "single_pass_multiformat": true
-  },
-  "default_table_name": "nemo-retriever"
+    "forbidden_flags": ["--input-type"]
+  }
 }
