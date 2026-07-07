@@ -1,111 +1,149 @@
 # NeMo Retriever Development Compose Helpers
 
-These Compose files are local development helpers. They are not supported
-production deployment artifacts and do not aim to expose every Helm option.
-Use the [Helm chart](../../helm/README.md) for production and release
-deployments.
+These files provide a development-only, standalone service deployment. Hosted
+inference remains the zero-profile default. Production deployments and split
+gateway/realtime/batch topology use the [Helm chart](../../helm/README.md).
 
-Run commands from the repository root.
+Run commands from the repository root. Docker Compose 2.23.1 or newer is
+required for optional dependencies and inline configs.
 
-## Service Mode
+## Hosted inference (default)
 
-The development service-mode stack builds the current checkout and starts a
-standalone NeMo Retriever service plus its LanceDB VectorDB. Inference stays
-external to the stack: the defaults call NVIDIA-hosted NIM endpoints, so no
-local GPU or Kubernetes cluster is required.
-
-> **Data handling:** The default endpoints send document and query data to
-> NVIDIA-hosted services. Confirm that this is appropriate for your data and
-> environment before starting the stack. To keep inference local, use the
-> endpoint overrides described below.
-
-Prerequisites:
-
-- Docker Engine with Docker Compose 2.23.1 or newer. The stack uses Compose
-  inline config content and environment interpolation.
-- A `NVIDIA_API_KEY` authorized for the hosted NIMs when using the default
-  endpoints. Self-hosted endpoints that do not require authentication can use
-  an empty key.
-
-Export the hosted-inference key and start the stack:
+The default starts the retriever and LanceDB only. Document and query content
+is sent to NVIDIA-hosted endpoints, so confirm that this is appropriate for
+your data.
 
 ```bash
 export NVIDIA_API_KEY=nvapi-...
 docker compose -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
-```
-
-The first build can take a while. Once both containers are healthy, open
-`http://localhost:7670/docs` or check the service directly:
-
-```bash
 curl -fsSL http://localhost:7670/v1/health
-docker compose -f nemo_retriever/dev/compose/service-mode.compose.yaml ps
 ```
 
-The default endpoint and model settings can be overridden individually:
+Endpoints, models, ports, worker counts, and the service image can all be
+overridden explicitly. The most commonly tuned variables are
+`NIM_PAGE_ELEMENTS_URL`, `NIM_TABLE_STRUCTURE_URL`, `NIM_OCR_URL`,
+`NIM_EMBED_URL`, `NIM_EMBED_MODEL`, `RETRIEVER_HTTP_PORT`,
+`PIPELINE_REALTIME_WORKERS`, `PIPELINE_REALTIME_QUEUE_SIZE`,
+`PIPELINE_BATCH_WORKERS`, and `PIPELINE_BATCH_QUEUE_SIZE`. Explicit shell
+variables override preset values, enabling mixed hosted/self-hosted stacks.
+
+## Self-hosted NIM profiles
+
+Authenticate to NGC before pulling a self-hosted NIM and export the key for
+the containers. The hosted-only stack does not require `NGC_API_KEY`.
 
 ```bash
-export NVIDIA_API_KEY=
-export NIM_PAGE_ELEMENTS_URL=http://host.docker.internal:8001/v1/infer
-export NIM_TABLE_STRUCTURE_URL=http://host.docker.internal:8002/v1/infer
-export NIM_OCR_URL=http://host.docker.internal:8003/v1/infer
-export NIM_EMBED_URL=http://host.docker.internal:8004/v1/embeddings
-export NIM_EMBED_MODEL=nvidia/llama-nemotron-embed-vl-1b-v2
-docker compose -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
+export NGC_API_KEY=nvapi-...
+echo "$NGC_API_KEY" | docker login nvcr.io --username '$oauthtoken' --password-stdin
 ```
 
-`host.docker.internal` is mapped to the Docker host by the Compose file. URLs
-for services on another machine or Docker network can be supplied directly.
-The embed URL and model are shared by the retriever and VectorDB so ingestion
-and query embedding remain consistent.
-
-Other useful development overrides are:
-
-- `NEMO_RETRIEVER_IMAGE`: image name/tag to build or run. To use an existing
-  published image, set this variable and add `--no-build` to `docker compose
-  up`.
-- `RETRIEVER_HTTP_PORT`: host port for the service; defaults to `7670`.
-- `INSTALL_FFMPEG=true`: install `ffmpeg` and `ffprobe` when the service
-  starts for audio/video development. This requires package-repository access.
-
-Inspect logs or stop the stack while retaining its named volumes:
+Start the four core extraction/retrieval NIMs with their checked-in internal
+endpoint wiring:
 
 ```bash
-docker compose -f nemo_retriever/dev/compose/service-mode.compose.yaml logs -f
-docker compose -f nemo_retriever/dev/compose/service-mode.compose.yaml down
+docker compose --env-file nemo_retriever/dev/compose/presets/nims-core.env \
+  -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
 ```
 
-LanceDB data and service logs persist across restarts. Remove them explicitly
-when a clean development environment is needed:
+Optional presets are `nim-reranker.env`, `nim-parse.env`, `nim-caption.env`,
+`nim-answer.env`, and `nim-audio.env`. `nims-all.env` activates all nine NIMs.
+Presets can be combined by supplying `--env-file` once and adding profiles and
+endpoint variables in the shell; for example, layer answer generation over
+core with `COMPOSE_PROFILES=nims-core,nim-answer` plus the answer preset's
+variables. Reranker and Parse are lifecycle/API-only and intentionally are not
+injected into retriever service configuration, matching Helm.
+
+Every NIM has a persistent cache volume, a configurable GPU assignment, and a
+configurable host port. Variables follow the service prefix, for example
+`NIM_OCR_GPU_ID`, `NIM_OCR_HOST_PORT`, `NIM_OCR_CACHE_VOLUME`,
+`NIM_OCR_CACHE_PATH`, `NIM_OCR_IMAGE`, and `NIM_OCR_TAG`. Answer NIM defaults
+to two GPUs (`NIM_ANSWER_GPU_ID_0` and `_1`); the others default to one. Change
+the defaults to match the host before startup. Compose lifecycle support means
+image pull, startup, readiness, persistent cache, restart, logs, and teardown;
+NIM Operator reconciliation, NIMCache CRDs, and model-profile selection remain
+Kubernetes-only.
+
+Answer behavior is configurable through `ANSWER_LLM_ENABLED`,
+`ANSWER_LLM_MODEL`, `ANSWER_LLM_API_BASE_YAML`, `ANSWER_LLM_TEMPERATURE`,
+`ANSWER_LLM_TOP_P`, `ANSWER_LLM_MAX_TOKENS`, `ANSWER_LLM_EXTRA_PARAMS`,
+`ANSWER_LLM_NUM_RETRIES`, `ANSWER_LLM_TIMEOUT`, and
+`ANSWER_LLM_REASONING_ENABLED`. Caption uses `NIM_CAPTION_URL` and
+`NIM_CAPTION_MODEL_YAML`; audio uses `NIM_AUDIO_GRPC_ENDPOINT` and its `_YAML`
+counterpart.
+
+## Local Hugging Face GPU models
+
+Local mode builds the `service-gpu` target for both retriever and VectorDB,
+enables local extraction, embedding, and ASR, and persists Hugging Face model
+downloads. It reserves separate GPUs by default (`0` for retriever and `1` for
+query embedding); override `LOCAL_MODELS_GPU_ID` and `LOCAL_VECTORDB_GPU_ID`
+as needed.
 
 ```bash
-docker compose -f nemo_retriever/dev/compose/service-mode.compose.yaml down -v
+docker compose --env-file nemo_retriever/dev/compose/presets/local-models.env \
+  -f nemo_retriever/dev/compose/service-mode.compose.yaml \
+  -f nemo_retriever/dev/compose/service-mode.local-models.compose.yaml \
+  up --build -d
 ```
 
-This stack intentionally omits NIM lifecycle management, split topology,
-autoscaling, ingress, local GPU models, OpenTelemetry, Zipkin, and optional
-answer/audio/caption services. Use Helm when those deployment behaviors need
-to be exercised.
+Local mode is mutually exclusive with `nims-core`/`nims-all`. Optional answer,
+caption, and audio NIM profiles may be layered onto it; their remote endpoints
+take precedence for those stages. Tune warmup, process-pool cap, embedding
+memory fraction, and cache name with the `LOCAL_MODELS_*`,
+`LOCAL_EMBED_GPU_MEMORY_UTILIZATION`, and `HF_CACHE_VOLUME` variables in the
+preset.
 
-## Local Judge
+## Observability
 
-The judge helper starts an OpenAI-compatible Nemotron NIM for `retriever skill-eval` runs that use a local judge endpoint.
-
-Set `NGC_API_KEY` or `NIM_NGC_API_KEY` before starting this helper.
+The observability preset starts OpenTelemetry Collector and Zipkin and enables
+retriever/NIM OTLP export. The collector batches telemetry, retains its debug
+exporter, exposes Prometheus-format metrics at `http://localhost:8889/metrics`,
+and forwards traces to Zipkin. Open `http://localhost:9411` to inspect traces.
 
 ```bash
-echo "${NGC_API_KEY}" | docker login nvcr.io --username '$oauthtoken' --password-stdin
-docker compose -f nemo_retriever/dev/compose/judge.compose.yaml up -d judge
+docker compose --env-file nemo_retriever/dev/compose/presets/observability.env \
+  -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
 ```
 
-Then point `judge.api_base` at `http://localhost:8000/v1` in your skill-eval config.
+To combine it with a NIM preset, set both profiles and the observability flags,
+for example `COMPOSE_PROFILES=nims-core,observability`,
+`OTEL_SDK_DISABLED=false`, and `NIM_OTEL_ENABLED=true`. Host ports are
+configurable with `OTEL_GRPC_HOST_PORT`, `OTEL_HTTP_HOST_PORT`,
+`OTEL_PROMETHEUS_HOST_PORT`, and `ZIPKIN_HOST_PORT`. Telemetry is disabled in
+the default stack; Compose intentionally does not add Prometheus, Grafana,
+ServiceMonitor, or autoscaling.
 
-## Neo4j
+## Hardware-gated smoke checks
 
-The Neo4j helper starts a local database for tabular/graph development.
+These checks pull large images/models and require suitable NVIDIA GPUs. Use
+`docker compose config` for configuration-only validation without launching
+the stack.
 
-```bash
-docker compose -f nemo_retriever/dev/compose/neo4j.compose.yaml up -d neo4j
-```
+1. Core extraction/retrieval: start `nims-core.env`, wait for all six services
+   to report healthy, ingest a representative PDF through `/v1/ingest`, wait
+   for its job, then query `/v1/query` and confirm results include extracted
+   text and embeddings.
+2. Answer: layer `nim-answer`, ingest/query a small collection, call
+   `/v1/answer`, and confirm an answer plus retrieved context is returned.
+3. Caption/audio: layer each preset independently; ingest an image with the
+   caption stage and an audio file with audio extraction, then confirm caption
+   text and transcript in job results.
+4. Lifecycle-only APIs: start reranker and Parse and verify readiness plus API
+   reachability at `http://localhost:8005` and `http://localhost:8006`; do not
+   expect retriever auto-wiring.
+5. Local models: start the local override, ingest a PDF and audio sample, query
+   the collection, and confirm both service logs show local model loading while
+   VectorDB performs local query embedding.
+6. Tracing: add observability, perform ingestion/query, open Zipkin on port
+   `9411`, and confirm retriever spans (and NIM spans when supported by the
+   selected NIM profile) are visible.
 
-Set `NEO4J_PASSWORD` in your environment or `.env` file before starting this helper. `NEO4J_USERNAME` defaults to `neo4j`.
+Use `docker compose ... logs -f`, `ps`, and `down` for normal lifecycle work.
+Named data/model caches survive `down`; use `down -v` only when a clean cache
+and database are intentionally required.
+
+## Other helpers
+
+`judge.compose.yaml` starts a local OpenAI-compatible judge NIM, and
+`neo4j.compose.yaml` starts the graph development database. They remain
+independent of service-mode profiles.
