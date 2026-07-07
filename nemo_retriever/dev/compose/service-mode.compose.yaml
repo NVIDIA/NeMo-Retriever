@@ -20,6 +20,7 @@ x-nim-environment: &nim-environment
   TRITON_OTEL_RATE: "1"
 x-nim-service: &nim-service
   runtime: nvidia
+  shm_size: ${NIM_SHM_SIZE:-16gb}
   expose: ["8001"]
   restart: unless-stopped
   healthcheck:
