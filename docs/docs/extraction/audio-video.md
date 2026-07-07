@@ -73,7 +73,7 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
     ```python
     from nemo_retriever import create_ingestor
-    from nemo_retriever.common.params.models import ASRParams
+    from nemo_retriever.params.models import ASRParams
 
     ingestor = (
         create_ingestor(run_mode="batch")
@@ -104,7 +104,7 @@ Instead of running the pipeline locally, you can call Parakeet through [build.nv
 
     ```python
     from nemo_retriever import create_ingestor
-    from nemo_retriever.common.params.models import ASRParams
+    from nemo_retriever.params.models import ASRParams
 
     ingestor = (
         create_ingestor(run_mode="batch")
