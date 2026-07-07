@@ -4,16 +4,35 @@
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import MagicMock, PropertyMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
+import nemo_retriever.service.vectordb_app as vectordb_module
 from nemo_retriever.service.vectordb_app import (
     VectorDBState,
     _embed_queries_remote,
     _tensor_to_embedding_rows,
     create_vectordb_app,
 )
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "expected_key"),
+    [([], "env-key"), (["--embed-api-key", "explicit-key"], "explicit-key")],
+)
+def test_main_resolves_remote_embed_api_key(monkeypatch, extra_args, expected_key) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "env-key")
+    monkeypatch.setattr(sys, "argv", ["vectordb_app", *extra_args])
+    create_app = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(vectordb_module, "create_vectordb_app", create_app)
+    monkeypatch.setattr(vectordb_module.uvicorn, "run", MagicMock())
+
+    vectordb_module.main()
+
+    assert create_app.call_args.kwargs["embed_api_key"] == expected_key
 
 
 def test_query_empty_index_returns_422(tmp_path) -> None:

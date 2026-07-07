@@ -65,7 +65,7 @@ services:
       nim-caption: {condition: service_healthy, required: false}
       nim-answer: {condition: service_healthy, required: false}
       nim-audio: {condition: service_healthy, required: false}
-      otel-collector: {condition: service_healthy, required: false}
+      otel-collector: {condition: service_started, required: false}
     healthcheck:
       test: [CMD, curl, --fail, --silent, http://localhost:7670/v1/health]
       interval: 10s
@@ -76,7 +76,9 @@ services:
 
   vectordb:
     <<: [*retriever-image, *host-access]
-    command: [python, -m, nemo_retriever.service.vectordb_app, --lancedb-uri, /data/vectordb, --table-name, nemo_retriever, --embed-endpoint, "${NIM_EMBED_URL:-https://integrate.api.nvidia.com/v1/embeddings}", --embed-api-key, "${NVIDIA_API_KEY:-}", --embed-model, "${NIM_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}", --port, "7671"]
+    command: [python, -m, nemo_retriever.service.vectordb_app, --lancedb-uri, /data/vectordb, --table-name, nemo_retriever, --embed-endpoint, "${NIM_EMBED_URL:-https://integrate.api.nvidia.com/v1/embeddings}", --embed-model, "${NIM_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}", --port, "7671"]
+    environment:
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
     volumes: [vectordb_data:/data/vectordb]
     depends_on:
       nim-embedding: {condition: service_healthy, required: false}
@@ -223,12 +225,6 @@ services:
     ports: ["${OTEL_GRPC_HOST_PORT:-4317}:4317", "${OTEL_HTTP_HOST_PORT:-4318}:4318", "${OTEL_PROMETHEUS_HOST_PORT:-8889}:8889"]
     depends_on:
       zipkin: {condition: service_healthy}
-    healthcheck:
-      test: [CMD, /otelcol-contrib, components]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
     restart: unless-stopped
 
   zipkin:

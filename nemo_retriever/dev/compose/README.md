@@ -79,12 +79,15 @@ injected into retriever service configuration, matching Helm.
 Every NIM has a persistent cache volume, a configurable GPU assignment, and a
 configurable host port. Variables follow the service prefix, for example
 `NIM_OCR_GPU_ID`, `NIM_OCR_HOST_PORT`, `NIM_OCR_CACHE_VOLUME`,
-`NIM_OCR_CACHE_PATH`, `NIM_OCR_IMAGE`, and `NIM_OCR_TAG`. Answer NIM defaults
-to two GPUs (`NIM_ANSWER_GPU_ID_0` and `_1`); the others default to one. Change
-the defaults to match the host before startup. Compose lifecycle support means
-image pull, startup, readiness, persistent cache, restart, logs, and teardown;
-NIM Operator reconciliation, NIMCache CRDs, and model-profile selection remain
-Kubernetes-only.
+`NIM_OCR_CACHE_PATH`, `NIM_OCR_IMAGE`, and `NIM_OCR_TAG`. The defaults form a
+collision-free assignment for the combined-profile example: core NIMs use GPUs
+0-3, reranker uses 4, parse uses 5, caption uses 6, answer uses 7-8, and audio
+uses 9. Change the defaults to match the active profiles and host before
+startup; for example, an answer-only run on a two-GPU host can set
+`NIM_ANSWER_GPU_ID_0=0` and `NIM_ANSWER_GPU_ID_1=1`. Compose lifecycle support
+means image pull, startup, readiness, persistent cache, restart, logs, and
+teardown; NIM Operator reconciliation, NIMCache CRDs, and model-profile
+selection remain Kubernetes-only.
 
 Answer behavior is configurable through `ANSWER_LLM_ENABLED`,
 `ANSWER_LLM_MODEL`, `ANSWER_LLM_API_BASE_YAML`, `ANSWER_LLM_TEMPERATURE`,
@@ -142,7 +145,10 @@ docker compose \
 Host ports are configurable with `OTEL_GRPC_HOST_PORT`,
 `OTEL_HTTP_HOST_PORT`, `OTEL_PROMETHEUS_HOST_PORT`, and
 `ZIPKIN_HOST_PORT`. Telemetry is disabled in the default stack; Compose
-intentionally does not add Prometheus, Grafana, ServiceMonitor, or autoscaling.
+starts the retriever once the optional collector process starts and relies on
+OTLP exporter retries while its listeners become ready. Collector failure does
+not block the retriever service. Compose intentionally does not add Prometheus,
+Grafana, ServiceMonitor, or autoscaling.
 
 ## Hardware-gated smoke checks
 
