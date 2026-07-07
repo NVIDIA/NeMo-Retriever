@@ -21,6 +21,17 @@ jobs:
         with:
           ref: "26.05"
 
+      - name: Resolve checked-out commit SHA
+        id: sha
+        run: |
+          set -euo pipefail
+          # github.sha points at the workflow ref (default branch for scheduled
+          # runs), not the branch we checked out above. Stamp the image with the
+          # commit that was actually built so it stays traceable.
+          resolved_sha="$(git rev-parse HEAD)"
+          echo "sha=${resolved_sha}" >> "$GITHUB_OUTPUT"
+          echo "Building from commit: ${resolved_sha}"
+
       - name: Get current date (yyyy.mm.dd)
         run: echo "CURRENT_DATE=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
 
@@ -45,7 +56,7 @@ jobs:
       - name: Build Docker image
         run: |
           docker buildx create --use
-          docker buildx build -f Dockerfile --platform linux/amd64 --push --target service --build-arg GIT_COMMIT=${GITHUB_SHA} --build-arg DOWNLOAD_LLAMA_TOKENIZER=True --secret id=hf_token,src=./scripts/private_local/hf_token.txt -t ${{ secrets.DOCKER_REGISTRY }}/nrl-service:${{ env.CURRENT_DATE }} .
+          docker buildx build -f Dockerfile --platform linux/amd64 --push --target service --build-arg GIT_COMMIT=${{ steps.sha.outputs.sha }} --build-arg DOWNLOAD_LLAMA_TOKENIZER=True --secret id=hf_token,src=./scripts/private_local/hf_token.txt -t ${{ secrets.DOCKER_REGISTRY }}/nrl-service:${{ env.CURRENT_DATE }} .
 
       - name: Cleanup HF token file
         if: always()

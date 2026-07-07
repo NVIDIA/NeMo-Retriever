@@ -94,6 +94,18 @@ jobs:
         with:
           ref: ${{ env.ENVIRONMENT }}
 
+      - name: Resolve checked-out commit SHA
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          # github.sha points at the workflow ref (default branch for scheduled
+          # runs), not the branch we checked out above. Stamp artifacts with the
+          # commit that was actually packaged so wheels stay traceable.
+          resolved_sha="$(git rev-parse HEAD)"
+          echo "sha=${resolved_sha}" >> "$GITHUB_OUTPUT"
+          echo "Building from commit: ${resolved_sha}"
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -113,7 +125,7 @@ jobs:
 
           Path("src/nemo_retriever/_build_info.py").write_text(
               '"""Build metadata written by CI before packaging."""\n\n'
-              'BUILD_GIT_SHA = "${{ github.sha }}"\n'
+              'BUILD_GIT_SHA = "${{ steps.sha.outputs.sha }}"\n'
               f'BUILD_DATE = "{datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}"\n',
               encoding="utf-8",
           )
@@ -121,7 +133,7 @@ jobs:
           RETRIEVER_RELEASE_TYPE=${{ env.RELEASE_TYPE }} \
           RETRIEVER_VERSION=${{ env.VERSION }} \
           RETRIEVER_BUILD_NUMBER=${{ github.run_number }} \
-          RETRIEVER_GIT_SHA=${{ github.sha }} \
+          RETRIEVER_GIT_SHA=${{ steps.sha.outputs.sha }} \
           python -m build
 
       - name: Publish wheels

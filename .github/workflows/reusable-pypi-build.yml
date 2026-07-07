@@ -51,6 +51,18 @@ jobs:
           git fetch --depth=1 origin "${{ inputs.workflow-ref }}"
           git checkout FETCH_HEAD -- nemo_retriever/pyproject.toml
 
+      - name: Resolve checked-out commit SHA
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          # github.sha points at the workflow ref, not the source-ref we checked
+          # out above. Stamp artifacts with the commit that was actually packaged
+          # so wheels stay traceable.
+          resolved_sha="$(git rev-parse HEAD)"
+          echo "sha=${resolved_sha}" >> "$GITHUB_OUTPUT"
+          echo "Building from commit: ${resolved_sha}"
+
       - name: Determine version
         id: set-version
         run: |
@@ -86,7 +98,7 @@ jobs:
 
           Path("src/nemo_retriever/_build_info.py").write_text(
               '"""Build metadata written by CI before packaging."""\n\n'
-              'BUILD_GIT_SHA = "${{ github.sha }}"\n'
+              'BUILD_GIT_SHA = "${{ steps.sha.outputs.sha }}"\n'
               f'BUILD_DATE = "{datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}"\n',
               encoding="utf-8",
           )
@@ -94,7 +106,7 @@ jobs:
           RETRIEVER_RELEASE_TYPE=${{ inputs.release-type }} \
           RETRIEVER_VERSION=${{ steps.set-version.outputs.version }} \
           RETRIEVER_BUILD_NUMBER=${{ inputs.release-type == 'release' && '0' || github.run_number }} \
-          RETRIEVER_GIT_SHA=${{ github.sha }} \
+          RETRIEVER_GIT_SHA=${{ steps.sha.outputs.sha }} \
           python -m build
 
       - name: Debug — wheels after build

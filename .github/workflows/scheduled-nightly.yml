@@ -46,6 +46,17 @@ jobs:
         with:
           ref: "26.05"
 
+      - name: Resolve checked-out commit SHA
+        id: sha
+        run: |
+          set -euo pipefail
+          # github.sha points at the workflow ref (default branch for scheduled
+          # runs), not the branch we checked out above. Stamp the image with the
+          # commit that was actually built so it stays traceable.
+          resolved_sha="$(git rev-parse HEAD)"
+          echo "sha=${resolved_sha}" >> "$GITHUB_OUTPUT"
+          echo "Building from commit: ${resolved_sha}"
+
       - name: Setup Docker Buildx
         uses: ./.github/actions/setup-docker-buildx
         with:
@@ -67,7 +78,7 @@ jobs:
             --target service \
             --build-arg HF_ACCESS_TOKEN=${{ secrets.HF_ACCESS_TOKEN }} \
             --build-arg DOWNLOAD_LLAMA_TOKENIZER=True \
-            --build-arg GIT_COMMIT=${GITHUB_SHA} \
+            --build-arg GIT_COMMIT=${{ steps.sha.outputs.sha }} \
             -t ${{ secrets.DOCKER_REGISTRY }}/nrl-service:${{ needs.determine-version.outputs.docker-tag }} \
             .
 
