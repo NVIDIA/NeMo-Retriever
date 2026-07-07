@@ -89,7 +89,7 @@ services:
 
   nim-page-elements:
     <<: *nim-service
-    profiles: [nims-core, nims-all]
+    profiles: [nims-core]
     image: ${NIM_PAGE_ELEMENTS_IMAGE:-nvcr.io/nim/nvidia/nemotron-page-elements-v3}:${NIM_PAGE_ELEMENTS_TAG:-1.8.0}
     ports: ["${NIM_PAGE_ELEMENTS_HOST_PORT:-8001}:8000"]
     environment:
@@ -106,7 +106,7 @@ services:
 
   nim-table-structure:
     <<: *nim-service
-    profiles: [nims-core, nims-all]
+    profiles: [nims-core]
     image: ${NIM_TABLE_STRUCTURE_IMAGE:-nvcr.io/nim/nvidia/nemotron-table-structure-v1}:${NIM_TABLE_STRUCTURE_TAG:-1.8.0}
     ports: ["${NIM_TABLE_STRUCTURE_HOST_PORT:-8002}:8000"]
     environment:
@@ -123,7 +123,7 @@ services:
 
   nim-ocr:
     <<: *nim-service
-    profiles: [nims-core, nims-all]
+    profiles: [nims-core]
     image: ${NIM_OCR_IMAGE:-nvcr.io/nim/nvidia/nemotron-ocr-v2}:${NIM_OCR_TAG:-1.4.0}
     ports: ["${NIM_OCR_HOST_PORT:-8003}:8000"]
     environment:
@@ -138,7 +138,7 @@ services:
 
   nim-embedding:
     <<: *nim-service
-    profiles: [nims-core, nims-all]
+    profiles: [nims-core]
     image: ${NIM_EMBED_IMAGE:-nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2}:${NIM_EMBED_TAG:-1.12.0}
     ports: ["${NIM_EMBED_HOST_PORT:-8004}:8000"]
     environment:
@@ -152,7 +152,7 @@ services:
 
   nim-reranker:
     <<: *nim-service
-    profiles: [nim-reranker, nims-all]
+    profiles: [nim-reranker]
     image: ${NIM_RERANK_IMAGE:-nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2}:${NIM_RERANK_TAG:-1.11.0}
     ports: ["${NIM_RERANK_HOST_PORT:-8005}:8000"]
     environment: {<<: *nim-environment, NIM_HTTP_API_PORT: "8000", NIM_OTEL_SERVICE_NAME: llama-nemotron-rerank-vl-1b-v2, NIM_TRITON_LOG_VERBOSE: "1"}
@@ -161,7 +161,7 @@ services:
 
   nim-nemotron-parse:
     <<: *nim-service
-    profiles: [nim-parse, nims-all]
+    profiles: [nim-parse]
     image: ${NIM_PARSE_IMAGE:-nvcr.io/nim/nvidia/nemotron-parse-v1.2}:${NIM_PARSE_TAG:-1.7.0-variant}
     ports: ["${NIM_PARSE_HOST_PORT:-8006}:8000"]
     environment: {<<: *nim-environment, NIM_HTTP_API_PORT: "8000", NIM_OTEL_SERVICE_NAME: nemotron-parse-v1.2, NIM_TRITON_LOG_VERBOSE: "1"}
@@ -170,7 +170,7 @@ services:
 
   nim-caption:
     <<: *nim-service
-    profiles: [nim-caption, nims-all]
+    profiles: [nim-caption]
     image: ${NIM_CAPTION_IMAGE:-nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning}:${NIM_CAPTION_TAG:-1.7.0-variant}
     ports: ["${NIM_CAPTION_HOST_PORT:-8007}:8000"]
     environment: {<<: *nim-environment, NIM_HTTP_API_PORT: "8000", NIM_OTEL_SERVICE_NAME: nemotron-3-nano-omni-30b-a3b-reasoning, NIM_TRITON_LOG_VERBOSE: "1"}
@@ -179,7 +179,7 @@ services:
 
   nim-answer:
     <<: *nim-service
-    profiles: [nim-answer, nims-all]
+    profiles: [nim-answer]
     image: ${NIM_ANSWER_IMAGE:-nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5}:${NIM_ANSWER_TAG:-2.0.5}
     ports: ["${NIM_ANSWER_HOST_PORT:-8008}:8000"]
     environment:
@@ -200,7 +200,7 @@ services:
 
   nim-audio:
     <<: *nim-service
-    profiles: [nim-audio, nims-all]
+    profiles: [nim-audio]
     image: ${NIM_AUDIO_IMAGE:-nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us}:${NIM_AUDIO_TAG:-1.5.0}
     ports: ["${NIM_AUDIO_HTTP_HOST_PORT:-9000}:9000", "${NIM_AUDIO_GRPC_HOST_PORT:-50051}:50051"]
     expose: ["50051"]

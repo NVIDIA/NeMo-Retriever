@@ -42,15 +42,38 @@ endpoint wiring:
 
 ```bash
 docker compose --env-file nemo_retriever/dev/compose/presets/nims-core.env \
+  --profile nims-core \
   -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
 ```
 
-Optional presets are `nim-reranker.env`, `nim-parse.env`, `nim-caption.env`,
-`nim-answer.env`, and `nim-audio.env`. `nims-all.env` activates all nine NIMs.
-Presets can be combined by supplying `--env-file` once and adding profiles and
-endpoint variables in the shell; for example, layer answer generation over
-core with `COMPOSE_PROFILES=nims-core,nim-answer` plus the answer preset's
-variables. Reranker and Parse are lifecycle/API-only and intentionally are not
+Optional wiring presets are `nim-caption.env`, `nim-answer.env`, and
+`nim-audio.env`. Select their matching Compose profiles explicitly. For
+example, layer answer generation over the core NIMs with:
+
+```bash
+docker compose \
+  --env-file nemo_retriever/dev/compose/presets/nims-core.env \
+  --env-file nemo_retriever/dev/compose/presets/nim-answer.env \
+  --profile nims-core --profile nim-answer \
+  -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
+```
+
+To start all nine NIMs, layer the four wiring presets and select every NIM
+profile:
+
+```bash
+docker compose \
+  --env-file nemo_retriever/dev/compose/presets/nims-core.env \
+  --env-file nemo_retriever/dev/compose/presets/nim-caption.env \
+  --env-file nemo_retriever/dev/compose/presets/nim-answer.env \
+  --env-file nemo_retriever/dev/compose/presets/nim-audio.env \
+  --profile nims-core --profile nim-reranker --profile nim-parse \
+  --profile nim-caption --profile nim-answer --profile nim-audio \
+  -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
+```
+
+Reranker and Parse need only `--profile nim-reranker` or
+`--profile nim-parse`. They are lifecycle/API-only and intentionally are not
 injected into retriever service configuration, matching Helm.
 
 Every NIM has a persistent cache volume, a configurable GPU assignment, and a
@@ -86,12 +109,12 @@ docker compose --env-file nemo_retriever/dev/compose/presets/local-models.env \
   up --build -d
 ```
 
-Local mode is mutually exclusive with `nims-core`/`nims-all`. Optional answer,
-caption, and audio NIM profiles may be layered onto it; their remote endpoints
-take precedence for those stages. Tune warmup, process-pool cap, embedding
-memory fraction, and cache name with the `LOCAL_MODELS_*`,
-`LOCAL_EMBED_GPU_MEMORY_UTILIZATION`, and `HF_CACHE_VOLUME` variables in the
-preset.
+Local mode is mutually exclusive with the `nims-core` profile. Optional answer,
+caption, and audio NIMs may be layered onto it by adding their wiring preset
+and matching `--profile`; their remote endpoints take precedence for those
+stages. Tune warmup, process-pool cap, embedding memory fraction, and cache
+name with the `LOCAL_MODELS_*`, `LOCAL_EMBED_GPU_MEMORY_UTILIZATION`, and
+`HF_CACHE_VOLUME` variables.
 
 ## Observability
 
@@ -102,16 +125,24 @@ and forwards traces to Zipkin. Open `http://localhost:9411` to inspect traces.
 
 ```bash
 docker compose --env-file nemo_retriever/dev/compose/presets/observability.env \
+  --profile observability \
   -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
 ```
 
-To combine it with a NIM preset, set both profiles and the observability flags,
-for example `COMPOSE_PROFILES=nims-core,observability`,
-`OTEL_SDK_DISABLED=false`, and `NIM_OTEL_ENABLED=true`. Host ports are
-configurable with `OTEL_GRPC_HOST_PORT`, `OTEL_HTTP_HOST_PORT`,
-`OTEL_PROMETHEUS_HOST_PORT`, and `ZIPKIN_HOST_PORT`. Telemetry is disabled in
-the default stack; Compose intentionally does not add Prometheus, Grafana,
-ServiceMonitor, or autoscaling.
+To combine it with core NIMs, supply both presets and profiles:
+
+```bash
+docker compose \
+  --env-file nemo_retriever/dev/compose/presets/nims-core.env \
+  --env-file nemo_retriever/dev/compose/presets/observability.env \
+  --profile nims-core --profile observability \
+  -f nemo_retriever/dev/compose/service-mode.compose.yaml up --build -d
+```
+
+Host ports are configurable with `OTEL_GRPC_HOST_PORT`,
+`OTEL_HTTP_HOST_PORT`, `OTEL_PROMETHEUS_HOST_PORT`, and
+`ZIPKIN_HOST_PORT`. Telemetry is disabled in the default stack; Compose
+intentionally does not add Prometheus, Grafana, ServiceMonitor, or autoscaling.
 
 ## Hardware-gated smoke checks
 
