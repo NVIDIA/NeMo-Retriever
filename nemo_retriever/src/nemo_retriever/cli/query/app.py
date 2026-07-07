@@ -40,7 +40,7 @@ from nemo_retriever.query.options import (
 from nemo_retriever.query.service import query_documents as query_service_documents
 
 _DEFAULT_COMMAND = "_local"
-_GROUP_OPTIONS = {"--install-completion", "--show-completion"}
+_GROUP_OPTIONS = {"-h", "--install-completion", "--show-completion"}
 _RETRIEVAL_MODES: set[str] = {"auto", "dense", "hybrid", "sparse"}
 
 
@@ -51,11 +51,14 @@ class DefaultLocalQueryGroup(TyperGroup):
         return super().parse_args(ctx, args)
 
 
+class PublicDefaultQueryContext(typer.Context):
+    @property
+    def command_path(self) -> str:
+        return self.parent.command_path if self.parent is not None else super().command_path
+
+
 class DefaultLocalQueryCommand(TyperCommand):
-    def format_usage(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
-        # Hide this command's internal dispatch name from the public usage line.
-        command_path = ctx.command_path.removesuffix(f" {ctx.info_name}")
-        formatter.write_usage(command_path, " ".join(self.collect_usage_pieces(ctx)))
+    context_class = PublicDefaultQueryContext
 
 
 app = typer.Typer(

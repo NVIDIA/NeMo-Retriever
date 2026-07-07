@@ -51,14 +51,14 @@ LanceDbUriOption = Annotated[
     str,
     typer.Option(
         "--lancedb-uri",
-        help="LanceDB database URI to read; match the value used for retriever ingest local --lancedb-uri.",
+        help="LanceDB database URI to read; match the value used for retriever ingest --lancedb-uri.",
     ),
 ]
 TableNameOption = Annotated[
     str,
     typer.Option(
         "--table-name",
-        help="LanceDB table name to read; match the value used for retriever ingest local --table-name.",
+        help="LanceDB table name to read; match the value used for retriever ingest --table-name.",
     ),
 ]
 EmbedInvokeUrlOption = Annotated[

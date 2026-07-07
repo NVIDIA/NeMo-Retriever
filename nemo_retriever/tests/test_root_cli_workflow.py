@@ -984,6 +984,26 @@ def test_root_ingest_help_defaults_to_local_workflow() -> None:
     assert "│ txt " not in result.output
 
 
+def test_root_ingest_mode_overview_hides_legacy_local_alias() -> None:
+    result = RUNNER.invoke(cli_main.app, ["ingest"], prog_name="retriever", env={"COLUMNS": "200"})
+
+    assert result.exit_code == 2
+    assert "retriever ingest DOCUMENTS" in result.output
+    assert "│ batch " in result.output
+    assert "│ service " in result.output
+    assert "│ local " not in result.output
+    assert "retriever ingest local" not in result.output
+
+
+def test_root_ingest_errors_reference_only_the_public_help_path() -> None:
+    for flag in ("-h", "--not-an-ingest-option"):
+        result = RUNNER.invoke(cli_main.app, ["ingest", flag], prog_name="retriever")
+
+        assert result.exit_code == 2
+        assert "Try 'retriever ingest --help' for help" in result.output
+        assert "retriever ingest local" not in result.output
+
+
 def test_root_ingest_batch_help_remains_mode_specific() -> None:
     result = RUNNER.invoke(cli_main.app, ["ingest", "batch", "--help"], env={"COLUMNS": "200"})
 
@@ -997,9 +1017,11 @@ def test_root_ingest_batch_help_remains_mode_specific() -> None:
 
 
 def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
-    result = RUNNER.invoke(cli_main.app, ["ingest", "local", "--help"])
+    result = RUNNER.invoke(cli_main.app, ["ingest", "local", "--help"], prog_name="retriever")
 
     assert result.exit_code == 0
+    assert "Usage: retriever ingest [OPTIONS] DOCUMENTS..." in result.output
+    assert "retriever ingest local" not in result.output
     assert "--input-type" not in result.output
     assert "--run-mode" not in result.output
     assert "--service-url" not in result.output
