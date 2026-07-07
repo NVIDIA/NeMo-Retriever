@@ -1,13 +1,13 @@
 name: Nv-Ingest Nightly Container Publish
 
-# Trigger for pull requests and pushing to main
+# Nightly and push builds for the 26.05 release branch
 on:
   schedule:
     # Runs every day at 11:30PM (UTC)
     - cron: "30 23 * * *"
   push:
     branches:
-      - main
+      - "26.05"
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -19,7 +19,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: "26.05"
 
       - name: Get current date (yyyy.mm.dd)
         run: echo "CURRENT_DATE=$(date +'%Y.%m.%d')" >> $GITHUB_ENV

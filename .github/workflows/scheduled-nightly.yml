@@ -44,7 +44,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: "26.05"
 
       - name: Setup Docker Buildx
         uses: ./.github/actions/setup-docker-buildx
@@ -80,7 +80,7 @@ jobs:
     with:
       version: ${{ needs.determine-version.outputs.version }}
       release-type: 'dev'
-      source-ref: 'main'
+      source-ref: '26.05'
       runner: 'linux-large-disk'
 
   pypi-publish:

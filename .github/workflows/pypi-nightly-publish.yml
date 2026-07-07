@@ -9,7 +9,7 @@ on:
       environment:
         description: 'Source branch to build wheel from'
         required: true
-        default: 'main'
+        default: '26.05'
         type: string
       VERSION:
         description: 'Version string for the release (e.g., 25.4.0)'
@@ -68,8 +68,8 @@ jobs:
             echo "Setting build source to ${{ github.event.inputs.environment }}"
             echo "ENVIRONMENT=${{ github.event.inputs.environment }}" >> $GITHUB_ENV
           else
-            echo "Setting build source to main. DEFAULT"
-            echo "ENVIRONMENT=main" >> $GITHUB_ENV
+            echo "Setting build source to 26.05. DEFAULT"
+            echo "ENVIRONMENT=26.05" >> $GITHUB_ENV
           fi
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
