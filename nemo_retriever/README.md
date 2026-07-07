@@ -312,9 +312,8 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 ### Run agentic retrieval
 
 Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
-It does not ingest documents; first build the index with one of the ingestion
-flows above, then query the same `lancedb_uri`, `table_name`, and embedding
-model.
+It does not ingest documents. Build the index with one of the ingestion flows
+above, then query the same `lancedb_uri`, `table_name`, and embedding model.
 
 For [build.nvidia.com](https://build.nvidia.com/) hosted inference, set
 `NVIDIA_API_KEY`. On CPU-only machines, the CPU embedding actor and agent LLM
@@ -331,14 +330,16 @@ retriever query "Given their activities, which animal is responsible for the typ
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-The agentic LLM uses the built-in NVIDIA hosted chat-completions endpoint when
-`--agentic-invoke-url` is omitted. On CPU-only machines, embedding actors also
-resolve to CPU/remote implementations and default to hosted endpoints. On
-GPU-capable machines, embedding prefers the local GPU implementation unless an
-endpoint URL, such as `--embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings`,
-is provided.
+When `--agentic-invoke-url` is omitted, the agent LLM uses the built-in NVIDIA
+hosted chat-completions endpoint. Embedding follows the same local/remote split
+as dense retrieval: CPU-only hosts default to hosted endpoints; GPU-capable
+hosts use local GPU embedding unless you pass `--embed-invoke-url`, for example
+`--embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings`.
 
-For a quick smoke test, lower the amount of agent work:
+Unlike dense retrieval, agentic mode returns ranked document IDs as JSON, not
+text-enriched hits.
+
+For a quick smoke test, reduce agent work:
 
 ```bash
 retriever query "What is RAG?" \
@@ -352,9 +353,8 @@ retriever query "What is RAG?" \
   --agentic-backend-top-k 1
 ```
 
-The same flow is available from Python. It uses the same `NVIDIA_API_KEY`
-environment variable shown above for hosted embedding and chat-completions
-requests.
+You can run the same flow from Python with the same `NVIDIA_API_KEY`
+environment variable for hosted embedding and chat-completions requests.
 
 ```python
 from nemo_retriever.cli.query_workflow import agentic_query_documents
