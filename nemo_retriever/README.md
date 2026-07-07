@@ -147,7 +147,7 @@ chunks = ingestor.ingest()  # pandas.DataFrame (batch and inprocess)
 ### Ingest a test corpus (CLI)
 
 `graph_pipeline` is the canonical ingestion script used throughout the
-[QA evaluation guide](./src/nemo_retriever/evaluation/README.md#step-1-ingest-and-embed-pdfs-nemo-retriever).
+[QA evaluation guide](./src/nemo_retriever/tools/evaluation/README.md#step-1-ingest-and-embed-pdfs-nemo-retriever).
 Point it at a **directory** of PDFs to produce a ready-to-query LanceDB table.
 
 > **Corpus size matters.** LanceDB's default IVF index needs at least 16
@@ -166,7 +166,7 @@ Chunks land at `./lancedb/nemo-retriever`, which matches the `vdb_kwargs`
 used in [Run a recall query](#run-a-recall-query) below. With the
 `[local]` extra installed (see setup), defaults point at local-GPU extraction
 and embedding. For a realistic retrieval corpus, see
-[QA evaluation -- Step 1](./src/nemo_retriever/evaluation/README.md#step-1-ingest-and-embed-pdfs-nemo-retriever).
+[QA evaluation -- Step 1](./src/nemo_retriever/tools/evaluation/README.md#step-1-ingest-and-embed-pdfs-nemo-retriever).
 
 **No local GPU?** Set [`NVIDIA_API_KEY`](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/#nvidia-api-key) (refer to [Authentication and API keys](https://nvidia.github.io/NeMo-Retriever/extraction/api-keys/)) and route extraction and embedding
 through [build.nvidia.com](https://build.nvidia.com/) NIMs instead:
