@@ -237,7 +237,7 @@ RUNSETS: dict[str, RunSet] = {
         runs=("jp20_smoke", "jp20_beir"),
         tags=("jp20", "core"),
         description="Small jp20 smoke plus BEIR validation set.",
-    )
+    ),
 }
 
 

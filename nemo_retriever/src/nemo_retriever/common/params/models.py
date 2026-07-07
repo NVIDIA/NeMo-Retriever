@@ -119,6 +119,9 @@ class IngestExecuteParams(_ParamsModel):
     return_failures: bool = False
     return_traces: bool = False
     return_results: bool = True
+    result_schema: Literal["legacy", "compact"] = "legacy"
+    return_embeddings: bool = False
+    return_images: bool = False
     parallel: bool = False
     max_workers: Optional[int] = None
     gpu_devices: list[str] = Field(default_factory=list)
@@ -383,6 +386,7 @@ class EmbedParams(_ParamsModel):
     embedding_endpoint: Optional[str] = None
     embed_invoke_url: Optional[str] = None
     embed_model_name: Optional[str] = None
+    embed_model_provider_prefix: Optional[str] = None
     api_key: Optional[str] = None
     input_type: str = "passage"
     embed_modality: str = "text"  # "text", "image", or "text_image" — default for all element types

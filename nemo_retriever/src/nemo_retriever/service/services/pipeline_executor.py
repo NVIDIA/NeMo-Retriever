@@ -84,16 +84,27 @@ def get_pipeline_configs() -> dict[str, dict[str, Any]]:
     return _pipeline_configs
 
 
-def _sanitize_result_data(df: Any) -> list[dict[str, Any]]:
+def _sanitize_result_data(
+    df: Any,
+    *,
+    result_schema: str = "legacy",
+    return_embeddings: bool = False,
+    return_images: bool = False,
+) -> list[dict[str, Any]]:
     """Convert a pipeline DataFrame to JSON-safe dicts for the status API.
 
-    Column layout matches the in-process ``GraphIngestor.ingest()``
-    frame; cell values are sanitized for transport (see
-    :mod:`nemo_retriever.ingest_results`).
+    ``result_schema="legacy"`` preserves the in-process
+    ``GraphIngestor.ingest()`` column layout with bulky values stripped.
+    ``result_schema="compact"`` emits the opt-in compact public shape.
     """
     from nemo_retriever.ingestor.results import dataframe_to_transport_records
 
-    return dataframe_to_transport_records(df)
+    return dataframe_to_transport_records(
+        df,
+        result_schema=result_schema,
+        return_embeddings=return_embeddings,
+        return_images=return_images,
+    )
 
 
 def _pipeline_tracing() -> Any | None:
@@ -318,6 +329,7 @@ _TRUST_OWNED_EMBED_KEYS: tuple[str, ...] = (
     "embedding_endpoint",
     "api_key",
     "embed_model_name",
+    "embed_model_provider_prefix",
     "model_name",
 )
 # Trust-owned caption keys. ``endpoint_url`` / ``api_key`` /
@@ -712,7 +724,14 @@ def _run_pipeline_in_process(
         lancedb_rows = build_lancedb_rows(result_df)
         _post_rows_to_vectordb(lancedb_rows, vectordb_url, filename)
 
-    result_data = _sanitize_result_data(result_df)
+    result_options = pipeline_spec or {}
+    result_schema = result_options.get("result_schema", "legacy")
+    result_data = _sanitize_result_data(
+        result_df,
+        result_schema=result_schema,
+        return_embeddings=bool(result_options.get("return_embeddings", False)),
+        return_images=bool(result_options.get("return_images", False)),
+    )
     return row_count, result_data, elapsed
 
 
@@ -850,6 +869,8 @@ def build_embed_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | No
         if nim.embed_model_name:
             kwargs["model_name"] = nim.embed_model_name
             kwargs["embed_model_name"] = nim.embed_model_name
+        if nim.embed_model_provider_prefix:
+            kwargs["embed_model_provider_prefix"] = nim.embed_model_provider_prefix
         if nim.api_key:
             kwargs["api_key"] = nim.api_key
         return EmbedParams(**kwargs)
