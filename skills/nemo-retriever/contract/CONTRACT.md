@@ -1,9 +1,8 @@
 # retriever skill↔engine contract
 
 `contract_version` (see `cli-contract.json`) is the semver the **skill** asserts
-about the installed **engine**. Run `scripts/doctor.py` to verify the installed
-`retriever` satisfies it. Use `scripts/doctor.py --static-only` for the fast
-command/flag check; omit it to also run the live ingest/query probe.
+about the installed **engine**. Maintainers can run `scripts/doctor.py` after a
+CLI or evidence-schema change to verify the installed `retriever` satisfies it.
 
 The skill's one primitive is **`retriever query <question> --format evidence --retrieval-mode hybrid`** →
 `{ evidence, coverage }`. The skill opts into `--format evidence`
@@ -28,10 +27,10 @@ invocation + result shape, not the full flag surface.
 - `doctor.py` fails if the installed engine no longer matches `cli-contract.json` /
   `query-result.schema.json`.
 
-## How drift gets caught
-`doctor.py --static-only` checks that the required subcommands (`ingest`,
-`query`) and their contracted local flags exist. The default full run also
-performs a live probe: ingest a tiny built-in document, invoke the public
+## What the doctor verifies
+`doctor.py` checks that the required subcommands (`ingest`, `query`) and their
+contracted local flags exist. It then performs a live probe: ingest a tiny
+built-in document, invoke the public
 `retriever query --format evidence` workflow, and validate `{evidence, coverage}`
 (including the `fidelity` enum) against `query-result.schema.json`. Any
 divergence (a renamed evidence field, a missing `fidelity`, a dropped `--format`,

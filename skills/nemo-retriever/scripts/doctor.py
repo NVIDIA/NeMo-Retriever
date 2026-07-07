@@ -4,16 +4,15 @@
 # SPDX-License-Identifier: Apache-2.0
 """Verify the installed `retriever` engine satisfies the skill's contract.
 
-Usage: <RETRIEVER_VENV>/bin/python skills/nemo-retriever/scripts/doctor.py [--static-only]
-Exits 0 if all checks pass, 1 otherwise. By default it runs static CLI checks
-plus a LIVE ingest+query probe; ``--static-only`` skips the live probe.
+Usage: <RETRIEVER_VENV>/bin/python skills/nemo-retriever/scripts/doctor.py
+Exits 0 if all checks pass, 1 otherwise. Runs static CLI checks plus a LIVE
+ingest+query probe.
 
 The skill's one primitive is `retriever query --format evidence --retrieval-mode hybrid` ->
 {evidence, coverage}; this doctor gates on THAT invocation and result shape. `query`'s
 DEFAULTS are unchanged (`hits` output and automatic index detection) — the skill
 passes evidence format and hybrid retrieval explicitly.
 """
-import argparse
 import json
 import os
 import shutil
@@ -61,18 +60,7 @@ def help_text(bin_path, *command_path):
         return f"__ERROR__ {e}"
 
 
-def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description="Verify the installed retriever against the skill contract.")
-    parser.add_argument(
-        "--static-only",
-        action="store_true",
-        help="Check the CLI command and flag surface without running ingest or query.",
-    )
-    return parser.parse_args(argv)
-
-
-def main(*, static_only=False):
-    results.clear()
+def main():
     with open(os.path.join(CONTRACT_DIR, "cli-contract.json")) as _f:
         contract = json.load(_f)
     contract_version = contract["contract_version"]
@@ -120,9 +108,6 @@ def main(*, static_only=False):
             f"ingest does NOT have {flag}",
             "engine changed: skill assumes single-pass auto-detect",
         )
-
-    if static_only:
-        return report(contract_version)
 
     # --- Live probe: ingest tiny fixture, retrieve, validate result shape ---
     tmp = tempfile.mkdtemp(prefix="retriever_doctor_")
@@ -255,5 +240,4 @@ def report(contract_version):
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    sys.exit(main(static_only=args.static_only))
+    sys.exit(main())
