@@ -103,7 +103,7 @@ The examples below use default local GPU inference (no `invoke_url` specified) a
 ### Ingest a test pdf
 ```python
 from nemo_retriever import create_ingestor
-from nemo_retriever.common.io import to_markdown, to_markdown_by_page
+from nemo_retriever.io import to_markdown, to_markdown_by_page
 from pathlib import Path
 
 documents = [str(Path("../data/multimodal_test.pdf"))]
@@ -225,7 +225,7 @@ Since the ingestion job automatically populated a lancedb table with all these c
 ### Run a recall query
 
 ```python
-from nemo_retriever.graph.retriever import Retriever
+from nemo_retriever.retriever import Retriever
 
 retriever = Retriever(
   # values used by the graph_pipeline example above
@@ -330,7 +330,7 @@ embedding model in `embed_kwargs` must match the one used during ingestion so
 query vectors land in the same embedding space as the stored chunks.
 
 ```python
-from nemo_retriever.graph.retriever import Retriever
+from nemo_retriever.retriever import Retriever
 from nemo_retriever.llm import LiteLLMClient
 
 retriever = Retriever(
