@@ -8,6 +8,8 @@ import importlib
 import json
 from typing import Any
 
+import pytest
+import typer.rich_utils as typer_rich_utils
 from typer.testing import CliRunner
 
 import nemo_retriever.query.workflow as query_core
@@ -554,12 +556,13 @@ def test_root_query_max_text_chars_truncates_and_omits(monkeypatch) -> None:
     assert meta_hit["page_number"] == 1
 
 
-def test_root_query_help_defaults_to_local_command() -> None:
+def test_root_query_help_defaults_to_local_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
+    monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
     result = RUNNER.invoke(
         cli_main.app,
         ["query", "--help"],
         prog_name="retriever",
-        env={"COLUMNS": "200"},
     )
 
     assert result.exit_code == 0

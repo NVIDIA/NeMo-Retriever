@@ -17,6 +17,7 @@ from unittest.mock import create_autospec
 
 import pytest
 from pydantic import ValidationError
+import typer.rich_utils as typer_rich_utils
 from typer.testing import CliRunner
 
 import nemo_retriever.ingest.execution as ingest_execution
@@ -954,12 +955,13 @@ def test_root_ingest_routes_text_inputs_by_default_to_auto_planner(monkeypatch, 
     assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
-def test_root_ingest_help_defaults_to_local_workflow() -> None:
+def test_root_ingest_help_defaults_to_local_workflow(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
+    monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
     result = RUNNER.invoke(
         cli_main.app,
         ["ingest", "--help"],
         prog_name="retriever",
-        env={"COLUMNS": "200"},
     )
 
     assert result.exit_code == 0
@@ -1004,8 +1006,10 @@ def test_root_ingest_errors_reference_only_the_public_help_path() -> None:
         assert "retriever ingest local" not in result.output
 
 
-def test_root_ingest_batch_help_remains_mode_specific() -> None:
-    result = RUNNER.invoke(cli_main.app, ["ingest", "batch", "--help"], env={"COLUMNS": "200"})
+def test_root_ingest_batch_help_remains_mode_specific(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
+    monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
+    result = RUNNER.invoke(cli_main.app, ["ingest", "batch", "--help"])
 
     assert result.exit_code == 0
     assert "Usage: root ingest batch [OPTIONS] DOCUMENTS..." in result.output
