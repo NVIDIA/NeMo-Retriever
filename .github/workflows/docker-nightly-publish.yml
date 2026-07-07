@@ -1,13 +1,10 @@
 name: Nv-Ingest Nightly Container Publish
 
-# Nightly and push builds for the 26.05 release branch
+# Nightly container publish for 26.05 (schedule runs from default branch; manual dispatch available)
 on:
   schedule:
     # Runs every day at 11:30PM (UTC)
     - cron: "30 23 * * *"
-  push:
-    branches:
-      - "26.05"
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
