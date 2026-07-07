@@ -954,15 +954,46 @@ def test_root_ingest_routes_text_inputs_by_default_to_auto_planner(monkeypatch, 
     assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
-def test_root_ingest_help_lists_mode_subcommands() -> None:
-    result = RUNNER.invoke(cli_main.app, ["ingest", "--help"])
+def test_root_ingest_help_defaults_to_local_workflow() -> None:
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", "--help"],
+        prog_name="retriever",
+        env={"COLUMNS": "200"},
+    )
 
     assert result.exit_code == 0
-    assert "local" in result.output
-    assert "batch" in result.output
-    assert "service" in result.output
+    assert "Usage: retriever ingest [OPTIONS] DOCUMENTS..." in result.output
+    assert "input formats, not commands" in result.output
+    assert "CPU-only hosts use NVIDIA's hosted embedding endpoint" in result.output
+    assert "retriever ingest batch --help" in result.output
+    assert "retriever ingest service --help" in result.output
+    for option in (
+        "--index-mode",
+        "--lancedb-uri",
+        "--table-name",
+        "--embed-invoke-url",
+        "--embed-model-name",
+        "--append",
+    ):
+        assert option in result.output
+    assert "--input-type" not in result.output
     assert "--run-mode" not in result.output
-    assert "--profile" not in result.output
+    assert "Commands" not in result.output
+    assert "│ html " not in result.output
+    assert "│ txt " not in result.output
+
+
+def test_root_ingest_batch_help_remains_mode_specific() -> None:
+    result = RUNNER.invoke(cli_main.app, ["ingest", "batch", "--help"], env={"COLUMNS": "200"})
+
+    assert result.exit_code == 0
+    assert "Usage: root ingest batch [OPTIONS] DOCUMENTS..." in result.output
+    assert "--ray-address" in result.output
+    assert "--pdf-extract-workers" in result.output
+    assert "--lancedb-uri" in result.output
+    assert "--service-url" not in result.output
+    assert "--input-type" not in result.output
 
 
 def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
@@ -1025,9 +1056,10 @@ def test_root_ingest_default_local_rejects_batch_only_options(tmp_path) -> None:
 
 
 def test_root_ingest_service_help_hides_local_only_options() -> None:
-    result = RUNNER.invoke(cli_main.app, ["ingest", "service", "--help"])
+    result = RUNNER.invoke(cli_main.app, ["ingest", "service", "--help"], env={"COLUMNS": "200"})
 
     assert result.exit_code == 0
+    assert "Usage: root ingest service [OPTIONS] DOCUMENTS..." in result.output
     assert "--service-url" in result.output
     assert "--extract-images" in result.output
     assert "--embed-granular" in result.output
