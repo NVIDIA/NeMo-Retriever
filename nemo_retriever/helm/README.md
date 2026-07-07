@@ -217,7 +217,7 @@ helm install retriever ./nemo_retriever/helm \
 > * VL reranker — `--set nimOperator.rerankqa.enabled=true`
 > * Nemotron Parse — `--set nimOperator.nemotron_parse.enabled=true`
 > * Omni 30B captioner — `--set nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true`
-> * Answer generation LLM — `--set nimOperator.answer_llm.enabled=true`
+> * Answer generation LLM — `--set nimOperator.answer_llm.enabled=true` (**not in the 26.05 chart**; refer to [Answer generation (operator-managed LLM)](#answer-generation-llm))
 > * Parakeet ASR — `--set nimOperator.audio.enabled=true` (also set `serviceConfig.nimEndpoints.audioGrpcEndpoint=audio:50051` to wire ASR into the service, plus `service.installFfmpeg=true` if your image does not bundle ffmpeg)
 >
 > This matches the "optional and disabled by default" contract in [deployment-options.md](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/deployment-options.md) and avoids silently pulling ≈ 62 GiB of Omni weights, loading a large two-GPU LLM, or claiming extra dedicated GPUs on a "default" install. Refer to the [model hardware requirements](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#model-hardware-requirements) table for per-NIM GPU and disk costs.
@@ -367,6 +367,8 @@ sources](#3-install-with-the-nim-operator-in-cluster-nims)):
 3. Otherwise the chart fails the install.
 
 #### Answer generation (operator-managed LLM) { #answer-generation-llm }
+
+> **Note:** Operator-managed answer generation is not included in the 26.05 chart. This branch ships no `answer_llm` values block or NIM template and no `serviceConfig.llm` keys, so `--set nimOperator.answer_llm.enabled=true` has no effect on this chart. The configuration described in this section applies to a later chart release; do not rely on it for a 26.05 deployment.
 
 Enable the generic `answer_llm` NIM slot to add service-mode answer
 generation on top of the VectorDB query path. The slot defaults to the
