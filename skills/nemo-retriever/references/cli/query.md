@@ -1,18 +1,19 @@
-# Query turn — the WHOLE workflow
+# Query turn — fallback detail
+
+The canonical query flow is inline in `SKILL.md` §Query turn (the semantic-hybrid + lexical-sparse passes). This reference holds the detail behind it: the primary-pass command, the exact-term re-query, chart text-extract, and composing the reply.
 
 ```bash
-timeout 2000 <RETRIEVER_VENV>/bin/retriever query "<the user's question>" --format evidence --hybrid --top-k 10 \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --query-embed-backend hf \
+timeout 2000 <RETRIEVER_VENV>/bin/retriever query "<the user's question>" --format evidence --retrieval-mode hybrid --top-k 10 \
   | tee ./evidence.json
 ```
 
-That's your FIRST tool call on every query turn, run **exactly** as one pipeline (cold runs take ~20–30s; wait for it — don't background it or fire parallel queries). Do not Read, Glob, Grep, or list PDFs first — those duplicate what `retriever query` already did. `--format evidence` returns answer-ready JSON:
+Run it **exactly** as one pipeline (cold runs take ~20–30s; wait for it — don't background it or fire parallel queries). Do not Read, Glob, Grep, or list PDFs first — those duplicate what `retriever query` already did. `--format evidence` returns answer-ready JSON:
 
 ```
 { "evidence": [ { text, source, locator, modality, fidelity, score, citation } ], "coverage": {...} }
 ```
 
-`tee ./evidence.json` keeps the full result in the cwd (not `/tmp` — clobbered under parallel queries). Read it back only as needed (`<RETRIEVER_VENV>/bin/python -c "import json; print(json.load(open('./evidence.json'))['evidence'][0]['text'])"`); pulling all chunks' text into context inflates cached prompt size on every later turn.
+`tee ./evidence.json` keeps the full result in the cwd (not `/tmp` — clobbered under parallel queries). Read it back only as needed (`<RETRIEVER_VENV>/bin/python -c "import json; e=json.load(open('./evidence.json'))['evidence']; print(e[0]['text'] if e else 'no evidence')"` — guard the index, the list is empty when a query finds nothing); pulling all chunks' text into context inflates cached prompt size on every later turn.
 
 **No narration between tool calls.** Do not write "Let me search…", "The retriever returned…", or any commentary — every token between the `query` call and the `Write` of `./output.json` becomes input (and cached input) for every later turn (quadratic cost). Go straight from reading the result to writing the file.
 

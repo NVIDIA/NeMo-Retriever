@@ -37,6 +37,9 @@ nim_endpoints:
   embed_invoke_url: null
   # Model name for the remote embed NIM (server-owned; must match the SKU).
   embed_model_name: null
+  # Optional LiteLLM provider prefix prepended to embed_model_name for
+  # proxies that require provider/model IDs.
+  embed_model_provider_prefix: null
   # gRPC endpoint for the Parakeet ASR NIM (e.g. parakeet-nim:50051).
   # When set, audio/video pipelines use remote ASR instead of loading
   # the local Parakeet model (which requires torch + GPU).
@@ -48,6 +51,31 @@ nim_endpoints:
   caption_invoke_url: null
   caption_model_name: null
   api_key: null
+
+# In-pod Hugging Face models (alternative to remote NIMs above).
+# Requires nemo-retriever[local] (+ multimedia for audio) and GPU resources.
+# NIM URLs always win when both are set for the same stage.
+local_models:
+  enabled: false
+  hf_cache_dir: null
+  device: null
+  warmup_on_startup: false
+  max_tasks_per_child: null
+  # Each process-pool worker loads the full HF stack into GPU memory.
+  max_process_pool_workers: 1
+  extract:
+    enabled: true
+    use_table_structure: true
+    use_graphic_elements: true
+    ocr_version: v2
+    ocr_lang: null
+  embed:
+    enabled: true
+    model_name: nvidia/llama-nemotron-embed-vl-1b-v2
+    local_ingest_embed_backend: hf
+    gpu_memory_utilization: 0.45
+  asr:
+    enabled: true
 
 # Remote LLM endpoint used by POST /v1/answer. Helm auto-wires these
 # fields when the Super-49B NIM is enabled.
@@ -69,6 +97,7 @@ llm:
 # Pipeline worker pools.  Workers are abstract dispatchers — sizing
 # depends on whether they do local GPU work or fan out to remote NIMs.
 # For CPU-only NIM-forwarding nodes, higher worker counts are fine.
+# For in-pod HF models, local_models.max_process_pool_workers caps these.
 pipeline:
   realtime_workers: 8
   realtime_queue_size: 2048
@@ -99,6 +128,20 @@ auth:
     - "/docs"
     - "/openapi.json"
     - "/redoc"
+
+# FastMCP agent integration. When enabled, retriever service start mounts
+# the MCP HTTP transport at /mcp. The same tools are available over stdio
+# through `retriever service mcp-stdio`.
+mcp:
+  enabled: true
+  path: "/mcp"
+  # Defaults to loopback on server.port when null.
+  base_url: null
+  enable_write_tools: true
+  max_concurrency: 8
+  request_timeout_s: 60.0
+  ingest_timeout_s: 1800.0
+  poll_interval_s: 2.0
 
 # Controls whether (and how widely) client-supplied PipelineSpec
 # overrides are honored on a per-request basis.

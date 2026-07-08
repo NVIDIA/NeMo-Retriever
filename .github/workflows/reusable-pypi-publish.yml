@@ -84,7 +84,8 @@ jobs:
           DIST_FILES=(./dist/nemo_retriever/dist/*.whl ./dist/nemo_retriever/dist/*.tar.gz)
           echo "After legacy glob: count=${#DIST_FILES[@]} files=${DIST_FILES[*]:-<none>}"
 
-          # Flat layout (older upload-artifact glob uploads): ./dist/*
+          # Flat layout (upload-artifact strips to the common parent, so wheels
+          # often land directly under ./dist/): ./dist/*
           if [ "${#DIST_FILES[@]}" -eq 0 ]; then
             DIST_FILES=(./dist/*.whl ./dist/*.tar.gz)
             echo "After flat glob: count=${#DIST_FILES[@]} files=${DIST_FILES[*]:-<none>}"

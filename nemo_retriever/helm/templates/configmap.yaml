@@ -67,10 +67,42 @@ nim_endpoints:
   ocr_invoke_url: {{ .ocrURL | quote }}
   embed_invoke_url: {{ .embedURL | quote }}
   embed_model_name: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
+  embed_model_provider_prefix: {{ if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}{{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}{{ else }}null{{ end }}
   caption_invoke_url: {{ if .captionURL }}{{ .captionURL | quote }}{{ else }}null{{ end }}
   caption_model_name: {{ if .captionModelName }}{{ .captionModelName | quote }}{{ else }}null{{ end }}
   audio_grpc_endpoint: {{ if .audioGrpcEndpoint }}{{ .audioGrpcEndpoint | quote }}{{ else }}null{{ end }}
   api_key: null
+
+local_models:
+  enabled: {{ .Values.serviceConfig.localModels.enabled }}
+  hf_cache_dir: {{ if .Values.serviceConfig.localModels.hfCacheDir }}{{ .Values.serviceConfig.localModels.hfCacheDir | quote }}{{ else }}null{{ end }}
+  device: {{ if .Values.serviceConfig.localModels.device }}{{ .Values.serviceConfig.localModels.device | quote }}{{ else }}null{{ end }}
+  warmup_on_startup: {{ .Values.serviceConfig.localModels.warmupOnStartup }}
+  max_tasks_per_child: {{ if .Values.serviceConfig.localModels.maxTasksPerChild }}{{ .Values.serviceConfig.localModels.maxTasksPerChild }}{{ else }}null{{ end }}
+  max_process_pool_workers: {{ .Values.serviceConfig.localModels.maxProcessPoolWorkers }}
+  extract:
+    enabled: {{ .Values.serviceConfig.localModels.extract.enabled }}
+    use_table_structure: {{ .Values.serviceConfig.localModels.extract.useTableStructure }}
+    use_graphic_elements: {{ .Values.serviceConfig.localModels.extract.useGraphicElements }}
+    ocr_version: {{ .Values.serviceConfig.localModels.extract.ocrVersion | quote }}
+    ocr_lang: {{ if .Values.serviceConfig.localModels.extract.ocrLang }}{{ .Values.serviceConfig.localModels.extract.ocrLang | quote }}{{ else }}null{{ end }}
+  embed:
+    enabled: {{ .Values.serviceConfig.localModels.embed.enabled }}
+    model_name: {{ .Values.serviceConfig.localModels.embed.modelName | quote }}
+    local_ingest_embed_backend: {{ .Values.serviceConfig.localModels.embed.localIngestEmbedBackend | quote }}
+    gpu_memory_utilization: {{ .Values.serviceConfig.localModels.embed.gpuMemoryUtilization }}
+  asr:
+    enabled: {{ .Values.serviceConfig.localModels.asr.enabled }}
+
+mcp:
+  enabled: {{ .Values.serviceConfig.mcp.enabled }}
+  path: {{ .Values.serviceConfig.mcp.path | quote }}
+  base_url: {{ if .Values.serviceConfig.mcp.baseUrl }}{{ .Values.serviceConfig.mcp.baseUrl | quote }}{{ else }}null{{ end }}
+  enable_write_tools: {{ .Values.serviceConfig.mcp.enableWriteTools }}
+  max_concurrency: {{ .Values.serviceConfig.mcp.maxConcurrency }}
+  request_timeout_s: {{ .Values.serviceConfig.mcp.requestTimeoutS }}
+  ingest_timeout_s: {{ .Values.serviceConfig.mcp.ingestTimeoutS }}
+  poll_interval_s: {{ .Values.serviceConfig.mcp.pollIntervalS }}
 
 llm:
   enabled: {{ if .llmEnabled }}true{{ else }}false{{ end }}
@@ -109,6 +141,7 @@ vectordb:
   lancedb_uri: {{ .Values.serviceConfig.vectordb.lancedbUri | quote }}
   table_name: {{ .Values.serviceConfig.vectordb.tableName | quote }}
   embed_model: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
+  embed_model_provider_prefix: {{ if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}{{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}{{ else }}null{{ end }}
   vectordb_url: "http://{{ .vectordbSvc }}:{{ .vectordbPort }}"
 {{- else }}
 vectordb:

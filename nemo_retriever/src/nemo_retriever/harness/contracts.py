@@ -27,7 +27,7 @@ EXIT_EVALUATION_FAILURE = 12
 EXIT_METRIC_GATE_FAILURE = 20
 EXIT_ARTIFACT_WRITE_FAILURE = 30
 EXIT_INTERNAL_ERROR = 70
-MODE_TO_RUN_MODE = {"local": "inprocess", "batch": "batch"}
+MODE_TO_RUN_MODE = {"local": "inprocess", "batch": "batch", "service": "service"}
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,7 @@ class RunOutcome:
     exit_code: int
     artifact_dir: Path
     results: dict[str, Any]
+    results_path: Path | None
 
 
 class HarnessRunError(Exception):

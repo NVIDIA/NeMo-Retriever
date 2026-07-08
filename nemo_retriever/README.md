@@ -96,7 +96,8 @@ Skip this step if you are using remote NIM inference only.
 The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
 
 > **Note:** `retriever ingest` defaults to local, in-process execution. Use `retriever ingest batch ...` for Ray Data scale-out on larger workloads.
-> `retriever pipeline run` keeps its legacy `--run-mode` flag for compatibility and development workflows.
+> File formats and internal extraction stages are not separate root commands; configure supported behavior through `retriever ingest`.
+> `retriever pipeline run` remains callable for compatibility while existing callers migrate, but it is hidden from root help.
 
 The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, refer to [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
 
@@ -307,83 +308,6 @@ print(answer)
 Answer:
 ```
 Cat is the animal whose activity (jumping onto a laptop) matches the location of the typos, so the cat is responsible for the typos in the documents.
-```
-
-### Run agentic retrieval
-
-Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
-It does not ingest documents; first build the index with one of the ingestion
-flows above, then query the same `lancedb_uri`, `table_name`, and embedding
-model.
-
-For [build.nvidia.com](https://build.nvidia.com/) hosted inference, set
-`NVIDIA_API_KEY`. On CPU-only machines, the CPU embedding actor and agent LLM
-use the hosted NVIDIA endpoints by default:
-
-```bash
-export NVIDIA_API_KEY=nvapi-...
-
-retriever query "Given their activities, which animal is responsible for the typos in my documents?" \
-  --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
-  --lancedb-uri lancedb \
-  --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
-```
-
-The agentic LLM uses the built-in NVIDIA hosted chat-completions endpoint when
-`--agentic-invoke-url` is omitted. On CPU-only machines, embedding actors also
-resolve to CPU/remote implementations and default to hosted endpoints. On
-GPU-capable machines, embedding prefers the local GPU implementation unless an
-endpoint URL, such as `--embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings`,
-is provided.
-
-For a quick smoke test, lower the amount of agent work:
-
-```bash
-retriever query "What is RAG?" \
-  --agentic \
-  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
-  --lancedb-uri lancedb \
-  --table-name nemo-retriever \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 \
-  --top-k 1 \
-  --agentic-react-max-steps 1 \
-  --agentic-backend-top-k 1
-```
-
-The same flow is available from Python. It uses the same `NVIDIA_API_KEY`
-environment variable shown above for hosted embedding and chat-completions
-requests.
-
-```python
-from nemo_retriever.cli.query_workflow import agentic_query_documents
-from nemo_retriever.query.options import (
-    QueryAgenticOptions,
-    QueryEmbedOptions,
-    QueryRequest,
-    QueryRetrievalOptions,
-    QueryStorageOptions,
-)
-
-# Requires NVIDIA_API_KEY=nvapi-... in the environment.
-results = agentic_query_documents(
-    QueryRequest(
-        query="What is RAG?",
-        retrieval=QueryRetrievalOptions(top_k=10),
-        storage=QueryStorageOptions(
-            lancedb_uri="lancedb",
-            table_name="nemo-retriever",
-        ),
-        embed=QueryEmbedOptions(
-            embed_model_name="nvidia/llama-nemotron-embed-1b-v2",
-        ),
-        agentic=QueryAgenticOptions(
-            enabled=True,
-            llm_model="nvidia/llama-3.3-nemotron-super-49b-v1.5",
-        ),
-    )
-)
 ```
 
 ### Live RAG SDK (retrieve + answer in one call)

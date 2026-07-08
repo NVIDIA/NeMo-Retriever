@@ -46,8 +46,10 @@ class ASRGPUActor(_ASRActorBase, AbstractOperator, GPUOperator):
         super().__init__(params=params)
         self._params = params or ASRParams()
         from nemo_retriever.models.local import ParakeetCTC1B1ASR
+        from nemo_retriever.models.warmup_registry import get_warmed_model
 
-        self._model = ParakeetCTC1B1ASR()
+        warmed = get_warmed_model("asr")
+        self._model = warmed if warmed is not None else ParakeetCTC1B1ASR()
 
     def process(self, batch_df: pd.DataFrame, **kwargs: Any) -> pd.DataFrame:
         if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:

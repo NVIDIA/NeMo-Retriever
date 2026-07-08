@@ -21,6 +21,7 @@ Each work function:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import multiprocessing as mp
 import time
@@ -30,13 +31,18 @@ from io import BytesIO
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 if TYPE_CHECKING:
-    from nemo_retriever.service.config import NimEndpointsConfig, ServiceConfig
+    from nemo_retriever.service.config import (
+        LocalModelsConfig,
+        NimEndpointsConfig,
+        ServiceConfig,
+    )
     from nemo_retriever.service.services.pipeline_pool import WorkItem
 
 logger = logging.getLogger(__name__)
 
 _MP_CONTEXT = mp.get_context("forkserver")
 _MAX_TASKS_PER_CHILD = 100
+_DEFAULT_WARM_MAX_TASKS_PER_CHILD = 10_000
 
 _SENSITIVE_PATTERNS = frozenset(
     {
@@ -78,16 +84,27 @@ def get_pipeline_configs() -> dict[str, dict[str, Any]]:
     return _pipeline_configs
 
 
-def _sanitize_result_data(df: Any) -> list[dict[str, Any]]:
+def _sanitize_result_data(
+    df: Any,
+    *,
+    result_schema: str = "legacy",
+    return_embeddings: bool = False,
+    return_images: bool = False,
+) -> list[dict[str, Any]]:
     """Convert a pipeline DataFrame to JSON-safe dicts for the status API.
 
-    Column layout matches the in-process ``GraphIngestor.ingest()``
-    frame; cell values are sanitized for transport (see
-    :mod:`nemo_retriever.ingest_results`).
+    ``result_schema="legacy"`` preserves the in-process
+    ``GraphIngestor.ingest()`` column layout with bulky values stripped.
+    ``result_schema="compact"`` emits the opt-in compact public shape.
     """
     from nemo_retriever.ingestor.results import dataframe_to_transport_records
 
-    return dataframe_to_transport_records(df)
+    return dataframe_to_transport_records(
+        df,
+        result_schema=result_schema,
+        return_embeddings=return_embeddings,
+        return_images=return_images,
+    )
 
 
 def _pipeline_tracing() -> Any | None:
@@ -110,7 +127,9 @@ def _capture_trace_context_for_pipeline() -> dict[str, str]:
         return {}
 
 
-def _extract_trace_context_for_pipeline(trace_context: dict[str, str] | None) -> Any | None:
+def _extract_trace_context_for_pipeline(
+    trace_context: dict[str, str] | None,
+) -> Any | None:
     if not trace_context:
         return None
     tracing = _pipeline_tracing()
@@ -119,13 +138,110 @@ def _extract_trace_context_for_pipeline(trace_context: dict[str, str] | None) ->
     try:
         return tracing.extract_trace_context(trace_context)
     except Exception as exc:
-        logger.warning("OpenTelemetry trace context extraction failed for pipeline execution: %s", exc)
+        logger.warning(
+            "OpenTelemetry trace context extraction failed for pipeline execution: %s",
+            exc,
+        )
         return None
 
 
 # ── Process pool registry ────────────────────────────────────────────
 
 _process_executors: list[ProcessPoolExecutor] = []
+_executor_warmup_targets: list[tuple[ProcessPoolExecutor, int]] = []
+_service_warmup_state: dict[str, Any] = {
+    "enabled": False,
+    "complete": False,
+    "workers_expected": 0,
+    "workers_warm": 0,
+    "error": None,
+}
+
+
+def _pool_worker_initializer(warmup_spec_json: str) -> None:
+    """Process-pool child initializer — loads HF models when warmup is enabled."""
+    if not warmup_spec_json:
+        return
+    from nemo_retriever.models.warmup_registry import warm_local_models
+
+    warm_local_models(json.loads(warmup_spec_json))
+
+
+def _pool_worker_ping(_: int) -> bool:
+    """No-op task used to force worker processes to start (and run initializer)."""
+    from nemo_retriever.models.warmup_registry import is_warmup_active
+
+    return is_warmup_active()
+
+
+def _resolve_max_tasks_per_child(local: "LocalModelsConfig") -> int:
+    if local.enabled and local.warmup_on_startup:
+        if local.max_tasks_per_child is not None:
+            return local.max_tasks_per_child
+        return _DEFAULT_WARM_MAX_TASKS_PER_CHILD
+    return _MAX_TASKS_PER_CHILD
+
+
+def _build_pool_warmup_spec_json(
+    local: "LocalModelsConfig",
+    extract_params_dict: dict[str, Any],
+    embed_params_dict: dict[str, Any] | None,
+    asr_params_dict: dict[str, Any] | None,
+) -> str:
+    if not (local.enabled and local.warmup_on_startup):
+        return ""
+    from nemo_retriever.models.warmup_registry import build_warmup_spec
+
+    spec = build_warmup_spec(extract_params_dict, embed_params_dict, asr_params_dict)
+    if spec is None:
+        return ""
+    return json.dumps(spec)
+
+
+def _create_process_executor(
+    *,
+    num_workers: int,
+    max_tasks_per_child: int,
+    warmup_spec_json: str,
+) -> ProcessPoolExecutor:
+    return ProcessPoolExecutor(
+        max_workers=num_workers,
+        mp_context=_MP_CONTEXT,
+        max_tasks_per_child=max_tasks_per_child,
+        initializer=_pool_worker_initializer,
+        initargs=(warmup_spec_json,),
+    )
+
+
+def get_service_warmup_status() -> dict[str, Any]:
+    """Return startup warmup progress for health/readiness probes."""
+    return dict(_service_warmup_state)
+
+
+def warmup_process_pool_workers() -> dict[str, Any]:
+    """Force-spawn all pipeline process-pool workers and wait for model warmup."""
+    if not _executor_warmup_targets:
+        _service_warmup_state["complete"] = True
+        return dict(_service_warmup_state)
+
+    workers_expected = sum(n for _, n in _executor_warmup_targets)
+    _service_warmup_state["workers_expected"] = workers_expected
+    workers_warm = 0
+    try:
+        for executor, num_workers in _executor_warmup_targets:
+            futures = [executor.submit(_pool_worker_ping, i) for i in range(num_workers)]
+            for future in futures:
+                if future.result(timeout=300):
+                    workers_warm += 1
+        _service_warmup_state["workers_warm"] = workers_warm
+        _service_warmup_state["complete"] = workers_warm == workers_expected
+        if not _service_warmup_state["complete"]:
+            _service_warmup_state["error"] = f"only {workers_warm}/{workers_expected} workers reported warmed models"
+    except Exception as exc:
+        _service_warmup_state["error"] = f"{type(exc).__name__}: {exc}"
+        logger.exception("Local model warmup failed")
+        raise
+    return dict(_service_warmup_state)
 
 
 def shutdown_process_executors() -> None:
@@ -151,6 +267,15 @@ def shutdown_process_executors() -> None:
             except OSError:
                 pass
     _process_executors.clear()
+    _executor_warmup_targets.clear()
+    _service_warmup_state.update(
+        {
+            "complete": False,
+            "workers_expected": 0,
+            "workers_warm": 0,
+            "error": None,
+        }
+    )
     logger.info("All pipeline process executors shut down")
 
 
@@ -204,6 +329,7 @@ _TRUST_OWNED_EMBED_KEYS: tuple[str, ...] = (
     "embedding_endpoint",
     "api_key",
     "embed_model_name",
+    "embed_model_provider_prefix",
     "model_name",
 )
 # Trust-owned caption keys. ``endpoint_url`` / ``api_key`` /
@@ -294,7 +420,9 @@ def _resolve_service_extraction_mode(
     mode = (extraction_mode or "auto").strip().lower()
     if mode != "auto":
         return mode
-    from nemo_retriever.service.utils.file_type import infer_extraction_mode_from_filename
+    from nemo_retriever.service.utils.file_type import (
+        infer_extraction_mode_from_filename,
+    )
 
     inferred = infer_extraction_mode_from_filename(filename)
     return inferred or "auto"
@@ -390,7 +518,6 @@ def _build_graph_ingestor_from_spec(
         ASRParams,
         CaptionParams,
         DedupParams,
-        EmbedParams,
         ExtractParams,
         StoreParams,
         VdbUploadParams,
@@ -405,12 +532,7 @@ def _build_graph_ingestor_from_spec(
     extract_params = ExtractParams(**extract_kwargs)
 
     embed_override = spec.get("embed_params")
-    if base_embed is None and embed_override is None:
-        embed_params = None
-    else:
-        embed_base = base_embed or {}
-        embed_kwargs = _merge_server_owned(embed_base, embed_override, _TRUST_OWNED_EMBED_KEYS)
-        embed_params = EmbedParams(**embed_kwargs) if embed_kwargs.get("embed_invoke_url") else None
+    embed_params = _resolve_embed_params(base_embed, embed_override)
 
     # Caption baseline + per-request overrides. The base dict carries
     # the server-owned endpoint/API key/model name; the override carries
@@ -602,19 +724,63 @@ def _run_pipeline_in_process(
         lancedb_rows = build_lancedb_rows(result_df)
         _post_rows_to_vectordb(lancedb_rows, vectordb_url, filename)
 
-    result_data = _sanitize_result_data(result_df)
+    result_options = pipeline_spec or {}
+    result_schema = result_options.get("result_schema", "legacy")
+    result_data = _sanitize_result_data(
+        result_df,
+        result_schema=result_schema,
+        return_embeddings=bool(result_options.get("return_embeddings", False)),
+        return_images=bool(result_options.get("return_images", False)),
+    )
     return row_count, result_data, elapsed
 
 
-def build_extract_params(nim: NimEndpointsConfig) -> Any:
-    """Derive :class:`ExtractParams` from service NIM endpoint config.
+def _local_model_runtime_kwargs(local: "LocalModelsConfig") -> dict[str, Any]:
+    """Shared ``ModelRuntimeParams`` fields for in-pod HF stages."""
+    runtime: dict[str, Any] = {}
+    if local.device:
+        runtime["device"] = local.device
+    if local.hf_cache_dir:
+        runtime["hf_cache_dir"] = local.hf_cache_dir
+    return runtime
+
+
+def _embed_params_enabled(embed_kwargs: dict[str, Any]) -> bool:
+    """Return True when *embed_kwargs* describe a remote or local embed stage."""
+    if not embed_kwargs:
+        return False
+    if embed_kwargs.get("embed_invoke_url") or embed_kwargs.get("embedding_endpoint"):
+        return True
+    return bool(embed_kwargs.get("model_name") or embed_kwargs.get("embed_model_name"))
+
+
+def _resolve_embed_params(
+    base_embed: dict[str, Any] | None,
+    embed_override: dict[str, Any] | None,
+) -> Any | None:
+    """Merge server-owned and per-request embed kwargs into :class:`EmbedParams`."""
+    if base_embed is None and embed_override is None:
+        return None
+    embed_base = base_embed or {}
+    embed_kwargs = _merge_server_owned(embed_base, embed_override, _TRUST_OWNED_EMBED_KEYS)
+    if not _embed_params_enabled(embed_kwargs):
+        return None
+    from nemo_retriever.common.params import EmbedParams
+
+    return EmbedParams(**embed_kwargs)
+
+
+def build_extract_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None) -> Any:
+    """Derive :class:`ExtractParams` from service NIM and local-model config.
 
     The ``ExtractParams`` model validator auto-enables
     ``use_graphic_elements`` / ``use_table_structure`` when the
-    corresponding invoke URLs are provided.
+    corresponding invoke URLs are provided. When ``local_models.enabled``
+    is true, the same flags are set for stages that lack a NIM URL.
     """
     from nemo_retriever.common.params import ExtractParams
 
+    local = local or _default_local_models_config()
     kwargs: dict[str, Any] = {}
     if nim.page_elements_invoke_url:
         kwargs["page_elements_invoke_url"] = nim.page_elements_invoke_url
@@ -627,10 +793,26 @@ def build_extract_params(nim: NimEndpointsConfig) -> Any:
     if nim.api_key:
         kwargs["api_key"] = nim.api_key
 
+    if local.enabled and local.extract.enabled:
+        if local.extract.use_table_structure and not nim.table_structure_invoke_url:
+            kwargs["use_table_structure"] = True
+        if local.extract.use_graphic_elements and not nim.graphic_elements_invoke_url:
+            kwargs["use_graphic_elements"] = True
+        if not nim.ocr_invoke_url:
+            kwargs["ocr_version"] = local.extract.ocr_version
+            if local.extract.ocr_lang is not None:
+                kwargs["ocr_lang"] = local.extract.ocr_lang
+
     return ExtractParams(**kwargs)
 
 
-def build_caption_params(nim: NimEndpointsConfig) -> Any | None:
+def _default_local_models_config() -> "LocalModelsConfig":
+    from nemo_retriever.service.config import LocalModelsConfig
+
+    return LocalModelsConfig()
+
+
+def build_caption_params(nim: "NimEndpointsConfig") -> Any | None:
     """Derive :class:`CaptionParams` from service NIM endpoint config.
 
     Returns ``None`` when no caption endpoint is configured — clients
@@ -650,43 +832,63 @@ def build_caption_params(nim: NimEndpointsConfig) -> Any | None:
     return CaptionParams(**kwargs)
 
 
-def build_asr_params(nim: NimEndpointsConfig) -> Any | None:
-    """Derive :class:`ASRParams` from service NIM endpoint config.
+def build_asr_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None) -> Any | None:
+    """Derive :class:`ASRParams` from service NIM and local-model config.
 
-    Returns ``None`` when no audio gRPC endpoint is configured, signalling
-    that the audio pipeline should attempt local Parakeet (requires torch).
+    Returns ``None`` when neither a Parakeet NIM gRPC endpoint nor local
+    in-pod ASR is configured.
     """
-    if not nim.audio_grpc_endpoint:
-        return None
+    local = local or _default_local_models_config()
+    if nim.audio_grpc_endpoint:
+        from nemo_retriever.common.params import ASRParams
 
-    from nemo_retriever.common.params import ASRParams
+        return ASRParams(
+            audio_endpoints=(nim.audio_grpc_endpoint, None),
+            audio_infer_protocol="grpc",
+            auth_token=nim.api_key,
+        )
+    if local.enabled and local.asr.enabled:
+        from nemo_retriever.common.params import ASRParams
 
-    return ASRParams(
-        audio_endpoints=(nim.audio_grpc_endpoint, None),
-        audio_infer_protocol="grpc",
-        auth_token=nim.api_key,
-    )
+        return ASRParams()
+    return None
 
 
-def build_embed_params(nim: NimEndpointsConfig) -> Any | None:
-    """Derive :class:`EmbedParams` from service NIM endpoint config.
+def build_embed_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None) -> Any | None:
+    """Derive :class:`EmbedParams` from service NIM and local-model config.
 
-    Returns ``None`` when no embedding endpoint is configured, signalling
-    that the embed stage should be skipped.
+    Remote ``embed_invoke_url`` wins when set. Otherwise, when
+    ``local_models.enabled`` and ``local_models.embed.enabled``, returns
+    in-pod embed params (no HTTP endpoint).
     """
-    if not nim.embed_invoke_url:
-        return None
+    local = local or _default_local_models_config()
+    from nemo_retriever.common.params import EmbedParams, ModelRuntimeParams
 
-    from nemo_retriever.common.params import EmbedParams
+    if nim.embed_invoke_url:
+        kwargs: dict[str, Any] = {"embed_invoke_url": nim.embed_invoke_url}
+        if nim.embed_model_name:
+            kwargs["model_name"] = nim.embed_model_name
+            kwargs["embed_model_name"] = nim.embed_model_name
+        if nim.embed_model_provider_prefix:
+            kwargs["embed_model_provider_prefix"] = nim.embed_model_provider_prefix
+        if nim.api_key:
+            kwargs["api_key"] = nim.api_key
+        return EmbedParams(**kwargs)
 
-    kwargs: dict[str, Any] = {"embed_invoke_url": nim.embed_invoke_url}
-    if nim.embed_model_name:
-        kwargs["model_name"] = nim.embed_model_name
-        kwargs["embed_model_name"] = nim.embed_model_name
-    if nim.api_key:
-        kwargs["api_key"] = nim.api_key
+    if local.enabled and local.embed.enabled:
+        kwargs = {
+            "model_name": local.embed.model_name,
+            "embed_model_name": local.embed.model_name,
+            "local_ingest_embed_backend": local.embed.local_ingest_embed_backend,
+        }
+        runtime_kwargs = _local_model_runtime_kwargs(local)
+        if local.embed.gpu_memory_utilization != 0.45:
+            runtime_kwargs["gpu_memory_utilization"] = local.embed.gpu_memory_utilization
+        if runtime_kwargs:
+            kwargs["runtime"] = ModelRuntimeParams(**runtime_kwargs)
+        return EmbedParams(**kwargs)
 
-    return EmbedParams(**kwargs)
+    return None
 
 
 def _make_work_fn(
@@ -701,10 +903,10 @@ def _make_work_fn(
     PDFium thread-safety issues (the C library has global mutable state
     that corrupts under concurrent thread access).
     """
-    extract_params = build_extract_params(config.nim_endpoints)
-    embed_params = build_embed_params(config.nim_endpoints)
+    extract_params = build_extract_params(config.nim_endpoints, config.local_models)
+    embed_params = build_embed_params(config.nim_endpoints, config.local_models)
     caption_params = build_caption_params(config.nim_endpoints)
-    asr_params = build_asr_params(config.nim_endpoints)
+    asr_params = build_asr_params(config.nim_endpoints, config.local_models)
 
     vectordb_url: str | None = None
     if config.vectordb.enabled:
@@ -712,13 +914,25 @@ def _make_work_fn(
         logger.info("VectorDB write enabled for %s workers → %s", label, vectordb_url)
 
     num_workers = config.pipeline.realtime_workers if label.lower() == "realtime" else config.pipeline.batch_workers
+    max_tasks_per_child = _resolve_max_tasks_per_child(config.local_models)
+    warmup_spec_json = _build_pool_warmup_spec_json(
+        config.local_models,
+        extract_params.model_dump(mode="json"),
+        embed_params.model_dump(mode="json") if embed_params else None,
+        asr_params.model_dump(mode="json") if asr_params else None,
+    )
 
-    executor = ProcessPoolExecutor(
-        max_workers=num_workers,
-        mp_context=_MP_CONTEXT,
-        max_tasks_per_child=_MAX_TASKS_PER_CHILD,
+    if config.local_models.enabled and config.local_models.warmup_on_startup:
+        _service_warmup_state["enabled"] = True
+
+    executor = _create_process_executor(
+        num_workers=num_workers,
+        max_tasks_per_child=max_tasks_per_child,
+        warmup_spec_json=warmup_spec_json,
     )
     _process_executors.append(executor)
+    if warmup_spec_json:
+        _executor_warmup_targets.append((executor, num_workers))
 
     extract_params_dict = extract_params.model_dump(mode="json")
     embed_params_dict = embed_params.model_dump(mode="json") if embed_params else None
@@ -733,7 +947,7 @@ def _make_work_fn(
         "extract_params": _params_to_dict(extract_params),
         "embed_params": _params_to_dict(embed_params) if embed_params else None,
         "embed_enabled": embed_params is not None,
-        "caption_params": _redact_dict(_params_to_dict(caption_params)) if caption_params else None,
+        "caption_params": (_redact_dict(_params_to_dict(caption_params)) if caption_params else None),
         "caption_enabled": caption_params is not None,
         "asr_params": _redact_dict(_params_to_dict(asr_params)) if asr_params else None,
         "asr_enabled": asr_params is not None,
@@ -742,18 +956,22 @@ def _make_work_fn(
             "queue_size": (
                 config.pipeline.realtime_queue_size if label.lower() == "realtime" else config.pipeline.batch_queue_size
             ),
-            "max_tasks_per_child": _MAX_TASKS_PER_CHILD,
+            "max_tasks_per_child": max_tasks_per_child,
         },
         "nim_endpoints": _redact_dict(config.nim_endpoints.model_dump(mode="json")),
+        "local_models": _redact_dict(config.local_models.model_dump(mode="json")),
     }
 
     logger.info(
-        "Pipeline work function created (%s): extract=%s, embed=%s, " "process_pool_workers=%d, max_tasks_per_child=%d",
+        "Pipeline work function created (%s): extract=%s, embed=%s, local_models=%s, "
+        "process_pool_workers=%d, max_tasks_per_child=%d, warmup_on_startup=%s",
         label,
         type(extract_params).__name__,
         type(embed_params).__name__ if embed_params else "disabled",
+        config.local_models.enabled,
         num_workers,
-        _MAX_TASKS_PER_CHILD,
+        max_tasks_per_child,
+        config.local_models.warmup_on_startup,
     )
 
     # Mutable holder so the BrokenProcessPool handler can replace the
@@ -797,13 +1015,20 @@ def _make_work_fn(
                 pass
             if old in _process_executors:
                 _process_executors.remove(old)
-            new_executor = ProcessPoolExecutor(
-                max_workers=num_workers,
-                mp_context=_MP_CONTEXT,
-                max_tasks_per_child=_MAX_TASKS_PER_CHILD,
+            new_executor = _create_process_executor(
+                num_workers=num_workers,
+                max_tasks_per_child=max_tasks_per_child,
+                warmup_spec_json=warmup_spec_json,
             )
             executor_ref[0] = new_executor
             _process_executors.append(new_executor)
+            if warmup_spec_json:
+                _executor_warmup_targets.clear()
+                _executor_warmup_targets.append((new_executor, num_workers))
+                try:
+                    warmup_process_pool_workers()
+                except Exception:
+                    logger.warning("%s pool recreated but model warmup failed", label)
             raise
 
         logger.info(

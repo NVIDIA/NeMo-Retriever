@@ -165,7 +165,7 @@ The retriever service caption profile already sends `chat_template_kwargs.enable
 }
 ```
 
-For pipeline scope (PDF chart regions are not captioned), refer to [Image captioning (support matrix)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#image-captioning-2605) and [Image captioning (pipeline scope)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/multimodal-extraction.md#image-captioning) in the extraction docs.
+For pipeline scope (PDF chart regions are not captioned), refer to [Image captioning (support matrix)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/prerequisites-support-matrix.md#image-captioning) and [Image captioning (pipeline scope)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/docs/docs/extraction/multimodal-extraction.md#image-captioning) in the extraction docs.
 
 ### Example install (service only, no in-cluster NIMs)
 

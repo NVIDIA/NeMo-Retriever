@@ -86,14 +86,15 @@ class HelmVectorDBEmbedRequiredTests(TestCase):
         # The guard must look at the resolved embed URL and call `fail`
         # with a message that tells the user every supported override.
         self.assertIn(
-            "{{- if not $embedURL }}",
+            "{{- if and (not $embedURL) (not $localEmbed) }}",
             body,
-            "deployment-vectordb.yaml must guard on a resolved $embedURL.",
+            "deployment-vectordb.yaml must guard on resolved embed URL and local embed.",
         )
         self.assertIn("{{- fail ", body, "deployment-vectordb.yaml must call `fail`.")
         for needle in (
             "serviceConfig.nimEndpoints.embedInvokeUrl",
             "nimOperator.vlm_embed.enabled=true",
+            "serviceConfig.localModels.enabled=true",
             "serviceConfig.vectordb.enabled=false",
         ):
             self.assertIn(
@@ -130,7 +131,7 @@ class HelmVectorDBEmbedRequiredTests(TestCase):
         )
         # The error surface must reach the user (Helm sends `fail` to stderr).
         combined = proc.stdout + proc.stderr
-        self.assertIn("embed endpoint could not be resolved", combined)
+        self.assertIn("no query embedding backend could be resolved", combined)
         self.assertIn("serviceConfig.vectordb.enabled=false", combined)
         self.assertIn(
             "serviceConfig.nimEndpoints.embedInvokeUrl",
@@ -180,6 +181,29 @@ class HelmVectorDBEmbedRequiredTests(TestCase):
         # vectordb container args must carry the operator-resolved URL.
         self.assertIn("--embed-endpoint", proc.stdout)
         self.assertIn("/v1/embeddings", proc.stdout)
+
+    def test_helm_template_passes_with_local_embed_enabled(self) -> None:
+        proc = _helm_template(
+            extra_args=(
+                "--set",
+                "serviceConfig.vectordb.enabled=true",
+                "--set",
+                "nimOperator.vlm_embed.enabled=false",
+                "--set",
+                "serviceConfig.localModels.enabled=true",
+                "--set",
+                "serviceConfig.localModels.embed.enabled=true",
+            ),
+        )
+        self.assertEqual(
+            proc.returncode,
+            0,
+            f"`helm template` should succeed with in-pod local query embedding.\n"
+            f"STDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}",
+        )
+        self.assertIn("--local-embed", proc.stdout)
+        self.assertIn("--local-embed-backend", proc.stdout)
+        self.assertNotIn('--embed-endpoint\n            - ""', proc.stdout)
 
     def test_helm_template_passes_with_vectordb_disabled(self) -> None:
         proc = _helm_template(

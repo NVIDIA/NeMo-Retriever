@@ -51,14 +51,14 @@ LanceDbUriOption = Annotated[
     str,
     typer.Option(
         "--lancedb-uri",
-        help="LanceDB database URI to read; match the value used for retriever ingest local --lancedb-uri.",
+        help="LanceDB database URI to read; match the value used for retriever ingest --lancedb-uri.",
     ),
 ]
 TableNameOption = Annotated[
     str,
     typer.Option(
         "--table-name",
-        help="LanceDB table name to read; match the value used for retriever ingest local --table-name.",
+        help="LanceDB table name to read; match the value used for retriever ingest --table-name.",
     ),
 ]
 EmbedInvokeUrlOption = Annotated[
@@ -70,6 +70,13 @@ EmbedModelNameOption = Annotated[
     typer.Option(
         "--embed-model-name",
         help=f"Optional embedding model name override. Defaults to {DEFAULT_EMBED_MODEL} when omitted.",
+    ),
+]
+EmbedModelProviderPrefixOption = Annotated[
+    str | None,
+    typer.Option(
+        "--embed-model-provider-prefix",
+        help="Optional LiteLLM provider prefix prepended to the remote embedding model name.",
     ),
 ]
 RerankerInvokeUrlOption = Annotated[
@@ -124,14 +131,6 @@ RetrievalModeOption = Annotated[
         ),
     ),
 ]
-HybridOption = Annotated[
-    bool,
-    typer.Option(
-        "--hybrid",
-        help="Deprecated alias for --retrieval-mode hybrid.",
-        hidden=True,
-    ),
-]
 OutputFormatOption = Annotated[
     str,
     typer.Option(
@@ -153,7 +152,7 @@ AgenticOption = Annotated[
     bool,
     typer.Option(
         "--agentic",
-        help="Run an LLM-driven agentic (ReAct) retrieval loop instead of the default dense pass.",
+        help="Run an LLM-driven agentic (ReAct) retrieval loop instead of the default retrieval pass.",
     ),
 ]
 AgenticLlmModelOption = Annotated[
