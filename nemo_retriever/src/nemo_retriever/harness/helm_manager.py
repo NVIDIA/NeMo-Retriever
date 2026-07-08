@@ -10,13 +10,13 @@ import os
 import shlex
 import signal
 import subprocess
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from nemo_retriever.harness.config import NEMO_RETRIEVER_ROOT
-
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,7 @@ class HelmServiceManager:
         self.local_port = int(config.helm_service_local_port)
         self.remote_port = 7670
         self.port_forward_processes: list[subprocess.Popen] = []
+        self._port_forward_logs: dict[int, BinaryIO] = {}
         self._forwarded_service_name: str | None = None
         self._forwarded_component: str | None = None
 
@@ -208,17 +209,21 @@ class HelmServiceManager:
             f"{local}:{remote}",
         ]
         logger.info("$ %s (background)", self.format_command(cmd))
+        # The handle intentionally stays open for the lifetime of the background process.
+        output = tempfile.TemporaryFile(mode="w+b")  # noqa: SIM115
         proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=output,
+            stderr=subprocess.STDOUT,
             preexec_fn=os.setsid,
         )
         self.port_forward_processes.append(proc)
+        self._port_forward_logs[proc.pid] = output
         time.sleep(2)
         if proc.poll() is not None:
-            _, stderr = proc.communicate()
-            detail = stderr.decode("utf-8", errors="replace").strip()
+            output.flush()
+            output.seek(0)
+            detail = output.read().decode("utf-8", errors="replace").strip()
             raise RuntimeError(f"kubectl port-forward failed for {service_name}: {detail}")
 
     def stop_port_forwards(self) -> None:
@@ -226,23 +231,35 @@ class HelmServiceManager:
             try:
                 pgid = os.getpgid(proc.pid)
             except ProcessLookupError:
-                continue
+                pgid = None
             try:
-                os.killpg(pgid, signal.SIGTERM)
-                proc.wait(timeout=5)
-            except PermissionError as exc:
-                logger.warning("Could not signal port-forward process group %s for pid %s: %s", pgid, proc.pid, exc)
-            except subprocess.TimeoutExpired:
+                if pgid is None:
+                    continue
                 try:
-                    os.killpg(pgid, signal.SIGKILL)
+                    os.killpg(pgid, signal.SIGTERM)
+                    proc.wait(timeout=5)
                 except PermissionError as exc:
                     logger.warning(
-                        "Could not force-kill port-forward process group %s for pid %s: %s", pgid, proc.pid, exc
+                        "Could not signal port-forward process group %s for pid %s: %s", pgid, proc.pid, exc
                     )
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(pgid, signal.SIGKILL)
+                    except PermissionError as exc:
+                        logger.warning(
+                            "Could not force-kill port-forward process group %s for pid %s: %s",
+                            pgid,
+                            proc.pid,
+                            exc,
+                        )
+                    except ProcessLookupError:
+                        pass
                 except ProcessLookupError:
                     pass
-            except ProcessLookupError:
-                pass
+            finally:
+                output = self._port_forward_logs.pop(proc.pid, None)
+                if output is not None:
+                    output.close()
         self.port_forward_processes = []
 
     def get_service_url(self, service: str = "api") -> str:
