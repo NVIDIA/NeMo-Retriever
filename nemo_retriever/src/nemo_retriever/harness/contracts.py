@@ -47,6 +47,7 @@ class RunOutcome:
     exit_code: int
     artifact_dir: Path
     results: dict[str, Any]
+    results_path: Path | None
 
 
 class HarnessRunError(Exception):
