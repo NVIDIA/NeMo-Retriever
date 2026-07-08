@@ -46,17 +46,11 @@ _HEAVY_INTERNAL = [
     "nemo_retriever.models.local.nemotron_page_elements_v3",
     "nemo_retriever.models.local.nemotron_ocr_v1",
     "nemo_retriever.models.local.nemotron_table_structure_v1",
-    "nemo_retriever.models.local.nemotron_graphic_elements_v1",
     # -- detection / OCR (nemotron_page_elements_v3, PIL, requests) ----------
     "nemo_retriever.page_elements",
     "nemo_retriever.operators.extract.page_elements.page_elements",
     "nemo_retriever.ocr",
     "nemo_retriever.operators.extract.ocr.ocr",
-    # -- chart (nemo_retriever.common.api → cv2) ----------------------------------------
-    "nemo_retriever.chart",
-    "nemo_retriever.operators.extract.chart.chart_detection",
-    "nemo_retriever.common.modality.chart.config",
-    "nemo_retriever.chart.stage",
     # -- table (nemo_retriever.common.api → cv2) ----------------------------------------
     "nemo_retriever.table",
     "nemo_retriever.operators.extract.table.table_detection",

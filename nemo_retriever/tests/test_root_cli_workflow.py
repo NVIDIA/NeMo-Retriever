@@ -547,7 +547,6 @@ def test_root_ingest_passes_embedding_overrides_without_stage_flags(monkeypatch,
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
     assert extract_params.use_page_elements is True
-    assert extract_params.use_graphic_elements is False
     assert extract_params.use_table_structure is False
     assert extract_params.table_output_format == "pseudo_markdown"
 

@@ -214,7 +214,6 @@ _SERVER_OWNED_KEYS: frozenset[str] = frozenset(
         "page_elements_api_key",
         "ocr_invoke_url",
         "ocr_api_key",
-        "graphic_elements_invoke_url",
         "table_structure_invoke_url",
         "nemotron_parse_invoke_url",
         "embed_invoke_url",
