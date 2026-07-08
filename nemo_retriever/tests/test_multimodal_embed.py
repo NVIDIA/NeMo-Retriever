@@ -55,23 +55,16 @@ _HEAVY_INTERNAL = [
     # -- chart (nemo_retriever.common.api → cv2) ----------------------------------------
     "nemo_retriever.chart",
     "nemo_retriever.operators.extract.chart.chart_detection",
-    "nemo_retriever.cli.chart.commands",
-    "nemo_retriever.common.modality.chart.processor",
     "nemo_retriever.common.modality.chart.config",
     "nemo_retriever.chart.stage",
     # -- table (nemo_retriever.common.api → cv2) ----------------------------------------
     "nemo_retriever.table",
     "nemo_retriever.operators.extract.table.table_detection",
-    "nemo_retriever.common.modality.table.config",
     "nemo_retriever.table.stage",
-    "nemo_retriever.cli.table.commands",
-    "nemo_retriever.common.modality.table.processor",
-    # -- PDF (pypdfium2, nemo_retriever.common.api via pdf/__init__ → __main__ → stage) --
+    # -- PDF (pypdfium2 and heavy extraction dependencies) -------------------
     "nemo_retriever.pdf",
-    "nemo_retriever.cli.pdf.__main__",
     "nemo_retriever.common.modality.pdf.config",
     "nemo_retriever.common.modality.pdf.io",
-    "nemo_retriever.cli.pdf.stage",
     "nemo_retriever.operators.extract.pdf.extract",
     "nemo_retriever.operators.extract.pdf.split",
 ]

@@ -505,35 +505,6 @@ class TestOCRJoinsTableStructure:
 
 
 # ---------------------------------------------------------------------------
-# Config tests
-# ---------------------------------------------------------------------------
-
-
-class TestTableStructureOCRConfig:
-    def test_load_config_defaults(self) -> None:
-        from nemo_retriever.common.modality.table.config import load_table_structure_ocr_config_from_dict
-
-        cfg = load_table_structure_ocr_config_from_dict({})
-        assert cfg.table_structure_invoke_url == ""
-        assert cfg.api_key == ""
-        assert cfg.request_timeout_s == 60.0
-
-    def test_load_config_with_values(self) -> None:
-        from nemo_retriever.common.modality.table.config import load_table_structure_ocr_config_from_dict
-
-        cfg = load_table_structure_ocr_config_from_dict(
-            {
-                "table_structure_invoke_url": "http://ts:8000",
-                "api_key": "secret",
-                "request_timeout_s": 60.0,
-            }
-        )
-        assert cfg.table_structure_invoke_url == "http://ts:8000"
-        assert cfg.api_key == "secret"
-        assert cfg.request_timeout_s == 60.0
-
-
-# ---------------------------------------------------------------------------
 # ExtractParams tests
 # ---------------------------------------------------------------------------
 
