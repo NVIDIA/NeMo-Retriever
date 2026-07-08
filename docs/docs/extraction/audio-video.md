@@ -73,7 +73,7 @@ Use the following procedure to run the NIM on your own infrastructure. Self-host
 
     ```python
     from nemo_retriever import create_ingestor
-    from nemo_retriever.common.params.models import ASRParams
+    from nemo_retriever.params.models import ASRParams
 
     ingestor = (
         create_ingestor(run_mode="batch")
@@ -100,11 +100,9 @@ Instead of running the pipeline locally, you can call Parakeet through [build.nv
 
 2. Run inference from Python with the hosted gRPC endpoint and credentials from that page (the example below uses the default hosted gRPC hostname; confirm values in the **Get API Key** flow for your deployment). Pass hosted endpoint, function ID, and API key through `ASRParams` (`audio_endpoints`, `function_id`, `auth_token`).
 
-    For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
-
     ```python
     from nemo_retriever import create_ingestor
-    from nemo_retriever.common.params.models import ASRParams
+    from nemo_retriever.params.models import ASRParams
 
     ingestor = (
         create_ingestor(run_mode="batch")

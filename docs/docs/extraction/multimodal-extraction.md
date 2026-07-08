@@ -74,7 +74,7 @@ For natural-language infographic descriptions, optionally enable [image captioni
 
 Scanned PDFs and image-only pages rely on OCR and hybrid paths that combine native text extraction with OCR when needed. For extract methods such as `ocr` and `pdfium_hybrid`, refer to the [Python API reference](nemo-retriever-api-reference.md).
 
-When you run extraction locally with Hugging Face weights, the default OCR engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, refer to [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). For Kubernetes deployment, refer to [OCR NIM configuration](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#ocr-nim-configuration) in the Helm chart README.
+OCR artifacts depend on how you deploy. **Helm / NIM:** the production chart uses **Nemotron OCR v1** (`nvcr.io/nim/nvidia/nemotron-ocr-v1:1.3.0`). **Local Hugging Face inference:** the default engine is **Nemotron OCR v2**, which operates in **multilingual** mode by default. For CLI flags and API parameters, see [Nemotron OCR v2 — language mode](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/docs/cli/README.md#nemotron-ocr-v2-language-mode). For Kubernetes defaults and the Helm-vs-local split, see [OCR artifacts (Helm vs local Hugging Face)](prerequisites-support-matrix.md#nemotron-ocr-v2-language-mode) in the support matrix.
 
 **Related**
 
@@ -94,7 +94,7 @@ Chart-classified PDF regions stay on the layout/OCR path; only non-chart image r
 
 - [Multimodal embeddings (VLM)](embedding.md)
 - [Metadata reference](content-metadata.md)
-- [Image captioning](prerequisites-support-matrix.md#image-captioning)
+- [Image captioning](prerequisites-support-matrix.md#image-captioning-2605)
 
 ## Metadata and content schema { #metadata-and-content-schema }
 

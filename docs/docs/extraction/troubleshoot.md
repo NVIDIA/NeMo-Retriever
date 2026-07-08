@@ -77,11 +77,15 @@ ulimit -u 10000
 ## Out-of-Memory (OOM) Error when Processing Large Datasets
 
 When you process a very large dataset with thousands of documents, you might encounter an Out-of-Memory (OOM) error. 
-This happens because, by default, NeMo Retriever Library stores the results from every document in system memory (RAM). 
+This happens because NeMo Retriever Library materializes extraction results in system memory (RAM) while the job runs. 
 If the total size of the results exceeds the available memory, the process fails.
 
-To resolve this issue, use the `save_to_disk` method. 
-For details, refer to [Working with Large Datasets: Saving to Disk](nemo-retriever-api-reference.md).
+To reduce memory pressure, try one or more of the following:
+
+- Process documents in smaller batches instead of submitting the entire corpus in one job.
+- Route outputs to a sink (for example, `.vdb_upload(...)`, `.webhook(...)`, or `.store(...)`) so results are written out instead of held in memory until the job finishes.
+- In `run_mode="service"`, pass `return_results=False` to `.ingest(...)` when you do not need the full result payload returned to the client. For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
+- Increase available host or pod memory for the ingest workload.
 
 
 

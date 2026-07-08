@@ -12,14 +12,14 @@ The model can embed documents in the form of an image, text, or a combination of
 Documents can then be retrieved given a user query in text form. 
 The model supports images that contain text, tables, charts, and infographics.
 
+Parameter details for `.extract()` and `.embed()` appear in the [Python API guide](nemo-retriever-api-reference.md).
+
 ## Example with Default Text-Based Embedding
 
 When you use the multimodal model, by default, all extracted content (text, tables, charts) is treated as plain text. 
 The following example provides a strong baseline for retrieval.
 
 - The `embed` method is called with no arguments.
-
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
 ```python
 from nemo_retriever import create_ingestor
@@ -41,8 +41,6 @@ The following example enables the multimodal model to capture the spatial and st
 
 - The `embed` method is configured with `embed_modality="text_image"` to embed the extracted tables and charts as images.
 - This configuration is more accurate than text only, with a performance cost.
-
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
 ```python
 from nemo_retriever import create_ingestor
@@ -66,8 +64,6 @@ you can configure NeMo Retriever Library to treat every page as a single image.
 The following example extracts and embeds each page as an image.
 
 - The `embed` method processes the page images.
-
-For parameter details, refer to the [Python API guide](nemo-retriever-api-reference.md).
 
 ```python
 from nemo_retriever import create_ingestor
