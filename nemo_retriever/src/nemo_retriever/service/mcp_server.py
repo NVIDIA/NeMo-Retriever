@@ -491,7 +491,8 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
         description=(
             "Search ingested documents through the service VectorDB endpoint. "
             "format='hits' (default) returns raw retrieval hits; format='evidence' "
-            "returns the fidelity-tagged, citation-ready {evidence, coverage} shape."
+            "returns the fidelity-tagged, citation-ready {evidence, coverage} shape. "
+            "Retrieval mode (dense vs hybrid) is server-owned via vectordb.retrieval_mode."
         ),
     )
     async def query(

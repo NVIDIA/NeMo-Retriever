@@ -661,6 +661,10 @@ serviceConfig:
     tableName: "nemo_retriever"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedModelProviderPrefix: ""
+    # dense — vector search only (default)
+    # hybrid — vector + BM25/FTS (requires FTS index on the table)
+    # auto — inspect the LanceDB table and choose dense or hybrid
+    retrievalMode: dense
 
   # Optional bearer-token authentication. When apiToken is set, every
   # request must carry "Authorization: Bearer <token>".

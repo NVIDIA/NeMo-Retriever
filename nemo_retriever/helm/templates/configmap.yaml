@@ -142,6 +142,7 @@ vectordb:
   table_name: {{ .Values.serviceConfig.vectordb.tableName | quote }}
   embed_model: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
   embed_model_provider_prefix: {{ if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}{{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}{{ else }}null{{ end }}
+  retrieval_mode: {{ .Values.serviceConfig.vectordb.retrievalMode | default "dense" | quote }}
   vectordb_url: "http://{{ .vectordbSvc }}:{{ .vectordbPort }}"
 {{- else }}
 vectordb:

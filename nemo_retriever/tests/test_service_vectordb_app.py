@@ -4,13 +4,16 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, PropertyMock, patch
 
 from fastapi.testclient import TestClient
 
+from nemo_retriever.service.config import VectorDbConfig, load_config
 from nemo_retriever.service.vectordb_app import (
     VectorDBState,
     _embed_queries_remote,
+    _strategies_for_retrieval_mode,
     _tensor_to_embedding_rows,
     create_vectordb_app,
 )
@@ -50,6 +53,40 @@ def test_health_reports_embed_mode(tmp_path) -> None:
 
     assert resp.status_code == 200
     assert resp.json()["embed_mode"] == "local"
+
+
+def test_health_reports_retrieval_mode(tmp_path) -> None:
+    app = create_vectordb_app(
+        lancedb_uri=str(tmp_path),
+        embed_endpoint="http://embed.example/v1/embeddings",
+        retrieval_mode="hybrid",
+    )
+    with TestClient(app) as client:
+        resp = client.get("/v1/health")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["retrieval_mode"] == "hybrid"
+    assert body["effective_retrieval_mode"] is None
+
+
+def test_load_config_vectordb_retrieval_mode(tmp_path) -> None:
+    config_path = tmp_path / "retriever-service.yaml"
+    config_path.write_text(
+        "mode: standalone\nvectordb:\n  enabled: true\n  retrieval_mode: hybrid\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(config_path=str(config_path))
+    assert cfg.vectordb.retrieval_mode == "hybrid"
+
+
+def test_vector_db_config_default_retrieval_mode() -> None:
+    assert VectorDbConfig().retrieval_mode == "dense"
+
+
+def test_strategies_for_retrieval_mode() -> None:
+    assert _strategies_for_retrieval_mode("dense") == ["semantic"]
+    assert _strategies_for_retrieval_mode("hybrid") == ["semantic", "lexical"]
 
 
 def test_tensor_to_embedding_rows_handles_batch() -> None:
@@ -122,12 +159,13 @@ _CANNED_HITS = [
 ]
 
 
-def _query_app(tmp_path):
+def _query_app(tmp_path, *, retrieval_mode: str = "dense"):
     return create_vectordb_app(
         lancedb_uri=str(tmp_path),
         table_name="t",
         embed_endpoint="http://embed.example/v1/embeddings",
         embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
+        retrieval_mode=retrieval_mode,
     )
 
 
@@ -135,7 +173,7 @@ def test_query_evidence_format_returns_evidence_coverage(tmp_path) -> None:
     app = _query_app(tmp_path)
     with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
         VectorDBState, "embed_queries", return_value=[[0.1, 0.2]]
-    ), patch.object(VectorDBState, "search", return_value=[_CANNED_HITS]):
+    ), patch.object(VectorDBState, "search", return_value=([_CANNED_HITS], ["semantic"])):
         with TestClient(app) as client:
             resp = client.post("/v1/query", json={"query": "revenue", "top_k": 5, "format": "evidence"})
 
@@ -155,6 +193,72 @@ def test_query_evidence_format_returns_evidence_coverage(tmp_path) -> None:
     assert ev["score"] == 0.91
 
     coverage = item["coverage"]
-    assert coverage["strategies_used"] == ["dense"]
+    assert coverage["strategies_used"] == ["semantic"]
     assert coverage["n_docs_seen"] == 1
     assert coverage["thin_spots"] == ["single source"]
+
+
+def test_query_hybrid_evidence_reports_lexical_strategy(tmp_path) -> None:
+    app = _query_app(tmp_path, retrieval_mode="hybrid")
+    with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
+        VectorDBState, "embed_queries", return_value=[[0.1, 0.2]]
+    ), patch.object(VectorDBState, "search", return_value=([_CANNED_HITS], ["semantic", "lexical"])):
+        with TestClient(app) as client:
+            resp = client.post("/v1/query", json={"query": "revenue", "top_k": 5, "format": "evidence"})
+
+    assert resp.status_code == 200
+    assert resp.json()["results"][0]["coverage"]["strategies_used"] == ["semantic", "lexical"]
+
+
+def test_query_hybrid_without_fts_returns_422(tmp_path) -> None:
+    app = _query_app(tmp_path, retrieval_mode="hybrid")
+    with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
+        VectorDBState, "embed_queries", return_value=[[0.1, 0.2]]
+    ), patch.object(
+        VectorDBState,
+        "search",
+        side_effect=ValueError(
+            "LanceDB table 't' at '" + str(tmp_path) + "' cannot run hybrid retrieval: "
+            "both a vector column and FTS index are required."
+        ),
+    ):
+        with TestClient(app) as client:
+            resp = client.post("/v1/query", json={"query": "revenue", "top_k": 5})
+
+    assert resp.status_code == 422
+    assert "hybrid retrieval" in resp.json()["detail"]
+
+
+def test_search_hybrid_delegates_to_lancedb_wrapper(tmp_path) -> None:
+    state = VectorDBState(
+        lancedb_uri=str(tmp_path),
+        table_name="docs",
+        embed_endpoint="http://embed.example/v1/embeddings",
+        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
+        embed_api_key="",
+        retrieval_mode="hybrid",
+    )
+    state._table_exists = True
+
+    mock_caps = MagicMock()
+    mock_caps.has_vector = True
+    mock_caps.has_fts = True
+    mock_caps.retrieval_mode = "hybrid"
+    mock_caps.vector_column = "vector"
+
+    mock_vdb = MagicMock()
+    mock_vdb.retrieval.return_value = [[{"text": "hit", "_score": 0.5}]]
+
+    with patch.object(state, "_table_capabilities", return_value=mock_caps), patch(
+        "nemo_retriever.common.vdb.lancedb.LanceDB",
+        return_value=mock_vdb,
+    ):
+        hits, strategies = state.search([[0.1, 0.2]], ["revenue"], top_k=3)
+
+    assert strategies == ["semantic", "lexical"]
+    assert hits[0][0]["text"] == "hit"
+    mock_vdb.retrieval.assert_called_once()
+    call_kwargs = mock_vdb.retrieval.call_args.kwargs
+    assert call_kwargs["top_k"] == 3
+    assert call_kwargs["hybrid"] is True
+    assert call_kwargs["query_texts"] == ["revenue"]

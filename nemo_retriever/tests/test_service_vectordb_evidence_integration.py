@@ -79,6 +79,6 @@ def test_query_evidence_format_end_to_end_over_real_lancedb(tmp_path) -> None:
     assert isinstance(ev["score"], (int, float))
 
     coverage = item["coverage"]
-    assert coverage["strategies_used"] == ["dense"]
+    assert coverage["strategies_used"] == ["semantic"]
     assert coverage["n_docs_seen"] == 1
     assert coverage["thin_spots"] == ["single source"]

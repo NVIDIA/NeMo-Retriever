@@ -16,6 +16,7 @@ from pydantic import ConfigDict, Field, model_validator
 from nemo_retriever.common.schemas.base import RichModel
 
 ServiceMode = Literal["standalone", "gateway", "realtime", "batch"]
+ServiceVectorRetrievalMode = Literal["dense", "hybrid", "auto"]
 
 
 class ServerConfig(RichModel):
@@ -301,6 +302,13 @@ class VectorDbConfig(RichModel):
     table_name: str = "nemo_retriever"
     embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2"
     embed_model_provider_prefix: str | None = None
+    retrieval_mode: ServiceVectorRetrievalMode = Field(
+        default="dense",
+        description=(
+            "Server-owned LanceDB retrieval mode for POST /v1/query: dense (vector-only), "
+            "hybrid (vector + BM25/FTS), or auto (inspect table capabilities)."
+        ),
+    )
     vectordb_url: str = Field(
         default="http://nemo-retriever-vectordb:7671",
         description="URL of the vectordb service (for workers to POST embeddings to)",

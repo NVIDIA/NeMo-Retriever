@@ -41,7 +41,9 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode, inspect_lancedb_table_object
 from nemo_retriever.query.evidence import build_evidence_result
+from nemo_retriever.service.config import ServiceVectorRetrievalMode
 from nemo_retriever.service.query_schema import (
     EvidenceQueryResponse,
     EvidenceResult,
@@ -49,9 +51,6 @@ from nemo_retriever.service.query_schema import (
     QueryResponse,
     QueryResult,
 )
-
-# /v1/query is dense vector search only; report that honestly in coverage.
-_QUERY_STRATEGIES = ["dense"]
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +104,14 @@ def _embed_queries_remote(
     )
 
 
+def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | str) -> list[str]:
+    if mode == "hybrid":
+        return ["semantic", "lexical"]
+    if mode == "sparse":
+        return ["lexical"]
+    return ["semantic"]
+
+
 # ── VectorDB state ───────────────────────────────────────────────────
 
 
@@ -125,6 +132,7 @@ class VectorDBState:
         hf_cache_dir: str | None = None,
         device: str | None = None,
         gpu_memory_utilization: float = 0.45,
+        retrieval_mode: ServiceVectorRetrievalMode = "dense",
     ) -> None:
         self.lancedb_uri = lancedb_uri
         self.table_name = table_name
@@ -137,6 +145,7 @@ class VectorDBState:
         self.hf_cache_dir = hf_cache_dir
         self.device = device
         self.gpu_memory_utilization = gpu_memory_utilization
+        self.retrieval_mode = retrieval_mode
         self._write_lock = threading.Lock()
         self._embed_lock = threading.Lock()
         self._local_embedder: Any | None = None
@@ -160,6 +169,69 @@ class VectorDBState:
     @property
     def table_exists(self) -> bool:
         return self._table_exists
+
+    def _table_capabilities(self):
+        if not self._table_exists:
+            return None
+        table = self._db.open_table(self.table_name)
+        return inspect_lancedb_table_object(table)
+
+    def resolve_effective_retrieval_mode(self) -> LanceRetrievalMode:
+        """Resolve the configured retrieval mode against table capabilities."""
+        if not self._table_exists:
+            return "dense"
+
+        caps = self._table_capabilities()
+        assert caps is not None
+
+        if self.retrieval_mode == "auto":
+            mode: LanceRetrievalMode = caps.retrieval_mode
+        else:
+            mode = self.retrieval_mode
+
+        if mode == "unknown":
+            raise ValueError(
+                f"LanceDB table {self.table_name!r} at {self.lancedb_uri!r} is not queryable: "
+                "no vector column or FTS index was detected."
+            )
+        if mode == "dense" and not caps.has_vector:
+            raise ValueError(
+                f"LanceDB table {self.table_name!r} at {self.lancedb_uri!r} cannot run dense retrieval: "
+                "no vector column was detected."
+            )
+        if mode == "hybrid" and (not caps.has_vector or not caps.has_fts):
+            raise ValueError(
+                f"LanceDB table {self.table_name!r} at {self.lancedb_uri!r} cannot run hybrid retrieval: "
+                "both a vector column and FTS index are required."
+            )
+        if mode == "sparse":
+            raise ValueError(
+                "Sparse retrieval is not supported by the VectorDB service. "
+                "Use dense, hybrid, or auto."
+            )
+        return mode
+
+    def _ensure_hybrid_indexes(self) -> None:
+        """Build FTS indexes when hybrid retrieval is configured or auto-selected."""
+        if not self._table_exists:
+            return
+        if self.retrieval_mode == "dense":
+            return
+
+        table = self._db.open_table(self.table_name)
+        caps = inspect_lancedb_table_object(table)
+        if not caps.has_vector or caps.has_fts:
+            return
+
+        from nemo_retriever.common.vdb.lancedb import LanceDB
+
+        vdb = LanceDB(uri=self.lancedb_uri, table_name=self.table_name, overwrite=False, hybrid=True)
+        vdb.write_to_index(records=None, table=table, hybrid=True)
+        logger.info(
+            "Built FTS index on LanceDB table '%s' at %s for hybrid retrieval",
+            self.table_name,
+            self.lancedb_uri,
+        )
 
     def write_rows(self, rows: list[dict[str, Any]]) -> int:
         """Append rows to the LanceDB table (creates table on first write)."""
@@ -198,6 +270,8 @@ class VectorDBState:
                 table.add(rows)
                 logger.info("Appended %d rows to table '%s'", len(rows), self.table_name)
 
+            self._ensure_hybrid_indexes()
+
         return len(rows)
 
     def total_rows(self) -> int:
@@ -209,20 +283,34 @@ class VectorDBState:
         except Exception:
             return 0
 
-    def search(self, vectors: list[list[float]], top_k: int) -> list[list[dict[str, Any]]]:
+    def search(
+        self,
+        vectors: list[list[float]],
+        query_texts: list[str],
+        top_k: int,
+    ) -> tuple[list[list[dict[str, Any]]], list[str]]:
         """Search the LanceDB table with precomputed query vectors."""
         if not self._table_exists:
-            return [[] for _ in vectors]
+            return [[] for _ in vectors], _strategies_for_retrieval_mode("dense")
 
+        mode = self.resolve_effective_retrieval_mode()
+        strategies = _strategies_for_retrieval_mode(mode)
+
+        from nemo_retriever.common.vdb.lancedb import LanceDB
         from nemo_retriever.common.vdb.records import normalize_retrieval_results
 
-        table = self._db.open_table(self.table_name)
-        raw_results = []
-        for vector in vectors:
-            results = table.search(vector).limit(top_k).to_list()
-            raw_results.append(results)
+        hybrid = mode == "hybrid"
+        vdb = LanceDB(uri=self.lancedb_uri, table_name=self.table_name, overwrite=False, hybrid=hybrid)
+        retrieval_kwargs: dict[str, Any] = {"top_k": top_k, "hybrid": hybrid}
+        if hybrid:
+            retrieval_kwargs["query_texts"] = query_texts
 
-        return normalize_retrieval_results(raw_results)
+        caps = self._table_capabilities()
+        if caps is not None and caps.vector_column and caps.vector_column != "vector":
+            retrieval_kwargs["vector_column_name"] = caps.vector_column
+
+        raw_results = vdb.retrieval(vectors, **retrieval_kwargs)
+        return normalize_retrieval_results(raw_results), strategies
 
     def _get_local_embedder(self) -> Any:
         if self._local_embedder is None:
@@ -281,6 +369,7 @@ def create_vectordb_app(
     hf_cache_dir: str | None = None,
     device: str | None = None,
     gpu_memory_utilization: float = 0.45,
+    retrieval_mode: ServiceVectorRetrievalMode = "dense",
 ) -> FastAPI:
     """Build the VectorDB FastAPI application."""
 
@@ -299,13 +388,15 @@ def create_vectordb_app(
             hf_cache_dir=hf_cache_dir,
             device=device,
             gpu_memory_utilization=gpu_memory_utilization,
+            retrieval_mode=retrieval_mode,
         )
         _query_semaphore = asyncio.Semaphore(MAX_CONCURRENT_QUERIES)
         logger.info(
-            "VectorDB service started: uri=%s table=%s embed_mode=%s max_concurrent_queries=%d",
+            "VectorDB service started: uri=%s table=%s embed_mode=%s retrieval_mode=%s max_concurrent_queries=%d",
             lancedb_uri,
             table_name,
             _state.embed_mode,
+            retrieval_mode,
             MAX_CONCURRENT_QUERIES,
         )
         if _state.embed_mode == "none":
@@ -329,12 +420,20 @@ def create_vectordb_app(
     @app.get("/v1/health", tags=["system"])
     async def health() -> dict[str, Any]:
         rows = _state.total_rows() if _state else 0
+        effective_mode: str | None = None
+        if _state is not None and _state.table_exists:
+            try:
+                effective_mode = _state.resolve_effective_retrieval_mode()
+            except ValueError:
+                effective_mode = "unknown"
         return {
             "status": "ok",
             "table": table_name,
             "total_rows": rows,
             "table_exists": _state.table_exists if _state else False,
             "embed_mode": _state.embed_mode if _state else "none",
+            "retrieval_mode": _state.retrieval_mode if _state else retrieval_mode,
+            "effective_retrieval_mode": effective_mode,
         }
 
     @app.post("/internal/vectordb/write", response_model=WriteResponse, tags=["internal"])
@@ -368,13 +467,21 @@ def create_vectordb_app(
                 return EvidenceQueryResponse(results=[])
             return QueryResponse(results=[])
 
-        async with _query_semaphore:
-            vectors = await asyncio.to_thread(_state.embed_queries, queries)
-            hits_per_query = await asyncio.to_thread(_state.search, vectors, req.top_k)
+        try:
+            async with _query_semaphore:
+                vectors = await asyncio.to_thread(_state.embed_queries, queries)
+                hits_per_query, strategies = await asyncio.to_thread(
+                    _state.search,
+                    vectors,
+                    queries,
+                    req.top_k,
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         if req.format == "evidence":
             return EvidenceQueryResponse(
-                results=[EvidenceResult(**build_evidence_result(hits, _QUERY_STRATEGIES)) for hits in hits_per_query]
+                results=[EvidenceResult(**build_evidence_result(hits, strategies)) for hits in hits_per_query]
             )
 
         return QueryResponse(results=[QueryResult(hits=hits) for hits in hits_per_query])
@@ -412,6 +519,12 @@ def main() -> None:
         default=0.45,
         help="vLLM GPU memory fraction when --local-embed-backend=vllm.",
     )
+    parser.add_argument(
+        "--retrieval-mode",
+        default="dense",
+        choices=("dense", "hybrid", "auto"),
+        help="LanceDB retrieval mode for /v1/query (default: dense).",
+    )
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=7671)
     parser.add_argument("--log-level", default="info")
@@ -437,6 +550,7 @@ def main() -> None:
         hf_cache_dir=args.hf_cache_dir or None,
         device=args.device or None,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        retrieval_mode=args.retrieval_mode,
     )
     uvicorn.run(app, host=args.host, port=args.port)
 
