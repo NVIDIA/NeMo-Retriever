@@ -37,7 +37,6 @@ _LAZY_SUBAPPS: list[tuple[str, str, str, bool]] = [
     ("audio", "nemo_retriever.cli.audio.cli", "app", True),
     ("image", "nemo_retriever.cli.image", "app", True),
     ("pdf", "nemo_retriever.cli.pdf.__main__", "app", True),
-    ("local", "nemo_retriever.cli.local", "app", True),
     ("chart", "nemo_retriever.cli.chart.commands", "app", True),
     ("compare", "nemo_retriever.cli.compare", "app", True),
     ("eval", "nemo_retriever.tools.evaluation.cli", "app", True),

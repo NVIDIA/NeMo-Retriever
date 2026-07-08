@@ -537,7 +537,7 @@ class YoloxPageElementsModelInterface(YoloxModelInterfaceBase):
         if not images:
             return []
 
-        # Nemotron label id mapping used by nemo_retriever local stages.
+        # Map Nemotron labels to the labels expected by the page-element interface.
         # Nemotron emits "text" where `nemo_retriever.api` YOLOX expects "paragraph".
         id_to_label = {
             0: "table",
@@ -578,7 +578,7 @@ class YoloxPageElementsModelInterface(YoloxModelInterfaceBase):
             t = t.to(device=dev, dtype=torch.uint8, non_blocking=(getattr(dev, "type", "") == "cuda"))
             tensors.append(model.preprocess(t))
 
-        # Best-effort batching (mirrors nemo_retriever local stage behavior).
+        # Best-effort batching for local page-element inference.
         per_image_preds: Optional[List[Any]] = None
         with torch.inference_mode():
             with torch.autocast(device_type="cuda"):

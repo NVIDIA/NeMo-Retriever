@@ -332,55 +332,6 @@ class TestGraphicElementsOCRConfig:
 
 
 # ---------------------------------------------------------------------------
-# build_plan tests
-# ---------------------------------------------------------------------------
-
-
-@_needs_cv2
-class TestBuildPlanChartStructure:
-    def test_use_graphic_elements_selects_chart_structure_stage(self) -> None:
-        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
-
-        names = list(
-            stage_names_from_flags(
-                extract_charts=True,
-                use_graphic_elements=True,
-            )
-        )
-        assert "enrich_graphic_elements" in names
-        assert "enrich_chart" not in names
-
-    def test_no_graphic_elements_selects_default_chart_stage(self) -> None:
-        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
-
-        names = list(stage_names_from_flags(extract_charts=True))
-        assert "enrich_chart" in names
-        assert "enrich_graphic_elements" not in names
-
-    def test_no_extract_charts_yields_no_chart_stage(self) -> None:
-        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
-
-        names = list(stage_names_from_flags(extract_charts=False, use_graphic_elements=True))
-        assert "enrich_graphic_elements" not in names
-        assert "enrich_chart" not in names
-
-    def test_graphic_elements_flag_does_not_affect_table_stages(self) -> None:
-        from nemo_retriever.graph.stages.build_plan import stage_names_from_flags
-
-        names = list(
-            stage_names_from_flags(
-                extract_tables=True,
-                extract_charts=True,
-                use_graphic_elements=True,
-                use_table_structure=True,
-                table_output_format="markdown",
-            )
-        )
-        assert "enrich_table_structure" in names
-        assert "enrich_graphic_elements" in names
-
-
-# ---------------------------------------------------------------------------
 # _prediction_to_detections string labels test
 # ---------------------------------------------------------------------------
 

@@ -99,8 +99,8 @@ def test_pipeline_compatibility_command_is_hidden_but_callable() -> None:
     assert result.exit_code == 0
 
 
-@pytest.mark.parametrize("removed_command", ("txt", "html"))
-def test_format_specific_root_commands_are_not_callable(removed_command: str) -> None:
+@pytest.mark.parametrize("removed_command", ("txt", "html", "local"))
+def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [removed_command, "--help"])
 
     assert result.exit_code == 2
