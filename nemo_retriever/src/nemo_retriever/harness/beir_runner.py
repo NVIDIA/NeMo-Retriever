@@ -19,7 +19,7 @@ from nemo_retriever.harness.contracts import (
     FailurePayload,
     HarnessRunError,
 )
-from nemo_retriever.harness.json_io import write_json
+from nemo_retriever.harness.json_io import artifact_write_error, write_json
 from nemo_retriever.query.options import QueryRequest, ServiceQueryRequest
 from nemo_retriever.query.service import query_documents as query_service_documents
 from nemo_retriever.query.workflow import ResolvedQueryPlan
@@ -33,12 +33,15 @@ from nemo_retriever.tools.recall.beir import (
 
 
 def _write_trec_run(path: Path, run: Mapping[str, Mapping[str, float]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        for query_id, docs in run.items():
-            ordered = sorted(docs.items(), key=lambda item: (-item[1], item[0]))
-            for rank, (doc_id, score) in enumerate(ordered, start=1):
-                handle.write(f"{query_id} Q0 {doc_id} {rank} {float(score):.6f} retriever-harness\n")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as handle:
+            for query_id, docs in run.items():
+                ordered = sorted(docs.items(), key=lambda item: (-item[1], item[0]))
+                for rank, (doc_id, score) in enumerate(ordered, start=1):
+                    handle.write(f"{query_id} Q0 {doc_id} {rank} {float(score):.6f} retriever-harness\n")
+    except OSError as exc:
+        raise artifact_write_error(exc) from exc
 
 
 def _write_query_result(
@@ -168,8 +171,6 @@ def _dense_retrieve(
     raw_hits: list[list[dict[str, Any]]] = []
     latencies_ms: list[float] = []
     query_results_path = writer.path("query_results.jsonl")
-    if query_results_path.exists():
-        query_results_path.unlink()
     for query_id, query_text in zip(dataset.query_ids, dataset.queries):
         start = time.perf_counter()
         try:
@@ -254,8 +255,6 @@ def _agentic_retrieve(
     query_count = len(dataset.queries)
     per_query_ms = total_ms / query_count if query_count else 0.0
     query_results_path = writer.path("query_results.jsonl")
-    if query_results_path.exists():
-        query_results_path.unlink()
     for query_id, query_text, doc_ids in zip(dataset.query_ids, dataset.queries, ranked_doc_ids):
         _write_query_result(
             query_results_path,
@@ -325,8 +324,6 @@ def run_service_beir_queries(
     raw_hits: list[list[dict[str, Any]]] = []
     latencies_ms: list[float] = []
     query_results_path = writer.path("query_results.jsonl")
-    if query_results_path.exists():
-        query_results_path.unlink()
     for query_id, query_text in zip(dataset.query_ids, dataset.queries):
         start = time.perf_counter()
         try:

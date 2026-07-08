@@ -10,6 +10,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import sys
 import tempfile
@@ -51,15 +52,17 @@ def append_jsonl(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def append_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(text)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(text)
+    except OSError as exc:
+        raise artifact_write_error(exc) from exc
 
 
 @contextlib.contextmanager
 def capture_output_to_log(path: Path, *, label: str):
     """Capture noisy stdout/stderr to a persistent run log."""
-    path.parent.mkdir(parents=True, exist_ok=True)
     append_text(path, f"\n## {utc_now()} {label} start\n")
     try:
         stdout_fd, stderr_fd = sys.stdout.fileno(), sys.stderr.fileno()
@@ -100,16 +103,19 @@ def capture_output_to_log(path: Path, *, label: str):
             if buf is not None:
                 buf.seek(0)
                 captured = buf.read()
-                with path.open("ab") as handle:
-                    if captured:
-                        handle.write(captured)
-                        if not captured.endswith(b"\n"):
-                            handle.write(b"\n")
-                    if failure_traceback:
-                        handle.write(failure_traceback.encode("utf-8", errors="replace"))
-                        if not failure_traceback.endswith("\n"):
-                            handle.write(b"\n")
-                    handle.write(f"## {utc_now()} {label} {'failed' if failed else 'complete'}\n".encode("utf-8"))
+                try:
+                    with path.open("ab") as handle:
+                        if captured:
+                            handle.write(captured)
+                            if not captured.endswith(b"\n"):
+                                handle.write(b"\n")
+                        if failure_traceback:
+                            handle.write(failure_traceback.encode("utf-8", errors="replace"))
+                            if not failure_traceback.endswith("\n"):
+                                handle.write(b"\n")
+                        handle.write(f"## {utc_now()} {label} {'failed' if failed else 'complete'}\n".encode("utf-8"))
+                except OSError as exc:
+                    raise artifact_write_error(exc) from exc
                 if failed and captured:
                     sys.stderr.buffer.write(captured)
                     sys.stderr.flush()
@@ -122,12 +128,22 @@ def capture_output_to_log(path: Path, *, label: str):
             os.close(saved_stdout)
 
 
-_SENSITIVE_KEY_PARTS = ("api_key", "password", "secret", "credential", "token", "webhook")
+_SENSITIVE_KEY_MARKERS = ("api_key", "password", "secret", "credential", "webhook")
+_TOKEN_CREDENTIAL_QUALIFIERS = {"access", "api", "auth", "bearer", "oauth", "refresh", "service", "session"}
 
 
 def _is_sensitive_key(value: Any) -> bool:
-    normalized = str(value).lower()
-    return any(token in normalized for token in _SENSITIVE_KEY_PARTS)
+    snake_case = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", str(value))
+    normalized = re.sub(r"[^a-z0-9]+", "_", snake_case.lower()).strip("_")
+    if any(marker in normalized for marker in _SENSITIVE_KEY_MARKERS):
+        return True
+    parts = normalized.split("_")
+    if "token" in parts:
+        return True
+    return any(
+        part == "tokens" and index > 0 and parts[index - 1] in _TOKEN_CREDENTIAL_QUALIFIERS
+        for index, part in enumerate(parts)
+    )
 
 
 def redact(value: Any) -> Any:
