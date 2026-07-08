@@ -31,20 +31,30 @@ class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
         endpoint = (self._kwargs.get("embedding_endpoint") or self._kwargs.get("embed_invoke_url") or "").strip()
         if not endpoint:
             self._kwargs["embedding_endpoint"] = self.DEFAULT_EMBED_INVOKE_URL
+            endpoint = self.DEFAULT_EMBED_INVOKE_URL
         self._model = None
 
         api_key = self._kwargs.get("api_key")
+        if endpoint.rstrip("/") == self.DEFAULT_EMBED_INVOKE_URL and not api_key:
+            raise RuntimeError(
+                "CPU-only ingest uses NVIDIA's hosted embedding endpoint and requires "
+                "NVIDIA_API_KEY or NGC_API_KEY. Set one of those variables, or pass "
+                "--embed-invoke-url for a different embedding endpoint."
+            )
         if endpoint and api_key:
             # Probe the /embeddings path with a model-name-only body — auth is
             # checked before body validation so a bad key returns 401 without
             # triggering inference. A valid key with an empty input returns 400.
             model_name = self._kwargs.get("model_name", "")
+            probe_url = (
+                endpoint if endpoint.rstrip("/").endswith("/embeddings") else endpoint.rstrip("/") + "/embeddings"
+            )
             probe_endpoint(
                 endpoint,
                 name="embed",
                 prefix="_BatchEmbedCPUActor",
                 api_key=api_key,
-                post_url=endpoint.rstrip("/") + "/embeddings",
+                post_url=probe_url,
                 post_body={"input": [], "model": model_name},
             )
 
