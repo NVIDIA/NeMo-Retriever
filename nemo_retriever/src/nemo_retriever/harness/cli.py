@@ -100,7 +100,13 @@ def run_command(
     runfile: Annotated[Path | None, typer.Option("--runfile", help="JSON/YAML file for one concrete run.")] = None,
     output_dir: Annotated[str | None, typer.Option("--output-dir", help="Directory for run artifacts.")] = None,
     run_id: Annotated[str | None, typer.Option("--run-id", help="Stable run identifier.")] = None,
-    mode: Annotated[str | None, typer.Option("--mode", help="Ingest mode: local or batch.")] = None,
+    mode: Annotated[
+        str | None, typer.Option("--mode", help="System-under-test mode: local, batch, or service.")
+    ] = None,
+    service_endpoint: Annotated[
+        str | None,
+        typer.Option("--service-endpoint", help="Machine-local Retriever service URL for service mode."),
+    ] = None,
     set_values: Annotated[
         list[str] | None,
         typer.Option("--set", help="Apply a small KEY=VALUE override. Repeatable."),
@@ -158,6 +164,7 @@ def run_command(
             overrides=set_values or (),
             requirements=requirements or (),
             dry_run=dry_run,
+            service_endpoint=service_endpoint,
             runfile_payload=runfile_payload,
             runfile_path=runfile_path,
         )
@@ -181,7 +188,7 @@ def run_command(
 def run_set_command(
     runset: Annotated[str, typer.Argument(help="Runset name.")],
     output_dir: Annotated[str | None, typer.Option("--output-dir", help="Directory for session artifacts.")] = None,
-    mode: Annotated[str, typer.Option("--mode", help="Ingest mode: local or batch.")] = "local",
+    mode: Annotated[str, typer.Option("--mode", help="System-under-test mode: local, batch, or service.")] = "local",
     set_values: Annotated[
         list[str] | None,
         typer.Option("--set", help="Apply a small KEY=VALUE override to every run. Repeatable."),
@@ -233,7 +240,17 @@ def run_files_command(
             help="Machine-local YAML file that maps registered datasets to document and query paths.",
         ),
     ] = None,
-    mode: Annotated[str | None, typer.Option("--mode", help="Override ingest mode for every runfile.")] = None,
+    mode: Annotated[
+        str | None,
+        typer.Option("--mode", help="Override system-under-test mode for every runfile."),
+    ] = None,
+    service_endpoint: Annotated[
+        str | None,
+        typer.Option(
+            "--service-endpoint",
+            help="Machine-local Retriever service URL, applied only to service-mode runfiles.",
+        ),
+    ] = None,
     set_values: Annotated[
         list[str] | None,
         typer.Option("--set", help="Apply a small KEY=VALUE override to every run. Repeatable."),
@@ -256,6 +273,7 @@ def run_files_command(
             session_name=session_name,
             dataset_paths_file=dataset_paths,
             mode=mode,
+            service_endpoint=service_endpoint,
             overrides=set_values or (),
             requirements=requirements or (),
             dry_run=dry_run,

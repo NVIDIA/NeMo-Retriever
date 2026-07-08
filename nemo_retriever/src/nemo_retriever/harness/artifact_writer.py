@@ -33,6 +33,7 @@ _ARTIFACT_NAMES = {
     "beir_metrics": "beir_metrics.json",
     "beir_run": "beir_run.trec",
     "lancedb": "lancedb",
+    "service_logs": "service_logs",
 }
 _LEGACY_ARTIFACT_NAMES = ("summary_metrics.json",)
 

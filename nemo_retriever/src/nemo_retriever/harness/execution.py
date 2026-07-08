@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+import os
 import re
 import time
 import traceback
@@ -21,7 +22,7 @@ from nemo_retriever.harness.artifact_writer import (
     capture_output_to_log,
     redact,
 )
-from nemo_retriever.harness.beir_runner import run_beir_queries
+from nemo_retriever.harness.beir_runner import run_beir_queries, run_service_beir_queries
 from nemo_retriever.harness.contracts import (
     EXIT_ARTIFACT_WRITE_FAILURE,
     EXIT_INGEST_FAILURE,
@@ -41,13 +42,17 @@ from nemo_retriever.harness.metric_gates import enforce_metric_gates, parse_metr
 from nemo_retriever.harness.resolution import (
     build_ingest_request,
     build_query_request,
+    build_service_ingest_plan_request,
+    build_service_query_request,
     make_run_id,
     query_plan_payload,
     resolve_artifact_dir,
     resolve_benchmark,
+    service_plan_payload,
     validate_dataset_inputs,
 )
 from nemo_retriever.ingest.plan import resolve_ingest_plan
+from nemo_retriever.ingest.service import execute_service_ingest_request, resolve_service_ingest_request
 from nemo_retriever.query.workflow import resolve_query_plan
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -66,6 +71,9 @@ class PreparedBenchmark:
     dry_run: bool
     resolved: dict[str, Any]
     dataset_path: Path
+    service_endpoint: str | None = None
+    service_ingest_request: Any | None = None
+    service_query_request: Any | None = None
 
 
 def _concise_message(message: str) -> str:
@@ -234,11 +242,54 @@ def preflight_benchmark(
     overrides: Sequence[str],
     requirements: Sequence[str],
     dry_run: bool,
+    service_endpoint: str | None = None,
 ) -> PreparedBenchmark:
     """Resolve and validate one run without creating or replacing artifacts."""
     parse_metric_gates(requirements)
     resolved = resolve_benchmark(benchmark, mode=mode, overrides=overrides)
     dataset_path, _query_path = validate_dataset_inputs(resolved, dry_run=dry_run)
+    resolved_service_endpoint: str | None = None
+    service_ingest_request: Any | None = None
+    service_query_request: Any | None = None
+    if mode == "service":
+        resolved_service_endpoint = service_endpoint or "http://localhost:7670"
+        api_token = os.environ.get("HARNESS_SERVICE_API_TOKEN") or None
+        try:
+            service_ingest_request = resolve_service_ingest_request(
+                build_service_ingest_plan_request(
+                    resolved,
+                    dataset_path,
+                    service_url=resolved_service_endpoint,
+                    service_concurrency=8,
+                    service_api_token=api_token,
+                )
+            )
+            service_query_request = build_service_query_request(
+                resolved,
+                "",
+                service_url=resolved_service_endpoint,
+                service_api_token=api_token,
+            )
+        except FileNotFoundError as exc:
+            raise HarnessRunError(
+                EXIT_MISSING_INPUT,
+                FailurePayload(
+                    failed_phase="ingest_plan",
+                    failure_reason="dataset_missing",
+                    retryable=False,
+                    message=str(exc),
+                ),
+            ) from exc
+        except ValueError as exc:
+            raise HarnessRunError(
+                EXIT_INVALID,
+                FailurePayload(
+                    failed_phase="ingest_plan",
+                    failure_reason="ingest_plan_failed",
+                    retryable=False,
+                    message=str(exc),
+                ),
+            ) from exc
     return PreparedBenchmark(
         benchmark=benchmark,
         mode=mode,
@@ -247,6 +298,9 @@ def preflight_benchmark(
         dry_run=bool(dry_run),
         resolved=resolved,
         dataset_path=dataset_path,
+        service_endpoint=resolved_service_endpoint,
+        service_ingest_request=service_ingest_request,
+        service_query_request=service_query_request,
     )
 
 
@@ -259,6 +313,7 @@ def run_benchmark(
     overrides: Sequence[str] = (),
     requirements: Sequence[str] = (),
     dry_run: bool = False,
+    service_endpoint: str | None = None,
     runfile_payload: dict[str, Any] | None = None,
     runfile_path: str | None = None,
 ) -> RunOutcome:
@@ -268,6 +323,7 @@ def run_benchmark(
         overrides=overrides,
         requirements=requirements,
         dry_run=dry_run,
+        service_endpoint=service_endpoint,
     )
     return run_prepared_benchmark(
         prepared,
@@ -291,6 +347,7 @@ def run_prepared_benchmark(
     dataset_path = prepared.dataset_path
     requirements = prepared.requirements
     dry_run = prepared.dry_run
+    service_mode = prepared.mode == "service"
     effective_run_id = run_id or make_run_id(benchmark)
     artifact_dir = resolve_artifact_dir(benchmark, effective_run_id, output_dir)
     try:
@@ -322,40 +379,52 @@ def run_prepared_benchmark(
         write_json(writer.path("environment.json"), environment)
 
         writer.status(status="running", phase="ingest_plan")
-        ingest_request = build_ingest_request(resolved, dataset_path, writer.artifact_dir)
-        write_json(writer.path("resolved_benchmark.json"), redact(resolved))
-        try:
-            ingest_plan = resolve_ingest_plan(ingest_request)
-            ingest_plan_payload = run_ingest_workflow(ingest_plan, dry_run=True)
-        except FileNotFoundError as exc:
-            raise HarnessRunError(
-                EXIT_MISSING_INPUT,
-                FailurePayload(
-                    failed_phase="ingest_plan",
-                    failure_reason="dataset_missing",
-                    retryable=False,
-                    message=str(exc),
-                    debug_artifacts=("resolved_benchmark.json",),
-                ),
-            ) from exc
-        except ValueError as exc:
-            raise HarnessRunError(
-                EXIT_INVALID,
-                FailurePayload(
-                    failed_phase="ingest_plan",
-                    failure_reason="ingest_plan_failed",
-                    retryable=False,
-                    message=str(exc),
-                    debug_artifacts=("resolved_benchmark.json",),
-                ),
-            ) from exc
-        write_json(writer.path("ingest_plan.json"), redact(ingest_plan_payload))
-
-        writer.status(status="running", phase="query_plan")
-        query_request = build_query_request(resolved, "")
-        query_plan = resolve_query_plan(query_request)
-        query_plan_data = query_plan_payload(query_plan)
-        write_json(writer.path("query_plan.json"), query_plan_data)
+        if service_mode:
+            ingest_request = prepared.service_ingest_request
+            query_request = prepared.service_query_request
+            if ingest_request is None or query_request is None:
+                raise RuntimeError("Service-mode benchmark was not prepared with service requests")
+            plan_payload = service_plan_payload(ingest_request, query_request)
+            ingest_documents = ingest_request.documents
+            write_json(writer.path("ingest_plan.json"), plan_payload)
+            writer.status(status="running", phase="query_plan")
+            write_json(writer.path("query_plan.json"), plan_payload["query"])
+            query_plan = None
+        else:
+            ingest_request = build_ingest_request(resolved, dataset_path, writer.artifact_dir)
+            write_json(writer.path("resolved_benchmark.json"), redact(resolved))
+            try:
+                ingest_plan = resolve_ingest_plan(ingest_request)
+                ingest_plan_payload = run_ingest_workflow(ingest_plan, dry_run=True)
+            except FileNotFoundError as exc:
+                raise HarnessRunError(
+                    EXIT_MISSING_INPUT,
+                    FailurePayload(
+                        failed_phase="ingest_plan",
+                        failure_reason="dataset_missing",
+                        retryable=False,
+                        message=str(exc),
+                        debug_artifacts=("resolved_benchmark.json",),
+                    ),
+                ) from exc
+            except ValueError as exc:
+                raise HarnessRunError(
+                    EXIT_INVALID,
+                    FailurePayload(
+                        failed_phase="ingest_plan",
+                        failure_reason="ingest_plan_failed",
+                        retryable=False,
+                        message=str(exc),
+                        debug_artifacts=("resolved_benchmark.json",),
+                    ),
+                ) from exc
+            ingest_documents = ingest_plan.documents
+            write_json(writer.path("ingest_plan.json"), redact(ingest_plan_payload))
+            writer.status(status="running", phase="query_plan")
+            query_request = build_query_request(resolved, "")
+            query_plan = resolve_query_plan(query_request)
+            query_plan_data = query_plan_payload(query_plan)
+            write_json(writer.path("query_plan.json"), query_plan_data)
 
         ingest_summary: dict[str, Any] | None = None
         ingest_secs: float | None = None
@@ -367,11 +436,16 @@ def run_prepared_benchmark(
             writer.event("write_artifacts", "dry_run", "Dry-run completed without executing ingest or query")
         else:
             writer.status(status="running", phase="ingest")
-            writer.event("ingest", "ingest_start", f"Ingesting {len(ingest_plan.documents)} document(s)")
+            writer.event("ingest", "ingest_start", f"Ingesting {len(ingest_documents)} document(s)")
             ingest_start = time.perf_counter()
             try:
-                with capture_output_to_log(writer.path("run.log"), label="ingest"):
-                    ingest_summary = run_ingest_workflow(ingest_plan, dry_run=False)
+                with capture_output_to_log(
+                    writer.path("run.log"), label="service_ingest" if service_mode else "ingest"
+                ):
+                    if service_mode:
+                        ingest_summary = execute_service_ingest_request(ingest_request).to_summary_dict()
+                    else:
+                        ingest_summary = run_ingest_workflow(ingest_plan, dry_run=False)
             except Exception as exc:
                 if isinstance(exc, HarnessRunError) and exc.exit_code == EXIT_ARTIFACT_WRITE_FAILURE:
                     raise
@@ -389,13 +463,18 @@ def run_prepared_benchmark(
 
             if (resolved.get("evaluation") or {}).get("mode") == "beir":
                 with capture_output_to_log(writer.path("run.log"), label="query_evaluate"):
-                    query_latencies_ms, beir_metrics, query_count = run_beir_queries(
-                        writer, resolved, query_plan, query_request
-                    )
+                    if service_mode:
+                        query_latencies_ms, beir_metrics, query_count = run_service_beir_queries(
+                            writer, resolved, query_request
+                        )
+                    else:
+                        query_latencies_ms, beir_metrics, query_count = run_beir_queries(
+                            writer, resolved, query_plan, query_request
+                        )
 
         summary_metrics = build_summary_metrics(
             resolved,
-            documents=ingest_plan.documents,
+            documents=ingest_documents,
             ingest_summary=ingest_summary,
             ingest_secs=ingest_secs,
             query_latencies_ms=query_latencies_ms,
