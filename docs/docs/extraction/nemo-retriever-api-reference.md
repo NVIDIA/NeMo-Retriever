@@ -13,6 +13,6 @@ To tune splitter throughput from the CLI, use `--pdf-split-batch-size` (Ray acto
       filters:
         - "!^pdf_split_config$"
 
-::: nemo_retriever.retriever
+::: nemo_retriever.graph.retriever
 
-::: nemo_retriever.params
+::: nemo_retriever.common.params
