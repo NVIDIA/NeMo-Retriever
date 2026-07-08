@@ -2,11 +2,19 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from contextlib import contextmanager
 import json
 
 import pytest
 
-from nemo_retriever.harness.artifact_writer import artifact_paths, ArtifactWriter, capture_output_to_log, redact
+from nemo_retriever.harness.artifact_writer import (
+    append_text,
+    artifact_paths,
+    ArtifactWriter,
+    capture_output_to_log,
+    redact,
+)
+from nemo_retriever.harness.beir_runner import _write_trec_run
 from nemo_retriever.harness.contracts import (
     EXIT_ARTIFACT_WRITE_FAILURE,
     EXIT_INGEST_FAILURE,
@@ -89,6 +97,42 @@ def test_redact_recurses_into_structured_override_values():
     override = 'query={"reranker_api_key":"secret-value","top_k":10}'
 
     assert redact(override) == 'query={"reranker_api_key": "<redacted>", "top_k": 10}'
+
+
+def test_redact_preserves_token_limits():
+    payload = {
+        "reranker_api_key": "secret-value",
+        "webhookUrl": "https://hooks.example.invalid/secret",
+        "webhooks": ["https://hooks.example.invalid/one"],
+        "passwords": ["password-value"],
+        "client_secrets": ["client-secret"],
+        "access_tokens": ["access-token"],
+        "caption_max_tokens": 77,
+        "text_chunk_overlap_tokens": 12,
+        "tokenizer_model": "model-name",
+    }
+
+    assert redact(payload) == {
+        "reranker_api_key": "<redacted>",
+        "webhookUrl": "<redacted>",
+        "webhooks": "<redacted>",
+        "passwords": "<redacted>",
+        "client_secrets": "<redacted>",
+        "access_tokens": "<redacted>",
+        "caption_max_tokens": 77,
+        "text_chunk_overlap_tokens": 12,
+        "tokenizer_model": "model-name",
+    }
+
+
+def test_text_artifact_writes_are_classified(tmp_path):
+    with pytest.raises(HarnessRunError) as log_error:
+        append_text(tmp_path, "log line")
+    with pytest.raises(HarnessRunError) as trec_error:
+        _write_trec_run(tmp_path, {"query": {"document": 1.0}})
+
+    assert log_error.value.exit_code == EXIT_ARTIFACT_WRITE_FAILURE
+    assert trec_error.value.exit_code == EXIT_ARTIFACT_WRITE_FAILURE
 
 
 def test_invalid_run_config_preserves_existing_artifacts(tmp_path):
@@ -220,6 +264,35 @@ def test_run_benchmark_classifies_artifact_writer_initialization_failures(monkey
     assert error.value.exit_code == EXIT_ARTIFACT_WRITE_FAILURE
     assert error.value.failure.failure_reason == "artifact_write_failed"
     assert error.value.failure.message == "OSError: artifact directory unavailable"
+
+
+def test_run_benchmark_preserves_run_log_write_failure(monkeypatch, tmp_path):
+    import nemo_retriever.harness.execution as execution
+    from nemo_retriever.harness.json_io import artifact_write_error
+
+    class FakeIngestPlan:
+        documents = ()
+
+    @contextmanager
+    def fail_log_capture(*args, **kwargs):
+        raise artifact_write_error(OSError("run log unavailable"))
+        yield
+
+    monkeypatch.setattr(execution, "resolve_ingest_plan", lambda request: FakeIngestPlan())
+    monkeypatch.setattr(execution, "run_ingest_workflow", lambda plan, dry_run: {})
+    monkeypatch.setattr(execution, "resolve_query_plan", lambda request: object())
+    monkeypatch.setattr(execution, "query_plan_payload", lambda plan: {})
+    monkeypatch.setattr(execution, "capture_output_to_log", fail_log_capture)
+
+    outcome = run_benchmark(
+        "jp20_smoke",
+        output_dir=str(tmp_path / "run"),
+        overrides=(f'dataset.path="{tmp_path}"',),
+    )
+
+    assert outcome.exit_code == EXIT_ARTIFACT_WRITE_FAILURE
+    assert outcome.results["failure"]["failure_reason"] == "artifact_write_failed"
+    assert outcome.results["failure"]["message"] == "OSError: run log unavailable"
 
 
 def test_run_benchmark_keeps_non_write_failures_internal(monkeypatch, tmp_path):

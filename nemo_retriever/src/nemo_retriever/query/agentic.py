@@ -127,6 +127,7 @@ class AgenticRetrievalConfig:
     vdb_op: str = "lancedb"
     vdb_kwargs: dict[str, Any] = field(default_factory=dict)
     query_embedder: str = VL_EMBED_MODEL
+    query_embedder_provider_prefix: Optional[str] = None
     embedding_endpoint: Optional[str] = None
     embedding_api_key: str = ""
     local_hf_batch_size: int = 32
@@ -210,6 +211,7 @@ class AgenticRetriever:
             embed_kwargs={
                 "model_name": str(cfg.query_embedder or VL_EMBED_MODEL),
                 "embed_model_name": str(cfg.query_embedder or VL_EMBED_MODEL),
+                "embed_model_provider_prefix": cfg.query_embedder_provider_prefix,
                 "embedding_endpoint": cfg.embedding_endpoint,
                 "api_key": cfg.embedding_api_key,
                 "input_type": "query",

@@ -15,7 +15,12 @@ from nemo_retriever.version import get_version_info
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(help="Retriever")
+app = typer.Typer(
+    help=(
+        "NeMo Retriever product workflows: ingest content, query an index, "
+        "run benchmark harnesses, or operate the service."
+    )
+)
 
 # Service sub-app is always available (lightweight, no GPU deps).
 from nemo_retriever.service.cli import app as service_app  # noqa: E402
@@ -24,30 +29,28 @@ app.add_typer(service_app, name="service")
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(query_app, name="query")
 
-# All other sub-apps are registered lazily so that missing optional
-# dependencies (tritonclient, torch, …) don't prevent the service
-# from starting.
-_LAZY_SUBAPPS: list[tuple[str, str, str]] = [
-    ("audio", "nemo_retriever.cli.audio.cli", "app"),
-    ("image", "nemo_retriever.cli.image", "app"),
-    ("pdf", "nemo_retriever.cli.pdf.__main__", "app"),
-    ("local", "nemo_retriever.cli.local", "app"),
-    ("chart", "nemo_retriever.cli.chart.commands", "app"),
-    ("compare", "nemo_retriever.cli.compare", "app"),
-    ("eval", "nemo_retriever.tools.evaluation.cli", "app"),
-    ("benchmark", "nemo_retriever.tools.benchmark", "app"),
-    ("harness", "nemo_retriever.harness", "app"),
-    ("recall", "nemo_retriever.tools.recall", "app"),
-    ("skill-eval", "nemo_retriever.tools.skill_eval", "app"),
-    ("txt", "nemo_retriever.cli.txt.__main__", "app"),
-    ("html", "nemo_retriever.cli.html.__main__", "app"),
-    ("pipeline", "nemo_retriever.cli.pipeline.__main__", "app"),
+# Keep compatibility commands callable while hiding them from the product help
+# surface. HTML and TXT are intentionally absent: they are ingest input formats,
+# not standalone workflows.
+_LAZY_SUBAPPS: list[tuple[str, str, str, bool]] = [
+    ("harness", "nemo_retriever.harness", "app", False),
+    ("audio", "nemo_retriever.cli.audio.cli", "app", True),
+    ("image", "nemo_retriever.cli.image", "app", True),
+    ("pdf", "nemo_retriever.cli.pdf.__main__", "app", True),
+    ("local", "nemo_retriever.cli.local", "app", True),
+    ("chart", "nemo_retriever.cli.chart.commands", "app", True),
+    ("compare", "nemo_retriever.cli.compare", "app", True),
+    ("eval", "nemo_retriever.tools.evaluation.cli", "app", True),
+    ("benchmark", "nemo_retriever.tools.benchmark", "app", True),
+    ("recall", "nemo_retriever.tools.recall", "app", True),
+    ("skill-eval", "nemo_retriever.tools.skill_eval", "app", True),
+    ("pipeline", "nemo_retriever.cli.pipeline.__main__", "app", True),
 ]
 
-for _name, _module, _attr in _LAZY_SUBAPPS:
+for _name, _module, _attr, _hidden in _LAZY_SUBAPPS:
     try:
         _mod = importlib.import_module(_module)
-        app.add_typer(getattr(_mod, _attr), name=_name)
+        app.add_typer(getattr(_mod, _attr), name=_name, hidden=_hidden)
     except Exception:
         logger.debug("Skipping '%s' sub-command (import failed)", _name)
 
