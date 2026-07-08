@@ -34,8 +34,33 @@ if TYPE_CHECKING:
         AnswerJudge,
         AnswerResult,
         LLMClient,
+        MultimodalChunk,
         RetrievalResult,
     )
+
+
+def _hits_to_multimodal_chunks(hits: list[RetrievalHit]) -> list["MultimodalChunk"]:
+    """Convert raw retrieval hits to MultimodalChunk objects.
+
+    Visual content types (image, chart, infographic, table) that have a
+    stored_image_uri carry both the text caption and the image path.
+    All other hits carry text only.
+    """
+    from nemo_retriever.models.llm.types import MultimodalChunk, VISUAL_CONTENT_TYPES
+
+    chunks: list[MultimodalChunk] = []
+    for hit in hits:
+        content_type = str(hit.get("content_type") or "text")
+        image_uri: Optional[str] = hit.get("stored_image_uri")  # type: ignore[assignment]
+        use_image = content_type in VISUAL_CONTENT_TYPES and bool(image_uri)
+        chunks.append(
+            MultimodalChunk(
+                text=str(hit.get("text", "")),
+                image_uri=image_uri if use_image else None,
+                content_type=content_type,
+            )
+        )
+    return chunks
 
 
 def _coerce_vdb_init(user: dict[str, Any]) -> dict[str, Any]:
@@ -497,11 +522,35 @@ class Retriever:
         reference: Optional[str] = None,
         top_k: Optional[int] = None,
         reasoning_enabled: Optional[bool] = None,
+        multimodal: bool = False,
         vdb_kwargs: Optional[dict[str, Any]] = None,
         embed_kwargs: Optional[dict[str, Any]] = None,
     ) -> "AnswerResult":
+        """Generate a RAG answer for ``query`` using retrieved context.
+
+        When ``multimodal=True`` the client must implement
+        :class:`~nemo_retriever.llm.MultimodalLLMClient` (e.g. :class:`LiteVLMClient`).
+        Visual hits (image, chart, infographic, table) that carry a
+        ``stored_image_uri`` will have their images loaded and sent inline to
+        the VLM alongside the text caption.  Text-only hits pass through
+        unchanged in both modes.
+
+        Args:
+            query: The question to answer.
+            llm: LLM client for generation.  Must additionally implement
+                ``generate_multimodal`` when ``multimodal=True``.
+            judge: Optional judge for Tier-3 scoring; requires ``reference``.
+            reference: Gold answer for scoring.
+            top_k: Chunks to retrieve (defaults to ``self.top_k``).
+            reasoning_enabled: Per-call reasoning toggle override.
+            multimodal: When ``True``, convert visual hits to image+text chunks
+                and call ``llm.generate_multimodal()`` instead of ``llm.generate()``.
+            vdb_kwargs: Forwarded to the VDB retrieval operator.
+            embed_kwargs: Forwarded to the embedding operator.
+        """
         from nemo_retriever.models.llm.types import (
             AnswerRequest,
+            RetrievalResult,
             build_answer_result,
         )
 
@@ -515,21 +564,41 @@ class Retriever:
             reference=reference,
             judge_enabled=judge is not None,
         )
-        retrieved = self.retrieve(
-            answer_req.query,
-            top_k=answer_req.top_k,
-            vdb_kwargs=vdb_kwargs,
-            embed_kwargs=embed_kwargs,
-        )
 
         generate_kwargs: dict[str, Any] = {}
         if answer_req.reasoning_enabled is not None:
             generate_kwargs["reasoning_enabled"] = answer_req.reasoning_enabled
-        gen = llm.generate(answer_req.query, retrieved.chunks, **generate_kwargs)
+
+        if multimodal:
+            if not hasattr(llm, "generate_multimodal"):
+                raise TypeError(
+                    "multimodal=True requires an llm that implements generate_multimodal() "
+                    "(e.g. LiteVLMClient). Got: " + type(llm).__name__
+                )
+            hits = self.query(
+                answer_req.query,
+                top_k=answer_req.top_k,
+                vdb_kwargs=vdb_kwargs,
+                embed_kwargs=embed_kwargs,
+            )
+            mm_chunks = _hits_to_multimodal_chunks(hits)
+            gen = llm.generate_multimodal(answer_req.query, mm_chunks, **generate_kwargs)  # type: ignore[union-attr]
+            retrieval = RetrievalResult(
+                chunks=[c.text for c in mm_chunks],
+                metadata=[{k: v for k, v in hit.items() if k != "text"} for hit in hits],
+            )
+        else:
+            retrieval = self.retrieve(
+                answer_req.query,
+                top_k=answer_req.top_k,
+                vdb_kwargs=vdb_kwargs,
+                embed_kwargs=embed_kwargs,
+            )
+            gen = llm.generate(answer_req.query, retrieval.chunks, **generate_kwargs)
 
         return build_answer_result(
             query=answer_req.query,
-            retrieval=retrieved,
+            retrieval=retrieval,
             generation=gen,
             reference=answer_req.reference,
             judge=judge if answer_req.judge_enabled else None,

@@ -39,6 +39,37 @@ class LLMClient(Protocol):
     ) -> "GenerationResult": ...
 
 
+VISUAL_CONTENT_TYPES: frozenset[str] = frozenset({"image", "chart", "infographic", "table"})
+"""Content types whose retrieved hits carry an image alongside their text caption."""
+
+
+@dataclass
+class MultimodalChunk:
+    """A retrieved chunk that may carry an image alongside its text.
+
+    ``image_uri`` is populated for visual content types (image, chart,
+    infographic, table) and points to the file written by StoreOperator.
+    Text-only chunks leave it None.
+    """
+
+    text: str
+    image_uri: Optional[str] = None
+    content_type: str = "text"
+
+
+@runtime_checkable
+class MultimodalLLMClient(Protocol):
+    """Pluggable VLM generation interface for multimodal RAG."""
+
+    def generate_multimodal(
+        self,
+        query: str,
+        chunks: list["MultimodalChunk"],
+        *,
+        reasoning_enabled: Optional[bool] = None,
+    ) -> "GenerationResult": ...
+
+
 @runtime_checkable
 class AnswerJudge(Protocol):
     """Pluggable answer scoring interface."""
