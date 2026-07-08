@@ -3,8 +3,7 @@
 The canonical query flow is inline in `SKILL.md` §Query turn (the semantic-hybrid + lexical-sparse passes). This reference holds the detail behind it: the primary-pass command, the exact-term re-query, chart text-extract, and composing the reply.
 
 ```bash
-timeout 2000 <RETRIEVER_VENV>/bin/retriever query "<the user's question>" --format evidence --hybrid --top-k 10 \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2 --query-embed-backend hf \
+timeout 2000 <RETRIEVER_VENV>/bin/retriever query "<the user's question>" --format evidence --retrieval-mode hybrid --top-k 10 \
   | tee ./evidence.json
 ```
 

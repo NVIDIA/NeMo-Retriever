@@ -7,6 +7,7 @@
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.operator_archetype import ArchetypeOperator
@@ -383,13 +384,30 @@ class TestBatchEmbedCPUActor:
         assert issubclass(_BatchEmbedCPUActor, CPUOperator)
         assert not issubclass(_BatchEmbedCPUActor, GPUOperator)
 
-    def test_uses_default_invoke_url(self):
+    @patch("nemo_retriever.operators.embed.cpu_operator.probe_endpoint")
+    def test_uses_default_invoke_url(self, mock_probe):
         from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
         from nemo_retriever.common.params import EmbedParams
 
-        actor = _BatchEmbedCPUActor(params=EmbedParams(model_name="test-model"))
+        actor = _BatchEmbedCPUActor(params=EmbedParams(model_name="test-model", api_key="test-key"))
         assert actor._model is None
         assert "integrate.api.nvidia.com" in actor._kwargs["embedding_endpoint"]
+        mock_probe.assert_called_once_with(
+            actor.DEFAULT_EMBED_INVOKE_URL,
+            name="embed",
+            prefix="_BatchEmbedCPUActor",
+            api_key="test-key",
+            post_url=actor.DEFAULT_EMBED_INVOKE_URL,
+            post_body={"input": [], "model": "test-model"},
+        )
+
+    def test_default_hosted_endpoint_requires_api_key(self):
+        from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
+        from nemo_retriever.common.params import EmbedParams
+        from nemo_retriever.common.params.models import NO_API_KEY
+
+        with pytest.raises(RuntimeError, match="CPU-only ingest.*NVIDIA_API_KEY"):
+            _BatchEmbedCPUActor(params=EmbedParams(model_name="test-model", api_key=NO_API_KEY))
 
     def test_creates_with_custom_invoke_url(self):
         from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor

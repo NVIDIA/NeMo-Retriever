@@ -66,14 +66,14 @@ pdf:
   # Optionally limit number of PDFs processed
   limit: null
 
-# Optional config for `retriever txt run` and .extract_txt() API
+# Optional TXT chunking config for the GraphIngestor API
 txt:
   max_tokens: 512
   overlap_tokens: 0
   tokenizer_model_id: nvidia/llama-nemotron-embed-1b-v2
   encoding: utf-8
 
-# Optional config for `retriever html run` and .extract_html() API
+# Optional HTML chunking config for the GraphIngestor API
 html:
   max_tokens: 512
   overlap_tokens: 0

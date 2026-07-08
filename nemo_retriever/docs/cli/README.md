@@ -8,10 +8,16 @@ For product-facing examples, prefer these commands:
 - `retriever ingest` - ingest supported documents and media into a Retriever index.
 - `retriever query` - query a local LanceDB table written by local or batch ingest.
 - `retriever query service` - query a Retriever service deployment.
+- `retriever harness run` - run a named, code-owned benchmark.
+- `retriever service` - operate a Retriever service deployment.
 
-`retriever pipeline run` remains available as a development and compatibility
-command for legacy pipeline workflows, evaluation, intermediate artifacts, and
-pipeline-specific debugging. It is not the preferred public ingest interface.
+Format names and internal stages are not root commands. Use `retriever ingest`
+for PDF, HTML, TXT, image, Office, audio, and video inputs; it owns extraction,
+embedding, and index creation as one workflow.
+
+`retriever pipeline run` remains callable as hidden compatibility while existing
+development callers migrate. It is not shown in root help and is not the
+preferred product ingest path.
 
 ## Public ingest shape
 
@@ -46,29 +52,26 @@ configuration, local embed backend selection, or local media controls.
 <!-- --8<-- [start:quickstart] -->
 
 > Use `retriever ingest` and `retriever query` for product-facing workflows.
-> `retriever pipeline run` is development / compatibility only.
+> Use `retriever harness run` only for benchmark execution.
 
 ## Quick start
 
 ### Ingest a PDF locally
 
 ```bash
-retriever ingest ./data/multimodal_test.pdf \
-  --method pdfium \
-  --extract-text --extract-tables --extract-charts \
-  --use-table-structure \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+retriever ingest ./data/multimodal_test.pdf
 ```
 
 Then query the default LanceDB table:
 
 ```bash
-retriever query "What is in this document?" \
-  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+retriever query "What is in this document?"
 ```
 
-By default, local ingest writes to `lancedb/nemo-retriever` and `retriever query`
-reads from the same table.
+By default, local ingest auto-detects supported input formats and writes to
+`lancedb/nemo-retriever`; `retriever query` reads from the same table. Use
+explicit high-level options when a task needs behavior beyond the current ingest
+defaults.
 
 The plain `retriever query` examples below apply to local and batch ingest output
 written to LanceDB. Use `retriever query service` to query a Retriever service.
@@ -239,6 +242,7 @@ These options apply to `retriever ingest`, `retriever ingest local`, and
 | `--lancedb-uri` | `lancedb` | LanceDB database URI. |
 | `--table-name` | `nemo-retriever` | LanceDB table name. Must match query-time storage flags. |
 | `--overwrite/--append` | overwrite | Overwrite the table by default; use `--append` to add rows. |
+| `--index-mode` | `dense` | Dense vector index by default; `hybrid` also builds BM25/FTS and `sparse` builds an FTS-only table. |
 | `--method` | planner default | PDF extraction method such as `pdfium` or `nemotron_parse`. |
 | `--extract-text`, `--extract-tables`, `--extract-charts` | planner default | Enable or disable extraction families. |
 | `--ocr-version` | planner default | OCR engine version for local extraction. |
@@ -347,8 +351,8 @@ creating an ingestor or contacting the service.
 
 ## Development / compatibility command
 
-Use `retriever pipeline run` only when you need pipeline-specific behavior that
-is intentionally not part of the first-class ingest/query workflow, such as:
+`retriever pipeline run` remains available, but hidden from root help, for
+pipeline-specific behavior such as:
 
 - `--save-intermediate` Parquet artifacts.
 - runtime metrics and pipeline reports.
