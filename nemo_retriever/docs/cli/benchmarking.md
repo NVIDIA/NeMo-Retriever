@@ -9,7 +9,8 @@ This page covers benchmark workflows for NeMo Retriever Library. See also
 notes on `retriever harness`.
 
 Use `retriever harness` for benchmark orchestration and `retriever benchmark` for
-per-stage micro-benchmarks.
+per-stage micro-benchmarks. `retriever benchmark` remains callable but is hidden
+from root help.
 
 ## Harness (development / experimental)
 
@@ -96,7 +97,8 @@ follow `--embed-granularity` (page vs element images).
 
 ## Per-stage micro-benchmarks
 
-Stage throughput benchmarks on the main CLI (no full harness required):
+Stage throughput benchmarks remain callable for compatibility even though they
+are hidden from root help:
 
 ```bash
 retriever benchmark --help           # split, extract, audio-extract, page-elements, ocr, all
