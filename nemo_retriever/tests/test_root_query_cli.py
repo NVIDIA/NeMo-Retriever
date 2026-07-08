@@ -469,7 +469,8 @@ def test_root_query_agentic_plumbs_rerank_into_config(monkeypatch) -> None:
     assert "reranker" not in config_calls[-1]
 
 
-def test_root_query_passes_retrieval_mode_into_vdb_kwargs(monkeypatch) -> None:
+@pytest.mark.parametrize("retrieval_mode", ["dense", "hybrid"])
+def test_root_query_passes_retrieval_mode_into_vdb_kwargs(monkeypatch, retrieval_mode: str) -> None:
     retriever_calls: list[dict[str, Any]] = []
 
     class FakeRetriever:
@@ -493,41 +494,28 @@ def test_root_query_passes_retrieval_mode_into_vdb_kwargs(monkeypatch) -> None:
             "--table-name",
             "docs",
             "--retrieval-mode",
-            "dense",
+            retrieval_mode,
         ],
     )
 
     assert result.exit_code == 0
     assert retriever_calls == [
-        {"top_k": 5, "vdb_kwargs": {"uri": "/tmp/lancedb", "table_name": "docs", "retrieval_mode": "dense"}}
+        {
+            "top_k": 5,
+            "vdb_kwargs": {
+                "uri": "/tmp/lancedb",
+                "table_name": "docs",
+                "retrieval_mode": retrieval_mode,
+            },
+        }
     ]
 
 
-def test_root_query_keeps_hidden_hybrid_alias(monkeypatch) -> None:
-    retriever_calls: list[dict[str, Any]] = []
-
-    class FakeRetriever:
-        def __init__(self, **kwargs: Any) -> None:
-            retriever_calls.append(kwargs)
-
-        def query(self, query: str, **_kwargs: Any) -> list[dict[str, Any]]:
-            return []
-
-    monkeypatch.setattr(query_core, "Retriever", FakeRetriever)
-
+def test_root_query_rejects_deprecated_hybrid_alias() -> None:
     result = RUNNER.invoke(cli_main.app, ["query", "q", "--hybrid"])
 
-    assert result.exit_code == 0
-    assert retriever_calls == [
-        {"top_k": 10, "vdb_kwargs": {"uri": "lancedb", "table_name": "nemo-retriever", "retrieval_mode": "hybrid"}}
-    ]
-
-
-def test_root_query_rejects_retrieval_mode_and_hybrid_alias_together() -> None:
-    result = RUNNER.invoke(cli_main.app, ["query", "q", "--retrieval-mode", "dense", "--hybrid"])
-
-    assert result.exit_code == 1
-    assert "pass only one of --retrieval-mode or deprecated --hybrid" in result.output
+    assert result.exit_code != 0
+    assert "No such option" in result.output
 
 
 def test_root_query_max_text_chars_truncates_and_omits(monkeypatch) -> None:

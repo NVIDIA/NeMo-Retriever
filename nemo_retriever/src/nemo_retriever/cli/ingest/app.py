@@ -12,6 +12,7 @@ from nemo_retriever.cli.ingest.graph_commands import _graph_ingest_command
 from nemo_retriever.cli.ingest.service import _service_command
 from nemo_retriever.cli.ingest.options import DEFAULT_CAPTION_MODEL, DEFAULT_EMBED_MODEL
 
+
 _DEFAULT_COMMAND = "local"
 _GROUP_OPTIONS = {"-h"}
 

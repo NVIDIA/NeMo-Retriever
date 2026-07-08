@@ -131,14 +131,6 @@ RetrievalModeOption = Annotated[
         ),
     ),
 ]
-HybridOption = Annotated[
-    bool,
-    typer.Option(
-        "--hybrid",
-        help="Deprecated alias for --retrieval-mode hybrid.",
-        hidden=True,
-    ),
-]
 OutputFormatOption = Annotated[
     str,
     typer.Option(
@@ -160,7 +152,7 @@ AgenticOption = Annotated[
     bool,
     typer.Option(
         "--agentic",
-        help="Run an LLM-driven agentic (ReAct) retrieval loop instead of the default dense pass.",
+        help="Run an LLM-driven agentic (ReAct) retrieval loop instead of the default retrieval pass.",
     ),
 ]
 AgenticLlmModelOption = Annotated[

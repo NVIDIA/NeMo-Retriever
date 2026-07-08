@@ -122,20 +122,6 @@ def _validate_retrieval_mode(retrieval_mode: str) -> QueryRetrievalMode:
     return cast(QueryRetrievalMode, normalized)
 
 
-def _query_retrieval_mode(ctx: typer.Context, retrieval_mode: str, hybrid: bool) -> QueryRetrievalMode:
-    resolved = _validate_retrieval_mode(retrieval_mode)
-    hybrid_source = ctx.get_parameter_source("hybrid")
-    has_hybrid_alias = hybrid_source is not None and getattr(hybrid_source, "name", "") != "DEFAULT"
-    retrieval_mode_source = ctx.get_parameter_source("retrieval_mode")
-    has_retrieval_mode = retrieval_mode_source is not None and getattr(retrieval_mode_source, "name", "") != "DEFAULT"
-    if has_hybrid_alias and has_retrieval_mode:
-        typer.echo("Error: pass only one of --retrieval-mode or deprecated --hybrid.", err=True)
-        raise typer.Exit(1)
-    if has_hybrid_alias and hybrid:
-        return "hybrid"
-    return resolved
-
-
 def _emit_query_output(
     hits: list[RetrievalHit],
     *,
@@ -174,14 +160,13 @@ def _retrieval_options(
     cls=DefaultLocalQueryCommand,
     hidden=True,
     help=(
-        "Query a LanceDB index produced by local or batch ingest.\n\n"
+        "Query a LanceDB index produced by local or batch ingest; retrieval mode auto-detects the index.\n\n"
         f"Default embedding model: {opts.DEFAULT_EMBED_MODEL}.\n\n"
         f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}.\n\n"
         "For a service deployment, use retriever query service --help."
     ),
 )
 def _local_command(
-    ctx: typer.Context,
     query: opts.QueryArgument,
     top_k: opts.TopKOption = 10,
     candidate_k: opts.CandidateKOption = None,
@@ -198,7 +183,6 @@ def _local_command(
     reranker_backend: opts.RerankerBackendOption = None,
     rerank: opts.RerankOption = False,
     retrieval_mode: opts.RetrievalModeOption = "auto",
-    hybrid: opts.HybridOption = False,
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
     agentic: opts.AgenticOption = False,
@@ -233,7 +217,7 @@ def _local_command(
 
     try:
         reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None
-        effective_retrieval_mode = _query_retrieval_mode(ctx, retrieval_mode, hybrid)
+        effective_retrieval_mode = _validate_retrieval_mode(retrieval_mode)
 
         if agentic:
             request = QueryRequest(
