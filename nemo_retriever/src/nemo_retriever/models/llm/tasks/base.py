@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -39,7 +39,7 @@ class GenerationTaskError(RuntimeError):
         self.latency_s = latency_s
 
 
-class GenerationTask(ABC):
+class TextGenerationTask(ABC):
     """Stateless strategy that turns logical inputs into one completion call."""
 
     required_inputs: tuple[str, ...] = ()

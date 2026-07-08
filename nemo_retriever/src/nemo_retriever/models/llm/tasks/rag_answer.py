@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+from string import Formatter
 from typing import Any, ClassVar, Optional
 
-from nemo_retriever.models.llm.tasks.base import GenerationTask
+from nemo_retriever.models.llm.tasks.base import TextGenerationTask
 from nemo_retriever.models.llm.text_utils import strip_think_tags
 from nemo_retriever.models.llm.types import GenerationRequest
 
@@ -31,6 +32,19 @@ Answer:"""
 
 _NO_REASONING_SYSTEM_DIRECTIVE = "/no_think"
 _NO_REASONING_EXTRA_PARAMS = {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def _validate_rag_prompt(prompt: str) -> None:
+    """Allow only simple ``context`` and ``query`` placeholders."""
+    try:
+        parsed_fields = list(Formatter().parse(prompt))
+    except ValueError as exc:
+        raise ValueError(f"invalid RAG prompt: {exc}") from exc
+    for _, field_name, format_spec, conversion in parsed_fields:
+        if field_name is None:
+            continue
+        if field_name not in {"context", "query"} or format_spec or conversion:
+            raise ValueError("RAG prompt may only use simple {context} and {query} placeholders")
 
 
 def _format_rag_system_prompt(
@@ -98,7 +112,7 @@ def _apply_reasoning_control(
 
 
 @dataclass(frozen=True)
-class RagAnswerTask(GenerationTask):
+class RagAnswerTask(TextGenerationTask):
     """Generate a grounded answer from a query and retrieved text chunks."""
 
     prompt: Optional[str] = None
@@ -113,6 +127,10 @@ class RagAnswerTask(GenerationTask):
         "max_tokens": 4096,
     }
     empty_output_error: ClassVar[str] = "thinking_truncated"
+
+    def __post_init__(self) -> None:
+        if self.prompt is not None:
+            _validate_rag_prompt(self.prompt)
 
     def build_request(self, **inputs: object) -> GenerationRequest:
         """Build a grounded answer request, including optional reasoning controls."""

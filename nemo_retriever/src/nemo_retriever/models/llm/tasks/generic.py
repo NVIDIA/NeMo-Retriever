@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from string import Formatter
 from typing import Any, ClassVar, Optional, Sequence
 
-from nemo_retriever.models.llm.tasks.base import GenerationTask
+from nemo_retriever.models.llm.tasks.base import TextGenerationTask
 from nemo_retriever.models.llm.tasks.rag_answer import _apply_reasoning_control
 from nemo_retriever.models.llm.text_utils import strip_think_tags
 from nemo_retriever.models.llm.types import GenerationRequest
@@ -60,7 +60,7 @@ def _validate_prompt_template(prompt: str, input_names: tuple[str, ...]) -> None
 
 
 @dataclass(frozen=True, init=False)
-class GenericPromptTask(GenerationTask):
+class GenericPromptTask(TextGenerationTask):
     """Render declared row inputs into a validated prompt template."""
 
     prompt: str

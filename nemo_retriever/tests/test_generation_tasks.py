@@ -55,6 +55,11 @@ def _params(**kwargs: Any):
 
 
 class TestTextGenerationParams:
+    def test_no_api_key_is_exported_for_explicit_no_auth(self):
+        from nemo_retriever.common.params import NO_API_KEY
+
+        assert NO_API_KEY == ""
+
     def test_flat_constructor_composes_transport_and_partial_sampling(self):
         params = _params(
             api_base="http://llm.test/v1",
@@ -127,6 +132,14 @@ class TestTextGenerationParams:
 
 
 class TestGenerationTasks:
+    def test_text_generation_task_uses_specific_public_name(self):
+        from nemo_retriever.models import llm
+        from nemo_retriever.models.llm.tasks import TextGenerationTask
+
+        assert llm.TextGenerationTask is TextGenerationTask
+        assert "TextGenerationTask" in llm.__all__
+        assert "GenerationTask" not in llm.__all__
+
     def test_summary_builds_request_and_executes(self):
         from nemo_retriever.models.llm.tasks import SummarizeTask
 
@@ -202,6 +215,29 @@ class TestGenerationTasks:
         assert result.text == ""
         assert result.latency_s == 0.3
         assert result.error == "thinking_truncated"
+
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "Answer {typo}",
+            "Answer {query!r}",
+            "Answer {context:>10}",
+            "Answer {query",
+        ],
+    )
+    def test_rag_prompt_rejects_invalid_placeholders_at_construction(self, prompt):
+        from nemo_retriever.models.llm.tasks import RagAnswerTask
+
+        with pytest.raises(ValueError, match="RAG prompt|invalid RAG prompt"):
+            RagAnswerTask(prompt=prompt)
+
+    def test_rag_prompt_accepts_context_query_and_escaped_braces(self):
+        from nemo_retriever.models.llm.tasks import RagAnswerTask
+
+        task = RagAnswerTask(prompt="Use {{only}} {context} to answer {query}")
+        request = task.build_request(query="What?", chunks=["Facts"])
+
+        assert request.messages[-1]["content"] == "Use {only} Facts to answer What?"
 
     def test_generic_template_supports_declared_fields_and_escaped_braces(self):
         from nemo_retriever.models.llm.tasks import GenericPromptTask

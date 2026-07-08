@@ -84,13 +84,13 @@ class TestStrictGenerationTask:
         assert secret not in repr(collected)
 
     def test_request_build_failures_are_request_errors(self):
-        from nemo_retriever.models.llm.tasks import GenerationTask, GenerationTaskError
+        from nemo_retriever.models.llm.tasks import TextGenerationTask, GenerationTaskError
 
-        class BrokenTask(GenerationTask):
+        class BrokenTask(TextGenerationTask):
             def build_request(self, **inputs):
                 raise RuntimeError("sk-REQUEST-MUST-NOT-LEAK")
 
-        class WrongTypeTask(GenerationTask):
+        class WrongTypeTask(TextGenerationTask):
             def build_request(self, **inputs):
                 return {"messages": []}
 
@@ -106,12 +106,12 @@ class TestStrictGenerationTask:
     @pytest.mark.parametrize("parsed", [{"structured": True}, ["not", "text"], 7])
     def test_non_text_parse_results_are_parse_errors(self, parsed):
         from nemo_retriever.models.llm.tasks import (
-            GenerationTask,
+            TextGenerationTask,
             GenerationTaskError,
         )
         from nemo_retriever.models.llm.types import GenerationRequest
 
-        class NonTextTask(GenerationTask):
+        class NonTextTask(TextGenerationTask):
             def build_request(self, **inputs):
                 return GenerationRequest(messages=[{"role": "user", "content": "hello"}])
 
@@ -125,12 +125,12 @@ class TestStrictGenerationTask:
 
     def test_parser_exception_is_sanitized(self):
         from nemo_retriever.models.llm.tasks import (
-            GenerationTask,
+            TextGenerationTask,
             GenerationTaskError,
         )
         from nemo_retriever.models.llm.types import GenerationRequest
 
-        class BrokenParser(GenerationTask):
+        class BrokenParser(TextGenerationTask):
             def build_request(self, **inputs):
                 return GenerationRequest(messages=[{"role": "user", "content": "hello"}])
 

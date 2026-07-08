@@ -55,7 +55,7 @@ from nemo_retriever.common.params.models import (
     TextGenerationParams,
 )
 from nemo_retriever.models.llm.tasks import (
-    GenerationTask,
+    TextGenerationTask,
     GenerationTaskError,
     GenericPromptTask,
     RagAnswerTask,
@@ -80,7 +80,7 @@ def __getattr__(name: str):
 __all__ = [
     # Protocols
     "AnswerJudge",
-    "GenerationTask",
+    "TextGenerationTask",
     "GenerationTaskError",
     "LLMClient",
     "RetrieverStrategy",

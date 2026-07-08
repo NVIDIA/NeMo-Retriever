@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-25, NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -20,7 +20,7 @@ import pandas as pd
 from pydantic import BaseModel
 from nemo_retriever.common.params import LLMInferenceParams, TextGenerationParams
 from nemo_retriever.models.llm.clients import LiteLLMClient
-from nemo_retriever.models.llm.tasks import GenerationTask, GenerationTaskError
+from nemo_retriever.models.llm.tasks import TextGenerationTask, GenerationTaskError
 from nemo_retriever.models.llm.types import GeneratedTextResult, TextCompletionClient
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class TextGenerationOperator(AbstractOperator, CPUOperator):
     """Base operator for one text-generation request per DataFrame row.
 
-    Concrete operators construct an immutable :class:`GenerationTask` before
+    Concrete operators construct an immutable :class:`TextGenerationTask` before
     calling this base. The task and client are runtime-only state; graph
     reconstruction uses only defensive constructor state. The base owns
     validation, safe bounded execution, positional ordering, and stable
@@ -49,7 +49,7 @@ class TextGenerationOperator(AbstractOperator, CPUOperator):
         self,
         params: TextGenerationParams,
         *,
-        task: GenerationTask,
+        task: TextGenerationTask,
         input_columns: Mapping[str, str],
         output_column: str,
         latency_column: str | None = None,

@@ -22,6 +22,7 @@ from nemo_retriever.common.params.models import LLMInferenceParams
 from nemo_retriever.common.params.models import LLMRemoteClientParams
 from nemo_retriever.common.params.models import LLMSamplingOverrides
 from nemo_retriever.common.params.models import ModelRuntimeParams
+from nemo_retriever.common.params.models import NO_API_KEY
 from nemo_retriever.common.params.models import OcrParams
 from nemo_retriever.common.params.models import PageElementsParams
 from nemo_retriever.common.params.models import PdfSplitParams
@@ -62,6 +63,7 @@ __all__ = [
     "LLMRemoteClientParams",
     "LLMSamplingOverrides",
     "ModelRuntimeParams",
+    "NO_API_KEY",
     "OcrParams",
     "PageElementsParams",
     "PdfSplitParams",
