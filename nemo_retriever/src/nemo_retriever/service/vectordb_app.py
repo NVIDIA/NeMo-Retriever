@@ -107,8 +107,6 @@ def _embed_queries_remote(
 def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | str) -> list[str]:
     if mode == "hybrid":
         return ["semantic", "lexical"]
-    if mode == "sparse":
-        return ["lexical"]
     return ["semantic"]
 
 
@@ -176,13 +174,22 @@ class VectorDBState:
         table = self._db.open_table(self.table_name)
         return inspect_lancedb_table_object(table)
 
-    def resolve_effective_retrieval_mode(self) -> LanceRetrievalMode:
-        """Resolve the configured retrieval mode against table capabilities."""
+    def resolve_effective_retrieval_mode(self, caps=None) -> LanceRetrievalMode:
+        """Resolve the configured retrieval mode against table capabilities.
+
+        Callers that already hold a capabilities object (e.g. ``search``) may
+        pass it in to avoid re-opening the LanceDB table.
+        """
         if not self._table_exists:
             return "dense"
 
-        caps = self._table_capabilities()
-        assert caps is not None
+        if caps is None:
+            caps = self._table_capabilities()
+        if caps is None:
+            raise ValueError(
+                f"Unable to inspect LanceDB table {self.table_name!r} at {self.lancedb_uri!r}: "
+                "capabilities could not be determined."
+            )
 
         if self.retrieval_mode == "auto":
             mode: LanceRetrievalMode = caps.retrieval_mode
@@ -205,10 +212,7 @@ class VectorDBState:
                 "both a vector column and FTS index are required."
             )
         if mode == "sparse":
-            raise ValueError(
-                "Sparse retrieval is not supported by the VectorDB service. "
-                "Use dense, hybrid, or auto."
-            )
+            raise ValueError("Sparse retrieval is not supported by the VectorDB service. Use dense, hybrid, or auto.")
         return mode
 
     def _ensure_hybrid_indexes(self) -> None:
@@ -293,7 +297,8 @@ class VectorDBState:
         if not self._table_exists:
             return [[] for _ in vectors], _strategies_for_retrieval_mode("dense")
 
-        mode = self.resolve_effective_retrieval_mode()
+        caps = self._table_capabilities()
+        mode = self.resolve_effective_retrieval_mode(caps)
         strategies = _strategies_for_retrieval_mode(mode)
 
         from nemo_retriever.common.vdb.lancedb import LanceDB
@@ -305,7 +310,6 @@ class VectorDBState:
         if hybrid:
             retrieval_kwargs["query_texts"] = query_texts
 
-        caps = self._table_capabilities()
         if caps is not None and caps.vector_column and caps.vector_column != "vector":
             retrieval_kwargs["vector_column_name"] = caps.vector_column
 

@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock, PropertyMock, patch
 
 from fastapi.testclient import TestClient

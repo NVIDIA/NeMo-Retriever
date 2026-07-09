@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from nemo_retriever.service.vectordb_app import VectorDBState, create_vectordb_app
@@ -29,6 +30,7 @@ _ROW = {
 }
 
 
+@pytest.mark.integration
 def test_write_rows_builds_fts_index_for_hybrid_mode(tmp_path) -> None:
     state = VectorDBState(
         lancedb_uri=str(tmp_path),
@@ -48,6 +50,7 @@ def test_write_rows_builds_fts_index_for_hybrid_mode(tmp_path) -> None:
     assert state.resolve_effective_retrieval_mode() == "hybrid"
 
 
+@pytest.mark.integration
 def test_write_rows_dense_mode_skips_fts_index(tmp_path) -> None:
     state = VectorDBState(
         lancedb_uri=str(tmp_path),
@@ -67,6 +70,7 @@ def test_write_rows_dense_mode_skips_fts_index(tmp_path) -> None:
     assert state.resolve_effective_retrieval_mode() == "dense"
 
 
+@pytest.mark.integration
 def test_auto_mode_resolves_hybrid_when_fts_present(tmp_path) -> None:
     # Seed with hybrid so the table has both a vector column and an FTS index.
     seed = VectorDBState(
@@ -90,6 +94,7 @@ def test_auto_mode_resolves_hybrid_when_fts_present(tmp_path) -> None:
     assert auto.resolve_effective_retrieval_mode() == "hybrid"
 
 
+@pytest.mark.integration
 def test_auto_mode_resolves_dense_when_no_fts(tmp_path) -> None:
     # Seed with dense so the table has a vector column but no FTS index.
     seed = VectorDBState(
@@ -113,6 +118,7 @@ def test_auto_mode_resolves_dense_when_no_fts(tmp_path) -> None:
     assert auto.resolve_effective_retrieval_mode() == "dense"
 
 
+@pytest.mark.integration
 def test_query_hybrid_end_to_end_over_real_lancedb(tmp_path) -> None:
     app = create_vectordb_app(
         lancedb_uri=str(tmp_path),
@@ -137,6 +143,7 @@ def test_query_hybrid_end_to_end_over_real_lancedb(tmp_path) -> None:
     assert coverage["strategies_used"] == ["semantic", "lexical"]
 
 
+@pytest.mark.integration
 def test_query_auto_end_to_end_selects_hybrid_over_real_lancedb(tmp_path) -> None:
     app = create_vectordb_app(
         lancedb_uri=str(tmp_path),
