@@ -119,6 +119,29 @@ def test_auto_mode_resolves_dense_when_no_fts(tmp_path) -> None:
 
 
 @pytest.mark.integration
+def test_hybrid_mode_builds_fts_on_existing_dense_table(tmp_path) -> None:
+    seed = VectorDBState(
+        lancedb_uri=str(tmp_path),
+        table_name="nemo_retriever",
+        embed_endpoint="http://embed.example/v1/embeddings",
+        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
+        embed_api_key="",
+        retrieval_mode="dense",
+    )
+    seed.write_rows([_ROW])
+
+    hybrid = VectorDBState(
+        lancedb_uri=str(tmp_path),
+        table_name="nemo_retriever",
+        embed_endpoint="http://embed.example/v1/embeddings",
+        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
+        embed_api_key="",
+        retrieval_mode="hybrid",
+    )
+    assert hybrid.resolve_effective_retrieval_mode() == "hybrid"
+
+
+@pytest.mark.integration
 def test_query_hybrid_end_to_end_over_real_lancedb(tmp_path) -> None:
     app = create_vectordb_app(
         lancedb_uri=str(tmp_path),
@@ -140,7 +163,7 @@ def test_query_hybrid_end_to_end_over_real_lancedb(tmp_path) -> None:
 
     assert resp.status_code == 200, resp.text
     coverage = resp.json()["results"][0]["coverage"]
-    assert coverage["strategies_used"] == ["semantic", "lexical"]
+    assert coverage["strategies_used"] == ["hybrid"]
 
 
 @pytest.mark.integration
@@ -166,4 +189,4 @@ def test_query_auto_end_to_end_selects_hybrid_over_real_lancedb(tmp_path) -> Non
     assert resp.status_code == 200, resp.text
     coverage = resp.json()["results"][0]["coverage"]
     # auto detects the FTS index built during the hybrid-capable write and upgrades to hybrid.
-    assert coverage["strategies_used"] == ["semantic", "lexical"]
+    assert coverage["strategies_used"] == ["hybrid"]

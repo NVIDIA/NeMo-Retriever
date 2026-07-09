@@ -106,8 +106,8 @@ def _embed_queries_remote(
 
 def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | str) -> list[str]:
     if mode == "hybrid":
-        return ["semantic", "lexical"]
-    return ["semantic"]
+        return ["hybrid"]
+    return ["dense"]
 
 
 # ── VectorDB state ───────────────────────────────────────────────────
@@ -153,6 +153,9 @@ class VectorDBState:
             self._db.open_table(table_name)
             self._table_exists = True
             logger.info("Opened existing LanceDB table '%s' at %s", table_name, lancedb_uri)
+            if self.retrieval_mode == "hybrid":
+                with self._write_lock:
+                    self._ensure_hybrid_indexes()
         except Exception:
             logger.info("LanceDB table '%s' does not exist yet at %s", table_name, lancedb_uri)
 
@@ -216,13 +219,19 @@ class VectorDBState:
         return mode
 
     def _ensure_hybrid_indexes(self) -> None:
-        """Build FTS indexes when hybrid retrieval is configured or auto-selected."""
-        if not self._table_exists:
-            return
+        """Build FTS indexes when hybrid retrieval is configured or auto-selected.
+
+        Must be called while holding ``_write_lock``. This does not gate on
+        ``self._table_exists`` so it can run against a freshly created table
+        before that flag is published to concurrent readers.
+        """
         if self.retrieval_mode == "dense":
             return
 
-        table = self._db.open_table(self.table_name)
+        try:
+            table = self._db.open_table(self.table_name)
+        except Exception:
+            return
         caps = inspect_lancedb_table_object(table)
         if not caps.has_vector or caps.has_fts:
             return
@@ -262,6 +271,10 @@ class VectorDBState:
                     schema,
                     overwrite=True,
                 )
+                # Build the FTS index before publishing `_table_exists` so a
+                # concurrent hybrid query never observes a table that is missing
+                # its FTS index (which would otherwise fail with a 422).
+                self._ensure_hybrid_indexes()
                 self._table_exists = True
                 logger.info(
                     "Created LanceDB table '%s' with %d rows (dim=%d)",
@@ -272,9 +285,8 @@ class VectorDBState:
             else:
                 table = self._db.open_table(self.table_name)
                 table.add(rows)
+                self._ensure_hybrid_indexes()
                 logger.info("Appended %d rows to table '%s'", len(rows), self.table_name)
-
-            self._ensure_hybrid_indexes()
 
         return len(rows)
 

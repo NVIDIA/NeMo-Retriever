@@ -84,8 +84,8 @@ def test_vector_db_config_default_retrieval_mode() -> None:
 
 
 def test_strategies_for_retrieval_mode() -> None:
-    assert _strategies_for_retrieval_mode("dense") == ["semantic"]
-    assert _strategies_for_retrieval_mode("hybrid") == ["semantic", "lexical"]
+    assert _strategies_for_retrieval_mode("dense") == ["dense"]
+    assert _strategies_for_retrieval_mode("hybrid") == ["hybrid"]
 
 
 def test_tensor_to_embedding_rows_handles_batch() -> None:
@@ -172,7 +172,7 @@ def test_query_evidence_format_returns_evidence_coverage(tmp_path) -> None:
     app = _query_app(tmp_path)
     with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
         VectorDBState, "embed_queries", return_value=[[0.1, 0.2]]
-    ), patch.object(VectorDBState, "search", return_value=([_CANNED_HITS], ["semantic"])):
+    ), patch.object(VectorDBState, "search", return_value=([_CANNED_HITS], ["dense"])):
         with TestClient(app) as client:
             resp = client.post("/v1/query", json={"query": "revenue", "top_k": 5, "format": "evidence"})
 
@@ -192,21 +192,21 @@ def test_query_evidence_format_returns_evidence_coverage(tmp_path) -> None:
     assert ev["score"] == 0.91
 
     coverage = item["coverage"]
-    assert coverage["strategies_used"] == ["semantic"]
+    assert coverage["strategies_used"] == ["dense"]
     assert coverage["n_docs_seen"] == 1
     assert coverage["thin_spots"] == ["single source"]
 
 
-def test_query_hybrid_evidence_reports_lexical_strategy(tmp_path) -> None:
+def test_query_hybrid_evidence_reports_hybrid_strategy(tmp_path) -> None:
     app = _query_app(tmp_path, retrieval_mode="hybrid")
     with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
         VectorDBState, "embed_queries", return_value=[[0.1, 0.2]]
-    ), patch.object(VectorDBState, "search", return_value=([_CANNED_HITS], ["semantic", "lexical"])):
+    ), patch.object(VectorDBState, "search", return_value=([_CANNED_HITS], ["hybrid"])):
         with TestClient(app) as client:
             resp = client.post("/v1/query", json={"query": "revenue", "top_k": 5, "format": "evidence"})
 
     assert resp.status_code == 200
-    assert resp.json()["results"][0]["coverage"]["strategies_used"] == ["semantic", "lexical"]
+    assert resp.json()["results"][0]["coverage"]["strategies_used"] == ["hybrid"]
 
 
 def test_query_hybrid_without_fts_returns_422(tmp_path) -> None:
@@ -254,7 +254,7 @@ def test_search_hybrid_delegates_to_lancedb_wrapper(tmp_path) -> None:
     ):
         hits, strategies = state.search([[0.1, 0.2]], ["revenue"], top_k=3)
 
-    assert strategies == ["semantic", "lexical"]
+    assert strategies == ["hybrid"]
     assert hits[0][0]["text"] == "hit"
     mock_vdb.retrieval.assert_called_once()
     call_kwargs = mock_vdb.retrieval.call_args.kwargs
