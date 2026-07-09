@@ -27,10 +27,11 @@ For an unlisted subcommand: `<RETRIEVER_VENV>/bin/retriever <subcommand> --help`
 ## Unsupported file types
 
 `retriever ingest` auto-detects supported input types from file extensions. It
-supports `.pdf`, `.docx`, `.pptx`, `.txt`, `.html`, `.jpg`, `.jpeg`, `.png`,
-`.tiff`, `.tif`, `.bmp`, `.svg`, `.mp3`, `.wav`, `.m4a`, `.mp4`, `.mov`, and
-`.mkv`. Treat other extensions such as `.flac`, `.rtf`, `.eml`, `.py`, `.jsonl`,
-and `.zip` as setup issues. Before ingest, inventory:
+supports `.pdf`, `.docx`, `.pptx`, `.txt`, `.md`, `.json`, `.sh`, `.html`,
+`.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif`, `.bmp`, `.svg`, `.mp3`, `.wav`,
+`.m4a`, `.mp4`, `.mov`, and `.mkv`. Markdown, JSON, and shell scripts use the
+plain-text extraction path. Treat other extensions such as `.flac`, `.rtf`,
+`.eml`, `.py`, `.jsonl`, and `.zip` as setup issues. Before ingest, inventory:
 
 ```bash
 find <dir> -type f -name '*.*' | sed 's/.*\.//' | sort -u

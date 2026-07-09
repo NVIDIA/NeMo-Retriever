@@ -1,5 +1,5 @@
 ## Description: <br>
-Use when the user wants to search, query, extract, transcribe, describe, quote, filter, or aggregate across documents — PDFs, scanned forms / images (.jpg .png .tiff), Office (.docx .pptx), text (.html .txt), audio (.mp3 .wav .m4a), or video (.mp4 .mov). <br>
+Use when the user wants to search, query, extract, transcribe, describe, quote, filter, or aggregate across documents — PDFs, scanned forms / images (.jpg .png .tiff), Office (.docx .pptx), text (.html .txt .md .json .sh), audio (.mp3 .wav .m4a), or video (.mp4 .mov). <br>
 
 This skill is ready for commercial/non-commercial use. <br>
 

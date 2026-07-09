@@ -62,8 +62,9 @@ Install extras for non-PDF media live in `references/install.md` under
 For mixed-script docs such as bilingual contracts or multilingual forms, use
 `--ocr-lang multi`. Chart understanding runs inline; no separate call is needed.
 
-**HTML / TXT** - ingest even though `Read` could work; chunking and citation
-metadata matter:
+**HTML / text** (`.html`, `.txt`, `.md`, `.json`, `.sh`) - ingest even though
+`Read` could work; chunking and citation metadata matter. Markdown, JSON, and
+shell scripts are treated as plain text:
 
 ```bash
 <RETRIEVER_VENV>/bin/retriever ingest ./docs/
