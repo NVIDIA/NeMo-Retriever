@@ -35,6 +35,12 @@ on:
       - "docs/**"
       - "nemo_retriever/**"
       - ".github/workflows/nrl-docs-nvidia-publish.yml"
+  schedule:
+    # Nightly rebuild and publish of the 26.05 docs to docs.nvidia.com (26.5.0 + latest).
+    # Scheduled workflows run only from the default branch (main), where this workflow
+    # lives; the build job checks out the 26.05 content. Doc changes land on 26.05 and are
+    # infrequent, so this cron keeps the published site current without a push to main.
+    - cron: "30 23 * * *"
   workflow_dispatch:
     inputs:
       dry-run:
