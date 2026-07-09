@@ -202,6 +202,7 @@ class ServiceMCPClient:
         top_k: int = 5,
         format: QueryFormat = "hits",
         payload: dict[str, Any] | None = None,
+        max_text_chars: int = 500,
     ) -> dict[str, Any]:
         body = dict(payload or {})
         body.setdefault("query", query)
@@ -210,7 +211,10 @@ class ServiceMCPClient:
         async with self._client() as client:
             resp = await client.post("/v1/query", json=body)
         self._raise_for_status(resp)
-        return dict(self._json_or_text(resp))
+        result = dict(self._json_or_text(resp))
+        if body.get("format") == "evidence":
+            return _compact_evidence_response(result, max_text_chars=min(max_text_chars, 500))
+        return result
 
     async def answer(
         self,
@@ -438,6 +442,36 @@ def _document_bytes(doc: MCPDocumentInput) -> tuple[str, bytes]:
     return doc.filename or "document.bin", content
 
 
+def _compact_text(value: Any, *, max_chars: int) -> str:
+    text = str(value or "")
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "..."
+
+
+def _compact_evidence_response(payload: dict[str, Any], *, max_text_chars: int) -> dict[str, Any]:
+    """Trim verbose evidence text so MCP tool output preserves all top-k hits."""
+    compact = dict(payload)
+    compact_results: list[Any] = []
+    for result in payload.get("results") or []:
+        if not isinstance(result, dict):
+            compact_results.append(result)
+            continue
+        compact_result = dict(result)
+        evidence_items: list[Any] = []
+        for item in result.get("evidence") or []:
+            if not isinstance(item, dict):
+                evidence_items.append(item)
+                continue
+            compact_item = dict(item)
+            compact_item["text"] = _compact_text(compact_item.get("text"), max_chars=max_text_chars)
+            evidence_items.append(compact_item)
+        compact_result["evidence"] = evidence_items
+        compact_results.append(compact_result)
+    compact["results"] = compact_results
+    return compact
+
+
 def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
     """Create a FastMCP server for a retriever service endpoint."""
     settings = settings or ServiceMCPSettings()
@@ -499,8 +533,15 @@ def build_mcp(settings: ServiceMCPSettings | None = None) -> FastMCP:
         top_k: int = 5,
         format: QueryFormat = "hits",
         payload: dict[str, Any] | None = None,
+        max_text_chars: int = 500,
     ) -> dict[str, Any]:
-        return await service.query(query, top_k=top_k, format=format, payload=payload)
+        return await service.query(
+            query,
+            top_k=top_k,
+            format=format,
+            payload=payload,
+            max_text_chars=max_text_chars,
+        )
 
     @mcp.tool(name="answer", description="Search ingested documents and generate an answer.")
     async def answer(

@@ -80,6 +80,40 @@ def test_query_tool_client_posts_payload_and_auth_header() -> None:
     assert result["results"][0]["hits"][0]["text"] == "match"
 
 
+def test_query_tool_compacts_evidence_text_without_dropping_hits() -> None:
+    seen: dict[str, Any] = {}
+    evidence = [
+        {
+            "text": f"chunk-{index} " + ("x" * 2000),
+            "source": "doc",
+            "locator": {"kind": "page", "value": index + 1},
+            "score": 1.0 / (index + 1),
+            "citation": f"doc p.{index + 1}",
+        }
+        for index in range(10)
+    ]
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"results": [{"evidence": evidence}]})
+
+    client = ServiceMCPClient(
+        ServiceMCPSettings(base_url="http://service:7670"),
+        transport=httpx.MockTransport(_handler),
+    )
+
+    result = _run(client.query("What is indexed?", top_k=10, format="evidence", max_text_chars=20_000))
+
+    compact_evidence = result["results"][0]["evidence"]
+    assert seen["body"] == {"query": "What is indexed?", "top_k": 10, "format": "evidence"}
+    assert len(compact_evidence) == 10
+    assert compact_evidence[0]["citation"] == "doc p.1"
+    assert compact_evidence[0]["locator"] == {"kind": "page", "value": 1}
+    assert compact_evidence[0]["text"].startswith("chunk-0 ")
+    assert compact_evidence[0]["text"].endswith("...")
+    assert len(compact_evidence[0]["text"]) == 503
+
+
 def test_ingest_documents_accepts_inline_base64_upload() -> None:
     calls: list[tuple[str, str]] = []
     upload_body = b""
