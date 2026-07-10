@@ -63,7 +63,7 @@ Ensure your deployment environment meets these specifications before running the
 
 The NeMo Retriever Library extraction core pipeline features run on a single A10G or better GPU.
 
-Optional advanced features—audio and video transcription, Nemotron Parse, Omni image captioning, and the VL reranker—are **not** part of that core footprint. Audio, video, Nemotron Parse, and Omni captioning each need **one or more additional dedicated GPUs** beyond the GPU running the four core NIMs; the VL reranker can share the core GPU when it has at least 80 GB VRAM. Capacity requirements are listed in the **Additional Dedicated GPUs** column of the [model hardware requirements](#model-hardware-requirements) table below.
+Optional advanced features—audio and video transcription, Nemotron Parse, Omni image captioning, and the VL reranker—are **not** part of that core footprint. Audio, video, Nemotron Parse, and Omni captioning each need **one or more additional dedicated GPUs** beyond the GPU running the four core NIMs; the VL reranker can share the core GPU when it has at least 80 GB VRAM. Capacity requirements are listed in the **Additional Dedicated GPUs** rows of the [model hardware requirements](#model-hardware-requirements) table below.
 
 ### Default Helm NIMs { #default-helm-nims }
 
