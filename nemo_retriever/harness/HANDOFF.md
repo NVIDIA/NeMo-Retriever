@@ -22,6 +22,8 @@ the harness.
   or mutate their results.
 - Scheduling, deployment, retries, locking, and secret distribution are outside
   this harness surface.
+- `service` is a system-under-test mode that uses an endpoint supplied by the
+  caller; Helm is only an optional outer provisioning mechanism.
 
 The harness must not route these commands through `retriever pipeline run` or
 `nemo_retriever.examples.graph_pipeline`.
@@ -37,6 +39,9 @@ The harness must not route these commands through `retriever pipeline run` or
   per-run status, events, logs, and artifact cleanup.
 - `slack.py` reads completed artifacts and renders or posts a report. It does
   not participate in benchmark execution.
+- `helm_runner.py` and `HelmServiceManager` provision an immutable service,
+  invoke the shared `run-files` CLI, collect failure logs, and tear down. They
+  do not implement benchmark sessions or reporting.
 
 ## Configuration Ownership
 
@@ -74,6 +79,7 @@ Detailed run evidence can include:
 - `beir_run.trec`
 - `query_results.jsonl`
 - `lancedb/`
+- `service_logs/`
 
 New runs do not write `summary_metrics.json`. Compatibility readers may still
 accept that file in older artifact directories. Failure summaries stay concise;

@@ -313,11 +313,13 @@ def build_eval_chain(
         api_base=gen_cfg.get("api_base"),
         api_key=gen_cfg.get("api_key"),
         temperature=gen_cfg.get("temperature", 0.0),
+        top_p=gen_cfg.get("top_p"),
         max_tokens=gen_cfg.get("max_tokens", 4096),
         extra_params=gen_cfg.get("extra_params"),
         num_retries=gen_cfg.get("num_retries", 3),
         timeout=gen_cfg.get("timeout", default_timeout),
         max_workers=execution.get("max_workers", 8),
+        reasoning_enabled=gen_cfg.get("reasoning_enabled", True),
     )
 
     judge_op = JudgingOperator(
@@ -391,6 +393,7 @@ def build_eval_pipeline(config: dict) -> "QAEvalPipeline":
             extra_params=gen_cfg.get("extra_params"),
             num_retries=gen_cfg.get("num_retries", 3),
             timeout=gen_cfg.get("timeout", default_timeout),
+            reasoning_enabled=gen_cfg.get("reasoning_enabled", True),
         )
 
     judge = LLMJudge.from_kwargs(

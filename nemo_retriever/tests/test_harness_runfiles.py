@@ -109,6 +109,46 @@ def test_run_files_applies_machine_paths_then_cli_overrides(monkeypatch, tmp_pat
     assert expanded["runfiles"][0]["artifact_dir"] == "001_jp20_beir"
 
 
+def test_run_files_applies_service_endpoint_only_to_service_children(monkeypatch, tmp_path):
+    from nemo_retriever.harness.execution import PreparedBenchmark
+
+    runfiles = []
+    for name, mode in (("jp20_beir", "service"), ("bo767_beir", "local")):
+        path = tmp_path / f"{name}.json"
+        _write_json(path, {"schema_version": 1, "name": name, "benchmark": name, "mode": mode})
+        runfiles.append(path)
+
+    calls = []
+
+    def fake_preflight(benchmark, **kwargs):
+        calls.append((benchmark, kwargs["service_endpoint"]))
+        return PreparedBenchmark(
+            benchmark=benchmark,
+            mode=kwargs["mode"],
+            overrides=tuple(kwargs["overrides"]),
+            requirements=tuple(kwargs["requirements"]),
+            dry_run=kwargs["dry_run"],
+            resolved={"dataset": {"name": benchmark}, "ingest": {}},
+            dataset_path=tmp_path,
+        )
+
+    monkeypatch.setattr("nemo_retriever.harness.runsets.preflight_benchmark", fake_preflight)
+    monkeypatch.setattr(
+        "nemo_retriever.harness.runsets.run_prepared_benchmark",
+        lambda prepared, **kwargs: _successful_outcome(prepared.benchmark, kwargs["output_dir"]),
+    )
+
+    outcome = run_runfiles(
+        runfiles,
+        output_dir=str(tmp_path / "session"),
+        service_endpoint="http://localhost:17670",
+        dry_run=True,
+    )
+
+    assert outcome.exit_code == 0
+    assert calls == [("jp20_beir", "http://localhost:17670"), ("bo767_beir", None)]
+
+
 def test_run_files_completes_remaining_runs_and_preserves_first_failure(monkeypatch, tmp_path):
     runfiles = []
     for name in ("jp20_beir", "bo767_beir"):

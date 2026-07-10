@@ -70,17 +70,23 @@ class TestLLMRemoteClientParams:
         with pytest.raises(ValueError):
             LLMRemoteClientParams(model="m", unknown_field=123)  # type: ignore[call-arg]
 
-    def test_api_key_auto_resolved_from_env(self, monkeypatch):
-        """api_key=None should resolve from the remote-auth helper."""
+    def test_api_key_none_defers_to_provider_native_lookup(self, monkeypatch):
+        """Generic LiteLLM transport must not substitute NVIDIA credentials."""
         from nemo_retriever.common.params import models as params_models
 
-        monkeypatch.setattr(params_models, "resolve_remote_api_key", lambda: "resolved-secret")
+        def unexpected_resolution():
+            raise AssertionError("generic transport must not resolve NVIDIA credentials")
+
+        monkeypatch.setattr(params_models, "resolve_remote_api_key", unexpected_resolution)
         p = params_models.LLMRemoteClientParams(model="m")
-        assert p.api_key == "resolved-secret"
+        assert p.api_key is None
 
     def test_api_key_no_api_key_sentinel_yields_none(self):
         """Explicit NO_API_KEY sentinel suppresses auto-resolution."""
-        from nemo_retriever.common.params.models import NO_API_KEY, LLMRemoteClientParams
+        from nemo_retriever.common.params.models import (
+            NO_API_KEY,
+            LLMRemoteClientParams,
+        )
 
         p = LLMRemoteClientParams(model="m", api_key=NO_API_KEY)
         assert p.api_key is None
@@ -91,7 +97,10 @@ class TestLiteLLMClientConstruction:
 
     def test_structured_construction(self):
         from nemo_retriever.models.llm.clients import LiteLLMClient
-        from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
+        from nemo_retriever.common.params.models import (
+            LLMInferenceParams,
+            LLMRemoteClientParams,
+        )
 
         transport = LLMRemoteClientParams(model="openai/gpt-4o-mini", api_key="k")
         sampling = LLMInferenceParams(temperature=0.2, top_p=0.9, max_tokens=512)
@@ -111,7 +120,10 @@ class TestLiteLLMClientConstruction:
         :meth:`LiteLLMClient.from_kwargs`.
         """
         from nemo_retriever.models.llm.clients import LiteLLMClient
-        from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
+        from nemo_retriever.common.params.models import (
+            LLMInferenceParams,
+            LLMRemoteClientParams,
+        )
 
         client = LiteLLMClient(transport=LLMRemoteClientParams(model="m"))
         assert isinstance(client.sampling, LLMInferenceParams)
@@ -213,20 +225,194 @@ class TestLiteLLMCompleteCallKwargs:
         assert kwargs["api_key"] == "secret"
 
     @patch("litellm.completion")
-    def test_extra_params_merged_last(self, mock_completion):
-        """extra_params should win over keys it overlaps with."""
+    def test_allowed_nested_extra_params_merge_recursively(self, mock_completion):
+        """Per-request extensions win without discarding sibling values."""
         from nemo_retriever.models.llm.clients import LiteLLMClient
 
         mock_completion.return_value = _fake_litellm_response("hi")
         client = LiteLLMClient.from_kwargs(
             model="m",
-            extra_params={"user": "tester", "num_retries": 99},
+            extra_params={
+                "user": "tester",
+                "provider": {"seed": 1, "mode": "stable"},
+            },
         )
-        client.complete([{"role": "user", "content": "hi"}])
+        client.complete(
+            [{"role": "user", "content": "hi"}],
+            extra_params={
+                "provider": {"seed": 2, "extension": True},
+                "stop": ["END"],
+            },
+        )
 
         kwargs = mock_completion.call_args.kwargs
         assert kwargs["user"] == "tester"
-        assert kwargs["num_retries"] == 99
+        assert kwargs["provider"] == {
+            "seed": 2,
+            "mode": "stable",
+            "extension": True,
+        }
+        assert kwargs["stop"] == ["END"]
+
+
+class TestLiteLLMHardening:
+    """Credential, protected-field, and text-only response contracts."""
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "model",
+            "messages",
+            "api_key",
+            "api_base",
+            "timeout",
+            "num_retries",
+            "temperature",
+            "top_p",
+            "max_tokens",
+            "tools",
+            "tool_choice",
+            "parallel_tool_calls",
+            "functions",
+            "function_call",
+            "stream",
+            "n",
+        ],
+    )
+    def test_transport_rejects_every_protected_extra(self, key):
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
+
+        with pytest.raises(ValueError, match=key):
+            LLMRemoteClientParams(model="m", extra_params={key: "forbidden"})
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "model",
+            "messages",
+            "api_key",
+            "api_base",
+            "timeout",
+            "num_retries",
+            "temperature",
+            "top_p",
+            "max_tokens",
+            "tools",
+            "tool_choice",
+            "parallel_tool_calls",
+            "functions",
+            "function_call",
+            "stream",
+            "n",
+        ],
+    )
+    @patch("litellm.completion")
+    def test_per_request_rejects_every_protected_extra(self, mock_completion, key):
+        from nemo_retriever.models.llm.clients import LiteLLMClient
+
+        client = LiteLLMClient.from_kwargs(model="m")
+        with pytest.raises(ValueError, match=key):
+            client.complete(
+                [{"role": "user", "content": "hi"}],
+                extra_params={key: "forbidden"},
+            )
+        mock_completion.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("model", "environment_name"),
+        [
+            ("nvidia_nim/model", "NVIDIA_API_KEY"),
+            ("openai/model", "OPENAI_API_KEY"),
+            ("huggingface/model", "HUGGINGFACE_API_KEY"),
+            ("openai/custom", "MY_CUSTOM_PROVIDER_KEY"),
+        ],
+    )
+    @patch("litellm.completion")
+    def test_explicit_environment_reference_resolves_at_call_time(
+        self,
+        mock_completion,
+        monkeypatch,
+        model,
+        environment_name,
+    ):
+        from nemo_retriever.models.llm.clients import LiteLLMClient
+
+        expected = f"value-for-{environment_name}"
+        monkeypatch.setenv(environment_name, expected)
+        mock_completion.return_value = _fake_litellm_response("ok")
+        client = LiteLLMClient.from_kwargs(
+            model=model,
+            api_key=f"os.environ/{environment_name}",
+        )
+
+        assert client.transport.api_key == f"os.environ/{environment_name}"
+        client.complete([{"role": "user", "content": "hi"}])
+        assert mock_completion.call_args.kwargs["api_key"] == expected
+
+    @pytest.mark.parametrize("value", [None, ""])
+    @patch("litellm.completion")
+    def test_missing_or_blank_explicit_environment_reference_fails_before_call(
+        self,
+        mock_completion,
+        monkeypatch,
+        value,
+    ):
+        from nemo_retriever.models.llm.clients import LiteLLMClient
+
+        if value is None:
+            monkeypatch.delenv("MISSING_PROVIDER_KEY", raising=False)
+        else:
+            monkeypatch.setenv("MISSING_PROVIDER_KEY", value)
+        client = LiteLLMClient.from_kwargs(
+            model="openai/model",
+            api_key="os.environ/MISSING_PROVIDER_KEY",
+        )
+
+        with pytest.raises(ValueError, match="MISSING_PROVIDER_KEY"):
+            client.complete([{"role": "user", "content": "hi"}])
+        mock_completion.assert_not_called()
+
+    @patch("litellm.completion")
+    def test_none_omits_api_key_and_no_auth_forwards_inert_nonempty_key(
+        self,
+        mock_completion,
+        monkeypatch,
+    ):
+        from nemo_retriever.common.params.models import NO_API_KEY
+        from nemo_retriever.models.llm.clients import LiteLLMClient
+
+        monkeypatch.setenv("NVIDIA_API_KEY", "must-not-be-substituted")
+        monkeypatch.setenv("OPENAI_API_KEY", "must-not-be-substituted-either")
+        mock_completion.return_value = _fake_litellm_response("ok")
+
+        provider_native = LiteLLMClient.from_kwargs(model="openai/model")
+        provider_native.complete([{"role": "user", "content": "hi"}])
+        assert "api_key" not in mock_completion.call_args.kwargs
+
+        no_auth = LiteLLMClient.from_kwargs(model="openai/local", api_key=NO_API_KEY)
+        no_auth.complete([{"role": "user", "content": "hi"}])
+        forwarded = mock_completion.call_args.kwargs["api_key"]
+        assert forwarded
+        assert forwarded not in {
+            "must-not-be-substituted",
+            "must-not-be-substituted-either",
+        }
+
+    @pytest.mark.parametrize(
+        "reference",
+        [
+            "os.environ/",
+            "os.environ/NOT-VALID",
+            "os.environ/9INVALID",
+            "os.environ/SPACE KEY",
+            " os.environ/OPENAI_API_KEY ",
+        ],
+    )
+    def test_invalid_environment_reference_names_are_rejected(self, reference):
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
+
+        with pytest.raises(ValueError, match="environment references"):
+            LLMRemoteClientParams(model="m", api_key=reference)
 
 
 class TestLiteLLMRAGPrompt:
@@ -249,7 +435,10 @@ class TestLiteLLMRAGPrompt:
         assert messages[0]["role"] == "system"
         assert messages[0]["content"].startswith("/no_think\n")
         assert "precise question-answering assistant" in messages[0]["content"]
-        assert kwargs["chat_template_kwargs"] == {"reasoning_budget": 32, "enable_thinking": False}
+        assert kwargs["chat_template_kwargs"] == {
+            "reasoning_budget": 32,
+            "enable_thinking": False,
+        }
         assert result.answer == "answer"
 
     @patch("litellm.completion")
@@ -308,7 +497,10 @@ class TestLLMJudgeConstruction:
 
     def test_custom_sampling_override(self):
         from nemo_retriever.models.llm.clients import LLMJudge
-        from nemo_retriever.common.params.models import LLMInferenceParams, LLMRemoteClientParams
+        from nemo_retriever.common.params.models import (
+            LLMInferenceParams,
+            LLMRemoteClientParams,
+        )
 
         transport = LLMRemoteClientParams(model="m")
         sampling = LLMInferenceParams(temperature=0.4, max_tokens=1024)
@@ -450,7 +642,9 @@ class TestBackCompatCallSites:
         assert len(generation_ops) == 1
         assert generation_ops[0]._client.transport.reasoning_enabled is True
 
-    def test_pipeline_builder_generate_defaults_reasoning_enabled_for_legacy_client(self):
+    def test_pipeline_builder_generate_defaults_reasoning_enabled_for_legacy_client(
+        self,
+    ):
         from types import SimpleNamespace
         from unittest.mock import MagicMock
 
@@ -581,7 +775,10 @@ class TestApiKeyRedaction:
 
     def test_empty_api_key_not_masked(self):
         """Redaction only fires when a key is actually present."""
-        from nemo_retriever.common.params.models import NO_API_KEY, LLMRemoteClientParams
+        from nemo_retriever.common.params.models import (
+            NO_API_KEY,
+            LLMRemoteClientParams,
+        )
 
         p = LLMRemoteClientParams(model="m", api_key=NO_API_KEY)
         assert p.api_key is None
@@ -614,6 +811,46 @@ class TestApiKeyRedaction:
         assert "nvapi-OCR-TOKEN" not in rendered
         assert "page_elements_api_key=***" in rendered
         assert "ocr_api_key=***" in rendered
+
+    def test_nested_extra_param_secrets_are_redacted_from_repr(self):
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
+
+        secret = "sk-NESTED-MUST-NOT-LEAK"
+        params = LLMRemoteClientParams(
+            model="m",
+            extra_params={
+                "provider": {"api_key": secret},
+                "authorization": f"Bearer {secret}",
+                "authorizationHeader": f"Bearer {secret}",
+            },
+        )
+
+        rendered = repr(params)
+        assert secret not in rendered
+        assert "***" in rendered
+
+    def test_protected_extra_validation_error_hides_raw_input(self):
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
+
+        secret = "sk-VALIDATION-MUST-NOT-LEAK"
+        with pytest.raises(ValueError, match="protected request fields") as exc_info:
+            LLMRemoteClientParams(
+                model="m",
+                extra_params={"api_key": secret},
+            )
+
+        assert secret not in str(exc_info.value)
+
+    def test_mutated_literal_invalidates_environment_provenance(self):
+        from nemo_retriever.common.params.models import LLMRemoteClientParams
+
+        params = LLMRemoteClientParams(
+            model="m",
+            api_key="os.environ/OPENAI_API_KEY",
+        )
+        params.api_key = "sk-LITERAL-MUTATION"
+
+        assert params._api_key_env_reference("api_key") is None
 
 
 class TestLiteLLMDefaultModel:
@@ -663,7 +900,10 @@ class TestLiteLLMDefaultSamplingAlignment:
     def test_explicit_sampling_is_not_overridden(self):
         """Passing an explicit ``LLMInferenceParams`` must win over the default."""
         from nemo_retriever.models.llm.clients import LiteLLMClient
-        from nemo_retriever.common.params import LLMInferenceParams, LLMRemoteClientParams
+        from nemo_retriever.common.params import (
+            LLMInferenceParams,
+            LLMRemoteClientParams,
+        )
 
         client = LiteLLMClient(
             transport=LLMRemoteClientParams(model="m"),

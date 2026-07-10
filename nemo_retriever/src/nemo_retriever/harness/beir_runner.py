@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from pathlib import Path
 import time
 from typing import Any, Mapping, Sequence
@@ -18,7 +20,8 @@ from nemo_retriever.harness.contracts import (
     HarnessRunError,
 )
 from nemo_retriever.harness.json_io import artifact_write_error, write_json
-from nemo_retriever.query.options import QueryRequest
+from nemo_retriever.query.options import QueryRequest, ServiceQueryRequest
+from nemo_retriever.query.service import query_documents as query_service_documents
 from nemo_retriever.query.workflow import ResolvedQueryPlan
 from nemo_retriever.tools.recall.beir import (
     BeirDataset,
@@ -262,3 +265,108 @@ def _agentic_retrieve(
         )
     run = build_beir_run_from_ranked_doc_ids(dataset.query_ids, ranked_doc_ids)
     return [per_query_ms] * query_count, run
+
+
+def run_service_beir_queries(
+    writer: ArtifactWriter,
+    resolved: dict[str, Any],
+    query_request: ServiceQueryRequest,
+) -> tuple[list[float], dict[str, float], int]:
+    """Run BEIR queries through the deployed Retriever service."""
+
+    evaluation = resolved.get("evaluation") or {}
+    loader = evaluation.get("loader")
+    dataset_name = evaluation.get("dataset_name")
+    doc_id_field = evaluation.get("doc_id_field") or "pdf_basename"
+    if not loader:
+        raise HarnessRunError(
+            EXIT_EVALUATION_FAILURE,
+            FailurePayload(
+                failed_phase="evaluate",
+                failure_reason="evaluation_failed",
+                retryable=False,
+                message="BEIR evaluation requires evaluation.loader.",
+            ),
+        )
+    try:
+        dataset = load_beir_dataset(
+            str(loader),
+            dataset_name=str(dataset_name),
+            split=str(evaluation.get("split") or "test"),
+            query_language=evaluation.get("query_language"),
+            doc_id_field=str(doc_id_field),
+        )
+    except FileNotFoundError as exc:
+        raise HarnessRunError(
+            EXIT_MISSING_INPUT,
+            FailurePayload(
+                failed_phase="query_plan",
+                failure_reason="dataset_missing",
+                retryable=False,
+                message=str(exc),
+                debug_artifacts=("resolved_benchmark.json",),
+            ),
+        ) from exc
+    except Exception as exc:
+        raise HarnessRunError(
+            EXIT_EVALUATION_FAILURE,
+            FailurePayload(
+                failed_phase="evaluate",
+                failure_reason="evaluation_failed",
+                retryable=False,
+                message=str(exc),
+                debug_artifacts=("resolved_benchmark.json",),
+            ),
+        ) from exc
+
+    writer.status(status="running", phase="query")
+    writer.event("query", "query_start", f"Running {len(dataset.queries)} BEIR queries through the service")
+    raw_hits: list[list[dict[str, Any]]] = []
+    latencies_ms: list[float] = []
+    query_results_path = writer.path("query_results.jsonl")
+    for query_id, query_text in zip(dataset.query_ids, dataset.queries):
+        start = time.perf_counter()
+        try:
+            hits = query_service_documents(replace(query_request, query=query_text))
+        except Exception as exc:
+            raise HarnessRunError(
+                EXIT_QUERY_FAILURE,
+                FailurePayload(
+                    failed_phase="query",
+                    failure_reason="query_failed",
+                    retryable=False,
+                    message=str(exc),
+                    debug_artifacts=("query_plan.json", "query_results.jsonl", "run.log"),
+                ),
+            ) from exc
+        latency_ms = (time.perf_counter() - start) * 1000.0
+        hit_dicts = [dict(hit) for hit in hits]
+        raw_hits.append(hit_dicts)
+        latencies_ms.append(latency_ms)
+        _write_query_result(
+            query_results_path,
+            query_id=query_id,
+            query_text=query_text,
+            latency_ms=latency_ms,
+            hits=hit_dicts,
+        )
+
+    writer.status(status="running", phase="evaluate")
+    writer.event("evaluate", "evaluate_start", "Computing service BEIR metrics")
+    try:
+        run = build_beir_run_from_hits(dataset.query_ids, raw_hits, doc_id_field=str(doc_id_field))
+        metrics = compute_beir_metrics(dataset.qrels, run, ks=tuple(evaluation.get("ks") or (1, 3, 5, 10)))
+    except Exception as exc:
+        raise HarnessRunError(
+            EXIT_EVALUATION_FAILURE,
+            FailurePayload(
+                failed_phase="evaluate",
+                failure_reason="evaluation_failed",
+                retryable=False,
+                message=str(exc),
+                debug_artifacts=("query_results.jsonl", "run.log"),
+            ),
+        ) from exc
+    write_json(writer.path("beir_metrics.json"), metrics)
+    _write_trec_run(writer.path("beir_run.trec"), run)
+    return latencies_ms, metrics, len(dataset.queries)
