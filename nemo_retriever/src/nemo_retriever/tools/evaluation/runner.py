@@ -25,6 +25,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _resolved_generation_config(eval_config: dict, model_config: dict) -> dict[str, Any]:
+    """Return the effective, secret-free generation settings for one run."""
+    return {
+        "model": model_config["model"],
+        "temperature": eval_config.get("temperature", model_config.get("temperature", 0.0)),
+        "top_p": eval_config.get("top_p", model_config.get("top_p")),
+        "max_tokens": eval_config.get("max_tokens", model_config.get("max_tokens", 4096)),
+        "reasoning_enabled": eval_config.get(
+            "reasoning_enabled",
+            model_config.get("reasoning_enabled", True),
+        ),
+    }
+
+
 def run_eval_sweep(
     config: dict,
     qa_pairs: list[dict],
@@ -107,16 +121,18 @@ def run_eval_sweep(
         check_unresolved_env(gen_model_cfg.get("api_key"), "api_key", f"generator '{gen_name}'")
         check_unresolved_env(judge_model_cfg.get("api_key"), "api_key", f"judge '{judge_name}'")
 
+        generation_config = _resolved_generation_config(eval_cfg, gen_model_cfg)
         client = LiteLLMClient.from_kwargs(
-            model=gen_model_cfg["model"],
+            model=generation_config["model"],
             api_base=gen_model_cfg.get("api_base"),
             api_key=gen_model_cfg.get("api_key"),
-            temperature=eval_cfg.get("temperature", gen_model_cfg.get("temperature", 0.0)),
-            top_p=eval_cfg.get("top_p", gen_model_cfg.get("top_p")),
-            max_tokens=eval_cfg.get("max_tokens", gen_model_cfg.get("max_tokens", 4096)),
+            temperature=generation_config["temperature"],
+            top_p=generation_config["top_p"],
+            max_tokens=generation_config["max_tokens"],
             extra_params=gen_model_cfg.get("extra_params"),
             num_retries=gen_model_cfg.get("num_retries", 3),
             timeout=gen_model_cfg.get("timeout", default_timeout),
+            reasoning_enabled=generation_config["reasoning_enabled"],
         )
         judge = LLMJudge.from_kwargs(
             model=judge_model_cfg["model"],
@@ -161,6 +177,7 @@ def run_eval_sweep(
                             "retrieval_file": str(retrieval_file),
                             "top_k": top_k,
                             "generator": gen_name,
+                            "generation_config": generation_config,
                             "judge": judge_name,
                             "run": run_idx,
                             "total_runs": n_runs,
@@ -174,6 +191,7 @@ def run_eval_sweep(
                     "label": label,
                     "status": "PASS",
                     "output_path": out_path,
+                    "generation_config": generation_config,
                     "eval_results": eval_results,
                 }
 
@@ -183,6 +201,7 @@ def run_eval_sweep(
                     "label": label,
                     "status": "FAIL",
                     "error": str(exc),
+                    "generation_config": generation_config,
                 }
 
             results_log.append(result)
