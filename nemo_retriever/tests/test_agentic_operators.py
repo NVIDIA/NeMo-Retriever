@@ -316,6 +316,37 @@ class TestSelectionAgentOperator:
         assert result["result_source"].tolist() == ["rrf", "rrf"]
         mock_step.assert_not_called()
 
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
+    def test_force_selection_on_invalid_final_skips_rrf(self, mock_step):
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
+
+        mock_step.return_value = _make_tool_call_response(
+            "log_selected_documents",
+            {"doc_ids": ["d2", "d3"], "message": "selection picked these"},
+        )
+
+        op = SelectionAgentOperator(
+            llm_model="test-model",
+            invoke_url="http://localhost/v1/chat/completions",
+            top_k=2,
+            force_selection_on_invalid_final=True,
+        )
+        df = pd.DataFrame(
+            {
+                "query_id": ["q1", "q1", "q1"],
+                "query_text": ["What causes inflation?"] * 3,
+                "doc_id": ["d1", "d2", "d3"],
+                "text": ["doc one", "doc two", "doc three"],
+                "rrf_score": [0.1, 0.9, 0.8],
+                "react_final_rank": [None, None, None],
+            }
+        )
+        result = op.run(df)
+
+        assert result["doc_id"].tolist() == ["d2", "d3"]
+        assert result["result_source"].tolist() == ["selection_agent", "selection_agent"]
+        mock_step.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # ReActAgentOperator — mock retriever_fn + invoke_chat_completion_step

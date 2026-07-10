@@ -259,6 +259,7 @@ class AgenticRetriever:
                 retriever_fn=self._retrieve_for_agent,
                 retriever_top_k=per_hop_top_k,
                 target_top_k=target_top_k,
+                enforce_top_k=False,  # accept partial final_results; only reject empty doc_ids
                 user_msg_type="with_results",
                 max_steps=int(self._cfg.react_max_steps),
                 extended_relevance=True,
@@ -280,6 +281,7 @@ class AgenticRetriever:
                 text_truncation=int(self._cfg.text_truncation),
                 reasoning_effort=self._cfg.reasoning_effort,
                 temperature=float(self._cfg.temperature),
+                force_selection_on_invalid_final=True,  # run selection LLM instead of RRF fast-path
             )
             >> AgenticSelectionOutputOperator()
         )

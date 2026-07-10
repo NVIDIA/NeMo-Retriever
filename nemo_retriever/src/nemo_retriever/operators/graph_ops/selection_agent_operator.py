@@ -179,6 +179,10 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
     text_truncation : int
         Maximum characters of each document's text shown to the LLM.
         Defaults to ``2000``.
+    force_selection_on_invalid_final : bool
+        When ``True``, skip the RRF fast-path and invoke the selection LLM
+        whenever ReAct did not emit a non-empty ``final_results`` list.
+        Defaults to ``False``.
     base_url : str, optional
         Deprecated alias for ``invoke_url``.  Prefer ``invoke_url``.
     """
@@ -201,8 +205,10 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         base_url: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
         temperature: float = 0.0,
+        force_selection_on_invalid_final: bool = False,
     ) -> None:
         super().__init__()
+        self._force_selection_on_invalid_final = force_selection_on_invalid_final
         self._reasoning_effort = reasoning_effort
         self._temperature = temperature
         self._llm_model = llm_model
@@ -402,10 +408,10 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
     def _preferred_doc_ids(self, ordered_group: pd.DataFrame) -> tuple[List[str] | None, str, str]:
         """Apply retrieval-bench-style source priority before invoking selection."""
         doc_ids = self._react_final_doc_ids(ordered_group)
-        if doc_ids is not None:
+        if doc_ids is not None and len(doc_ids) > 0:
             return doc_ids, "Using ReAct final_results.", "final_results"
 
-        if "rrf_score" in ordered_group.columns:
+        if not self._force_selection_on_invalid_final and "rrf_score" in ordered_group.columns:
             doc_ids = ordered_group["doc_id"].astype(str).drop_duplicates().head(int(self._top_k)).tolist()
             if doc_ids:
                 return doc_ids, "Using RRF ranking.", "rrf"
