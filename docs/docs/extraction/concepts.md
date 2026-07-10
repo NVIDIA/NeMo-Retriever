@@ -1,3 +1,21 @@
+---
+title: "Key concepts"
+content_type: explanation
+audience: beginner
+journey_stage: discover
+product: nemo-retriever-library
+features:
+  - ingestion
+  - extraction
+technologies:
+  - python
+prerequisites:
+  - extraction/overview.md
+duration_minutes: 10
+surface: published-docs
+status: published
+---
+
 # Concepts
 
 These terms appear throughout NeMo Retriever Library documentation.

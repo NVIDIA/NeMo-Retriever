@@ -1,3 +1,21 @@
+---
+title: "NeMo Retriever API reference"
+content_type: reference
+audience: advanced
+journey_stage: build
+product: nemo-retriever-library
+features:
+  - configuration
+  - customization
+technologies:
+  - python
+prerequisites:
+  - extraction/concepts.md
+  - extraction/workflow-document-ingestion.md
+surface: published-docs
+status: published
+---
+
 # NeMo Retriever API Reference
 
 ## PDF pre-splitting for parallel ingest { #pdf-pre-splitting-for-parallel-ingest }

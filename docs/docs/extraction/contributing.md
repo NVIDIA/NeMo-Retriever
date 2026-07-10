@@ -1,3 +1,19 @@
+---
+title: "Contribute to NeMo Retriever Library"
+content_type: how-to
+audience: intermediate
+journey_stage: build
+product: nemo-retriever-library
+features:
+  - support
+technologies:
+  - git
+prerequisites: []
+duration_minutes: 15
+surface: published-docs
+status: published
+---
+
 # Contributing to NeMo Retriever Library
 
 External contributions will be welcome soon, and they are greatly appreciated. For repository policy, coding standards, and the contribution process, refer to **[Contributing to NeMo Retriever](https://github.com/NVIDIA/NeMo-Retriever/blob/main/CONTRIBUTING.md)** on GitHub.

@@ -1,3 +1,17 @@
+---
+title: "Release notes"
+content_type: reference
+audience: intermediate
+journey_stage: discover
+product: nemo-retriever-library
+features: []
+technologies: []
+prerequisites:
+  - extraction/overview.md
+surface: published-docs
+status: published
+---
+
 # Release Notes for NeMo Retriever Library
 
 This documentation contains the release notes for [NeMo Retriever Library](overview.md).

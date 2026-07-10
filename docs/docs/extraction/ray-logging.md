@@ -1,3 +1,21 @@
+---
+title: "Configure Ray logging"
+content_type: how-to
+audience: advanced
+journey_stage: scale
+product: nemo-retriever-library
+features:
+  - operations-logging
+technologies:
+  - python
+  - ray
+prerequisites:
+  - extraction/deployment-options.md
+duration_minutes: 15
+surface: published-docs
+status: published
+---
+
 # Configure Ray Logging
 
 [NeMo Retriever Library](overview.md) uses [Ray](https://docs.ray.io/en/latest/index.html) for logging. 

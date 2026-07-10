@@ -1,3 +1,23 @@
+---
+title: "Vector databases"
+content_type: reference
+audience: intermediate
+journey_stage: build
+product: nemo-retriever-library
+features:
+  - vector-storage
+  - retrieval
+technologies:
+  - python
+  - lancedb
+  - milvus
+prerequisites:
+  - extraction/workflow-document-ingestion.md
+duration_minutes: 20
+surface: published-docs
+status: published
+---
+
 # Vector databases
 
 Use this documentation to learn how [NeMo Retriever Library](overview.md) stores extracted embeddings and uploads data to vector databases.
