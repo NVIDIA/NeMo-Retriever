@@ -63,6 +63,8 @@ Ensure your deployment environment meets these specifications before running the
 
 The NeMo Retriever Library extraction core pipeline features run on a single A10G or better GPU.
 
+Optional advanced features—audio and video transcription, Nemotron Parse, Omni image captioning, and (on most GPUs) the VL reranker—are **not** part of that core footprint. Plan **one or more additional dedicated GPUs** beyond the GPU running the four core NIMs. Capacity requirements are listed in the **Additional Dedicated GPUs** column of the [model hardware requirements](#model-hardware-requirements) table below.
+
 ### Default Helm NIMs { #default-helm-nims }
 
 The production Helm chart enables these NIM microservices **by default** (for example through `nimOperator.*.enabled=true`):
@@ -106,13 +108,15 @@ These NIM microservices are **optional** for the default extraction pipeline. Th
 
 Use **`nemotron_3_nano_omni_30b_a3b_reasoning`** when you enable the caption stage (hosted model ID `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`). The Helm key is in the [optional NIMs](#optional-helm-nims-not-auto-wired-by-default) table above.
 
-Optional features listed in the table above require additional GPU support, disk space, and feature-specific system dependencies beyond the four default NIMs.
+Optional features in the table above require capacity **beyond the four default NIMs**. Audio and video transcription, Nemotron Parse, and Omni captioning each need a **dedicated additional GPU** (or two, for Omni on L40S) separate from the core pipeline GPU. The VL reranker may share the core GPU only when that GPU has at least 80 GB VRAM; otherwise treat it as a standalone workload. Each optional feature also needs extra disk space and feature-specific system dependencies.
 
 For published NIM model IDs and deployment-specific constraints, use the product support matrices linked under [Related Topics](#related-topics) below.
 
 ## Model Hardware Requirements { #model-hardware-requirements }
 
 NeMo Retriever Library supports the following GPU hardware given system constraints in the table.
+
+**Additional Dedicated GPUs** counts GPUs required **in addition to** the one GPU reserved for the [core pipeline](#core-and-advanced-pipeline-features) (the four default NIMs). For example, a deployment with the core pipeline on one H100 and self-hosted Parakeet ASR needs **two GPUs total** (1 core + 1 additional).
 
 - **HF model weights** — approximate Hugging Face checkpoint footprint (files such as `model*.safetensors`, `weights.pth`, or other published weight bundles in the model repository). Values are rounded from the current public file listing and can change when the repository is updated.
 - **NIM disk space** — approximate container and on-disk model cache for self-hosted NIM microservices (not the same as HF download size). For Nemotron 3 Nano Omni captioning, refer to the [NVIDIA NIM for Vision Language Models support matrix](https://docs.nvidia.com/nim/vision-language-models/latest/support-matrix.html#nemotron-3-nano-omni-30b-a3b-reasoning).
