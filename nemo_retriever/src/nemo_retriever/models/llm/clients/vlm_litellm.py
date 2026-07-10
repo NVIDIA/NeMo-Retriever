@@ -51,7 +51,18 @@ _BLOCKED_HOSTS = frozenset(
     }
 )
 
-_ALLOWED_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".tiff", ".tif", ".bmp"})
+_EXTENSION_MIME: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".tiff": "image/tiff",
+    ".tif": "image/tiff",
+    ".bmp": "image/bmp",
+}
+
+_ALLOWED_IMAGE_EXTENSIONS = frozenset(_EXTENSION_MIME)
 
 _VLM_RAG_SYSTEM_PROMPT = (
     "You are a precise question-answering assistant. "
@@ -63,9 +74,13 @@ _VLM_RAG_SYSTEM_PROMPT = (
 
 
 def _mime_type_from_uri(uri: str) -> str:
-    """Infer MIME type from the URI path extension; fall back to image/png."""
-    mime, _ = mimetypes.guess_type(uri)
-    return mime or "image/png"
+    """Infer MIME type from the URI path extension; fall back to image/png.
+
+    Uses an explicit table for common image types so the result is
+    consistent across platforms regardless of the system MIME database.
+    """
+    ext = os.path.splitext(urlparse(uri).path)[1].lower()
+    return _EXTENSION_MIME.get(ext) or mimetypes.guess_type(uri)[0] or "image/png"
 
 
 def _validate_http_uri(uri: str) -> bool:
