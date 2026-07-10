@@ -66,35 +66,12 @@ ExtractChartsOption = Annotated[
 ]
 ExtractInfographicsOption = Annotated[
     bool | None,
-    typer.Option(
-        "--extract-infographics/--no-extract-infographics", help="Enable or disable PDF infographic extraction."
-    ),
+    typer.Option("--extract-infographics", help="Enable PDF infographic extraction."),
 ]
 ExtractPageAsImageOption = Annotated[
     bool | None,
     typer.Option(
         "--extract-page-as-image/--no-extract-page-as-image", help="Enable or disable full-page image extraction."
-    ),
-]
-UsePageElementsOption = Annotated[
-    bool | None,
-    typer.Option(
-        "--use-page-elements/--no-use-page-elements",
-        help="Enable or disable page-element detection for OCR/table/chart extraction.",
-    ),
-]
-UseGraphicElementsOption = Annotated[
-    bool | None,
-    typer.Option(
-        "--use-graphic-elements/--no-use-graphic-elements",
-        help="Enable or disable graphic-element extraction for chart/infographic rows.",
-    ),
-]
-UseTableStructureOption = Annotated[
-    bool | None,
-    typer.Option(
-        "--use-table-structure/--no-use-table-structure",
-        help="Enable or disable table-structure extraction for markdown table text.",
     ),
 ]
 SegmentAudioOption = Annotated[
@@ -187,13 +164,13 @@ CaptionContextTextMaxCharsOption = Annotated[
 CaptionInfographicsOption = Annotated[
     bool | None,
     typer.Option(
-        "--caption-infographics/--no-caption-infographics",
+        "--caption-infographics",
         help="Caption infographic crops in addition to extracted images.",
     ),
 ]
 DedupOption = Annotated[
     bool,
-    typer.Option("--dedup/--no-dedup", help="Add a deduplication stage before optional captioning and embedding."),
+    typer.Option("--dedup", help="Add a deduplication stage before optional captioning and embedding."),
 ]
 DedupIouThresholdOption = Annotated[
     float | None,
@@ -228,22 +205,6 @@ IndexModeOption = Annotated[
         ),
     ),
 ]
-HybridOption = Annotated[
-    bool,
-    typer.Option(
-        "--hybrid",
-        help="Deprecated alias for --index-mode hybrid.",
-        hidden=True,
-    ),
-]
-SparseOption = Annotated[
-    bool,
-    typer.Option(
-        "--sparse",
-        help="Deprecated alias for --index-mode sparse.",
-        hidden=True,
-    ),
-]
 RayAddressOption = Annotated[
     str | None, typer.Option("--ray-address", help="Batch mode only. Ray address for batch ingest.")
 ]
@@ -266,10 +227,6 @@ OcrLangOption = Annotated[
     OcrLangValue | None,
     typer.Option("--ocr-lang", help="OCR v2 language selector for local extraction."),
 ]
-GraphicElementsInvokeUrlOption = Annotated[
-    str | None,
-    typer.Option("--graphic-elements-invoke-url", help="Graphic-elements NIM endpoint URL."),
-]
 TableStructureInvokeUrlOption = Annotated[
     str | None,
     typer.Option("--table-structure-invoke-url", help="Table-structure NIM endpoint URL."),
@@ -280,12 +237,28 @@ TableOutputFormatOption = Annotated[
         "--table-output-format", help="Table text format. 'markdown' enables local table-structure extraction."
     ),
 ]
-EmbedInvokeUrlOption = Annotated[str | None, typer.Option("--embed-invoke-url", help="Embedding NIM endpoint URL.")]
+EmbedInvokeUrlOption = Annotated[
+    str | None,
+    typer.Option(
+        "--embed-invoke-url",
+        help=(
+            "Embedding endpoint override. On CPU-only hosts, ingest automatically uses NVIDIA's hosted "
+            "embedding endpoint with NVIDIA_API_KEY or NGC_API_KEY; pass this only for another endpoint."
+        ),
+    ),
+]
 EmbedModelNameOption = Annotated[
     str | None,
     typer.Option(
         "--embed-model-name",
         help=f"Optional embedding model name override. Defaults to {DEFAULT_EMBED_MODEL} when omitted.",
+    ),
+]
+EmbedModelProviderPrefixOption = Annotated[
+    str | None,
+    typer.Option(
+        "--embed-model-provider-prefix",
+        help="Optional LiteLLM provider prefix prepended to the remote embedding model name.",
     ),
 ]
 LocalIngestEmbedBackendOption = Annotated[

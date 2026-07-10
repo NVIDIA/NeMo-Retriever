@@ -29,6 +29,7 @@ from nemo_retriever.common.params import (
     StoreParams,
     TextChunkParams,
 )
+from nemo_retriever.common.params.models import NO_API_KEY
 from nemo_retriever.common.input_files import expand_input_file_patterns, input_type_for_path
 
 logger = logging.getLogger(__name__)
@@ -261,7 +262,7 @@ def build_service_ingestor(request: ServiceIngestRequest) -> Any:
     if request.caption_params is not None:
         ingestor = ingestor.caption(_sanitize_service_caption_params(request.caption_params))
 
-    ingestor = ingestor.embed(request.embed_params)
+    ingestor = ingestor.embed(_sanitize_service_stage_params(request.embed_params, stage="embed"))
 
     if request.store_params is not None:
         ingestor = ingestor.store(request.store_params)
@@ -273,6 +274,12 @@ def execute_service_ingest_request(request: ServiceIngestRequest) -> ServiceInge
     """Execute a service ingest request and return its structured result."""
 
     result = build_service_ingestor(request).ingest()
+    failures = list(getattr(result, "failures", ()) or ())
+    if failures:
+        document, detail = failures[0]
+        raise RuntimeError(
+            f"Service ingest failed for {len(failures)} document(s); first failure: {document}: {detail}"
+        )
     result_n_rows = _count_service_result_rows(result)
     return ServiceIngestExecutionResult(
         request=request,
@@ -353,16 +360,38 @@ def _attach_service_extract_stage(
     """Wire the extraction stage for the remote service ingestor."""
 
     chunk_dict = _service_text_chunk_dict(text_chunk_params) if enable_text_chunk else None
+    service_extract_params = _sanitize_service_stage_params(extract_params, stage="extract")
     if input_type == "image":
         return ingestor.extract_image_files(
-            extract_params,
+            service_extract_params,
             split_config={"image": chunk_dict} if chunk_dict else None,
         )
     return ingestor.extract(
-        extract_params,
+        service_extract_params,
         split_config=_split_config_for_input_type(input_type, chunk_dict, documents=documents),
         extraction_mode=_service_extraction_mode(input_type),
     )
+
+
+def _sanitize_service_stage_params(params: Any, *, stage: str) -> ExtractParams | EmbedParams:
+    """Keep typed client overrides while preventing environment API keys from reaching the wire client."""
+
+    from nemo_retriever.common.policy import _DEFAULT_ALLOWED_EMBED_KEYS, _DEFAULT_ALLOWED_EXTRACT_KEYS
+
+    allowed = {
+        "extract": _DEFAULT_ALLOWED_EXTRACT_KEYS,
+        "embed": _DEFAULT_ALLOWED_EMBED_KEYS,
+    }[stage]
+    raw = params.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+    sanitized = {key: value for key, value in raw.items() if key in allowed}
+    if stage == "extract":
+        return ExtractParams(
+            **sanitized,
+            api_key=NO_API_KEY,
+            page_elements_api_key=NO_API_KEY,
+            ocr_api_key=NO_API_KEY,
+        )
+    return EmbedParams(**sanitized, api_key=NO_API_KEY)
 
 
 def _split_config_for_input_type(

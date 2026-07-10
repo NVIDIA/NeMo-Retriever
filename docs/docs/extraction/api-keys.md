@@ -27,6 +27,18 @@ For a full list of related variables, see [Environment configuration variables](
 
     The `NVIDIA_API_KEY` from build.nvidia.com is not the same string as your NGC personal key used for Helm and `nvcr.io` access. Do not substitute one for the other unless your tooling explicitly documents that mapping.
 
+## Credential references in persisted graphs
+
+Persisted pipeline graphs never contain literal API keys. Configure a graph with an explicit worker-side environment reference such as:
+
+```python
+api_key="os.environ/NVIDIA_API_KEY"
+```
+
+Use the provider's own variable name, for example `os.environ/OPENAI_API_KEY` for an OpenAI model. The reference is stored in graph JSON and resolved only when the operator is constructed or invoked on the worker.
+
+Literal keys remain available for non-persisted local execution, but attempting to serialize one raises an error. This prevents graph persistence from silently substituting an NVIDIA credential for another provider's key.
+
 ## NGC personal key (Helm and `nvcr.io`)
 
 Many public assets on NGC can be used without authentication. For a Kubernetes deployment, the cluster must still pull NIM and microservice images from `nvcr.io` and may need NGC API access; the Helm chart expects credentials derived from an NGC personal key.
