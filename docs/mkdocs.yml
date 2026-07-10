@@ -172,7 +172,7 @@ plugins:
         extraction/throughput-is-dataset-dependent.md: extraction/multimodal-extraction.md#extraction-limitations-and-quality
         extraction/vlm-embed.md: extraction/embedding.md
         extraction/audio.md: extraction/audio-video.md
-        extraction/workflow-agentic-retrieval.md: extraction/overview.md
+        extraction/workflow-agentic-retrieval.md: extraction/customize-extend.md#mcp-access-for-agents
         extraction/agentic-retrieval-concept.md: extraction/overview.md
         extraction/workflow-build-searchable-collection.md: extraction/workflow-document-ingestion.md
         extraction/workflow-query-rerank.md: extraction/vdbs.md
@@ -219,14 +219,8 @@ exclude_docs: |
   extraction/chunking.md
   extraction/helm.md
   extraction/choose-your-path.md
-  extraction/hosted-nims-when-to-use.md
-  extraction/workflow-e2e-blueprints.md
   extraction/releasenotes-nv-ingest.md
-  extraction/workflow-agentic-retrieval.md
-  extraction/agentic-retrieval-concept.md
-  extraction/workflow-build-searchable-collection.md
   extraction/vector-db-partners.md
-  extraction/performance_guide.md
 
 extra:
   generator: false
