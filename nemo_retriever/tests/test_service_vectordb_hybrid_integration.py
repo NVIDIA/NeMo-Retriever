@@ -51,6 +51,75 @@ def test_write_rows_builds_fts_index_for_hybrid_mode(tmp_path) -> None:
 
 
 @pytest.mark.integration
+def test_fts_build_failure_on_create_preserves_rows_on_retry(tmp_path) -> None:
+    state = VectorDBState(
+        lancedb_uri=str(tmp_path),
+        table_name="nemo_retriever",
+        embed_endpoint="http://embed.example/v1/embeddings",
+        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
+        embed_api_key="",
+        retrieval_mode="hybrid",
+    )
+
+    # First write persists the rows but the FTS build blows up before
+    # `_table_exists` is published.
+    with patch.object(VectorDBState, "_ensure_hybrid_indexes", side_effect=RuntimeError("disk full")):
+        with pytest.raises(RuntimeError, match="disk full"):
+            state.write_rows([_ROW])
+
+    assert state._table_exists is False
+    assert state._table_present_on_disk() is True
+
+    # The retry must append to the existing table (not overwrite it) and then
+    # successfully build the FTS index, leaving the original row intact.
+    appended = dict(_ROW)
+    appended["vector"] = [0.0, 1.0, 0.0, 0.0]
+    appended["text"] = "Second batch after recovery."
+    assert state.write_rows([appended]) == 1
+
+    assert state._table_exists is True
+    table = state._db.open_table("nemo_retriever")
+    assert table.count_rows() == 2  # first batch preserved, not wiped
+    assert state.resolve_effective_retrieval_mode() == "hybrid"
+
+
+@pytest.mark.integration
+def test_appended_rows_are_added_to_fts_index_in_hybrid_mode(tmp_path) -> None:
+    state = VectorDBState(
+        lancedb_uri=str(tmp_path),
+        table_name="nemo_retriever",
+        embed_endpoint="http://embed.example/v1/embeddings",
+        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
+        embed_api_key="",
+        retrieval_mode="hybrid",
+    )
+    assert state.write_rows([_ROW]) == 1
+
+    appended = dict(_ROW)
+    appended["vector"] = [0.0, 1.0, 0.0, 0.0]
+    appended["text"] = "Zephyr quarterly guidance mentions unicorn synergy."
+
+    # The append must run the incremental index refresh (optimize), not a full
+    # FTS rebuild, so the write lock is held only for the new fragment. The spy
+    # records the call while still executing the real optimize.
+    original_refresh = VectorDBState._refresh_indexes
+    refresh_calls: list[bool] = []
+
+    def _spy(self, table):
+        refresh_calls.append(True)
+        return original_refresh(self, table)
+
+    with patch.object(VectorDBState, "_refresh_indexes", _spy):
+        assert state.write_rows([appended]) == 1
+    assert refresh_calls, "append in hybrid mode must incrementally refresh indexes"
+
+    # The appended row must be discoverable through lexical (FTS) search.
+    table = state._db.open_table("nemo_retriever")
+    hits = table.search("unicorn", query_type="fts", fts_columns="text").limit(5).to_list()
+    assert any("unicorn synergy" in hit["text"] for hit in hits)
+
+
+@pytest.mark.integration
 def test_write_rows_dense_mode_skips_fts_index(tmp_path) -> None:
     state = VectorDBState(
         lancedb_uri=str(tmp_path),
