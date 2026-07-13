@@ -89,8 +89,14 @@ class VDB(ABC):
         merged into each record's `content_metadata` upstream of this
         method — implementations only see the merged result.
 
-        Records missing required fields (vector, text) should be skipped
-        rather than raised, matching the reference `LanceDB` backend's
+        Dense records require a valid vector and normally require text. A
+        validated image-backed record may instead carry empty text when both
+        its ``document_type`` and ``content_metadata.type`` are canonically
+        ``"image"``; it remains available to dense (and the dense leg of hybrid)
+        retrieval but contributes no lexical terms. Sparse-only records always
+        require nonblank text.
+        Records missing the fields required by their retrieval mode should be
+        skipped rather than raised, matching the reference `LanceDB` backend's
         `on_bad_vectors` behavior.
 
         Common kwargs:

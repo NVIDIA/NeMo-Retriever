@@ -44,6 +44,17 @@ from nemo_retriever.ingest.plan import (
     IngestSourceOptions,
     IngestStorageOptions,
 )
+from nemo_retriever.ingest.service import (
+    ServiceIngestCaptionOptions,
+    ServiceIngestChunkOptions,
+    ServiceIngestConnectionOptions,
+    ServiceIngestDedupOptions,
+    ServiceIngestEmbedOptions,
+    ServiceIngestExtractOptions,
+    ServiceIngestImageStoreOptions,
+    ServiceIngestPlanRequest,
+    ServiceIngestSourceOptions,
+)
 from nemo_retriever.query.options import (
     QueryAgenticOptions,
     QueryEmbedOptions,
@@ -51,6 +62,8 @@ from nemo_retriever.query.options import (
     QueryRequest,
     QueryRetrievalOptions,
     QueryStorageOptions,
+    QueryServiceOptions,
+    ServiceQueryRequest,
 )
 from nemo_retriever.query.workflow import ResolvedQueryPlan
 
@@ -448,6 +461,93 @@ def query_plan_payload(plan: ResolvedQueryPlan) -> dict[str, Any]:
             "retrieval_mode": plan.retrieval_mode,
             "rerank": plan.rerank,
             "rerank_kwargs": plan.rerank_kwargs,
+        }
+    )
+
+
+def _service_kwargs(cls: type[Any], data: Mapping[str, Any] | None) -> dict[str, Any]:
+    payload = dict(data or {})
+    return {key: value for key, value in payload.items() if key in _field_names(cls)}
+
+
+def build_service_ingest_plan_request(
+    resolved: dict[str, Any],
+    dataset_path: Path,
+    *,
+    service_url: str,
+    service_concurrency: int,
+    service_api_token: str | None,
+) -> ServiceIngestPlanRequest:
+    ingest = _mapping_payload("ingest", deepcopy(resolved["ingest"]))
+    extract = _mapping_payload("ingest.extract", ingest.get("extract"))
+    extract.pop("batch", None)
+    embed = _mapping_payload("ingest.embed", ingest.get("embed"))
+    embed.pop("batch", None)
+    # The deployed chart owns model selection; service requests only carry
+    # per-request modality/granularity controls.
+    embed.pop("embed_model_name", None)
+    return ServiceIngestPlanRequest(
+        source=ServiceIngestSourceOptions(
+            documents=[str(dataset_path)],
+            profile=ingest.get("profile", "auto"),
+            input_type=ingest.get("input_type") or resolved["dataset"].get("input_type") or "pdf",
+        ),
+        connection=ServiceIngestConnectionOptions(
+            service_url=service_url,
+            service_concurrency=int(service_concurrency),
+            service_api_token=service_api_token,
+        ),
+        extract=ServiceIngestExtractOptions(**_service_kwargs(ServiceIngestExtractOptions, extract)),
+        caption=ServiceIngestCaptionOptions(**_service_kwargs(ServiceIngestCaptionOptions, ingest.get("caption"))),
+        dedup=ServiceIngestDedupOptions(**_service_kwargs(ServiceIngestDedupOptions, ingest.get("dedup"))),
+        chunk=ServiceIngestChunkOptions(**_service_kwargs(ServiceIngestChunkOptions, ingest.get("chunk"))),
+        embed=ServiceIngestEmbedOptions(**_service_kwargs(ServiceIngestEmbedOptions, embed)),
+        image_store=ServiceIngestImageStoreOptions(
+            **_service_kwargs(ServiceIngestImageStoreOptions, ingest.get("image_store"))
+        ),
+    )
+
+
+def build_service_query_request(
+    resolved: dict[str, Any],
+    query_text: str,
+    *,
+    service_url: str,
+    service_api_token: str | None,
+) -> ServiceQueryRequest:
+    query = _mapping_payload("query", resolved.get("query"))
+    _validate_keys("query", query, _override_child_keys("query", QUERY_OVERRIDE_PATHS))
+    if query.get("agentic"):
+        _invalid_config("query.agentic", "agentic retrieval is not supported for service-mode runs")
+    return ServiceQueryRequest(
+        query=query_text,
+        retrieval=QueryRetrievalOptions(
+            top_k=int(query.get("top_k") or 10),
+            candidate_k=query.get("candidate_k"),
+            page_dedup=bool(query.get("page_dedup", False)),
+            content_types=query.get("content_types"),
+            retrieval_mode=str(query.get("retrieval_mode", "auto")),
+        ),
+        service=QueryServiceOptions(
+            service_url=service_url,
+            service_api_token=service_api_token,
+        ),
+    )
+
+
+def service_plan_payload(ingest_request: Any, query_request: ServiceQueryRequest) -> dict[str, Any]:
+    return redact(
+        {
+            "service_url": ingest_request.connection.service_url,
+            "service_concurrency": ingest_request.connection.service_concurrency,
+            "documents": list(ingest_request.documents),
+            "input_type": ingest_request.input_type,
+            "query": {
+                "top_k": query_request.retrieval.top_k,
+                "candidate_k": query_request.retrieval.candidate_k,
+                "page_dedup": query_request.retrieval.page_dedup,
+                "content_types": query_request.retrieval.content_types,
+            },
         }
     )
 
