@@ -1,3 +1,5 @@
+from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
@@ -267,6 +269,40 @@ def test_extract_default_rejects_unknown_input_type(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="Unsupported input file type"):
         ingestor.ingest()
+
+
+def test_extract_default_treats_markdown_as_plain_text(tmp_path) -> None:
+    document = tmp_path / "README.md"
+    document.write_text("# Heading\n\nBody text\n", encoding="utf-8")
+
+    result = GraphIngestor(run_mode="inprocess", show_progress=False).files([str(document)]).extract().ingest()
+
+    assert result["text"].tolist() == ["# Heading\n\nBody text\n"]
+    assert result["path"].tolist() == [str(document.resolve())]
+
+
+def test_extract_txt_accepts_json_as_plain_text(tmp_path) -> None:
+    document = tmp_path / "payload.json"
+    document.write_text('{"message": "hello"}\n', encoding="utf-8")
+
+    result = GraphIngestor(run_mode="inprocess", show_progress=False).files([str(document)]).extract_txt().ingest()
+
+    assert result["text"].tolist() == ['{"message": "hello"}\n']
+    assert result["path"].tolist() == [str(document.resolve())]
+
+
+def test_extract_default_accepts_shell_script_buffer_as_plain_text() -> None:
+    content = b"#!/bin/sh\necho hello\n"
+
+    result = (
+        GraphIngestor(run_mode="inprocess", show_progress=False)
+        .buffers(("setup.sh", BytesIO(content)))
+        .extract()
+        .ingest()
+    )
+
+    assert result["text"].tolist() == [content.decode()]
+    assert result["path"].tolist() == [str(Path("setup.sh").resolve())]
 
 
 def test_typed_shortcuts_preserve_legacy_no_default_chunking() -> None:
