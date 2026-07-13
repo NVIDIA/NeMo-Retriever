@@ -320,7 +320,6 @@ _TRUST_OWNED_EXTRACT_KEYS: tuple[str, ...] = (
     "page_elements_api_key",
     "ocr_invoke_url",
     "ocr_api_key",
-    "graphic_elements_invoke_url",
     "table_structure_invoke_url",
     "nemotron_parse_invoke_url",
 )
@@ -773,10 +772,9 @@ def _resolve_embed_params(
 def build_extract_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | None" = None) -> Any:
     """Derive :class:`ExtractParams` from service NIM and local-model config.
 
-    The ``ExtractParams`` model validator auto-enables
-    ``use_graphic_elements`` / ``use_table_structure`` when the
-    corresponding invoke URLs are provided. When ``local_models.enabled``
-    is true, the same flags are set for stages that lack a NIM URL.
+    The ``ExtractParams`` model validator auto-enables table structure when
+    its invoke URL is provided. When ``local_models.enabled`` is true, the
+    same flag is set when the table-structure NIM URL is absent.
     """
     from nemo_retriever.common.params import ExtractParams
 
@@ -786,8 +784,6 @@ def build_extract_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | 
         kwargs["page_elements_invoke_url"] = nim.page_elements_invoke_url
     if nim.ocr_invoke_url:
         kwargs["ocr_invoke_url"] = nim.ocr_invoke_url
-    if nim.graphic_elements_invoke_url:
-        kwargs["graphic_elements_invoke_url"] = nim.graphic_elements_invoke_url
     if nim.table_structure_invoke_url:
         kwargs["table_structure_invoke_url"] = nim.table_structure_invoke_url
     if nim.api_key:
@@ -796,8 +792,6 @@ def build_extract_params(nim: "NimEndpointsConfig", local: "LocalModelsConfig | 
     if local.enabled and local.extract.enabled:
         if local.extract.use_table_structure and not nim.table_structure_invoke_url:
             kwargs["use_table_structure"] = True
-        if local.extract.use_graphic_elements and not nim.graphic_elements_invoke_url:
-            kwargs["use_graphic_elements"] = True
         if not nim.ocr_invoke_url:
             kwargs["ocr_version"] = local.extract.ocr_version
             if local.extract.ocr_lang is not None:

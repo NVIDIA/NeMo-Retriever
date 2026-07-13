@@ -62,6 +62,12 @@ ViDoRe use `mode: batch`. Keep JP20 local for quick smoke validation, and use
 batch mode for larger canonical quality runs so Ray-backed ingest owns worker
 parallelism and memory pressure.
 
+Use `mode: service` when the system under test is an already-running Retriever
+service. Supply its machine-local URL with `--service-endpoint`; `run-files`
+applies that URL only to service-mode children in a mixed session. Service mode
+uses the product service APIs for ingest and query while preserving the same
+`status.json`, `results.json`, metric gates, and session summary contract.
+
 ## Commands
 
 - `list`: list code-owned benchmarks and optional runsets.
@@ -203,6 +209,39 @@ run ID: <session-name>_<index>_<runfile-name>
 Session names and runfile names can contain letters, numbers, periods,
 underscores, and hyphens. Other characters fail validation before execution.
 
+## Provision A Service With Helm
+
+Helm is one way to provision the service under test; it is not a benchmark
+execution mode or part of the runfile schema. `helm_runner` loads the non-secret
+deployment settings in
+[`examples/managed-helm-main.yaml`](examples/managed-helm-main.yaml), deploys an
+explicit immutable image, waits for readiness and establishes a port-forward,
+invokes `run-files` with an existing portable runfile, collects `service_logs/`
+on failure, and always tears the release down.
+
+Set `HARNESS_HELM_SERVICE_IMAGE_REPOSITORY` and
+`HARNESS_HELM_SERVICE_IMAGE_TAG` to an immutable image built from the checkout.
+The external scheduler owns recurrence and the output directory. For JP20, run:
+
+```bash
+export RETRIEVER_SESSION_DIR=/local/path/to/retriever-artifacts/helm-jp20-$(date -u +%Y%m%d_%H%M%S_UTC)
+
+uv run --project nemo_retriever \
+  python -m nemo_retriever.harness.helm_runner \
+  --config nemo_retriever/harness/examples/managed-helm-main.yaml \
+  --output-dir "$RETRIEVER_SESSION_DIR" \
+  --session-name helm_jp20 \
+  --dataset-paths /local/path/to/dataset_paths.yaml \
+  nemo_retriever/harness/runfiles/jp20_beir.json
+```
+
+`helm_runner` overrides the runfile mode to `service`; the shared JP20 runfile
+continues to own its dataset-integrity gates. Recall and nDCG are recorded in
+the standard artifacts without adding Helm-specific quality gates. The runner
+never reads a Slack webhook. After the terminal session exists, read each
+child's `results.json` for metrics and optionally invoke `post-slack --preview`
+or `post-slack` as a separate operation.
+
 ## Post Results to Slack
 
 Harness execution and Slack reporting are separate operations. `run-files`
@@ -250,6 +289,13 @@ By default, the report includes file and page counts, ingest time, ingest
 pages/sec, query count, recall, nDCG, and environment details when those values
 are available. Use repeated `--metric-key` options to select a different metric
 set. Use `--artifact-paths` when recipients can access the runner's local paths.
+
+ViDoRe v3 results always use a compact suite layout: total ingest time,
+aggregate pages/sec, and a separate Recall@5/nDCG@10 table. A complete
+eight-domain suite also reports macro averages across the seven English
+datasets and across all datasets. Per-domain timing and other metadata remain
+available in the session artifacts. This format also applies when previewing or
+reposting completed artifacts; reporting never reruns ingestion or queries.
 
 ### Preview Report Formatting
 
@@ -330,6 +376,10 @@ by the CLI:
 - ingest: `resolve_ingest_plan(...)` and `run_ingest_workflow(...)`
 - query: `resolve_query_plan(...)` and shared query workflow objects
 - BEIR: harness-owned query iteration over the resolved query plan
+
+For `mode: service`, the corresponding service ingest and query request APIs
+replace the in-process plans. Helm deployment remains in `helm_runner.py`,
+outside this benchmark contract.
 
 The harness controller calls those APIs in its Python process; this does not
 force the ingest workload into local/in-process mode. A runfile with `mode:

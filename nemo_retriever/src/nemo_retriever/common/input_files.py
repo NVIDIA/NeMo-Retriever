@@ -12,6 +12,9 @@ INPUT_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
         "*.docx",
         "*.pptx",
         "*.txt",
+        "*.md",
+        "*.json",
+        "*.sh",
         "*.html",
         "*.jpg",
         "*.jpeg",
@@ -28,7 +31,7 @@ INPUT_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
         "*.mkv",
     ),
     "pdf": ("*.pdf",),
-    "txt": ("*.txt",),
+    "txt": ("*.txt", "*.md", "*.json", "*.sh"),
     "html": ("*.html",),
     "doc": ("*.docx", "*.pptx"),
     "image": ("*.jpg", "*.jpeg", "*.png", "*.tiff", "*.tif", "*.bmp", "*.svg"),
@@ -130,7 +133,9 @@ def resolve_input_files(input_path: Path, input_type: str) -> list[Path]:
     if not path.exists():
         return []
 
-    files: list[Path] = []
-    for pattern in INPUT_TYPE_PATTERNS.get(input_type, INPUT_TYPE_PATTERNS["pdf"]):
-        files.extend(match for match in path.rglob(pattern) if match.is_file())
-    return sorted(set(files))
+    allowed_extensions = (
+        AUTO_INPUT_EXTENSIONS
+        if input_type == "auto"
+        else INPUT_TYPE_EXTENSIONS.get(input_type, INPUT_TYPE_EXTENSIONS["pdf"])
+    )
+    return sorted(match for match in path.rglob("*") if match.is_file() and match.suffix.lower() in allowed_extensions)

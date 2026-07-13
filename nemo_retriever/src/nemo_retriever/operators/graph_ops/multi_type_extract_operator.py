@@ -18,7 +18,6 @@ import pandas as pd
 from nemo_retriever.operators.extract.audio.asr_actor import ASRActor
 from nemo_retriever.operators.extract.audio.chunk_actor import MediaChunkActor
 from nemo_retriever.operators.extract.audio.asr_actor import asr_params_from_env
-from nemo_retriever.operators.extract.chart.chart_detection import GraphicElementsActor
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.extract.html.ray_data import HtmlSplitActor
 from nemo_retriever.operators.extract.image.ray_data import ImageLoadActor
@@ -111,7 +110,7 @@ def _ocr_stage_needed(extract_params: ExtractParams) -> bool:
         # (when use_table_structure=False) or to join against the
         # table_structure_v1 detections published by TableStructureActor.
         return True
-    if extract_params.extract_charts and not extract_params.use_graphic_elements:
+    if extract_params.extract_charts:
         return True
     if extract_params.extract_infographics:
         return True
@@ -133,12 +132,6 @@ def _extract_params_need_local_gpu(extraction_mode: str, extract_params: Extract
         extract_params.use_table_structure
         and extract_params.extract_tables
         and not _has_endpoint(extract_params.table_structure_invoke_url)
-    ):
-        return True
-    if (
-        extract_params.use_graphic_elements
-        and extract_params.extract_charts
-        and not _has_endpoint(extract_params.graphic_elements_invoke_url, extract_params.ocr_invoke_url)
     ):
         return True
     if _ocr_stage_needed(extract_params) and not _has_endpoint(extract_params.ocr_invoke_url):
@@ -492,20 +485,7 @@ class _MultiTypeExtractBase(AbstractOperator):
                 table_kwargs["table_output_format"] = extract_params.table_output_format
             batch_df = self._instantiate_resolved(TableStructureActor, **table_kwargs).run(batch_df)
 
-        if extract_params.use_graphic_elements and extract_params.extract_charts:
-            graphic_kwargs: dict[str, Any] = {"ocr_version": ocr_version}
-            if ocr_lang is not None:
-                graphic_kwargs["ocr_lang"] = ocr_lang
-            if extract_params.graphic_elements_invoke_url:
-                graphic_kwargs["graphic_elements_invoke_url"] = extract_params.graphic_elements_invoke_url
-            if extract_params.ocr_invoke_url:
-                graphic_kwargs["ocr_invoke_url"] = extract_params.ocr_invoke_url
-            if extract_params.api_key:
-                graphic_kwargs["api_key"] = extract_params.api_key
-            batch_df = self._instantiate_resolved(GraphicElementsActor, **graphic_kwargs).run(batch_df)
-
         ocr_kwargs: dict[str, Any] = {
-            "use_graphic_elements": extract_params.use_graphic_elements,
             "use_table_structure": extract_params.use_table_structure,
             "ocr_version": ocr_version,
         }
@@ -515,7 +495,7 @@ class _MultiTypeExtractBase(AbstractOperator):
             ocr_kwargs["extract_text"] = True
         if extract_params.extract_tables:
             ocr_kwargs["extract_tables"] = True
-        if extract_params.extract_charts and not extract_params.use_graphic_elements:
+        if extract_params.extract_charts:
             ocr_kwargs["extract_charts"] = True
         if extract_params.extract_infographics:
             ocr_kwargs["extract_infographics"] = True

@@ -38,7 +38,6 @@ jobs:
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_BUILD_API_KEY }}
       PAGE_ELEMENTS_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
       OCR_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemoretriever-ocr-v1"
-      GRAPHIC_ELEMENTS_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-graphic-elements-v1"
       TABLE_STRUCTURE_INVOKE_URL: "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"
       EMBED_INVOKE_URL: "https://integrate.api.nvidia.com/v1"
       EMBED_MODEL_NAME: "nvidia/llama-nemotron-embed-1b-v2"

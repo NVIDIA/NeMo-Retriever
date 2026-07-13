@@ -3,13 +3,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Standalone text embedding helper for retriever-local pandas DataFrames.
+Text embedding helper for NeMo Retriever pandas DataFrames.
 
 Goal:
 - Mirror (as closely as practical) the batching/runner logic from
   `nemo_retriever.api.internal.transform.embed_text.transform_create_text_embeddings_internal`,
-  but adapt it to the **retriever-local** DataFrame structure used by
-  `nemo_retriever.text_embed.text_embed.embed_text_1b_v2`.
+  but adapt it to the DataFrame structure used by the graph pipeline.
 
 Key differences vs the API transform:
 - This module operates on a simple pandas.DataFrame that typically contains:
@@ -133,7 +132,7 @@ def _generate_batches(prompts: Iterable[str], batch_size: int = 100) -> List[Lis
 
 def _text_from_row(row: pd.Series, *, text_column: str) -> Optional[str]:
     """
-    Extract text from a row with small fallbacks (mirrors `nemo_retriever.text_embed.text_embed`).
+    Extract text from a row with small fallbacks for graph-pipeline inputs.
     """
     v = row.get(text_column)
     if isinstance(v, str) and v.strip():
