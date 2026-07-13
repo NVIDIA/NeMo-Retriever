@@ -1,6 +1,6 @@
 # Starter Kits for NeMo Retriever Library
 
-Explore ready-made Jupyter notebooks and guides for [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/).
+Explore ready-made Jupyter notebooks and guides for [NeMo Retriever Library](https://docs.nvidia.com/nemo/retriever/latest/extraction/overview/). Examples cover document ingestion, custom vector database operators, and multimodal RAG with LangChain and LlamaIndex.
 
 ## Dataset Downloads for Benchmarking
 
@@ -12,11 +12,11 @@ Start with these guides and notebooks:
 
 - [Quickstart: retriever CLI](https://docs.nvidia.com/nemo/retriever/latest/reference/retriever-cli-quickstart/)
 - [Workflow: Ingest documents](https://docs.nvidia.com/nemo/retriever/latest/extraction/workflow-document-ingestion/)
-- [Adding custom metadata for filtered search and retrieval](nemo_retriever_retriever_query_metadata_filter.ipynb) — also summarized on [Vector databases — Metadata and filtering](https://docs.nvidia.com/nemo/retriever/latest/extraction/vdbs/#metadata-and-filtering)
+- [Adding Custom Metadata for Filtered Search/Retrieval](nemo_retriever_retriever_query_metadata_filter.ipynb) — also summarized on [Vector databases — Metadata and filtering](https://docs.nvidia.com/nemo/retriever/latest/extraction/vdbs/#metadata-and-filtering)
 
 For advanced scenarios, use these notebooks:
 
-- [Build a custom vector database operator](building_vdb_operator.ipynb)
+- [Build a Custom Vector Database Operator](building_vdb_operator.ipynb)
 - [Try Enterprise RAG Blueprint](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)
 - [Evaluate bo767 retrieval recall accuracy with NeMo Retriever Library](https://github.com/NVIDIA/NeMo-Retriever/blob/main/evaluation/bo767_recall.ipynb)
 - [Multimodal RAG with LangChain](langchain_multimodal_rag.ipynb)
