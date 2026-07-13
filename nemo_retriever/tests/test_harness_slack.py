@@ -9,12 +9,14 @@ import pytest
 import requests
 from typer.testing import CliRunner
 
+from nemo_retriever.harness.benchmark_registry import VIDORE_V3_PUBLIC_DATASETS
 from nemo_retriever.harness.cli import app
 from nemo_retriever.harness.slack import (
     DEFAULT_SLACK_METRIC_KEYS,
     HarnessRunReport,
     HarnessSessionReport,
     MAX_SLACK_TABLE_ROWS,
+    VIDORE_V3_REPORT_DATASETS,
     build_slack_payload,
     load_replay_report,
     load_session_report,
@@ -80,6 +82,41 @@ def _write_session(tmp_path: Path, *, dry_run: bool = False) -> Path:
         },
     )
     return tmp_path
+
+
+def _vidore_run(dataset: str, index: int = 0, *, success: bool = True) -> HarnessRunReport:
+    return HarnessRunReport(
+        run_name=f"{dataset}_beir",
+        dataset=dataset,
+        preset=None,
+        success=success,
+        return_code=0 if success else 1,
+        failure_reason=None if success else "benchmark failed",
+        artifact_dir=None,
+        metrics={
+            "pages": 100,
+            "ingest_secs": 5.0 * (index + 1),
+            "recall_5": 0.1 * (index + 1),
+            "ndcg_10": 0.8 - 0.1 * index,
+        },
+    )
+
+
+def _vidore_report(tmp_path: Path, results: list[HarnessRunReport]) -> HarnessSessionReport:
+    return HarnessSessionReport(
+        session_name="vidore-v3",
+        session_dir=tmp_path,
+        session_type="runfiles",
+        timestamp=None,
+        latest_commit="abc1234",
+        all_passed=all(run.success for run in results),
+        dry_run=False,
+        results=results,
+    )
+
+
+def _table_rows(table: dict) -> list[list[str]]:
+    return [[cell["elements"][0]["elements"][0]["text"] for cell in row] for row in table["rows"]]
 
 
 def test_slack_report_loads_runfile_session_and_omits_local_paths(tmp_path):
@@ -191,6 +228,63 @@ def test_slack_payload_truncates_tables_at_slack_row_limit(tmp_path):
     assert len(table["rows"]) == MAX_SLACK_TABLE_ROWS
     assert "TRUNCATED" in json.dumps(table["rows"][-1])
     assert "rows omitted" in json.dumps(table["rows"][-1])
+
+
+def test_slack_payload_summarizes_complete_vidore_v3_suite(tmp_path):
+    assert set(VIDORE_V3_REPORT_DATASETS) == set(VIDORE_V3_PUBLIC_DATASETS)
+    results = [_vidore_run(dataset, index) for index, dataset in enumerate(VIDORE_V3_REPORT_DATASETS)]
+
+    payload = build_slack_payload(
+        _vidore_report(tmp_path, results),
+        {"metric_keys": DEFAULT_SLACK_METRIC_KEYS, "post_artifact_paths": False},
+    )
+    tables = [block for block in payload["blocks"] if block["type"] == "table"]
+
+    assert len(tables) == 2
+    main_rows = _table_rows(tables[0])
+    assert ["-    ViDoRe v3", "PASS (8/8)"] in main_rows
+    assert ["-    total ingest time", "180.00s (03m : 00.00s)"] in main_rows
+    assert ["-    aggregate pages/s", "4.44"] in main_rows
+    assert not any("vidore_v3_" in cell for row in main_rows for cell in row)
+
+    accuracy_rows = _table_rows(tables[1])
+    assert accuracy_rows[:3] == [
+        ["DATASET", "RECALL@5", "NDCG@10"],
+        ["Avg (English)", "0.400", "0.500"],
+        ["Avg (all)", "0.450", "0.450"],
+    ]
+    assert accuracy_rows[3] == ["finance_en", "0.100", "0.800"]
+    assert accuracy_rows[-1] == ["finance_fr", "0.800", "0.100"]
+
+
+def test_slack_payload_uses_compact_table_for_partial_vidore_v3_session(tmp_path):
+    run = _vidore_run("vidore_v3_finance_en")
+
+    payload = build_slack_payload(
+        _vidore_report(tmp_path, [run]),
+        {"metric_keys": DEFAULT_SLACK_METRIC_KEYS, "post_artifact_paths": False},
+    )
+    tables = [block for block in payload["blocks"] if block["type"] == "table"]
+
+    assert len(tables) == 2
+    assert _table_rows(tables[1]) == [
+        ["DATASET", "RECALL@5", "NDCG@10"],
+        ["finance_en", "0.100", "0.800"],
+    ]
+
+
+def test_slack_payload_does_not_average_failed_vidore_v3_suite(tmp_path):
+    results = [_vidore_run(dataset, index) for index, dataset in enumerate(VIDORE_V3_REPORT_DATASETS)]
+    results[-1] = _vidore_run("vidore_v3_finance_fr", len(results) - 1, success=False)
+
+    payload = build_slack_payload(
+        _vidore_report(tmp_path, results),
+        {"metric_keys": DEFAULT_SLACK_METRIC_KEYS, "post_artifact_paths": False},
+    )
+    tables = [block for block in payload["blocks"] if block["type"] == "table"]
+
+    assert ["Avg (all)", "N/A", "N/A"] in _table_rows(tables[1])
+    assert ["-    finance_fr failure", "benchmark failed"] in _table_rows(tables[0])
 
 
 def test_slack_transport_error_does_not_expose_webhook(monkeypatch):
