@@ -27,6 +27,7 @@ def test_build_embed_params_from_nim_config() -> None:
     nim = NimEndpointsConfig(
         embed_invoke_url="http://embed-nim/v1/embeddings",
         embed_model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
+        embed_model_provider_prefix="nvidia",
         api_key="k",
     )
     ep = build_embed_params(nim, LocalModelsConfig(enabled=True))
@@ -34,6 +35,7 @@ def test_build_embed_params_from_nim_config() -> None:
     assert ep.embed_invoke_url == "http://embed-nim/v1/embeddings"
     assert ep.model_name == "nvidia/llama-nemotron-embed-vl-1b-v2"
     assert ep.embed_model_name == "nvidia/llama-nemotron-embed-vl-1b-v2"
+    assert ep.embed_model_provider_prefix == "nvidia"
     assert ep.api_key == "k"
 
 
@@ -66,11 +68,10 @@ def test_build_embed_params_nim_url_wins_over_local() -> None:
     assert ep.embed_invoke_url == "http://embed-nim/v1/embeddings"
 
 
-def test_build_extract_params_local_enables_structure_stages() -> None:
+def test_build_extract_params_local_enables_table_structure() -> None:
     local = LocalModelsConfig(enabled=True)
     ep = build_extract_params(NimEndpointsConfig(), local)
     assert ep.use_table_structure is True
-    assert ep.use_graphic_elements is True
     assert ep.ocr_version == "v2"
     assert ep.page_elements_invoke_url is None
 

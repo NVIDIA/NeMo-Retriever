@@ -94,11 +94,6 @@ jobs:
             url: https://huggingface.co/nvidia/nemotron-table-structure-v1
             project_subdir: ""
             nightly_base_version: "1.0.1"
-          - id: nemotron-graphic-elements-v1
-            url: https://huggingface.co/nvidia/nemotron-graphic-elements-v1
-            project_subdir: ""
-            nightly_base_version: "1.0.1"
-
     steps:
       - name: Checkout orchestrator repo
         uses: actions/checkout@v4

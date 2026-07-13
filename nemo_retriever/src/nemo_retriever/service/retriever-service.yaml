@@ -31,12 +31,14 @@ logging:
 # to spread load across replicas.
 nim_endpoints:
   page_elements_invoke_url: null
-  graphic_elements_invoke_url: null
   table_structure_invoke_url: null
   ocr_invoke_url: null
   embed_invoke_url: null
   # Model name for the remote embed NIM (server-owned; must match the SKU).
   embed_model_name: null
+  # Optional LiteLLM provider prefix prepended to embed_model_name for
+  # proxies that require provider/model IDs.
+  embed_model_provider_prefix: null
   # gRPC endpoint for the Parakeet ASR NIM (e.g. parakeet-nim:50051).
   # When set, audio/video pipelines use remote ASR instead of loading
   # the local Parakeet model (which requires torch + GPU).
@@ -63,7 +65,6 @@ local_models:
   extract:
     enabled: true
     use_table_structure: true
-    use_graphic_elements: true
     ocr_version: v2
     ocr_lang: null
   embed:

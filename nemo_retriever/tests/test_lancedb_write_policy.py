@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -32,6 +33,26 @@ def _records(text: str = "hello", vector: list[float] | None = None) -> list[lis
 
 def _count_rows(uri: Path, table_name: str = "t") -> int:
     return int(lancedb.connect(str(uri)).open_table(table_name).count_rows())
+
+
+def _image_only_records(vector: list[float] | None = None) -> list[list[dict]]:
+    metadata = {
+        "content": "",
+        "content_metadata": {
+            "page_number": 7,
+            "type": "image",
+        },
+        "source_metadata": {"source_id": "scanned.pdf", "source_name": "scanned.pdf"},
+    }
+    if vector is not None:
+        metadata["embedding"] = vector
+    return [[{"document_type": "image", "metadata": metadata}]]
+
+
+def _write_rows(tmp_path: Path, records: list[list[dict]], *, sparse: bool = False) -> list[dict]:
+    op = LanceDB(uri=str(tmp_path), table_name="t", vector_dim=2, sparse=sparse, create_index=False)
+    op.run(records)
+    return lancedb.connect(str(tmp_path)).open_table("t").to_arrow().to_pylist()
 
 
 def test_overwrite_same_records_twice_keeps_row_count_stable(tmp_path: Path) -> None:
@@ -84,3 +105,68 @@ def test_create_index_kwarg_disables_index_build_without_shadowing_method(tmp_pa
     op.run(_records())
 
     assert _count_rows(tmp_path) == 1
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [pytest.param(None, id="empty"), pytest.param(" \n\t ", id="whitespace")],
+)
+def test_dense_write_stores_blank_canonical_image_record(tmp_path: Path, caption: str | None) -> None:
+    records = _image_only_records([1.0, 0.0])
+    if caption is not None:
+        records[0][0]["metadata"]["image_metadata"] = {"caption": caption}
+
+    table_rows = _write_rows(tmp_path, records)
+
+    assert len(table_rows) == 1
+    assert table_rows[0]["text"] == ""
+    assert json.loads(table_rows[0]["metadata"]) == {"type": "image", "page_number": 7}
+    assert json.loads(table_rows[0]["source"]) == {
+        "source_id": "scanned.pdf",
+        "source_name": "scanned.pdf",
+    }
+
+
+@pytest.mark.parametrize(
+    "text",
+    [pytest.param("", id="empty"), pytest.param(" \n\t ", id="whitespace")],
+)
+def test_dense_write_drops_blank_non_image_row(tmp_path: Path, text: str) -> None:
+    table_rows = _write_rows(tmp_path, _records(text=text))
+
+    assert table_rows == []
+
+
+@pytest.mark.parametrize("missing_field", ["document_type", "content_metadata.type"])
+def test_dense_write_requires_both_canonical_image_fields(tmp_path: Path, missing_field: str) -> None:
+    records = _image_only_records([1.0, 0.0])
+    if missing_field == "document_type":
+        records[0][0]["document_type"] = "text"
+    else:
+        records[0][0]["metadata"]["content_metadata"].pop("type")
+
+    table_rows = _write_rows(tmp_path, records)
+
+    assert table_rows == []
+
+
+@pytest.mark.parametrize(
+    "vector",
+    [pytest.param(None, id="missing"), pytest.param([1.0], id="wrong-length")],
+)
+def test_dense_write_drops_image_only_row_with_invalid_embedding(tmp_path: Path, vector: list[float] | None) -> None:
+    table_rows = _write_rows(tmp_path, _image_only_records(vector))
+
+    assert table_rows == []
+
+
+def test_sparse_write_drops_image_only_row_without_text(tmp_path: Path) -> None:
+    table_rows = _write_rows(tmp_path, _image_only_records([1.0, 0.0]), sparse=True)
+
+    assert table_rows == []
+
+
+def test_sparse_write_drops_whitespace_only_text(tmp_path: Path) -> None:
+    table_rows = _write_rows(tmp_path, _records(text=" \n\t "), sparse=True)
+
+    assert table_rows == []

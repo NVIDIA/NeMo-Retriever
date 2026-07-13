@@ -7,7 +7,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Sequence
 
-
 QueryRetrievalMode = Literal["auto", "dense", "hybrid", "sparse"]
 
 
@@ -26,6 +25,7 @@ class QueryRetrievalOptions:
 class QueryEmbedOptions:
     embed_invoke_url: str | None = None
     embed_model_name: str | None = None
+    embed_model_provider_prefix: str | None = None
 
 
 @dataclass(frozen=True)
@@ -56,10 +56,11 @@ class QueryAgenticOptions:
     enabled: bool = False
     llm_model: str | None = None
     invoke_url: str | None = None
-    reasoning_effort: str | None = "high"
+    reasoning_effort: str | None = None
     backend_top_k: int = 20
     react_max_steps: int = 50
     text_truncation: int = 0
+    num_concurrent: int = 1
     temperature: float = 0.0
 
 

@@ -2489,7 +2489,6 @@ all = [
     { name = "langgraph" },
     { name = "librosa" },
     { name = "litellm" },
-    { name = "nemotron-graphic-elements-v1" },
     { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemotron-page-elements-v3" },
     { name = "nemotron-table-structure-v1" },
@@ -2534,7 +2533,6 @@ local = [
     { name = "flashinfer-cubin", marker = "sys_platform == 'linux'" },
     { name = "flashinfer-python", marker = "sys_platform == 'linux'" },
     { name = "glom" },
-    { name = "nemotron-graphic-elements-v1" },
     { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemotron-page-elements-v3" },
     { name = "nemotron-table-structure-v1" },
@@ -2586,7 +2584,6 @@ tabular = [
 [package.dev-dependencies]
 dev = [
     { name = "nemo-retriever", extra = ["all", "dev"] },
-    { name = "nemotron-graphic-elements-v1" },
     { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemotron-page-elements-v3" },
     { name = "nemotron-table-structure-v1" },
@@ -2630,7 +2627,6 @@ requires-dist = [
     { name = "litellm", marker = "extra == 'service'", specifier = ">=1.86.0,<2" },
     { name = "markitdown" },
     { name = "nemo-retriever", extras = ["benchmarks", "llm", "local", "multimedia", "nemotron-parse", "service", "tabular"], marker = "extra == 'all'" },
-    { name = "nemotron-graphic-elements-v1", marker = "extra == 'local'", specifier = ">=1.0.0,<2" },
     { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'local') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'local')", specifier = ">=2.0.0,<3" },
     { name = "nemotron-page-elements-v3", marker = "extra == 'local'", specifier = ">=3.0.1,<4" },
     { name = "nemotron-table-structure-v1", marker = "extra == 'local'", specifier = ">=1.0.0,<2" },
@@ -2689,28 +2685,9 @@ provides-extras = ["service", "local", "multimedia", "nemotron-parse", "tabular"
 dev = [
     { name = "nemo-retriever", extras = ["all"] },
     { name = "nemo-retriever", extras = ["dev"] },
-    { name = "nemotron-graphic-elements-v1", specifier = ">=1.0.1.dev0,!=1.0.1,<2" },
     { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')", specifier = ">=2.0.1.dev0,!=2.0.1,<3" },
     { name = "nemotron-page-elements-v3", specifier = ">=3.0.1.dev0,!=3.0.1,!=3.0.2,<4" },
     { name = "nemotron-table-structure-v1", specifier = ">=1.0.1.dev0,!=1.0.1,<2" },
-]
-
-[[package]]
-name = "nemotron-graphic-elements-v1"
-version = "1.0.1.dev20260608195023"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "huggingface-hub" },
-    { name = "matplotlib" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pillow" },
-    { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
-    { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/da/91/cd578f94cf70708ee65a3342e7954a683757332b231cc7378806ddfcc79f/nemotron_graphic_elements_v1-1.0.1.dev20260608195023.tar.gz", hash = "sha256:7c7412632d01e28af35cb2b1a8671e10dd2e13ca93cd311e6dc81ed82ebd396c", size = 40143, upload-time = "2026-06-08T19:50:56.548Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/27/49cbae1da591806231cb802dcc0640a999718747c73de1826d4b1856a4c8/nemotron_graphic_elements_v1-1.0.1.dev20260608195023-py3-none-any.whl", hash = "sha256:9ebc965bee30de76ed28a90e251e42d5e0f0eafe4b9da124d6202e750751fca5", size = 34239, upload-time = "2026-06-08T19:50:55.649Z" },
 ]
 
 [[package]]
