@@ -122,6 +122,18 @@ POOL_PROCESSING_DURATION = Histogram(
     buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 300.0),
 )
 
+POOL_DEFERRED_CALLBACKS = Gauge(
+    "nemo_retriever_pool_deferred_callbacks",
+    "Current gateway callback deliveries retrying in the background.",
+    ["pool"],
+)
+
+POOL_CALLBACK_BACKPRESSURE_TOTAL = Counter(
+    "nemo_retriever_pool_callback_backpressure_total",
+    "Total completed work items that waited for bounded callback retry capacity.",
+    ["pool"],
+)
+
 
 def instrument_app(app: "FastAPI", *, role: str) -> None:
     """Add a ``GET /metrics`` endpoint to *app* that exports Prometheus data.

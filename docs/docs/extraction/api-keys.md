@@ -21,7 +21,7 @@ export NVIDIA_API_KEY="nvapi-..."
 
 On Windows PowerShell you can use `$env:NVIDIA_API_KEY = "nvapi-..."`.
 
-For a full list of related variables, see [Environment configuration variables](environment-config.md).
+For a full list of related variables, refer to [Environment configuration variables](environment-config.md).
 
 !!! note
 

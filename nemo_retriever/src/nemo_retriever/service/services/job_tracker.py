@@ -39,6 +39,7 @@ Singleton access mirrors the other service singletons::
 
 from __future__ import annotations
 
+import copy
 import logging
 import threading
 import time
@@ -287,9 +288,10 @@ class JobTracker:
         if expected_documents <= 0:
             raise ValueError(f"expected_documents must be positive; got {expected_documents}")
         with self._lock:
+            now = datetime.now(timezone.utc)
+            self._evict_locked(now=now)
             if job_id in self._jobs:
                 raise JobTrackerError(f"Job {job_id!r} already exists")
-            self._evict_locked()
             if len(self._jobs) >= self._max_jobs:
                 raise JobTrackerAtCapacityError(
                     f"Job tracker is at capacity ({self._max_jobs} jobs); "
@@ -321,12 +323,13 @@ class JobTracker:
 
     def get_job(self, job_id: str) -> JobAggregate | None:
         with self._lock:
-            agg = self._jobs.get(job_id)
+            agg = self._get_live_job_locked(job_id)
             return agg.model_copy(deep=True) if agg is not None else None
 
     def all_jobs(self) -> list[JobAggregate]:
         """Return a snapshot of every aggregate (defensive deep copies)."""
         with self._lock:
+            self._evict_locked()
             return [a.model_copy(deep=True) for a in self._jobs.values()]
 
     def should_retain_results(self, job_id: str | None) -> bool:
@@ -334,13 +337,13 @@ class JobTracker:
         if not job_id:
             return False
         with self._lock:
-            agg = self._jobs.get(job_id)
+            agg = self._get_live_job_locked(job_id)
             return bool(agg.retain_results) if agg is not None else False
 
     def job_documents(self, job_id: str) -> list[DocumentRecord]:
         """Return every document record belonging to *job_id* in arrival order."""
         with self._lock:
-            agg = self._jobs.get(job_id)
+            agg = self._get_live_job_locked(job_id)
             if agg is None:
                 return []
             out: list[DocumentRecord] = []
@@ -357,6 +360,7 @@ class JobTracker:
         keeps SSE "catch-up" snapshots deterministic for clients.
         """
         with self._lock:
+            self._evict_locked()
             return [rec.model_copy(deep=True) for rec in self._documents.values()]
 
     # ── document lifecycle ───────────────────────────────────────────
@@ -376,7 +380,8 @@ class JobTracker:
         capacity (``len(document_ids) == expected_documents``).
         """
         with self._lock:
-            agg = self._jobs.get(job_id)
+            now = datetime.now(timezone.utc)
+            agg = self._get_live_job_locked(job_id, now=now)
             if agg is None:
                 raise JobNotFoundError(f"Job {job_id!r} not found")
             if agg.status in _JOB_TERMINAL:
@@ -404,7 +409,7 @@ class JobTracker:
             agg.counts[DocumentStatus.PENDING.value] = agg.counts.get(DocumentStatus.PENDING.value, 0) + 1
             self._reg_count += 1
             if self._reg_count % _EVICTION_INTERVAL == 0:
-                self._evict_locked()
+                self._evict_locked(now=now)
         return rec.model_copy(deep=True)
 
     def mark_processing(self, document_id: str) -> None:
@@ -414,7 +419,7 @@ class JobTracker:
         the first time any of its documents starts.
         """
         with self._lock:
-            rec = self._documents.get(document_id)
+            rec = self._get_live_document_locked(document_id)
             if rec is None:
                 return
             if rec.status != DocumentStatus.PENDING:
@@ -488,7 +493,7 @@ class JobTracker:
     ) -> MarkOutcome:
         # Phase 1: under lock, mutate state and gather snapshots.
         with self._lock:
-            rec = self._documents.get(document_id)
+            rec = self._get_live_document_locked(document_id)
             if rec is None:
                 # A worker callback for a doc the tracker has never seen
                 # is the classic symptom of a gateway-pod restart
@@ -514,7 +519,7 @@ class JobTracker:
             rec.result_rows = result_rows
             agg_for_retain = self._jobs.get(rec.job_id)
             retain_results = bool(agg_for_retain.retain_results) if agg_for_retain is not None else False
-            rec.result_data = result_data if retain_results else None
+            rec.result_data = copy.deepcopy(result_data) if retain_results else None
             rec.error = error
             if elapsed_s is not None:
                 rec.elapsed_s = elapsed_s
@@ -600,21 +605,55 @@ class JobTracker:
         except (ValueError, TypeError):
             return None
 
-    def _evict_locked(self) -> None:
-        """Drop expired terminal jobs, stale non-terminal jobs, then bound count."""
-        now = datetime.now(timezone.utc)
-        expired: list[str] = []
-        for jid, agg in self._jobs.items():
-            age_s = self._job_age_s_locked(agg, now=now)
-            if age_s is None:
-                continue
-            if agg.status in _JOB_TERMINAL:
-                if age_s > self._ttl_s:
-                    expired.append(jid)
-            elif age_s > self._stale_job_ttl_s:
-                expired.append(jid)
+    def _expiry_reason_locked(self, agg: JobAggregate, *, now: datetime) -> str | None:
+        age_s = self._job_age_s_locked(agg, now=now)
+        if age_s is None:
+            return None
+        if agg.status in _JOB_TERMINAL:
+            return "terminal" if age_s > self._ttl_s else None
+        return "stale" if age_s > self._stale_job_ttl_s else None
 
-        for jid in expired:
+    def _drop_if_expired_locked(self, job_id: str, *, now: datetime) -> bool:
+        agg = self._jobs.get(job_id)
+        if agg is None:
+            return False
+        reason = self._expiry_reason_locked(agg, now=now)
+        if reason is None:
+            return False
+        self._drop_job_locked(job_id)
+        logger.debug("Job tracker eviction: removed %s job %s", reason, job_id)
+        return True
+
+    def _get_live_job_locked(self, job_id: str, *, now: datetime | None = None) -> JobAggregate | None:
+        checked_at = now or datetime.now(timezone.utc)
+        if self._drop_if_expired_locked(job_id, now=checked_at):
+            return None
+        return self._jobs.get(job_id)
+
+    def _get_live_document_locked(
+        self,
+        document_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> DocumentRecord | None:
+        rec = self._documents.get(document_id)
+        if rec is None:
+            return None
+        checked_at = now or datetime.now(timezone.utc)
+        if self._drop_if_expired_locked(rec.job_id, now=checked_at):
+            return None
+        return rec
+
+    def _evict_locked(self, *, now: datetime | None = None) -> None:
+        """Drop expired terminal jobs, stale non-terminal jobs, then bound count."""
+        checked_at = now or datetime.now(timezone.utc)
+        expired: list[tuple[str, str]] = []
+        for jid, agg in self._jobs.items():
+            reason = self._expiry_reason_locked(agg, now=checked_at)
+            if reason is not None:
+                expired.append((jid, reason))
+
+        for jid, _ in expired:
             self._drop_job_locked(jid)
 
         if len(self._jobs) > self._max_jobs:
@@ -625,9 +664,12 @@ class JobTracker:
                 self._drop_job_locked(jid)
 
         if expired:
+            stale_count = sum(reason == "stale" for _, reason in expired)
+            terminal_count = len(expired) - stale_count
             logger.debug(
-                "Job tracker eviction: removed %d expired job aggregate(s); %d remaining",
-                len(expired),
+                "Job tracker eviction: removed %d stale and %d terminal job aggregate(s); %d remaining",
+                stale_count,
+                terminal_count,
                 len(self._jobs),
             )
 
@@ -691,21 +733,18 @@ class JobTracker:
 
     def get_document(self, document_id: str) -> DocumentRecord | None:
         with self._lock:
-            rec = self._documents.get(document_id)
+            rec = self._get_live_document_locked(document_id)
             return rec.model_copy(deep=True) if rec is not None else None
 
-    def consume_result_data(self, document_id: str) -> list[dict[str, Any]] | None:
-        """Return ``result_data`` for *document_id* and clear it from memory."""
+    def get_result_data(self, document_id: str) -> list[dict[str, Any]] | None:
+        """Return retained ``result_data`` for *document_id* without consuming it."""
         with self._lock:
-            rec = self._documents.get(document_id)
-            if rec is None:
-                return None
-            data = rec.result_data
-            rec.result_data = None
-            return data
+            rec = self._get_live_document_locked(document_id)
+            return copy.deepcopy(rec.result_data) if rec is not None else None
 
     def summary(self) -> dict[str, Any]:
         with self._lock:
+            self._evict_locked()
             total = len(self._jobs)
             doc_total = len(self._documents)
             by_status = {s.value: 0 for s in JobAggregateStatus}
