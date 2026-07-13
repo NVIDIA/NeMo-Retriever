@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import random
 import time
 from enum import Enum
 from typing import Any, Callable, Mapping
@@ -34,6 +36,8 @@ from pydantic import ConfigDict, Field
 from nemo_retriever.service.config import PipelinePoolConfig
 from nemo_retriever.common.schemas.base import RichModel
 from nemo_retriever.service.services.prometheus import (
+    POOL_CALLBACK_BACKPRESSURE_TOTAL,
+    POOL_DEFERRED_CALLBACKS,
     POOL_MAX_QUEUE_SIZE,
     POOL_PROCESSED_TOTAL,
     POOL_PROCESSING_DURATION,
@@ -48,11 +52,24 @@ logger = logging.getLogger(__name__)
 # enough resolution for an HPA that polls every 15s; faster than that and
 # we just generate redundant samples for prometheus_client to overwrite.
 _QUEUE_DEPTH_REPORT_INTERVAL_S = 1.0
+_CALLBACK_RETRY_DELAYS_S = (0.5, 1.0, 2.0, 4.0, 8.0)
+_CALLBACK_DEFERRED_INITIAL_DELAY_S = 16.0
+_CALLBACK_DEFERRED_MAX_DELAY_S = 300.0
 
 
 class PoolType(str, Enum):
     REALTIME = "realtime"
     BATCH = "batch"
+
+
+class _CallbackDeliveryOutcome(str, Enum):
+    ACKNOWLEDGED = "acknowledged"
+    RETRYABLE = "retryable"
+    PERMANENT_FAILURE = "permanent_failure"
+
+
+def _callback_status_is_retryable(status_code: int) -> bool:
+    return status_code in (408, 425, 429) or 500 <= status_code < 600
 
 
 def _safe_extract_trace_context(carrier: Mapping[str, str] | None, *, pool_name: str, item_id: str) -> Any | None:
@@ -81,6 +98,7 @@ class WorkItem(RichModel):
     filename: str | None = None
     callback: Callable[[Any], None] | None = None
     callback_url: str | None = None
+    callback_headers: dict[str, str] = Field(default_factory=dict)
     # Owning job aggregate (J1+). Always set today since the only
     # admission path is /v1/ingest/job/{job_id}/document.
     job_id: str | None = None
@@ -99,12 +117,15 @@ async def _fire_gateway_callback(
     *,
     result_rows: int = 0,
     error: str | None = None,
-) -> None:
+    result_worker_ip: str | None = None,
+    callback_headers: Mapping[str, str] | None = None,
+    retry_after_cap_s: float = _CALLBACK_RETRY_DELAYS_S[-1],
+) -> _CallbackDeliveryOutcome:
     """POST a lightweight completion notification to the gateway pod.
 
-    ``result_data`` is never included — large row payloads are stored on
-    the worker via :mod:`worker_result_store` and fetched later through
-    ``GET /v1/internal/document-result/{id}`` when a client polls status.
+    ``result_data`` is never included. For retained results, the worker
+    advertises its pod IP so the gateway can copy rows from the exact owner
+    before acknowledging completion.
     """
     import httpx
 
@@ -115,18 +136,51 @@ async def _fire_gateway_callback(
     }
     if error:
         payload["error"] = error
+    if result_worker_ip:
+        payload["result_worker_ip"] = result_worker_ip
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(callback_url, json=payload)
-            if resp.status_code != 200:
-                logger.warning(
-                    "Gateway callback returned HTTP %d for item %s",
-                    resp.status_code,
-                    item_id,
-                )
+        async with httpx.AsyncClient(timeout=10.0, headers=dict(callback_headers or {})) as client:
+            for attempt in range(len(_CALLBACK_RETRY_DELAYS_S) + 1):
+                retry_after_s: float | None = None
+                try:
+                    resp = await client.post(callback_url, json=payload)
+                    if resp.status_code == 200:
+                        return _CallbackDeliveryOutcome.ACKNOWLEDGED
+                    logger.warning(
+                        "Gateway callback returned HTTP %d for item %s (attempt %d)",
+                        resp.status_code,
+                        item_id,
+                        attempt + 1,
+                    )
+                    if not _callback_status_is_retryable(resp.status_code):
+                        logger.error(
+                            "Gateway callback permanently rejected item %s with HTTP %d",
+                            item_id,
+                            resp.status_code,
+                        )
+                        return _CallbackDeliveryOutcome.PERMANENT_FAILURE
+                    retry_after = getattr(resp, "headers", {}).get("Retry-After")
+                    if retry_after is not None:
+                        try:
+                            parsed = float(retry_after)
+                        except (TypeError, ValueError):
+                            parsed = -1.0
+                        if parsed >= 0.0:
+                            retry_after_s = min(parsed, retry_after_cap_s)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to fire gateway callback for item %s (attempt %d): %s",
+                        item_id,
+                        attempt + 1,
+                        exc,
+                    )
+                if attempt < len(_CALLBACK_RETRY_DELAYS_S):
+                    delay_s = retry_after_s if retry_after_s is not None else _CALLBACK_RETRY_DELAYS_S[attempt]
+                    await asyncio.sleep(delay_s)
     except Exception as exc:
-        logger.warning("Failed to fire gateway callback for item %s: %s", item_id, exc)
+        logger.warning("Unable to initialize gateway callback client for item %s: %s", item_id, exc)
+    return _CallbackDeliveryOutcome.RETRYABLE
 
 
 class _Pool:
@@ -152,6 +206,8 @@ class _Pool:
         self._queue: asyncio.Queue[WorkItem | None] | None = None
         self._workers: list[asyncio.Task[None]] = []
         self._reporter_task: asyncio.Task[None] | None = None
+        self._handoff_tasks: dict[str, asyncio.Task[None]] = {}
+        self._handoff_slots: asyncio.BoundedSemaphore | None = None
         self._running = False
         self._processed: int = 0
 
@@ -185,6 +241,7 @@ class _Pool:
         if self._running:
             return
         self._queue = asyncio.Queue(maxsize=self._max_queue_size)
+        self._handoff_slots = asyncio.BoundedSemaphore(self._num_workers)
         self._running = True
         self._workers = [asyncio.create_task(self._worker_loop(i)) for i in range(self._num_workers)]
 
@@ -194,6 +251,7 @@ class _Pool:
         POOL_WORKERS.labels(pool=self._name).set(self._num_workers)
         POOL_QUEUE_DEPTH.labels(pool=self._name).set(0)
         POOL_QUEUE_DEPTH_RATIO.labels(pool=self._name).set(0.0)
+        POOL_DEFERRED_CALLBACKS.labels(pool=self._name).set(0)
 
         # Periodic gauge reporter — keeps the queue-depth series live so
         # HPA decisions don't lag behind reality between submissions. We
@@ -247,6 +305,111 @@ class _Pool:
                 await asyncio.sleep(_QUEUE_DEPTH_REPORT_INTERVAL_S)
         except asyncio.CancelledError:
             pass
+
+    async def _schedule_gateway_callback_retry(
+        self,
+        *,
+        callback_url: str,
+        item_id: str,
+        status: str,
+        result_rows: int = 0,
+        error: str | None = None,
+        result_worker_ip: str | None = None,
+        callback_headers: Mapping[str, str] | None = None,
+        retain_results: bool = False,
+    ) -> None:
+        """Continue callback delivery with bounded, backpressured concurrency."""
+        if not self._running or item_id in self._handoff_tasks:
+            return
+        slots = self._handoff_slots
+        if slots is None:
+            return
+        if slots.locked():
+            POOL_CALLBACK_BACKPRESSURE_TOTAL.labels(pool=self._name).inc()
+        await slots.acquire()
+        if not self._running or item_id in self._handoff_tasks:
+            slots.release()
+            return
+        task = asyncio.create_task(
+            self._retry_gateway_callback_until_expired(
+                callback_url=callback_url,
+                item_id=item_id,
+                status=status,
+                result_rows=result_rows,
+                error=error,
+                result_worker_ip=result_worker_ip,
+                callback_headers=callback_headers,
+                retain_results=retain_results,
+            )
+        )
+        self._handoff_tasks[item_id] = task
+        POOL_DEFERRED_CALLBACKS.labels(pool=self._name).inc()
+
+        def _remove_finished(finished: asyncio.Task[None]) -> None:
+            if self._handoff_tasks.get(item_id) is finished:
+                self._handoff_tasks.pop(item_id, None)
+                POOL_DEFERRED_CALLBACKS.labels(pool=self._name).dec()
+                slots.release()
+            if not finished.cancelled():
+                try:
+                    finished.result()
+                except Exception:
+                    logger.exception("Deferred gateway callback task failed for item %s", item_id)
+
+        task.add_done_callback(_remove_finished)
+
+    async def _retry_gateway_callback_until_expired(
+        self,
+        *,
+        callback_url: str,
+        item_id: str,
+        status: str,
+        result_rows: int,
+        error: str | None,
+        result_worker_ip: str | None,
+        callback_headers: Mapping[str, str] | None,
+        retain_results: bool,
+    ) -> None:
+        from nemo_retriever.service.services.worker_result_store import (
+            discard_local_result_data,
+            result_retention_seconds,
+        )
+
+        deadline = time.monotonic() + result_retention_seconds()
+        delay_s = _CALLBACK_DEFERRED_INITIAL_DELAY_S
+        while self._running:
+            remaining_s = deadline - time.monotonic()
+            if remaining_s <= 0:
+                break
+            await asyncio.sleep(min(remaining_s, delay_s * random.uniform(0.8, 1.2)))
+            delivery_outcome = await _fire_gateway_callback(
+                callback_url,
+                item_id,
+                status,
+                result_rows=result_rows,
+                error=error,
+                result_worker_ip=result_worker_ip,
+                callback_headers=callback_headers,
+                retry_after_cap_s=_CALLBACK_DEFERRED_MAX_DELAY_S,
+            )
+            if delivery_outcome == _CallbackDeliveryOutcome.ACKNOWLEDGED:
+                if retain_results:
+                    discard_local_result_data(item_id)
+                logger.info("Deferred gateway callback succeeded for item %s", item_id)
+                return
+            if delivery_outcome == _CallbackDeliveryOutcome.PERMANENT_FAILURE:
+                logger.error(
+                    "Deferred gateway callback permanently failed for item %s; result remains unacknowledged",
+                    item_id,
+                )
+                return
+            delay_s = min(delay_s * 2.0, _CALLBACK_DEFERRED_MAX_DELAY_S)
+
+        if self._running:
+            logger.error(
+                "Gateway callback delivery expired for item %s; result remains unacknowledged",
+                item_id,
+            )
 
     async def _worker_loop(self, worker_id: int) -> None:
         """Consume items until a ``None`` sentinel is received.
@@ -310,15 +473,38 @@ class _Pool:
 
                     if item.callback_url:
                         if retain_results:
-                            from nemo_retriever.service.services.worker_result_store import store_result_data
+                            from nemo_retriever.service.services.worker_result_store import (
+                                store_result_data,
+                            )
 
                             store_result_data(item.id, result_data)
-                        await _fire_gateway_callback(
+                        callback_outcome = await _fire_gateway_callback(
                             item.callback_url,
                             item.id,
                             "completed",
                             result_rows=result_rows,
+                            result_worker_ip=(os.environ.get("POD_IP") if retain_results and result_rows > 0 else None),
+                            callback_headers=item.callback_headers,
                         )
+                        if callback_outcome == _CallbackDeliveryOutcome.ACKNOWLEDGED:
+                            if retain_results:
+                                from nemo_retriever.service.services.worker_result_store import (
+                                    discard_local_result_data,
+                                )
+
+                                discard_local_result_data(item.id)
+                        elif callback_outcome == _CallbackDeliveryOutcome.RETRYABLE:
+                            await self._schedule_gateway_callback_retry(
+                                callback_url=item.callback_url,
+                                item_id=item.id,
+                                status="completed",
+                                result_rows=result_rows,
+                                result_worker_ip=(
+                                    os.environ.get("POD_IP") if retain_results and result_rows > 0 else None
+                                ),
+                                callback_headers=item.callback_headers,
+                                retain_results=retain_results,
+                            )
                     elif tracker is not None:
                         tracker.mark_completed(
                             item.id,
@@ -329,17 +515,32 @@ class _Pool:
                 except Exception as exc:
                     outcome = "failed"
                     if item.callback_url:
-                        await _fire_gateway_callback(
+                        error = f"{type(exc).__name__}: {exc}"
+                        callback_outcome = await _fire_gateway_callback(
                             item.callback_url,
                             item.id,
                             "failed",
-                            error=f"{type(exc).__name__}: {exc}",
+                            error=error,
+                            callback_headers=item.callback_headers,
                         )
+                        if callback_outcome == _CallbackDeliveryOutcome.RETRYABLE:
+                            await self._schedule_gateway_callback_retry(
+                                callback_url=item.callback_url,
+                                item_id=item.id,
+                                status="failed",
+                                error=error,
+                                callback_headers=item.callback_headers,
+                            )
                     else:
                         tracker = get_job_tracker()
                         if tracker is not None:
                             tracker.mark_failed(item.id, f"{type(exc).__name__}: {exc}")
-                    logger.exception("Pool '%s' worker %d failed on item %s", self._name, worker_id, item.id)
+                    logger.exception(
+                        "Pool '%s' worker %d failed on item %s",
+                        self._name,
+                        worker_id,
+                        item.id,
+                    )
                 finally:
                     # Always observe; cheaper to keep latency series complete
                     # than to gate on outcome. Bucketed histogram, so even
@@ -383,6 +584,12 @@ class _Pool:
                 pass
             self._reporter_task = None
 
+        for task in self._handoff_tasks.values():
+            task.cancel()
+        if self._handoff_tasks:
+            await asyncio.gather(*self._handoff_tasks.values(), return_exceptions=True)
+        self._handoff_tasks.clear()
+
         # Cancel all worker tasks immediately — don't bother draining
         # the queue with sentinels since active workers may be blocked
         # on long-running child processes.  The process executors are
@@ -408,12 +615,14 @@ class _Pool:
 
         self._workers.clear()
         self._queue = None
+        self._handoff_slots = None
         # Reset depth gauges so a terminating pod doesn't keep its last
         # high-water mark live on the scraper. We deliberately leave the
         # *configuration* gauges (max_queue_size, workers) untouched —
         # those are pod identity, not runtime state.
         POOL_QUEUE_DEPTH.labels(pool=self._name).set(0)
         POOL_QUEUE_DEPTH_RATIO.labels(pool=self._name).set(0.0)
+        POOL_DEFERRED_CALLBACKS.labels(pool=self._name).set(0)
         logger.info("Pool '%s' shut down (processed=%d)", self._name, self._processed)
 
     def stats(self) -> dict[str, Any]:
@@ -423,6 +632,8 @@ class _Pool:
             "max_queue_size": self._max_queue_size,
             "queue_depth": self.queue_depth,
             "processed": self._processed,
+            "deferred_callbacks": len(self._handoff_tasks),
+            "max_deferred_callbacks": self._num_workers,
             "running": self._running,
         }
 
