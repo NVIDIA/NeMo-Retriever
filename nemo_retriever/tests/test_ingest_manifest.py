@@ -110,6 +110,18 @@ def test_manifest_planner_mixed_inputs_use_stable_family_order(tmp_path) -> None
     assert [branch.family for branch in branches] == ["pdf", "image", "txt"]
 
 
+@pytest.mark.parametrize("suffix", [".md", ".json", ".sh"])
+def test_manifest_planner_routes_documented_plain_text_extensions_to_text(tmp_path, suffix) -> None:
+    document = tmp_path / f"document{suffix}"
+    document.write_text("plain text content", encoding="utf-8")
+
+    branches = plan_extraction_branches(build_input_manifest([str(document)]))
+
+    assert [(branch.family, branch.extraction_mode, branch.input_paths) for branch in branches] == [
+        ("txt", "text", (str(document),)),
+    ]
+
+
 def test_manifest_branch_specs_resolve_default_params(monkeypatch, tmp_path) -> None:
     audio = tmp_path / "clip.wav"
     video = tmp_path / "scene.mp4"

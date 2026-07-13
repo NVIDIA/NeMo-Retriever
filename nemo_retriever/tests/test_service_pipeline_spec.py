@@ -483,6 +483,9 @@ def test_build_graph_ingestor_attaches_asr_params_for_explicit_audio_mode() -> N
     ("filename", "expected"),
     [
         ("notes.txt", "text"),
+        ("README.md", "text"),
+        ("payload.json", "text"),
+        ("setup.sh", "text"),
         ("page.html", "html"),
         ("report.pdf", "pdf"),
         ("diagram.png", "image"),
@@ -513,8 +516,8 @@ def test_build_graph_ingestor_uses_typed_txt_html_shortcuts() -> None:
     spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
 
     txt_ingestor, txt_mode, _ = _build_graph_ingestor_from_spec(
-        "notes.txt",
-        b"The quick brown fox",
+        "README.md",
+        b"# The quick brown fox",
         base_extract,
         None,
         spec,
