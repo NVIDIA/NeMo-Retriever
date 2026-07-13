@@ -174,9 +174,10 @@ For the full asset workflow (including reuse across requests), refer to [NVCF as
 The following example creates an NVCF asset, uploads a PNG, and calls the hosted Page Elements endpoint. For the request schema, refer to the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html).
 
 ```python
+import os
 import requests
 
-API_KEY = "nvapi-..."
+API_KEY = os.environ["NVIDIA_API_KEY"]
 PAGE_ELEMENTS_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
 IMAGE_PATH = "large_page.png"
 
