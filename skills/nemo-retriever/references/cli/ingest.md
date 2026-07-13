@@ -75,8 +75,9 @@ Write to a custom DB / table:
 - Positional `DOCUMENTS...` is required and repeatable.
 - Values may be file paths, directories, or shell globs.
 - Supported input families are detected automatically from extensions:
-  `pdf`, `docx`, `pptx`, `txt`, `html`, `jpg`, `jpeg`, `png`, `tiff`, `tif`,
-  `bmp`, `svg`, `mp3`, `wav`, `m4a`, `mp4`, `mov`, and `mkv`.
+  `pdf`, `docx`, `pptx`, `txt`, `md`, `json`, `sh`, `html`, `jpg`, `jpeg`,
+  `png`, `tiff`, `tif`, `bmp`, `svg`, `mp3`, `wav`, `m4a`, `mp4`, `mov`, and
+  `mkv`. Markdown, JSON, and shell scripts are treated as plain text.
 
 ## Outputs
 
