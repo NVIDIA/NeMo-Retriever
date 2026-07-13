@@ -287,6 +287,25 @@ def test_slack_payload_does_not_average_failed_vidore_v3_suite(tmp_path):
     assert ["-    finance_fr failure", "benchmark failed"] in _table_rows(tables[0])
 
 
+def test_slack_payload_keeps_duplicate_vidore_runs_without_claiming_suite_averages(tmp_path):
+    results = [_vidore_run(dataset, index) for index, dataset in enumerate(VIDORE_V3_REPORT_DATASETS)]
+    results.append(_vidore_run("vidore_v3_finance_en"))
+
+    payload = build_slack_payload(
+        _vidore_report(tmp_path, results),
+        {"metric_keys": DEFAULT_SLACK_METRIC_KEYS, "post_artifact_paths": False},
+    )
+    tables = [block for block in payload["blocks"] if block["type"] == "table"]
+    main_rows = _table_rows(tables[0])
+    accuracy_rows = _table_rows(tables[1])
+
+    assert ["-    ViDoRe v3", "PASS (9/9)"] in main_rows
+    assert ["-    total ingest time", "185.00s (03m : 05.00s)"] in main_rows
+    assert ["-    aggregate pages/s", "4.86"] in main_rows
+    assert not any(row[0].startswith("Avg") for row in accuracy_rows)
+    assert sum(row[0] == "finance_en" for row in accuracy_rows) == 2
+
+
 def test_slack_transport_error_does_not_expose_webhook(monkeypatch):
     webhook = "https://hooks.slack.com/services/TSECRET/BSECRET/XSECRET"
 
