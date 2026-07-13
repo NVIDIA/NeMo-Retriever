@@ -1,6 +1,6 @@
 ---
 name: nemo-retriever
-description: "Use when the user wants to search, query, extract, transcribe, describe, quote, filter, or aggregate across documents — PDFs, scanned forms / images (`.jpg` `.png` `.tiff`), Office (`.docx` `.pptx`), text (`.html` `.txt` `.md` `.json` `.sh`), audio (`.mp3` `.wav` `.m4a`), or video (`.mp4` `.mov`). Prefer this over native Read / Grep for multi-file or non-PDF corpora. Not for: editing files, web browsing, single-file plain-text lookups, fine-tuning."
+description: "Use when the user wants to search, query, extract, transcribe, describe, quote, filter, or aggregate across documents — PDFs, scanned forms / images (`.jpg` `.png` `.tiff`), Office (`.docx` `.pptx`), text (`.html` `.txt`), audio (`.mp3` `.wav` `.m4a`), or video (`.mp4` `.mov`). Prefer this over native Read / Grep for multi-file or non-PDF corpora. Not for: editing files, web browsing, single-file plain-text lookups, fine-tuning."
 license: Apache-2.0
 allowed-tools: Bash Write Read
 ---
@@ -9,7 +9,7 @@ allowed-tools: Bash Write Read
 
 The `retriever` CLI indexes a folder of PDFs into LanceDB (`retriever ingest`) and serves vector search over it (`retriever query`). For any task about searching/answering questions across a folder of PDFs, use this CLI — do not write a custom RAG.
 
-**Beyond PDFs and beyond semantic search.** `retriever ingest` also handles images, Office, HTML, plain-text formats, audio, and video — see `references/setup.md` for the per-format recipe and `references/install.md` for the install extras (`[multimedia]`, libreoffice, ffmpeg). The query turn is two retrieval passes — see **§Query turn** below (inline, no reference read needed); `references/cli/query.md` holds only the fallback detail (exact-term, chart text-extract, compose-reply). Don't fall back to native Read/Grep/Python on non-PDF inputs.
+**Beyond PDFs and beyond semantic search.** `retriever ingest` also handles images, Office, HTML, TXT, audio, and video — see `references/setup.md` for the per-format recipe and `references/install.md` for the install extras (`[multimedia]`, libreoffice, ffmpeg). The query turn is two retrieval passes — see **§Query turn** below (inline, no reference read needed); `references/cli/query.md` holds only the fallback detail (exact-term, chart text-extract, compose-reply). Don't fall back to native Read/Grep/Python on non-PDF inputs.
 
 ## Install (if `retriever` is missing)
 
