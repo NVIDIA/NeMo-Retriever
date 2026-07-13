@@ -36,6 +36,16 @@ DEFAULT_SLACK_METRIC_KEYS = (
     "recall_10",
 )
 MAX_SLACK_TABLE_ROWS = 100
+VIDORE_V3_REPORT_DATASETS = {
+    "vidore_v3_finance_en": ("finance_en", True),
+    "vidore_v3_industrial": ("industrial", True),
+    "vidore_v3_computer_science": ("computer_science", True),
+    "vidore_v3_pharmaceuticals": ("pharmaceuticals", True),
+    "vidore_v3_hr": ("hr", True),
+    "vidore_v3_energy": ("energy", True),
+    "vidore_v3_physics": ("physics", True),
+    "vidore_v3_finance_fr": ("finance_fr", False),
+}
 
 
 @dataclass
@@ -339,37 +349,122 @@ def _select_metric_names(metrics: dict[str, Any], metric_keys: list[str]) -> lis
     return metric_names
 
 
+def _table_cell(value: str, *, bold: bool = False) -> dict[str, Any]:
+    text_element: dict[str, Any] = {"type": "text", "text": value}
+    if bold:
+        text_element["style"] = {"bold": True}
+    return {
+        "type": "rich_text",
+        "elements": [{"type": "rich_text_section", "elements": [text_element]}],
+    }
+
+
 def _two_column_row(left: str, right: str) -> list[dict[str, Any]]:
-    return [
-        {
-            "type": "rich_text",
-            "elements": [{"type": "rich_text_section", "elements": [{"type": "text", "text": left}]}],
-        },
-        {
-            "type": "rich_text",
-            "elements": [{"type": "rich_text_section", "elements": [{"type": "text", "text": right}]}],
-        },
-    ]
+    return [_table_cell(left), _table_cell(right)]
 
 
 def _two_column_row_bold(left: str, right: str) -> list[dict[str, Any]]:
+    return [_table_cell(left, bold=True), _table_cell(right)]
+
+
+def _three_column_row(left: str, middle: str, right: str, *, bold: bool = False) -> list[dict[str, Any]]:
     return [
-        {
-            "type": "rich_text",
-            "elements": [
-                {"type": "rich_text_section", "elements": [{"type": "text", "text": left, "style": {"bold": True}}]}
-            ],
-        },
-        {
-            "type": "rich_text",
-            "elements": [{"type": "rich_text_section", "elements": [{"type": "text", "text": right}]}],
-        },
+        _table_cell(left, bold=bold),
+        _table_cell(middle, bold=bold),
+        _table_cell(right, bold=bold),
     ]
+
+
+def _vidore_v3_runs(results: list[HarnessRunReport]) -> list[HarnessRunReport]:
+    runs_by_dataset: dict[str, list[HarnessRunReport]] = {}
+    for run in results:
+        if run.dataset in VIDORE_V3_REPORT_DATASETS:
+            runs_by_dataset.setdefault(run.dataset, []).append(run)
+    return [run for dataset in VIDORE_V3_REPORT_DATASETS for run in runs_by_dataset.get(dataset, [])]
+
+
+def _is_complete_vidore_v3_suite(runs: list[HarnessRunReport]) -> bool:
+    return len(runs) == len(VIDORE_V3_REPORT_DATASETS) and {run.dataset for run in runs} == set(
+        VIDORE_V3_REPORT_DATASETS
+    )
+
+
+def _numeric_metric(run: HarnessRunReport, metric_name: str) -> float | None:
+    value = run.metrics.get(metric_name)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _macro_average(runs: list[HarnessRunReport], metric_name: str) -> float | None:
+    if any(not run.success for run in runs):
+        return None
+    values = [_numeric_metric(run, metric_name) for run in runs]
+    if any(value is None for value in values):
+        return None
+    numeric_values = [value for value in values if value is not None]
+    return sum(numeric_values) / len(numeric_values)
+
+
+def _format_accuracy_value(value: float | None) -> str:
+    return "N/A" if value is None else f"{value:.3f}"
+
+
+def _vidore_v3_accuracy_rows(runs: list[HarnessRunReport]) -> list[list[dict[str, Any]]]:
+    rows = [_three_column_row("DATASET", "RECALL@5", "NDCG@10", bold=True)]
+    if _is_complete_vidore_v3_suite(runs):
+        english_runs = [run for run in runs if VIDORE_V3_REPORT_DATASETS[run.dataset][1]]
+        for label, selected_runs in (("Avg (English)", english_runs), ("Avg (all)", runs)):
+            rows.append(
+                _three_column_row(
+                    label,
+                    _format_accuracy_value(_macro_average(selected_runs, "recall_5")),
+                    _format_accuracy_value(_macro_average(selected_runs, "ndcg_10")),
+                    bold=True,
+                )
+            )
+    for run in runs:
+        label = VIDORE_V3_REPORT_DATASETS[run.dataset][0]
+        rows.append(
+            _three_column_row(
+                label,
+                _format_accuracy_value(_numeric_metric(run, "recall_5")),
+                _format_accuracy_value(_numeric_metric(run, "ndcg_10")),
+            )
+        )
+    return rows
+
+
+def _vidore_v3_status(runs: list[HarnessRunReport], *, dry_run: bool) -> str:
+    if dry_run:
+        return f"DRY RUN ({len(runs)} planned)"
+    passed_count = sum(1 for run in runs if run.success)
+    if passed_count == len(runs):
+        return f"PASS ({passed_count}/{len(runs)})"
+    return f"FAIL ({passed_count}/{len(runs)} passed)"
+
+
+def _vidore_v3_performance(runs: list[HarnessRunReport]) -> tuple[float | None, float | None]:
+    pages = [_numeric_metric(run, "pages") for run in runs]
+    ingest_secs = [_numeric_metric(run, "ingest_secs") for run in runs]
+    if any(value is None for value in pages) or any(value is None for value in ingest_secs):
+        return None, None
+
+    total_pages = sum(value for value in pages if value is not None)
+    total_ingest_secs = sum(value for value in ingest_secs if value is not None)
+    pages_per_sec = total_pages / total_ingest_secs if total_ingest_secs > 0 else None
+    return total_ingest_secs, pages_per_sec
 
 
 def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, Any]) -> dict[str, Any]:
     metric_keys = [str(key) for key in slack_config.get("metric_keys", [])]
     post_artifact_paths = bool(slack_config.get("post_artifact_paths", False))
+    vidore_v3_runs = _vidore_v3_runs(report.results)
+    vidore_v3_datasets = {run.dataset for run in vidore_v3_runs}
+    detailed_runs = [run for run in report.results if run.dataset not in vidore_v3_datasets]
     passed_count = sum(1 for run in report.results if run.success)
     total_count = len(report.results)
     if report.dry_run:
@@ -382,9 +477,16 @@ def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, An
 
     rows: list[list[dict[str, Any]]] = []
     rows.append(_two_column_row_bold("OVERALL STATUS", overall_status))
-    for run in report.results:
+    for run in detailed_runs:
         run_status = "DRY RUN" if report.dry_run else "PASS" if run.success else "FAIL"
         rows.append(_two_column_row_bold(f"-    {run.dataset}", run_status))
+    if vidore_v3_runs:
+        rows.append(
+            _two_column_row_bold(
+                "-    ViDoRe v3",
+                _vidore_v3_status(vidore_v3_runs, dry_run=report.dry_run),
+            )
+        )
 
     rows.append(_BLANK_ROW)
     rows.append(_two_column_row_bold("ENVIRONMENT", " "))
@@ -400,7 +502,7 @@ def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, An
 
     rows.append(_BLANK_ROW)
     rows.append(_two_column_row_bold("RESULTS", " "))
-    for run in report.results:
+    for run in detailed_runs:
         run_status = "DRY RUN" if report.dry_run else "PASS" if run.success else "FAIL"
         rows.append(_two_column_row_bold(run.dataset, run_status))
         if not run.success and run.return_code is not None:
@@ -416,6 +518,36 @@ def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, An
             rows.append(_two_column_row("-    failure_reason", run.failure_reason))
         if post_artifact_paths and run.artifact_dir is not None:
             rows.append(_two_column_row("-    artifact_dir", str(run.artifact_dir)))
+        rows.append(_BLANK_ROW)
+
+    if vidore_v3_runs:
+        total_ingest_secs, pages_per_sec = _vidore_v3_performance(vidore_v3_runs)
+        rows.append(
+            _two_column_row_bold(
+                "ViDoRe v3",
+                _vidore_v3_status(vidore_v3_runs, dry_run=report.dry_run),
+            )
+        )
+        rows.append(
+            _two_column_row(
+                "-    total ingest time",
+                _format_metric_value("ingest_secs", total_ingest_secs),
+            )
+        )
+        rows.append(
+            _two_column_row(
+                "-    aggregate pages/s",
+                _format_metric_value("pages_per_sec_ingest", pages_per_sec),
+            )
+        )
+        for run in vidore_v3_runs:
+            if run.success:
+                continue
+            label = VIDORE_V3_REPORT_DATASETS[run.dataset][0]
+            failure = run.failure_reason or (
+                f"return code {run.return_code}" if run.return_code is not None else "run failed"
+            )
+            rows.append(_two_column_row(f"-    {label} failure", failure))
         rows.append(_BLANK_ROW)
 
     if report.results:
@@ -438,6 +570,20 @@ def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, An
         {"type": "divider"},
         {"type": "table", "rows": rows},
     ]
+    if vidore_v3_runs:
+        blocks.extend(
+            [
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*ViDoRe v3 accuracy*",
+                    },
+                },
+                {"type": "table", "rows": _vidore_v3_accuracy_rows(vidore_v3_runs)},
+            ]
+        )
 
     return {
         "username": DEFAULT_USERNAME,
