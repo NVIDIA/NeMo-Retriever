@@ -139,7 +139,7 @@ To work around this issue, convert image files to PDFs before you use `extract_m
 
 [NVIDIA-hosted Page Elements NIM](https://build.nvidia.com/nvidia/nemotron-page-elements-v3) endpoints on `ai.api.nvidia.com` (and the matching build.nvidia.com model experience) enforce a strict limit on **inline** image payloads. The same limit applies to hosted **Table Structure** and **Graphic Elements** object-detection NIMs because they share the same `/v1/infer` request shape.
 
-Hosted and self-hosted deployments use different inline payload limits:
+The following table summarizes inline payload limits by deployment:
 
 | Deployment | Inline base64 limit | Oversized images |
 |------------|---------------------|------------------|
@@ -153,7 +153,7 @@ The [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/o
 When you route extraction to hosted Page Elements NIM URLs (for example `page_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"`), the library:
 
 - Renders PDF pages with default `render_mode="fit_to_model"` (targets about 1024 px on the long edge instead of full raster DPI).
-- Downscales base64 page images before remote object-detection NIM HTTP calls when payloads exceed the client limit (512,000 characters for Page Elements, Table Structure, and Graphic Elements).
+- Downscales base64 page images before remote object-detection NIM HTTP calls when payloads exceed the client limit (512,000 characters for Page Elements and Table Structure).
 
 !!! important
 
@@ -171,59 +171,61 @@ When you call Page Elements NIM **directly** (build playground, curl, or a custo
 
 For the full asset workflow (including reuse across requests), refer to [NVCF assets](https://docs.nvidia.com/cloud-functions/user-guide/latest/cloud-function/assets.html) in the Cloud Functions user guide and the [Create Asset](https://docs.api.nvidia.com/cloud-functions/reference/createasset) API reference. Hosted calls require the same [`NVIDIA_API_KEY`](api-keys.md#nvidia-api-key) you use for other build.nvidia.com NIM endpoints.
 
-The following example creates an NVCF asset, uploads a PNG, and calls the hosted Page Elements endpoint. For the request schema, refer to the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html).
+For the request schema, refer to the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html).
 
-```python
-import os
-import requests
+??? example "Create an NVCF asset, upload a PNG, and call Page Elements"
 
-API_KEY = os.environ["NVIDIA_API_KEY"]
-PAGE_ELEMENTS_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
-IMAGE_PATH = "large_page.png"
+    ```python
+    import os
+    import requests
 
-create = requests.post(
-    "https://api.nvcf.nvidia.com/v2/nvcf/assets",
-    headers={
-        "Authorization": f"Bearer {API_KEY}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    },
-    json={"contentType": "image/png", "description": "page-elements-large-input"},
-    timeout=60,
-)
-create.raise_for_status()
-asset = create.json()
+    API_KEY = os.environ["NVIDIA_API_KEY"]
+    PAGE_ELEMENTS_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3"
+    IMAGE_PATH = "large_page.png"
 
-with open(IMAGE_PATH, "rb") as image_file:
-    upload = requests.put(
-        asset["uploadUrl"],
+    create = requests.post(
+        "https://api.nvcf.nvidia.com/v2/nvcf/assets",
         headers={
-            "Content-Type": "image/png",
-            "x-amz-meta-nvcf-asset-description": "page-elements-large-input",
+            "Authorization": f"Bearer {API_KEY}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
         },
-        data=image_file.read(),
+        json={"contentType": "image/png", "description": "page-elements-large-input"},
+        timeout=60,
+    )
+    create.raise_for_status()
+    asset = create.json()
+
+    with open(IMAGE_PATH, "rb") as image_file:
+        upload = requests.put(
+            asset["uploadUrl"],
+            headers={
+                "Content-Type": "image/png",
+                "x-amz-meta-nvcf-asset-description": "page-elements-large-input",
+            },
+            data=image_file.read(),
+            timeout=120,
+        )
+    upload.raise_for_status()
+
+    payload = {
+        "input": [{
+            "type": "image_url",
+            "url": f"data:image/png;asset_id,{asset['assetId']}",
+        }]
+    }
+    response = requests.post(
+        PAGE_ELEMENTS_URL,
+        headers={
+            "Authorization": f"Bearer {API_KEY}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        json=payload,
         timeout=120,
     )
-upload.raise_for_status()
-
-payload = {
-    "input": [{
-        "type": "image_url",
-        "url": f"data:image/png;asset_id,{asset['assetId']}",
-    }]
-}
-response = requests.post(
-    PAGE_ELEMENTS_URL,
-    headers={
-        "Authorization": f"Bearer {API_KEY}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    },
-    json=payload,
-    timeout=120,
-)
-response.raise_for_status()
-```
+    response.raise_for_status()
+    ```
 
 Supported inline formats remain **PNG** and **JPEG**, encoded as `data:image/<format>;base64,<data>` or `data:image/<format>;asset_id,<uuid>`. OpenAPI specs for Page Elements v2 and v3 are linked from the [Object Detection NIM API reference](https://docs.nvidia.com/nim/ingestion/object-detection/latest/api-reference.html#openapi-reference-for-page-elements).
 
