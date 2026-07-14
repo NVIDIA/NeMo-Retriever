@@ -40,7 +40,6 @@ class LocalExtractConfig(RichModel):
 
     enabled: bool = True
     use_table_structure: bool = True
-    use_graphic_elements: bool = True
     ocr_version: Literal["v1", "v2"] = "v2"
     ocr_lang: Literal["multi", "english"] | None = None
 
@@ -132,7 +131,6 @@ class NimEndpointsConfig(RichModel):
     page_elements_invoke_url: str | None = None
     ocr_invoke_url: str | None = None
     table_structure_invoke_url: str | None = None
-    graphic_elements_invoke_url: str | None = None
     embed_invoke_url: str | None = None
     embed_model_name: str | None = Field(
         default=None,

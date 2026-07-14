@@ -583,7 +583,7 @@ and validate against the same release of the retriever service before
 production rollout.
 
 **Charts and captioning.** Charts and infographics use **page_elements**
-and **ocr** (no `graphic_elements` operator NIM in this chart). For image
+and **ocr**. For image
 captioning, set `nimOperator.nemotron_3_nano_omni_30b_a3b_reasoning.enabled=true` — refer to
 [Image captioning (Omni 30B)](#image-captioning-omni-30b) for the
 chart-side wiring and

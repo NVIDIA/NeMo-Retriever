@@ -122,8 +122,7 @@ def test_huggingface_non_ocr_nightlies_are_versioned_after_current_stable() -> N
     assert "id: nemotron-page-elements-v3" in workflow
     assert 'nightly_base_version: "3.0.2"' in workflow
     assert "id: nemotron-table-structure-v1" in workflow
-    assert workflow.count('nightly_base_version: "1.0.1"') == 2
-    assert "id: nemotron-graphic-elements-v1" in workflow
+    assert workflow.count('nightly_base_version: "1.0.1"') == 1
 
 
 def test_huggingface_nightly_builder_defaults_to_public_pypi() -> None:

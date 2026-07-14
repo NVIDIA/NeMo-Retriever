@@ -575,7 +575,6 @@ serviceConfig:
     extract:
       enabled: true
       useTableStructure: true
-      useGraphicElements: true
       ocrVersion: v2
       ocrLang: ""
     embed:

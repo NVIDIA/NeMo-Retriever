@@ -54,8 +54,6 @@ def build_warmup_spec(
         stages.append("ocr")
     if extract.get("use_table_structure") and not str(extract.get("table_structure_invoke_url") or "").strip():
         stages.append("table_structure")
-    if extract.get("use_graphic_elements") and not str(extract.get("graphic_elements_invoke_url") or "").strip():
-        stages.append("graphic_elements")
 
     embed_spec: dict[str, Any] | None = None
     if embed_params_dict:
@@ -120,7 +118,7 @@ def warm_local_models(spec: dict[str, Any]) -> None:
         logger.info("Warming local model: page_elements")
         _REGISTRY["page_elements"] = NemotronPageElementsV3()
 
-    ocr_needed = "ocr" in stages or "table_structure" in stages or "graphic_elements" in stages
+    ocr_needed = "ocr" in stages or "table_structure" in stages
     if ocr_needed and "ocr" not in _REGISTRY:
         from nemo_retriever.common.modality.ocr.config import resolve_ocr_v2_lang
         from nemo_retriever.models.local import NemotronOCRV2
@@ -137,12 +135,6 @@ def warm_local_models(spec: dict[str, Any]) -> None:
 
         logger.info("Warming local model: table_structure")
         _REGISTRY["table_structure"] = NemotronTableStructureV1()
-
-    if "graphic_elements" in stages:
-        from nemo_retriever.models.local import NemotronGraphicElementsV1
-
-        logger.info("Warming local model: graphic_elements")
-        _REGISTRY["graphic_elements"] = NemotronGraphicElementsV1()
 
     embed_spec = spec.get("embed")
     if embed_spec:
