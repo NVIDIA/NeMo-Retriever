@@ -15,7 +15,7 @@ from nemo_retriever.harness.benchmark_registry import (
     list_benchmarks,
     list_runsets,
 )
-from nemo_retriever.harness.contracts import EXIT_INVALID, FailurePayload
+from nemo_retriever.harness.contracts import EXIT_INVALID, EXIT_MISSING_INPUT, FailurePayload
 from nemo_retriever.harness.revamp_runner import (
     HarnessRunError,
     run_benchmark,
@@ -32,6 +32,7 @@ from nemo_retriever.harness.slack import (
     post_slack_payload,
     resolve_slack_webhook_url,
 )
+from nemo_retriever.harness.vidore_access import VidoreAccessError, check_vidore_access
 
 app = typer.Typer(
     help=(
@@ -43,6 +44,42 @@ app = typer.Typer(
 
 def _echo_json(payload: object) -> None:
     typer.echo(json.dumps(payload, indent=2, sort_keys=False))
+
+
+@app.command("check-vidore-access")
+def check_vidore_access_command(
+    dataset_names: Annotated[
+        list[str] | None,
+        typer.Option("--dataset", help="Check one ViDoRe dataset name. Repeat to check multiple datasets."),
+    ] = None,
+    timeout_seconds: Annotated[
+        float,
+        typer.Option("--timeout-seconds", min=1.0, help="HTTP timeout for each streamed range request."),
+    ] = 20.0,
+    require_token: Annotated[
+        bool,
+        typer.Option("--require-token/--allow-anonymous", help="Require HF_TOKEN before checking public data."),
+    ] = True,
+    json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")] = False,
+) -> None:
+    """Verify ViDoRe queries, qrels, and corpus objects without downloading them."""
+
+    try:
+        results = check_vidore_access(
+            dataset_names=dataset_names,
+            timeout_seconds=timeout_seconds,
+            require_token=require_token,
+        )
+    except VidoreAccessError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=EXIT_MISSING_INPUT) from exc
+
+    payload = {"success": True, "datasets": [result.to_dict() for result in results]}
+    if json_output:
+        _echo_json(payload)
+        return
+    for result in results:
+        typer.echo(f"{result.dataset}: access ok ({', '.join(result.checked_partitions)})")
 
 
 @app.command("list")
@@ -263,6 +300,10 @@ def run_files_command(
         bool,
         typer.Option("--dry-run", help="Resolve configuration and write plans without executing ingest or query."),
     ] = False,
+    isolate_runs: Annotated[
+        bool,
+        typer.Option("--isolate-runs", help="Run each child in a fresh process to release batch memory."),
+    ] = False,
     json_output: Annotated[bool, typer.Option("--json", help="Emit session summary JSON to stdout.")] = False,
 ) -> None:
     """Run one or more runfiles, optionally with machine-local dataset paths."""
@@ -277,6 +318,7 @@ def run_files_command(
             overrides=set_values or (),
             requirements=requirements or (),
             dry_run=dry_run,
+            isolate_runs=isolate_runs,
         )
     except HarnessRunError as exc:
         typer.echo(exc.failure.message, err=True)

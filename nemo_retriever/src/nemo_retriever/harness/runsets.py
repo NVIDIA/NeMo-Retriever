@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from difflib import get_close_matches
+import multiprocessing
 from pathlib import Path
 import re
 from typing import Any, Mapping, Sequence
@@ -218,6 +219,75 @@ def _failed_child_outcome(
     )
 
 
+def _isolated_run_worker(connection: Any, run: PreparedRun, *, output_dir: str, run_id: str) -> None:
+    """Execute one prepared benchmark in a fresh spawned process."""
+
+    try:
+        outcome = run_prepared_benchmark(
+            run.prepared,
+            output_dir=output_dir,
+            run_id=run_id,
+            runfile_payload=run.runfile_payload,
+            runfile_path=run.runfile_path,
+        )
+        connection.send(("outcome", outcome))
+    except Exception as exc:
+        connection.send(("error", f"{type(exc).__name__}: {exc}"))
+    finally:
+        connection.close()
+
+
+def _run_prepared_benchmark_isolated(run: PreparedRun, *, output_dir: str, run_id: str) -> RunOutcome:
+    """Run one child with a process boundary that releases Ray and dataframe memory."""
+
+    context = multiprocessing.get_context("spawn")
+    receive_connection, send_connection = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_isolated_run_worker,
+        kwargs={
+            "connection": send_connection,
+            "run": run,
+            "output_dir": output_dir,
+            "run_id": run_id,
+        },
+        name=f"retriever-harness-{run.artifact_name}",
+    )
+    try:
+        process.start()
+    except BaseException:
+        receive_connection.close()
+        send_connection.close()
+        raise
+    send_connection.close()
+
+    message: tuple[str, Any] | None = None
+    try:
+        try:
+            message = receive_connection.recv()
+        except EOFError:
+            pass
+    except BaseException:
+        if process.is_alive():
+            process.terminate()
+        process.join()
+        raise
+    finally:
+        receive_connection.close()
+
+    process.join()
+    if process.exitcode != 0:
+        raise RuntimeError(f"isolated benchmark process exited with code {process.exitcode}")
+    if message is None:
+        raise RuntimeError("isolated benchmark process returned no outcome")
+
+    message_type, payload = message
+    if message_type == "error":
+        raise RuntimeError(str(payload))
+    if message_type != "outcome" or not isinstance(payload, RunOutcome):
+        raise RuntimeError("isolated benchmark process returned an invalid outcome")
+    return payload
+
+
 def _session_summary(
     *,
     session_type: str,
@@ -252,6 +322,7 @@ def _run_session(
     run_commit: str,
     dry_run: bool,
     summary_extra: Mapping[str, Any],
+    isolate_runs: bool = False,
 ) -> RunOutcome:
     try:
         session_dir.mkdir(parents=True, exist_ok=True)
@@ -264,14 +335,22 @@ def _run_session(
     exit_code = EXIT_SUCCESS
     for run in runs:
         artifact_dir = session_dir / run.artifact_name
+        run_id = f"{session_name}_{run.artifact_name}"
         try:
-            outcome = run_prepared_benchmark(
-                run.prepared,
-                output_dir=str(artifact_dir),
-                run_id=f"{session_name}_{run.artifact_name}",
-                runfile_payload=run.runfile_payload,
-                runfile_path=run.runfile_path,
-            )
+            if isolate_runs:
+                outcome = _run_prepared_benchmark_isolated(
+                    run,
+                    output_dir=str(artifact_dir),
+                    run_id=run_id,
+                )
+            else:
+                outcome = run_prepared_benchmark(
+                    run.prepared,
+                    output_dir=str(artifact_dir),
+                    run_id=run_id,
+                    runfile_payload=run.runfile_payload,
+                    runfile_path=run.runfile_path,
+                )
         except Exception as exc:
             outcome = _failed_child_outcome(
                 benchmark=run.prepared.benchmark,
@@ -372,6 +451,7 @@ def run_runfiles(
     overrides: Sequence[str] = (),
     requirements: Sequence[str] = (),
     dry_run: bool = False,
+    isolate_runs: bool = False,
 ) -> RunOutcome:
     if not runfiles:
         raise _invalid_runfile("At least one runfile path is required.")
@@ -441,6 +521,7 @@ def run_runfiles(
             "session_name": session_name,
             "run_commit": run_commit,
             "dataset_paths_file": dataset_paths_value,
+            "isolate_runs": bool(isolate_runs),
             "runfiles": expanded_runs,
         },
         run_commit=run_commit,
@@ -448,5 +529,7 @@ def run_runfiles(
         summary_extra={
             "session_name": session_name,
             "dataset_paths_file": dataset_paths_value,
+            "isolate_runs": bool(isolate_runs),
         },
+        isolate_runs=isolate_runs,
     )

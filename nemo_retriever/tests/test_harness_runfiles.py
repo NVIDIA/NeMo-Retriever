@@ -192,6 +192,84 @@ def test_run_files_completes_remaining_runs_and_preserves_first_failure(monkeypa
     assert [run["exit_code"] for run in outcome.results["runs"]] == [10, 0]
 
 
+def test_run_files_can_isolate_each_child_process(monkeypatch, tmp_path):
+    runfiles = []
+    for name in ("jp20_beir", "bo767_beir"):
+        path = tmp_path / f"{name}.json"
+        _write_json(path, {"schema_version": 1, "name": name, "benchmark": name})
+        runfiles.append(path)
+
+    isolated_calls = []
+
+    def fake_isolated_run(run, *, output_dir, run_id):
+        isolated_calls.append((run.prepared.benchmark, run_id))
+        return _successful_outcome(run.prepared.benchmark, output_dir)
+
+    monkeypatch.setattr(
+        "nemo_retriever.harness.runsets._run_prepared_benchmark_isolated",
+        fake_isolated_run,
+    )
+    monkeypatch.setattr(
+        "nemo_retriever.harness.runsets.run_prepared_benchmark",
+        lambda *args, **kwargs: pytest.fail("in-process runner should not be used"),
+    )
+
+    outcome = run_runfiles(
+        runfiles,
+        output_dir=str(tmp_path / "session"),
+        session_name="isolated",
+        overrides=(f'dataset.path="{tmp_path}"',),
+        dry_run=True,
+        isolate_runs=True,
+    )
+
+    assert outcome.exit_code == 0
+    assert outcome.results["isolate_runs"] is True
+    assert isolated_calls == [
+        ("jp20_beir", "isolated_001_jp20_beir"),
+        ("bo767_beir", "isolated_002_bo767_beir"),
+    ]
+    assert len(outcome.results["runs"]) == 2
+
+
+def test_run_files_spawned_child_writes_terminal_summary(tmp_path):
+    documents = tmp_path / "documents"
+    documents.mkdir()
+    (documents / "sample.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+    query_file = tmp_path / "queries.csv"
+    query_file.write_text("query_id,query\n1,test\n", encoding="utf-8")
+    dataset_paths = tmp_path / "dataset_paths.yaml"
+    dataset_paths.write_text(
+        "\n".join(
+            (
+                "schema_version: 1",
+                "datasets:",
+                "  jp20:",
+                f"    path: {documents}",
+                f"    query_file: {query_file}",
+            )
+        ),
+        encoding="utf-8",
+    )
+    runfile = tmp_path / "jp20_beir.json"
+    _write_json(runfile, {"schema_version": 1, "name": "jp20_beir", "benchmark": "jp20_beir"})
+
+    outcome = run_runfiles(
+        [runfile],
+        output_dir=str(tmp_path / "session"),
+        dataset_paths_file=dataset_paths,
+        mode="batch",
+        dry_run=True,
+        isolate_runs=True,
+    )
+
+    assert outcome.exit_code == 0
+    assert outcome.results["isolate_runs"] is True
+    assert outcome.results["runs"][0]["success"] is True
+    assert (outcome.artifact_dir / "001_jp20_beir" / "results.json").exists()
+    assert outcome.results_path == outcome.artifact_dir / "session_summary.json"
+
+
 def test_run_files_removes_stale_summary_before_child_execution(monkeypatch, tmp_path):
     runfile = tmp_path / "jp20_beir.json"
     _write_json(runfile, {"schema_version": 1, "name": "jp20_beir", "benchmark": "jp20_beir"})
