@@ -6,21 +6,12 @@
 
 from __future__ import annotations
 
-from enum import Enum
 from pathlib import Path
 from typing import Optional
 
 import typer
 
 app = typer.Typer(help="Operate the Retriever service. Use `retriever ingest service` to submit documents.")
-
-
-class VectorDbRetrievalModeCliOption(str, Enum):
-    """CLI choices for ``--vectordb-retrieval-mode``."""
-
-    dense = "dense"
-    hybrid = "hybrid"
-    auto = "auto"
 
 
 @app.command("start")
@@ -87,12 +78,6 @@ def start(
         ),
         envvar="NEMO_RETRIEVER_API_TOKEN",
     ),
-    vectordb_retrieval_mode: Optional[VectorDbRetrievalModeCliOption] = typer.Option(
-        None,
-        "--vectordb-retrieval-mode",
-        help="LanceDB retrieval mode for the vectordb pod: dense, hybrid, or auto (overrides YAML).",
-        case_sensitive=False,
-    ),
 ) -> None:
     """Start the retriever ingest web server."""
     import uvicorn
@@ -128,8 +113,6 @@ def start(
         overrides["local_models.max_process_pool_workers"] = max_process_pool_workers
     if api_token is not None:
         overrides["auth.api_token"] = api_token
-    if vectordb_retrieval_mode is not None:
-        overrides["vectordb.retrieval_mode"] = vectordb_retrieval_mode.value
 
     cfg = load_config(config_path=str(config) if config else None, overrides=overrides or None)
 

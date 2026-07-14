@@ -332,7 +332,6 @@ The retriever service picks up the in-cluster ASR endpoint when `nimOperator.aud
 | `serviceConfig.vectordb.lancedbUri`               | `/data/vectordb` | LanceDB on the vectordb Pod's PVC. |
 | `serviceConfig.vectordb.embedModel`               | `nvidia/llama-nemotron-embed-vl-1b-v2` | Passed to vectordb + worker `embed_model_name`. |
 | `serviceConfig.vectordb.embedModelProviderPrefix` | `""` | Optional LiteLLM provider prefix prepended to the remote embed model name. |
-| `serviceConfig.vectordb.retrievalMode`            | `dense` | Server-owned LanceDB retrieval mode for `/v1/query`: `dense`, `hybrid`, or `auto`. Hybrid requires an FTS index on the table; service ingestion builds one when this is set to `hybrid` or `auto`. |
 
 #### VectorDB and the embed endpoint { #vectordb-and-the-embed-endpoint }
 

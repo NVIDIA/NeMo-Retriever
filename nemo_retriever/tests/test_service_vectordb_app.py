@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, PropertyMock, patch
 
 from fastapi.testclient import TestClient
 
-from nemo_retriever.service.config import VectorDbConfig, load_config
 from nemo_retriever.service.vectordb_app import (
     VectorDBState,
     _embed_queries_remote,
@@ -54,75 +53,36 @@ def test_health_reports_embed_mode(tmp_path) -> None:
     assert resp.json()["embed_mode"] == "local"
 
 
-def test_health_reports_retrieval_mode(tmp_path) -> None:
+def test_health_reports_effective_retrieval_mode_none_without_table(tmp_path) -> None:
     app = create_vectordb_app(
         lancedb_uri=str(tmp_path),
         embed_endpoint="http://embed.example/v1/embeddings",
-        retrieval_mode="hybrid",
     )
     with TestClient(app) as client:
         resp = client.get("/v1/health")
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["retrieval_mode"] == "hybrid"
+    assert "retrieval_mode" not in body
     assert body["effective_retrieval_mode"] is None
 
 
-def test_load_config_vectordb_retrieval_mode(tmp_path) -> None:
-    config_path = tmp_path / "retriever-service.yaml"
-    config_path.write_text(
-        "mode: standalone\nvectordb:\n  enabled: true\n  retrieval_mode: hybrid\n",
-        encoding="utf-8",
+def test_health_stays_ok_when_mode_resolution_errors(tmp_path) -> None:
+    app = create_vectordb_app(
+        lancedb_uri=str(tmp_path),
+        embed_endpoint="http://embed.example/v1/embeddings",
     )
-    cfg = load_config(config_path=str(config_path))
-    assert cfg.vectordb.retrieval_mode == "hybrid"
+    with TestClient(app) as client:
+        with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
+            VectorDBState,
+            "resolve_effective_retrieval_mode",
+            side_effect=OSError("transient I/O error"),
+        ):
+            resp = client.get("/v1/health")
 
-
-def test_service_start_vectordb_retrieval_mode_cli_override(tmp_path, monkeypatch) -> None:
-    from typer.testing import CliRunner
-
-    from nemo_retriever.service.cli import app as service_cli_app
-
-    config_path = tmp_path / "retriever-service.yaml"
-    config_path.write_text("mode: standalone\n", encoding="utf-8")
-    captured: dict[str, object] = {}
-
-    def _fake_create_app(config):
-        captured["config"] = config
-        return object()
-
-    monkeypatch.setattr("nemo_retriever.service.app.create_app", _fake_create_app)
-    monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: None)
-
-    result = CliRunner().invoke(
-        service_cli_app,
-        ["start", "--config", str(config_path), "--vectordb-retrieval-mode", "auto"],
-    )
-
-    assert result.exit_code == 0, result.output
-    assert captured["config"].vectordb.retrieval_mode == "auto"
-
-
-def test_service_start_rejects_invalid_vectordb_retrieval_mode(tmp_path) -> None:
-    from typer.testing import CliRunner
-
-    from nemo_retriever.service.cli import app as service_cli_app
-
-    config_path = tmp_path / "retriever-service.yaml"
-    config_path.write_text("mode: standalone\n", encoding="utf-8")
-
-    result = CliRunner().invoke(
-        service_cli_app,
-        ["start", "--config", str(config_path), "--vectordb-retrieval-mode", "sparse"],
-    )
-
-    assert result.exit_code != 0
-    assert "sparse" in result.output.lower() or "sparse" in str(result.exception).lower()
-
-
-def test_vector_db_config_default_retrieval_mode() -> None:
-    assert VectorDbConfig().retrieval_mode == "dense"
+    # Health backs k8s probes; a mode-resolution failure must not 500.
+    assert resp.status_code == 200
+    assert resp.json()["effective_retrieval_mode"] == "unknown"
 
 
 def test_strategies_for_retrieval_mode() -> None:
@@ -130,37 +90,38 @@ def test_strategies_for_retrieval_mode() -> None:
     assert _strategies_for_retrieval_mode("hybrid") == ["hybrid"]
 
 
-def test_table_present_on_disk_uses_list_tables(tmp_path) -> None:
+def test_write_rows_creates_then_appends_table(tmp_path) -> None:
     state = VectorDBState(
         lancedb_uri=str(tmp_path),
         table_name="nemo_retriever",
         embed_endpoint="http://embed.example/v1/embeddings",
         embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
         embed_api_key="",
-        retrieval_mode="dense",
     )
-    assert state._table_present_on_disk() is False
+    assert state.table_exists is False
 
-    state.write_rows(
-        [
-            {
-                "vector": [1.0, 0.0, 0.0, 0.0],
-                "text": "seed",
-                "pdf_page": "p1",
-                "filename": "f.pdf",
-                "pdf_basename": "f.pdf",
-                "page_number": 1,
-                "source": "f.pdf",
-                "source_id": "f.pdf",
-                "path": "/f.pdf",
-                "metadata": "{}",
-                "stored_image_uri": "",
-                "content_type": "text",
-                "bbox_xyxy_norm": "",
-            }
-        ]
-    )
-    assert state._table_present_on_disk() is True
+    row = {
+        "vector": [1.0, 0.0, 0.0, 0.0],
+        "text": "seed",
+        "pdf_page": "p1",
+        "filename": "f.pdf",
+        "pdf_basename": "f.pdf",
+        "page_number": 1,
+        "source": "f.pdf",
+        "source_id": "f.pdf",
+        "path": "/f.pdf",
+        "metadata": "{}",
+        "stored_image_uri": "",
+        "content_type": "text",
+        "bbox_xyxy_norm": "",
+    }
+    assert state.write_rows([row]) == 1
+    assert state.table_exists is True
+    assert state.total_rows() == 1
+
+    # A second write appends rather than overwriting the existing table.
+    assert state.write_rows([dict(row, text="second")]) == 1
+    assert state.total_rows() == 2
 
 
 def test_tensor_to_embedding_rows_handles_batch() -> None:
@@ -233,13 +194,12 @@ _CANNED_HITS = [
 ]
 
 
-def _query_app(tmp_path, *, retrieval_mode: str = "dense"):
+def _query_app(tmp_path):
     return create_vectordb_app(
         lancedb_uri=str(tmp_path),
         table_name="t",
         embed_endpoint="http://embed.example/v1/embeddings",
         embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        retrieval_mode=retrieval_mode,
     )
 
 
@@ -273,7 +233,8 @@ def test_query_evidence_format_returns_evidence_coverage(tmp_path) -> None:
 
 
 def test_query_hybrid_evidence_reports_hybrid_strategy(tmp_path) -> None:
-    app = _query_app(tmp_path, retrieval_mode="hybrid")
+    # A table whose capabilities resolve to hybrid (vector + FTS) reports hybrid.
+    app = _query_app(tmp_path)
     with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
         VectorDBState, "embed_queries", return_value=[[0.1, 0.2]]
     ), patch.object(VectorDBState, "search", return_value=([_CANNED_HITS], ["hybrid"])):
@@ -284,23 +245,24 @@ def test_query_hybrid_evidence_reports_hybrid_strategy(tmp_path) -> None:
     assert resp.json()["results"][0]["coverage"]["strategies_used"] == ["hybrid"]
 
 
-def test_query_hybrid_without_fts_returns_422(tmp_path) -> None:
-    app = _query_app(tmp_path, retrieval_mode="hybrid")
+def test_query_unqueryable_table_returns_422(tmp_path) -> None:
+    # An unqueryable table (e.g. FTS-only / no vector column) surfaces as 422.
+    app = _query_app(tmp_path)
     with patch.object(VectorDBState, "table_exists", new_callable=PropertyMock, return_value=True), patch.object(
         VectorDBState, "embed_queries", return_value=[[0.1, 0.2]]
     ), patch.object(
         VectorDBState,
         "search",
         side_effect=ValueError(
-            "LanceDB table 't' at '" + str(tmp_path) + "' cannot run hybrid retrieval: "
-            "both a vector column and FTS index are required."
+            "LanceDB table 't' at '" + str(tmp_path) + "' has an FTS index but no vector "
+            "column; sparse-only retrieval is not supported by the VectorDB service."
         ),
     ):
         with TestClient(app) as client:
             resp = client.post("/v1/query", json={"query": "revenue", "top_k": 5})
 
     assert resp.status_code == 422
-    assert "hybrid retrieval" in resp.json()["detail"]
+    assert "sparse-only retrieval is not supported" in resp.json()["detail"]
 
 
 def test_search_hybrid_delegates_to_lancedb_wrapper(tmp_path) -> None:
@@ -310,7 +272,6 @@ def test_search_hybrid_delegates_to_lancedb_wrapper(tmp_path) -> None:
         embed_endpoint="http://embed.example/v1/embeddings",
         embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
         embed_api_key="",
-        retrieval_mode="hybrid",
     )
     state._table_exists = True
 

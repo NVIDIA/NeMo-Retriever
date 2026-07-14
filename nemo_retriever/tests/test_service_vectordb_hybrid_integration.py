@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from unittest.mock import patch
 
+import lancedb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -30,219 +32,119 @@ _ROW = {
 }
 
 
-@pytest.mark.integration
-def test_write_rows_builds_fts_index_for_hybrid_mode(tmp_path) -> None:
-    state = VectorDBState(
+def _state(tmp_path) -> VectorDBState:
+    return VectorDBState(
         lancedb_uri=str(tmp_path),
         table_name="nemo_retriever",
         embed_endpoint="http://embed.example/v1/embeddings",
         embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
         embed_api_key="",
-        retrieval_mode="hybrid",
     )
-    written = state.write_rows([_ROW])
-    assert written == 1
+
+
+def _prebuild_fts_index(uri: str, table_name: str) -> None:
+    """Simulate an ingestion pipeline that wrote a table with a BM25/FTS index.
+
+    The VectorDB service itself never builds FTS; the query path only detects
+    an index that was created at ingestion time.
+    """
+    table = lancedb.connect(uri).open_table(table_name)
+    table.create_fts_index("text", replace=True)
+    for stub in table.list_indices():
+        if "text" in stub.name.lower() or "fts" in stub.name.lower():
+            table.wait_for_index([stub.name], timeout=timedelta(seconds=600))
+
+
+@pytest.mark.integration
+def test_write_rows_persists_rows_without_building_fts(tmp_path) -> None:
+    state = _state(tmp_path)
+    assert state.write_rows([_ROW]) == 1
 
     caps = state._table_capabilities()
     assert caps is not None
+    assert caps.has_vector
+    # The service must not build an FTS index on write; the table stays dense.
+    assert not caps.has_fts
+    assert state.resolve_effective_retrieval_mode() == "dense"
+
+
+@pytest.mark.integration
+def test_append_does_not_build_or_mutate_fts(tmp_path) -> None:
+    state = _state(tmp_path)
+    assert state.write_rows([_ROW]) == 1
+
+    appended = dict(_ROW)
+    appended["vector"] = [0.0, 1.0, 0.0, 0.0]
+    appended["text"] = "Zephyr quarterly guidance mentions unicorn synergy."
+    assert state.write_rows([appended]) == 1
+
+    table = state._db.open_table("nemo_retriever")
+    assert table.count_rows() == 2
+    # Still no FTS index — appends only persist rows.
+    caps = state._table_capabilities()
+    assert not caps.has_fts
+
+
+@pytest.mark.integration
+def test_auto_resolves_hybrid_when_fts_prebuilt(tmp_path) -> None:
+    # Ingestion built the table with both a vector column and an FTS index.
+    seed = _state(tmp_path)
+    seed.write_rows([_ROW])
+    _prebuild_fts_index(str(tmp_path), "nemo_retriever")
+
+    state = _state(tmp_path)
+    caps = state._table_capabilities()
     assert caps.has_vector
     assert caps.has_fts
     assert state.resolve_effective_retrieval_mode() == "hybrid"
 
 
 @pytest.mark.integration
-def test_fts_build_failure_on_create_preserves_rows_on_retry(tmp_path) -> None:
-    state = VectorDBState(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_api_key="",
-        retrieval_mode="hybrid",
-    )
+def test_auto_resolves_dense_when_no_fts(tmp_path) -> None:
+    seed = _state(tmp_path)
+    seed.write_rows([_ROW])
 
-    # First write persists the rows but the FTS build blows up before
-    # `_table_exists` is published.
-    with patch.object(VectorDBState, "_ensure_hybrid_indexes", side_effect=RuntimeError("disk full")):
-        with pytest.raises(RuntimeError, match="disk full"):
-            state.write_rows([_ROW])
-
-    assert state._table_exists is False
-    assert state._table_present_on_disk() is True
-
-    # The retry must append to the existing table (not overwrite it) and then
-    # successfully build the FTS index, leaving the original row intact.
-    appended = dict(_ROW)
-    appended["vector"] = [0.0, 1.0, 0.0, 0.0]
-    appended["text"] = "Second batch after recovery."
-    assert state.write_rows([appended]) == 1
-
-    assert state._table_exists is True
-    table = state._db.open_table("nemo_retriever")
-    assert table.count_rows() == 2  # first batch preserved, not wiped
-    assert state.resolve_effective_retrieval_mode() == "hybrid"
-
-
-@pytest.mark.integration
-def test_unexpected_probe_error_does_not_trigger_overwrite(tmp_path) -> None:
-    state = VectorDBState(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_api_key="",
-        retrieval_mode="hybrid",
-    )
-    assert state.write_rows([_ROW]) == 1
-    assert state._table_exists is True
-
-    # Simulate a first write that persisted rows but never published readiness
-    # (FTS build had failed), then a transient I/O error listing tables.
-    state._table_exists = False
-    with patch.object(state._db, "list_tables", side_effect=OSError("transient I/O error")):
-        with pytest.raises(OSError, match="transient I/O error"):
-            state.write_rows([_ROW])
-
-    # The original row must still be intact — nothing was overwritten.
-    table = state._db.open_table("nemo_retriever")
-    assert table.count_rows() == 1
-
-
-@pytest.mark.integration
-def test_appended_rows_are_added_to_fts_index_in_hybrid_mode(tmp_path) -> None:
-    state = VectorDBState(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_api_key="",
-        retrieval_mode="hybrid",
-    )
-    assert state.write_rows([_ROW]) == 1
-
-    appended = dict(_ROW)
-    appended["vector"] = [0.0, 1.0, 0.0, 0.0]
-    appended["text"] = "Zephyr quarterly guidance mentions unicorn synergy."
-
-    # The append must run the incremental index refresh (optimize), not a full
-    # FTS rebuild, so the write lock is held only for the new fragment. The spy
-    # records the call while still executing the real optimize.
-    original_refresh = VectorDBState._refresh_indexes
-    refresh_calls: list[bool] = []
-
-    def _spy(self, table):
-        refresh_calls.append(True)
-        return original_refresh(self, table)
-
-    with patch.object(VectorDBState, "_refresh_indexes", _spy):
-        assert state.write_rows([appended]) == 1
-    assert refresh_calls, "append in hybrid mode must incrementally refresh indexes"
-
-    # The appended row must be discoverable through lexical (FTS) search.
-    table = state._db.open_table("nemo_retriever")
-    hits = table.search("unicorn", query_type="fts", fts_columns="text").limit(5).to_list()
-    assert any("unicorn synergy" in hit["text"] for hit in hits)
-
-
-@pytest.mark.integration
-def test_write_rows_dense_mode_skips_fts_index(tmp_path) -> None:
-    state = VectorDBState(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_api_key="",
-        retrieval_mode="dense",
-    )
-    written = state.write_rows([_ROW])
-    assert written == 1
-
+    state = _state(tmp_path)
     caps = state._table_capabilities()
-    assert caps is not None
     assert caps.has_vector
     assert not caps.has_fts
     assert state.resolve_effective_retrieval_mode() == "dense"
 
 
 @pytest.mark.integration
-def test_auto_mode_resolves_hybrid_when_fts_present(tmp_path) -> None:
-    # Seed with hybrid so the table has both a vector column and an FTS index.
-    seed = VectorDBState(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_api_key="",
-        retrieval_mode="hybrid",
-    )
-    seed.write_rows([_ROW])
-
-    auto = VectorDBState(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_api_key="",
-        retrieval_mode="auto",
-    )
-    assert auto.resolve_effective_retrieval_mode() == "hybrid"
-
-
-@pytest.mark.integration
-def test_auto_mode_resolves_dense_when_no_fts(tmp_path) -> None:
-    # Seed with dense so the table has a vector column but no FTS index.
-    seed = VectorDBState(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_api_key="",
-        retrieval_mode="dense",
-    )
-    seed.write_rows([_ROW])
-
-    auto = VectorDBState(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_api_key="",
-        retrieval_mode="auto",
-    )
-    assert auto.resolve_effective_retrieval_mode() == "dense"
-
-
-@pytest.mark.integration
-def test_hybrid_mode_builds_fts_on_existing_dense_table(tmp_path) -> None:
-    seed = VectorDBState(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_api_key="",
-        retrieval_mode="dense",
-    )
-    seed.write_rows([_ROW])
-
-    hybrid = VectorDBState(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        embed_api_key="",
-        retrieval_mode="hybrid",
-    )
-    assert hybrid.resolve_effective_retrieval_mode() == "hybrid"
-
-
-@pytest.mark.integration
-def test_query_hybrid_end_to_end_over_real_lancedb(tmp_path) -> None:
+def test_query_auto_selects_hybrid_when_fts_prebuilt(tmp_path) -> None:
     app = create_vectordb_app(
         lancedb_uri=str(tmp_path),
         table_name="nemo_retriever",
         embed_endpoint="http://embed.example/v1/embeddings",
         embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        retrieval_mode="hybrid",
+    )
+
+    with patch.object(VectorDBState, "embed_queries", return_value=[[1.0, 0.0, 0.0, 0.0]]):
+        with TestClient(app) as client:
+            write = client.post("/internal/vectordb/write", json={"rows": [_ROW]})
+            assert write.status_code == 200, write.text
+
+            # Ingestion builds the FTS index; the query path detects it.
+            _prebuild_fts_index(str(tmp_path), "nemo_retriever")
+
+            resp = client.post(
+                "/v1/query",
+                json={"query": "revenue", "top_k": 5, "format": "evidence"},
+            )
+
+    assert resp.status_code == 200, resp.text
+    coverage = resp.json()["results"][0]["coverage"]
+    assert coverage["strategies_used"] == ["hybrid"]
+
+
+@pytest.mark.integration
+def test_query_auto_selects_dense_when_no_fts(tmp_path) -> None:
+    app = create_vectordb_app(
+        lancedb_uri=str(tmp_path),
+        table_name="nemo_retriever",
+        embed_endpoint="http://embed.example/v1/embeddings",
+        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
     )
 
     with patch.object(VectorDBState, "embed_queries", return_value=[[1.0, 0.0, 0.0, 0.0]]):
@@ -257,30 +159,4 @@ def test_query_hybrid_end_to_end_over_real_lancedb(tmp_path) -> None:
 
     assert resp.status_code == 200, resp.text
     coverage = resp.json()["results"][0]["coverage"]
-    assert coverage["strategies_used"] == ["hybrid"]
-
-
-@pytest.mark.integration
-def test_query_auto_end_to_end_selects_hybrid_over_real_lancedb(tmp_path) -> None:
-    app = create_vectordb_app(
-        lancedb_uri=str(tmp_path),
-        table_name="nemo_retriever",
-        embed_endpoint="http://embed.example/v1/embeddings",
-        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
-        retrieval_mode="auto",
-    )
-
-    with patch.object(VectorDBState, "embed_queries", return_value=[[1.0, 0.0, 0.0, 0.0]]):
-        with TestClient(app) as client:
-            write = client.post("/internal/vectordb/write", json={"rows": [_ROW]})
-            assert write.status_code == 200, write.text
-
-            resp = client.post(
-                "/v1/query",
-                json={"query": "revenue", "top_k": 5, "format": "evidence"},
-            )
-
-    assert resp.status_code == 200, resp.text
-    coverage = resp.json()["results"][0]["coverage"]
-    # auto detects the FTS index built during the hybrid-capable write and upgrades to hybrid.
-    assert coverage["strategies_used"] == ["hybrid"]
+    assert coverage["strategies_used"] == ["dense"]

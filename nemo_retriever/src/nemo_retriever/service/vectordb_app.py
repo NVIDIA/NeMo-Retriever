@@ -43,7 +43,6 @@ from pydantic import BaseModel
 
 from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode, inspect_lancedb_table_object
 from nemo_retriever.query.evidence import build_evidence_result
-from nemo_retriever.service.config import ServiceVectorRetrievalMode
 from nemo_retriever.service.query_schema import (
     EvidenceQueryResponse,
     EvidenceResult,
@@ -130,7 +129,6 @@ class VectorDBState:
         hf_cache_dir: str | None = None,
         device: str | None = None,
         gpu_memory_utilization: float = 0.45,
-        retrieval_mode: ServiceVectorRetrievalMode = "dense",
     ) -> None:
         self.lancedb_uri = lancedb_uri
         self.table_name = table_name
@@ -143,7 +141,6 @@ class VectorDBState:
         self.hf_cache_dir = hf_cache_dir
         self.device = device
         self.gpu_memory_utilization = gpu_memory_utilization
-        self.retrieval_mode = retrieval_mode
         self._write_lock = threading.Lock()
         self._embed_lock = threading.Lock()
         self._local_embedder: Any | None = None
@@ -155,20 +152,6 @@ class VectorDBState:
             logger.info("Opened existing LanceDB table '%s' at %s", table_name, lancedb_uri)
         else:
             logger.info("LanceDB table '%s' does not exist yet at %s", table_name, lancedb_uri)
-
-        # Build the FTS index for a pre-existing table only when hybrid is
-        # explicitly configured: hybrid promises vector + FTS, so we make good
-        # on that promise even for a table this process did not create. `auto`
-        # is intentionally excluded here — it performs non-destructive detection
-        # of an existing table and must not mutate one it did not just write
-        # (a caller who wants FTS built should configure hybrid, or ingest under
-        # auto, which builds it on write; see `write_rows`/`_ensure_hybrid_indexes`).
-        # Kept outside the open-table probe above so a build failure fails fast
-        # at startup instead of being silently swallowed and leaving the service
-        # advertising hybrid while queries return HTTP 422.
-        if self._table_exists and self.retrieval_mode == "hybrid":
-            with self._write_lock:
-                self._ensure_hybrid_indexes()
 
     @property
     def embed_mode(self) -> str:
@@ -188,25 +171,14 @@ class VectorDBState:
         table = self._db.open_table(self.table_name)
         return inspect_lancedb_table_object(table)
 
-    def _table_present_on_disk(self) -> bool:
-        """Whether the LanceDB table physically exists, regardless of readiness.
-
-        ``_table_exists`` is the reader-facing "ready to query" flag and is only
-        published after the FTS index is built. This probe reflects raw on-disk
-        presence so ``write_rows`` never overwrites rows that were persisted by
-        an earlier write whose FTS build failed before the flag was set.
-
-        Uses ``list_tables()`` rather than interpreting ``open_table`` errors so
-        a transient I/O failure cannot be misread as "table absent" and route
-        execution into the destructive ``overwrite=True`` create path.
-        """
-        return self.table_name in self._db.list_tables().tables
-
     def resolve_effective_retrieval_mode(self, caps=None) -> LanceRetrievalMode:
-        """Resolve the configured retrieval mode against table capabilities.
+        """Resolve retrieval mode from the table's own capabilities (auto only).
 
-        Callers that already hold a capabilities object (e.g. ``search``) may
-        pass it in to avoid re-opening the LanceDB table.
+        Query is a pure read: the service never forces a mode or mutates the
+        table. The index built at ingestion time is the contract — a table with
+        both a vector column and an FTS index runs hybrid, a vector-only table
+        runs dense. Callers that already hold a capabilities object (e.g.
+        ``search``) may pass it in to avoid re-opening the LanceDB table.
         """
         if not self._table_exists:
             return "dense"
@@ -219,99 +191,27 @@ class VectorDBState:
                 "capabilities could not be determined."
             )
 
-        if self.retrieval_mode == "auto":
-            mode: LanceRetrievalMode = caps.retrieval_mode
-        else:
-            mode = self.retrieval_mode
-
+        mode: LanceRetrievalMode = caps.retrieval_mode
         if mode == "unknown":
             raise ValueError(
                 f"LanceDB table {self.table_name!r} at {self.lancedb_uri!r} is not queryable: "
                 "no vector column or FTS index was detected."
             )
-        if mode == "dense" and not caps.has_vector:
-            raise ValueError(
-                f"LanceDB table {self.table_name!r} at {self.lancedb_uri!r} cannot run dense retrieval: "
-                "no vector column was detected."
-            )
-        if mode == "hybrid" and (not caps.has_vector or not caps.has_fts):
-            raise ValueError(
-                f"LanceDB table {self.table_name!r} at {self.lancedb_uri!r} cannot run hybrid retrieval: "
-                "both a vector column and FTS index are required."
-            )
         if mode == "sparse":
-            raise ValueError("Sparse retrieval is not supported by the VectorDB service. Use dense, hybrid, or auto.")
+            raise ValueError(
+                f"LanceDB table {self.table_name!r} at {self.lancedb_uri!r} has an FTS index but no vector "
+                "column; sparse-only retrieval is not supported by the VectorDB service."
+            )
         return mode
 
-    def _ensure_hybrid_indexes(self, *, refresh_after_append: bool = False) -> None:
-        """Build (or incrementally refresh) the FTS index for hybrid/auto retrieval.
-
-        Must be called while holding ``_write_lock``. This does not gate on
-        ``self._table_exists`` so it can run against a freshly created table
-        before that flag is published to concurrent readers.
-
-        This builds FTS for both ``hybrid`` and ``auto`` (only ``dense`` is
-        skipped). Under ``auto`` this is intentional at *write* time: the
-        service owns the rows it ingests, so it makes them hybrid-capable and
-        lets ``resolve_effective_retrieval_mode`` upgrade queries to hybrid.
-        Detection over a *pre-existing* table stays non-destructive — see the
-        startup path in ``__init__``, which only builds FTS for explicit hybrid.
-
-        LanceDB keeps freshly appended rows outside the persisted FTS/vector
-        indexes and flat-scans them at query time, so BM25/FTS results remain
-        correct after an append even without touching the index. Query latency
-        does degrade as unindexed rows accumulate, so ``refresh_after_append``
-        folds them into the existing indexes incrementally (see
-        ``_refresh_indexes``) rather than rebuilding from scratch.
-        """
-        if self.retrieval_mode == "dense":
-            return
-
-        table = self._db.open_table(self.table_name)
-        caps = inspect_lancedb_table_object(table)
-        if not caps.has_vector:
-            logger.warning(
-                "Skipping FTS index build for LanceDB table '%s' at %s: no vector column detected, "
-                "so the table cannot support hybrid retrieval.",
-                self.table_name,
-                self.lancedb_uri,
-            )
-            return
-
-        if caps.has_fts:
-            if refresh_after_append:
-                self._refresh_indexes(table)
-            return
-
-        from nemo_retriever.common.vdb.lancedb import LanceDB
-
-        vdb = LanceDB(uri=self.lancedb_uri, table_name=self.table_name, overwrite=False, hybrid=True)
-        vdb.write_to_index(records=None, table=table, hybrid=True)
-        logger.info(
-            "Built FTS index on LanceDB table '%s' at %s for hybrid retrieval",
-            self.table_name,
-            self.lancedb_uri,
-        )
-
-    def _refresh_indexes(self, table: Any) -> None:
-        """Fold newly appended rows into existing indexes incrementally.
-
-        ``optimize`` indexes only the unindexed fragments (``retrain=False`` by
-        default), so the write-lock hold time scales with the size of the
-        append batch rather than the whole table — unlike a full
-        ``create_fts_index`` rebuild. It updates every index on the table,
-        keeping the BM25/FTS search space in sync without an explicit,
-        name-matched ``wait_for_index`` call.
-        """
-        table.optimize()
-        logger.info(
-            "Optimized indexes on LanceDB table '%s' at %s after append",
-            self.table_name,
-            self.lancedb_uri,
-        )
-
     def write_rows(self, rows: list[dict[str, Any]]) -> int:
-        """Append rows to the LanceDB table (creates table on first write)."""
+        """Append rows to the LanceDB table (creates table on first write).
+
+        The service only persists rows; it never builds or mutates a vector or
+        FTS index. Any hybrid (BM25/FTS) index must be created at ingestion time
+        by the ingestion pipeline. The query path then detects whatever the
+        table already supports (see ``resolve_effective_retrieval_mode``).
+        """
         if not rows:
             return 0
 
@@ -322,12 +222,11 @@ class VectorDBState:
         )
 
         with self._write_lock:
-            # Decide create-vs-append on raw on-disk presence, not the
-            # reader-facing `_table_exists` flag. Otherwise a first write whose
-            # FTS build failed (data on disk, flag never published) would be
-            # re-created with overwrite=True on the next retry, silently wiping
-            # the previously ingested rows.
-            if not self._table_exists and not self._table_present_on_disk():
+            # Decide create-vs-append on raw on-disk presence via ``list_tables``
+            # rather than interpreting ``open_table`` errors, so a transient I/O
+            # failure cannot be misread as "table absent" and route execution
+            # into the destructive ``overwrite=True`` create path.
+            if not self._table_exists and self.table_name not in self._db.list_tables().tables:
                 dim = infer_vector_dim(rows)
                 if dim == 0:
                     logger.warning("Cannot infer vector dimension from rows; skipping write")
@@ -340,24 +239,6 @@ class VectorDBState:
                     schema,
                     overwrite=True,
                 )
-                # Build the FTS index before publishing `_table_exists` so a
-                # concurrent hybrid query never observes a table that is missing
-                # its FTS index (which would otherwise fail with a 422). The rows
-                # are already durable on disk; if this build raises, `_table_exists`
-                # stays False but the on-disk probe above guarantees a retry
-                # appends rather than overwrites.
-                try:
-                    self._ensure_hybrid_indexes()
-                except Exception:
-                    logger.exception(
-                        "FTS index build failed after creating LanceDB table '%s' at %s; "
-                        "%d rows are persisted and will be preserved on retry, but hybrid "
-                        "queries remain unavailable until indexing succeeds.",
-                        self.table_name,
-                        self.lancedb_uri,
-                        len(rows),
-                    )
-                    raise
                 self._table_exists = True
                 logger.info(
                     "Created LanceDB table '%s' with %d rows (dim=%d)",
@@ -368,23 +249,6 @@ class VectorDBState:
             else:
                 table = self._db.open_table(self.table_name)
                 table.add(rows)
-                # The rows are durable on disk after ``add``. Refresh the index
-                # so hybrid stays fast; mirror the create branch by logging a
-                # refresh failure clearly before propagating it.
-                try:
-                    self._ensure_hybrid_indexes(refresh_after_append=True)
-                except Exception:
-                    logger.exception(
-                        "Index refresh failed after appending %d rows to LanceDB table '%s' at %s; "
-                        "the rows are persisted and remain searchable, but index maintenance did "
-                        "not complete — retry the write to re-run it.",
-                        len(rows),
-                        self.table_name,
-                        self.lancedb_uri,
-                    )
-                    raise
-                # Publish readiness: covers recovery of a table that exists on
-                # disk from a prior write whose FTS build had failed.
                 self._table_exists = True
                 logger.info("Appended %d rows to table '%s'", len(rows), self.table_name)
 
@@ -491,7 +355,6 @@ def create_vectordb_app(
     hf_cache_dir: str | None = None,
     device: str | None = None,
     gpu_memory_utilization: float = 0.45,
-    retrieval_mode: ServiceVectorRetrievalMode = "dense",
 ) -> FastAPI:
     """Build the VectorDB FastAPI application."""
 
@@ -510,15 +373,13 @@ def create_vectordb_app(
             hf_cache_dir=hf_cache_dir,
             device=device,
             gpu_memory_utilization=gpu_memory_utilization,
-            retrieval_mode=retrieval_mode,
         )
         _query_semaphore = asyncio.Semaphore(MAX_CONCURRENT_QUERIES)
         logger.info(
-            "VectorDB service started: uri=%s table=%s embed_mode=%s retrieval_mode=%s max_concurrent_queries=%d",
+            "VectorDB service started: uri=%s table=%s embed_mode=%s max_concurrent_queries=%d",
             lancedb_uri,
             table_name,
             _state.embed_mode,
-            retrieval_mode,
             MAX_CONCURRENT_QUERIES,
         )
         if _state.embed_mode == "none":
@@ -546,15 +407,23 @@ def create_vectordb_app(
         if _state is not None and _state.table_exists:
             try:
                 effective_mode = _state.resolve_effective_retrieval_mode()
-            except ValueError:
+            except Exception:
+                # Health must never 500 (it backs k8s liveness/readiness probes),
+                # so report "unknown" for any failure — misconfiguration
+                # (ValueError) or transient I/O / LanceDB errors on open_table.
                 effective_mode = "unknown"
+                logger.warning(
+                    "Failed to resolve effective retrieval mode for table '%s' at %s; reporting unknown to health",
+                    table_name,
+                    lancedb_uri,
+                    exc_info=True,
+                )
         return {
             "status": "ok",
             "table": table_name,
             "total_rows": rows,
             "table_exists": _state.table_exists if _state else False,
             "embed_mode": _state.embed_mode if _state else "none",
-            "retrieval_mode": _state.retrieval_mode if _state else retrieval_mode,
             "effective_retrieval_mode": effective_mode,
         }
 
@@ -641,12 +510,6 @@ def main() -> None:
         default=0.45,
         help="vLLM GPU memory fraction when --local-embed-backend=vllm.",
     )
-    parser.add_argument(
-        "--retrieval-mode",
-        default="dense",
-        choices=("dense", "hybrid", "auto"),
-        help="LanceDB retrieval mode for /v1/query (default: dense).",
-    )
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=7671)
     parser.add_argument("--log-level", default="info")
@@ -672,7 +535,6 @@ def main() -> None:
         hf_cache_dir=args.hf_cache_dir or None,
         device=args.device or None,
         gpu_memory_utilization=args.gpu_memory_utilization,
-        retrieval_mode=args.retrieval_mode,
     )
     uvicorn.run(app, host=args.host, port=args.port)
 

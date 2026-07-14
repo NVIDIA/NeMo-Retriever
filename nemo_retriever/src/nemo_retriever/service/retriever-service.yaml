@@ -112,10 +112,10 @@ vectordb:
   table_name: "nemo_retriever"
   embed_model: "nvidia/llama-nemotron-embed-vl-1b-v2"
   embed_model_provider_prefix: null
-  # dense — vector search only (default, backward compatible)
-  # hybrid — vector + BM25/FTS (requires FTS index on the table)
-  # auto — inspect the LanceDB table and choose dense or hybrid
-  retrieval_mode: dense
+  # /v1/query auto-detects retrieval from the table's own indexes: a table with
+  # both a vector column and an FTS/BM25 index runs hybrid, a vector-only table
+  # runs dense. The FTS index must be built at ingestion time; the service never
+  # mutates the table at query time.
   vectordb_url: "http://nemo-retriever-vectordb:7671"
 
 resources:
