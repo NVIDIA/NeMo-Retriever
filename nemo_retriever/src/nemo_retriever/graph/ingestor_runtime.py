@@ -337,9 +337,11 @@ def batch_tuning_to_node_overrides(
         # PDFSplit, UDFOperator(s), ReadBinary) cannot exhaust the cluster
         # CPU budget.
         if pdf_extract_tasks is not None and cluster_resources is not None:
-            # Fixed overhead: ReadBinary + DocToPdf + PDFSplit + UDFOperator.
-            # Caption adds CaptionGPUActor + a second UDFOperator.
-            fixed_cpu_overhead = 4 + (2 if caption_params is not None else 0)
+            # Conservative fixed overhead for the documented PDF flow:
+            # ReadBinary + DocToPdf + PDFSplit + TextChunk + DedupImages +
+            # the content-reshape UDF before embedding. Caption adds its actor
+            # and one additional UDF.
+            fixed_cpu_overhead = 6 + (2 if caption_params is not None else 0)
             non_pdf_cpu_overhead = (
                 fixed_cpu_overhead
                 + page_elements_concurrency * page_elements_cpus
