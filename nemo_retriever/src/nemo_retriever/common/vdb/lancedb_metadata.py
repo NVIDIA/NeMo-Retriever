@@ -33,7 +33,7 @@ class LanceIndexMetadata:
 def with_index_metadata(
     schema: pa.Schema,
     *,
-    retrieval_mode: str | None,
+    retrieval_mode: str,
     embedding_model_name: str | None,
 ) -> pa.Schema:
     """Return ``schema`` with current, non-secret index provenance metadata."""
@@ -42,10 +42,9 @@ def with_index_metadata(
     metadata[_PRODUCER_VERSION_KEY] = get_version_info()["full_version"].encode("utf-8")
     if embedding_model_name:
         metadata[_EMBEDDING_MODEL_NAME_KEY] = str(embedding_model_name).encode("utf-8")
-    if retrieval_mode:
-        encoded_mode = str(retrieval_mode).encode("utf-8")
-        metadata[_RETRIEVAL_MODE_KEY] = encoded_mode
-        metadata[_LEGACY_RETRIEVAL_MODE_KEY] = encoded_mode
+    encoded_mode = str(retrieval_mode).encode("utf-8")
+    metadata[_RETRIEVAL_MODE_KEY] = encoded_mode
+    metadata[_LEGACY_RETRIEVAL_MODE_KEY] = encoded_mode
     return schema.with_metadata(metadata)
 
 

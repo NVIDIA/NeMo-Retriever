@@ -19,6 +19,7 @@ from typing import Any, Optional, Sequence
 
 import pandas as pd
 
+from nemo_retriever.common.params import build_embed_option_kwargs
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.models import VL_RERANK_MODEL
 from nemo_retriever.query.agentic_options import (
@@ -203,18 +204,20 @@ class AgenticRetriever:
         self._doc_id_field = str(doc_id_field) if doc_id_field else None
         if self._doc_id_field is not None and self._doc_id_field not in VALID_BEIR_DOC_ID_FIELDS:
             raise ValueError(f"Unsupported doc_id_field: {self._doc_id_field}")
-        embed_kwargs: dict[str, Any] = {
-            "embed_model_provider_prefix": cfg.query_embedder_provider_prefix,
-            "embedding_endpoint": cfg.embedding_endpoint,
-            "api_key": cfg.embedding_api_key,
-            "input_type": "query",
-            "local_ingest_embed_backend": str(cfg.local_query_embed_backend),
-            "inference_batch_size": int(cfg.local_hf_batch_size),
-            "embed_inference_batch_size": int(cfg.local_hf_batch_size),
-        }
-        if cfg.query_embedder:
-            embed_kwargs["model_name"] = str(cfg.query_embedder)
-            embed_kwargs["embed_model_name"] = str(cfg.query_embedder)
+        embed_kwargs = build_embed_option_kwargs(
+            cfg.embedding_endpoint,
+            cfg.query_embedder,
+            local_ingest_embed_backend=str(cfg.local_query_embed_backend),
+            embed_api_key=cfg.embedding_api_key,
+            embed_model_provider_prefix=cfg.query_embedder_provider_prefix,
+        )
+        embed_kwargs.update(
+            {
+                "input_type": "query",
+                "inference_batch_size": int(cfg.local_hf_batch_size),
+                "embed_inference_batch_size": int(cfg.local_hf_batch_size),
+            }
+        )
 
         self._retriever = Retriever(
             vdb_kwargs={

@@ -39,15 +39,6 @@ def _table_schema(table: Any) -> pa.Schema:
     return schema() if callable(schema) else schema
 
 
-def _metadata_retrieval_mode(schema: pa.Schema) -> LanceRetrievalMode | None:
-    value = read_index_metadata(schema).retrieval_mode
-    if value is not None:
-        normalized = value.lower()
-        if normalized in _RETRIEVAL_MODES:
-            return _RETRIEVAL_MODES[normalized]
-    return None
-
-
 def _is_vector_type(data_type: pa.DataType) -> bool:
     is_list_type = (
         pa.types.is_list(data_type)
@@ -132,7 +123,8 @@ def inspect_lancedb_table_object(table: Any) -> LanceTableCapabilities:
     has_vector = vector_column is not None
     has_fts = bool(fts_columns)
 
-    retrieval_mode = _metadata_retrieval_mode(schema) or _mode_from_capabilities(has_vector, has_fts)
+    metadata_mode = (index_metadata.retrieval_mode or "").lower()
+    retrieval_mode = _RETRIEVAL_MODES.get(metadata_mode) or _mode_from_capabilities(has_vector, has_fts)
 
     return LanceTableCapabilities(
         has_vector=has_vector,

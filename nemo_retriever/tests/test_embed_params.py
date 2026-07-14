@@ -11,7 +11,7 @@ import warnings
 import pytest
 
 from nemo_retriever.common.params.models import EmbedParams, IMAGE_MODALITIES
-from nemo_retriever.common.params.utils import build_embed_option_kwargs, route_embed_model_kwargs
+from nemo_retriever.common.params.utils import build_embed_option_kwargs
 
 
 def test_image_text_alias_is_rejected():
@@ -66,12 +66,6 @@ def test_build_embed_option_kwargs_defers_remote_model_provider_prefix():
     assert kwargs["embed_model_name"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
     assert kwargs["embed_model_provider_prefix"] == "nvidia"
 
-    routed = route_embed_model_kwargs(kwargs)
-
-    assert routed["model_name"] == "nvidia/nvidia/llama-nemotron-embed-vl-1b-v2"
-    assert routed["embed_model_name"] == "nvidia/nvidia/llama-nemotron-embed-vl-1b-v2"
-    assert "embed_model_provider_prefix" not in routed
-
 
 def test_build_embed_option_kwargs_leaves_model_unchanged_without_prefix():
     kwargs = build_embed_option_kwargs(
@@ -83,31 +77,7 @@ def test_build_embed_option_kwargs_leaves_model_unchanged_without_prefix():
     assert kwargs["embed_model_name"] == "nvidia/llama-nemotron-embed-vl-1b-v2"
 
 
-def test_build_embed_option_kwargs_prefix_supports_other_vendor_namespaces():
-    kwargs = build_embed_option_kwargs(
-        "https://litellm.example.com/v1/embeddings",
-        "mistral/embed-small",
-        embed_model_provider_prefix="acme",
-    )
-
-    assert kwargs["model_name"] == "mistral/embed-small"
-    assert kwargs["embed_model_name"] == "mistral/embed-small"
-    assert kwargs["embed_model_provider_prefix"] == "acme"
-
-
-def test_build_embed_option_kwargs_prefix_supports_bare_model_name():
-    kwargs = build_embed_option_kwargs(
-        "https://litellm.example.com/v1/embeddings",
-        "nv-embedqa-e5-v5",
-        embed_model_provider_prefix="nvidia",
-    )
-
-    assert kwargs["model_name"] == "nv-embedqa-e5-v5"
-    assert kwargs["embed_model_name"] == "nv-embedqa-e5-v5"
-    assert kwargs["embed_model_provider_prefix"] == "nvidia"
-
-
-def test_build_embed_option_kwargs_retains_prefix_until_endpoint_is_resolved():
+def test_build_embed_option_kwargs_keeps_provider_prefix_separate_without_endpoint():
     kwargs = build_embed_option_kwargs(
         None,
         "nvidia/llama-nemotron-embed-vl-1b-v2",

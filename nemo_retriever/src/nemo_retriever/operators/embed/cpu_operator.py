@@ -12,7 +12,7 @@ from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.models.nim.probe import probe_endpoint
 from nemo_retriever.common.params import EmbedParams
-from nemo_retriever.common.params.utils import route_embed_model_kwargs
+from nemo_retriever.common.api.util.string_processing import prepend_model_provider_prefix
 from nemo_retriever.models.inference.runtime import embed_text_main_text_embed
 from nemo_retriever.models.inference.shared import build_embed_kwargs
 
@@ -33,7 +33,6 @@ class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
         if not endpoint:
             self._kwargs["embedding_endpoint"] = self.DEFAULT_EMBED_INVOKE_URL
             endpoint = self.DEFAULT_EMBED_INVOKE_URL
-        self._kwargs = route_embed_model_kwargs(self._kwargs)
         self._model = None
 
         api_key = self._kwargs.get("api_key")
@@ -47,7 +46,9 @@ class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
             # Probe the /embeddings path with a model-name-only body — auth is
             # checked before body validation so a bad key returns 401 without
             # triggering inference. A valid key with an empty input returns 400.
-            model_name = self._kwargs.get("model_name", "")
+            model_name = prepend_model_provider_prefix(
+                self._kwargs.get("model_name"), self._kwargs.get("embed_model_provider_prefix")
+            )
             probe_url = (
                 endpoint if endpoint.rstrip("/").endswith("/embeddings") else endpoint.rstrip("/") + "/embeddings"
             )

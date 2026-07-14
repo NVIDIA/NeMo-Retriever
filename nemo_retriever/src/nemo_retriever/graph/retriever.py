@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, cast
 
@@ -325,44 +324,20 @@ class Retriever:
     ) -> dict[str, Any]:
         """Resolve canonical model identity before applying runtime provider routing."""
         resolved = dict(runtime_embed_kwargs or {})
-        configured_model = self._embedding_model_from_kwargs(runtime_embed_kwargs)
-        source = "per-query override"
-        if configured_model is None:
-            configured_model = self._embedding_model_from_kwargs(self.embed_kwargs)
-            source = "configured override"
-        if configured_model is None:
-            configured_model = str(os.environ.get("EMBED_MODEL_NAME") or "").strip() or None
-            source = "EMBED_MODEL_NAME"
-        if configured_model is None:
-            configured_model = caps.embedding_model_name
-            source = "table metadata"
-        if configured_model is None:
-            configured_model = VL_EMBED_MODEL
-            source = "built-in default"
-
-        canonical_model = resolve_embed_model(configured_model)
+        explicit_model = self._embedding_model_from_kwargs(runtime_embed_kwargs) or self._embedding_model_from_kwargs(
+            self.embed_kwargs
+        )
         table_model = resolve_embed_model(caps.embedding_model_name) if caps.embedding_model_name else None
-        if table_model is not None and source != "table metadata" and canonical_model != table_model:
+        canonical_model = resolve_embed_model(explicit_model or table_model or VL_EMBED_MODEL)
+        if explicit_model is not None and table_model is not None and canonical_model != table_model:
             logger.warning(
-                "Embedding model %r selected from %s conflicts with table embedding model %r; "
-                "preserving the higher-precedence override.",
+                "Explicit embedding model %r conflicts with table embedding model %r; preserving the override.",
                 canonical_model,
-                source,
                 table_model,
             )
 
         resolved["model_name"] = canonical_model
         resolved["embed_model_name"] = canonical_model
-
-        configured = {**dict(self.embed_kwargs or {}), **resolved}
-        if not (configured.get("embedding_endpoint") or configured.get("embed_invoke_url")):
-            embed_invoke_url = str(os.environ.get("EMBED_INVOKE_URL") or "").strip()
-            if embed_invoke_url:
-                resolved["embed_invoke_url"] = embed_invoke_url
-        if not configured.get("embed_model_provider_prefix"):
-            provider_prefix = str(os.environ.get("EMBED_MODEL_PROVIDER_PREFIX") or "").strip()
-            if provider_prefix:
-                resolved["embed_model_provider_prefix"] = provider_prefix
         return resolved
 
     def _execute_sparse_lancedb_queries(

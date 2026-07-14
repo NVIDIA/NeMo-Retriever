@@ -311,7 +311,6 @@ class ResolvedIngestPlan:
     vdb_params: VdbUploadParams | None
     lancedb_uri: str
     table_name: str
-    embedding_model_name: str | None
     sparse: bool = False
 
     def extract_call_kwargs(self) -> dict[str, Any]:
@@ -748,6 +747,5 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
         vdb_params=vdb_params,
         lancedb_uri=storage.lancedb_uri,
         table_name=storage.table_name,
-        embedding_model_name=embedding_model_name,
         sparse=validated_index_mode == "sparse",
     )

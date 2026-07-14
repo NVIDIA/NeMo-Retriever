@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict
 
-from nemo_retriever.common.api.util.string_processing import prepend_model_provider_prefix
-
 if TYPE_CHECKING:
     from nemo_retriever.common.params.models import BatchTuningParams
 
@@ -53,18 +51,6 @@ def normalize_embed_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     if "embed_invoke_url" in normalized:
         normalized.setdefault("embedding_endpoint", normalized["embed_invoke_url"])
     return normalized
-
-
-def route_embed_model_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    """Apply remote-provider routing after the effective endpoint is known."""
-    routed = normalize_embed_kwargs(kwargs)
-    endpoint = routed.get("embedding_endpoint") or routed.get("embed_invoke_url")
-    model_provider_prefix = routed.pop("embed_model_provider_prefix", None)
-    if endpoint and model_provider_prefix:
-        for key in ("model_name", "embed_model_name"):
-            if key in routed:
-                routed[key] = prepend_model_provider_prefix(routed[key], str(model_provider_prefix))
-    return routed
 
 
 def build_embed_option_kwargs(
@@ -151,7 +137,7 @@ def build_embed_kwargs(resolved: Any, *, include_batch_tuning: bool = False) -> 
     if include_batch_tuning:
         kwargs.update(resolved.batch_tuning.model_dump(mode="python", exclude_none=True))
 
-    return route_embed_model_kwargs(kwargs)
+    return normalize_embed_kwargs(kwargs)
 
 
 SPLIT_CONFIG_VALID_KEYS = frozenset({"text", "html", "pdf", "audio", "image", "video"})

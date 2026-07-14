@@ -118,7 +118,7 @@ def _effective_ivf_num_partitions(num_rows: int, requested: int) -> int | None:
 def _lancedb_arrow_schema(
     vector_dim: int,
     *,
-    retrieval_mode: str | None = None,
+    retrieval_mode: str,
     embedding_model_name: str | None = None,
 ) -> pa.Schema:
     schema = pa.schema(
@@ -137,7 +137,7 @@ def _lancedb_arrow_schema(
     )
 
 
-def _sparse_lancedb_arrow_schema(*, retrieval_mode: str | None = "sparse") -> pa.Schema:
+def _sparse_lancedb_arrow_schema() -> pa.Schema:
     schema = pa.schema(
         [
             pa.field("text", pa.string()),
@@ -146,7 +146,7 @@ def _sparse_lancedb_arrow_schema(*, retrieval_mode: str | None = "sparse") -> pa
             pa.field("id", pa.string()),
         ]
     )
-    return with_index_metadata(schema, retrieval_mode=retrieval_mode, embedding_model_name=None)
+    return with_index_metadata(schema, retrieval_mode="sparse", embedding_model_name=None)
 
 
 def _table_schema(table: Any) -> pa.Schema:
