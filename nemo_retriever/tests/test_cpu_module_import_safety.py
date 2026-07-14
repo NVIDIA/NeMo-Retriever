@@ -22,8 +22,6 @@ def test_cpu_actor_modules_do_not_import_local_models():
         "nemo_retriever.operators.extract.ocr.cpu_ocr",
         "nemo_retriever.operators.extract.ocr.cpu_parse",
         "nemo_retriever.common.modality.ocr.shared",
-        "nemo_retriever.operators.extract.chart.cpu_actor",
-        "nemo_retriever.common.modality.chart.shared",
         "nemo_retriever.operators.extract.table.cpu_actor",
         "nemo_retriever.common.modality.table.shared",
         "nemo_retriever.operators.embed.cpu_operator",
@@ -33,7 +31,6 @@ def test_cpu_actor_modules_do_not_import_local_models():
     importlib.import_module("nemo_retriever.operators.extract.page_elements.cpu_actor")
     importlib.import_module("nemo_retriever.operators.extract.ocr.cpu_ocr")
     importlib.import_module("nemo_retriever.operators.extract.ocr.cpu_parse")
-    importlib.import_module("nemo_retriever.operators.extract.chart.cpu_actor")
     importlib.import_module("nemo_retriever.operators.extract.table.cpu_actor")
     importlib.import_module("nemo_retriever.operators.embed.cpu_operator")
 
@@ -45,14 +42,12 @@ def test_legacy_cpu_safe_shims_do_not_import_local_models():
         "nemo_retriever.models.local",
         "nemo_retriever.operators.extract.page_elements.page_elements",
         "nemo_retriever.operators.extract.ocr.ocr",
-        "nemo_retriever.operators.extract.chart.chart_detection",
         "nemo_retriever.operators.extract.table.table_detection",
         "nemo_retriever.operators.embed.operators",
     )
 
     importlib.import_module("nemo_retriever.operators.extract.page_elements.page_elements")
     importlib.import_module("nemo_retriever.operators.extract.ocr.ocr")
-    importlib.import_module("nemo_retriever.operators.extract.chart.chart_detection")
     importlib.import_module("nemo_retriever.operators.extract.table.table_detection")
     importlib.import_module("nemo_retriever.operators.embed.operators")
 

@@ -5,14 +5,14 @@
 """
 Concrete LLM client implementations and a lightweight client registry.
 
-The ``llm.clients`` package hosts every concrete :class:`LLMClient`
+The ``models.llm.clients`` package hosts every concrete :class:`LLMClient`
 implementation in its own submodule (``litellm.py``, ``judge.py``, ...)
 so that adding a new client means adding a new file rather than
 extending a monolithic module.  To keep the public import path stable,
 the registered client classes plus the internal prompt-helper
 (``_build_rag_prompt``) are re-exported from this package's namespace.
 Any caller that imports
-``from nemo_retriever.llm.clients import LiteLLMClient`` will therefore
+``from nemo_retriever.models.llm.clients import LiteLLMClient`` will therefore
 continue to work unchanged after the module-to-package refactor.
 """
 

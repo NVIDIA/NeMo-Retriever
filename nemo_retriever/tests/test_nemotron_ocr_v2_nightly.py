@@ -92,7 +92,7 @@ def test_local_extra_is_stable_and_uv_dev_group_uses_nightly_nemotron_specs() ->
     assert "pytest>=8.0.2" not in dev_group
     assert "tritonclient" in local_deps
     dev_nemotron_deps = [dep for dep in dev_group if isinstance(dep, str) and dep.startswith("nemotron-")]
-    assert len(dev_nemotron_deps) == 4
+    assert len(dev_nemotron_deps) == 3
     assert any("local" in dep for dep in all_deps)
     assert not any("local-nightly" in dep or "uv-local" in dep for dep in all_deps)
 
@@ -102,12 +102,11 @@ def test_local_extra_is_stable_and_uv_dev_group_uses_nightly_nemotron_specs() ->
     assert stable_page_requirement.specifier.contains("3.0.2.dev1", prereleases=True)
     assert not stable_page_requirement.specifier.contains("4.0.0")
 
-    for package in ("nemotron-graphic-elements-v1", "nemotron-table-structure-v1"):
-        stable_requirement = _requirement(local_deps, package)
-        assert stable_requirement.specifier.contains("1.0.0")
-        assert stable_requirement.specifier.contains("1.5.0")
-        assert stable_requirement.specifier.contains("1.0.1.dev1", prereleases=True)
-        assert not stable_requirement.specifier.contains("2.0.0")
+    stable_table_requirement = _requirement(local_deps, "nemotron-table-structure-v1")
+    assert stable_table_requirement.specifier.contains("1.0.0")
+    assert stable_table_requirement.specifier.contains("1.5.0")
+    assert stable_table_requirement.specifier.contains("1.0.1.dev1", prereleases=True)
+    assert not stable_table_requirement.specifier.contains("2.0.0")
 
     stable_ocr_requirement = _requirement(local_deps, "nemotron-ocr")
     assert stable_ocr_requirement.specifier.contains("2.0.0")
@@ -125,12 +124,11 @@ def test_local_extra_is_stable_and_uv_dev_group_uses_nightly_nemotron_specs() ->
     assert not nightly_page_requirement.specifier.contains("3.0.1", prereleases=True)
     assert not nightly_page_requirement.specifier.contains("3.0.2", prereleases=True)
 
-    for package in ("nemotron-graphic-elements-v1", "nemotron-table-structure-v1"):
-        nightly_requirement = _requirement(dev_nemotron_deps, package)
-        assert not nightly_requirement.specifier.contains("1.0.0.dev1", prereleases=True)
-        assert nightly_requirement.specifier.contains("1.0.1.dev1", prereleases=True)
-        assert not nightly_requirement.specifier.contains("1.0.0", prereleases=True)
-        assert not nightly_requirement.specifier.contains("1.0.1", prereleases=True)
+    nightly_table_requirement = _requirement(dev_nemotron_deps, "nemotron-table-structure-v1")
+    assert not nightly_table_requirement.specifier.contains("1.0.0.dev1", prereleases=True)
+    assert nightly_table_requirement.specifier.contains("1.0.1.dev1", prereleases=True)
+    assert not nightly_table_requirement.specifier.contains("1.0.0", prereleases=True)
+    assert not nightly_table_requirement.specifier.contains("1.0.1", prereleases=True)
 
     nightly_ocr_requirement = _requirement(dev_nemotron_deps, "nemotron-ocr")
     assert nightly_ocr_requirement.specifier.contains("2.0.1.dev1", prereleases=True)

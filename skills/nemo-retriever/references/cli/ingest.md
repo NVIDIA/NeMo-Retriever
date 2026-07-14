@@ -75,8 +75,9 @@ Write to a custom DB / table:
 - Positional `DOCUMENTS...` is required and repeatable.
 - Values may be file paths, directories, or shell globs.
 - Supported input families are detected automatically from extensions:
-  `pdf`, `docx`, `pptx`, `txt`, `html`, `jpg`, `jpeg`, `png`, `tiff`, `tif`,
-  `bmp`, `svg`, `mp3`, `wav`, `m4a`, `mp4`, `mov`, and `mkv`.
+  `pdf`, `docx`, `pptx`, `txt`, `md`, `json`, `sh`, `html`, `jpg`, `jpeg`,
+  `png`, `tiff`, `tif`, `bmp`, `svg`, `mp3`, `wav`, `m4a`, `mp4`, `mov`, and
+  `mkv`. Markdown, JSON, and shell scripts are treated as plain text.
 
 ## Outputs
 
@@ -95,6 +96,7 @@ when available, and an embedding vector.
 | `--table-name` | `nemo-retriever` | LanceDB table to write into. |
 | `--profile` | `auto` | `fast-text` disables expensive PDF extraction stages for a text-only fallback. |
 | `--overwrite/--append` | overwrite | Use `--append` only when duplicates are acceptable. |
+| `--index-mode` | `dense` | Use `hybrid` for vector + BM25/FTS retrieval or `sparse` for FTS-only indexing. |
 | `--caption` | `false` | Optional VLM captioning stage after extraction. |
 | `--caption-invoke-url` | unset | Remote VLM endpoint. If omitted with `--caption`, local/default caption behavior is used. |
 | `--caption-context-text-max-chars` | default | Include nearby extracted text in caption prompts. |
@@ -109,8 +111,9 @@ selected profile into typed ingest options, and calls the canonical ingest
 execution path. The manifest planner routes PDF/document, image, text, HTML,
 audio, and video branches without relying on `retriever pipeline run`.
 
-Use `retriever pipeline run` only for legacy or development behavior such as
-intermediate Parquet artifacts, pipeline reports, eval, recall, or harness work.
+`retriever pipeline run` remains callable, but hidden from root help, for legacy
+or development behavior such as intermediate Parquet artifacts, pipeline
+reports, eval, recall, or harness work.
 
 ## Common failure modes
 

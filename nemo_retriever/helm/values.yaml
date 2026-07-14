@@ -577,7 +577,6 @@ serviceConfig:
     extract:
       enabled: true
       useTableStructure: true
-      useGraphicElements: true
       ocrVersion: v2
       ocrLang: ""
     embed:
@@ -660,6 +659,7 @@ serviceConfig:
     lancedbUri: "/data/vectordb"
     tableName: "nemo_retriever"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
+    embedModelProviderPrefix: ""
 
   # Optional bearer-token authentication. When apiToken is set, every
   # request must carry "Authorization: Bearer <token>".
@@ -677,12 +677,22 @@ serviceConfig:
 # Retriever Results volume
 # =============================================================================
 # A PVC mounted at `mountPath` for storing per-job page results as JSON files.
-# The processing pool writes results here and the /v1/ingest/job/{id}/results
-# endpoint reads from this directory instead of SQLite for faster retrieval.
+# The gateway writes worker handoffs here and serves retained rows from this
+# directory instead of SQLite.
+# In split mode, only the gateway mounts this claim. Workers hand retained
+# rows back to the gateway after processing, so realtime and batch replicas
+# remain independently schedulable across nodes with ReadWriteOnce storage.
 #
 # Use local/host-path storage for results to avoid network I/O overhead.
+# The default ReadWriteOnce access mode supports the default single gateway;
+# configuring multiple gateway replicas requires storage and job-state
+# coordination beyond the current split-topology contract.
 retrieverResults:
   enabled: true
+  # Immutable result generations and interrupted temporary files are removed
+  # opportunistically after this age. Keep this at least as long as the job
+  # tracker stale and terminal retention windows.
+  ttlSeconds: 28800
   existingClaim: ""
   storageClass: ""
   accessModes:

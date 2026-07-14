@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
 from nemo_retriever.common.params import build_embed_option_kwargs
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
@@ -102,7 +105,11 @@ class ResolvedQueryPlan:
 
 def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
     """Resolve root query options once so callers can reuse a Retriever."""
-    embed_kwargs = build_embed_option_kwargs(request.embed.embed_invoke_url, request.embed.embed_model_name)
+    embed_kwargs = build_embed_option_kwargs(
+        request.embed.embed_invoke_url,
+        request.embed.embed_model_name,
+        embed_model_provider_prefix=request.embed.embed_model_provider_prefix,
+    )
     rerank_kwargs = _build_rerank_kwargs(request.rerank) if request.rerank.enabled else {}
     content_types = request.retrieval.content_types
     if content_types is not None and not isinstance(content_types, str):
@@ -143,19 +150,18 @@ def query_documents(request: QueryRequest) -> list[RetrievalHit]:
     return query_documents_with_metadata(request).hits
 
 
-def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
-    """Run agentic (ReAct) retrieval for a single query and return ranked hits.
+def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> "AgenticRetrievalConfig":
+    """Build an :class:`AgenticRetrievalConfig` from a :class:`QueryRequest`.
 
-    Each result carries the full ``RetrievalHit`` metadata (``text``, ``source``,
-    ``page_number``, ``pdf_page``, ``metadata``, …) — re-hydrated by ``doc_id`` from
-    the hits captured at retrieval time — plus the agentic annotations ``doc_id``,
-    ``rank``, and ``result_source`` (``final_results`` / ``rrf`` / ``selection_agent``).
-    This matches the metadata the dense ``query_documents`` path returns. The LanceDB
-    ``uri``/``table_name``, embedding config, and (when ``--rerank`` is enabled)
-    reranker config are passed through to the wrapped ``Retriever`` that backs the
-    agent's ``retrieve`` tool; reranking applies per agent retrieval hop.
+    Shared by the single-query CLI path (:func:`agentic_query_documents`) and the
+    batch harness BEIR path so agentic config derivation lives in one place. The
+    LanceDB ``uri``/``table_name``, embedding config, and (when ``rerank`` is
+    enabled) reranker config are passed straight through to the wrapped
+    ``Retriever`` that backs the agent's ``retrieve`` tool. ``top_k`` overrides the
+    final document count the agent targets (the harness sets this to the deepest
+    BEIR metric ``k`` so recall at the largest cutoff is computable).
     """
-    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
 
     api_key = resolve_remote_api_key()
     vdb_kwargs: dict[str, Any] = {"uri": request.storage.lancedb_uri, "table_name": request.storage.table_name}
@@ -164,7 +170,7 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
     cfg_kwargs: dict[str, Any] = {
         "vdb_op": "lancedb",
         "vdb_kwargs": vdb_kwargs,
-        "top_k": int(request.retrieval.top_k),
+        "top_k": int(top_k if top_k is not None else request.retrieval.top_k),
         "candidate_k": request.retrieval.candidate_k,
         "page_dedup": bool(request.retrieval.page_dedup),
         "content_types": request.retrieval.content_types,
@@ -177,10 +183,13 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
         "backend_top_k": int(request.agentic.backend_top_k),
         "react_max_steps": int(request.agentic.react_max_steps),
         "text_truncation": int(request.agentic.text_truncation),
+        "num_concurrent": int(request.agentic.num_concurrent),
         "temperature": float(request.agentic.temperature),
     }
     if request.embed.embed_model_name:
         cfg_kwargs["query_embedder"] = request.embed.embed_model_name
+    if request.embed.embed_model_provider_prefix:
+        cfg_kwargs["query_embedder_provider_prefix"] = request.embed.embed_model_provider_prefix
     if request.rerank.enabled:
         # `reranker` doubles as the on/off gate (rerank=bool(cfg.reranker)) and the
         # model name, so fall back to the default model when only --rerank is given.
@@ -190,7 +199,29 @@ def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
         if request.rerank.reranker_backend:
             cfg_kwargs["local_reranker_backend"] = request.rerank.reranker_backend
 
-    result = AgenticRetriever(AgenticRetrievalConfig(**cfg_kwargs)).retrieve(["0"], [str(request.query)])
+    return AgenticRetrievalConfig(**cfg_kwargs)
+
+
+def build_agentic_retriever(request: QueryRequest) -> "AgenticRetriever":
+    """Construct an :class:`AgenticRetriever` from a :class:`QueryRequest`."""
+    from nemo_retriever.query.agentic import AgenticRetriever
+
+    return AgenticRetriever(build_agentic_config(request))
+
+
+def agentic_query_documents(request: QueryRequest) -> list[dict[str, Any]]:
+    """Run agentic (ReAct) retrieval for a single query and return ranked hits.
+
+    Each result carries the full ``RetrievalHit`` metadata (``text``, ``source``,
+    ``page_number``, ``pdf_page``, ``metadata``, …) — re-hydrated by ``doc_id`` from
+    the hits captured at retrieval time — plus the agentic annotations ``doc_id``,
+    ``rank``, and ``result_source`` (``final_results`` / ``rrf`` / ``selection_agent``).
+    This matches the metadata the dense ``query_documents`` path returns. The LanceDB
+    ``uri``/``table_name``, embedding config, and (when ``--rerank`` is enabled)
+    reranker config are passed through to the wrapped ``Retriever`` that backs the
+    agent's ``retrieve`` tool; reranking applies per agent retrieval hop.
+    """
+    result = build_agentic_retriever(request).retrieve(["0"], [str(request.query)])
     if "rank" in result.columns:
         result = result.sort_values("rank")
     ranked: list[dict[str, Any]] = []
