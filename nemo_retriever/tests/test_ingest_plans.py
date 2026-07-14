@@ -333,6 +333,34 @@ def test_batch_tuning_to_node_overrides_scales_local_caption_on_multi_gpu() -> N
     assert overrides["_BatchEmbedActor"]["num_gpus"] == 0.5
 
 
+def test_batch_tuning_to_node_overrides_keeps_default_pdf_pipeline_within_cpu_budget() -> None:
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=224, gpu_count=8),
+        available_resources=Resources(cpu_count=224, gpu_count=8),
+    )
+
+    overrides = batch_tuning_to_node_overrides(
+        extract_params=ExtractParams(extract_tables=True, use_table_structure=True),
+        embed_params=EmbedParams(model_name="nvidia/llama-nemotron-embed-1b-v2"),
+        cluster_resources=cluster,
+    )
+
+    # The documented extract -> chunk -> dedup -> reshape -> embed pipeline
+    # has six additional one-CPU tasks alongside these persistent actor pools.
+    requested_cpu = 6 + sum(
+        overrides[actor]["concurrency"] * overrides[actor].get("num_cpus", 1)
+        for actor in (
+            "PDFExtractionActor",
+            "PageElementDetectionActor",
+            "TableStructureActor",
+            "OCRActor",
+            "_BatchEmbedActor",
+        )
+    )
+
+    assert requested_cpu <= cluster.total_cpu_count()
+
+
 def test_batch_tuning_to_node_overrides_honors_table_structure_tuning() -> None:
     extract_params = ExtractParams(
         use_table_structure=True,
