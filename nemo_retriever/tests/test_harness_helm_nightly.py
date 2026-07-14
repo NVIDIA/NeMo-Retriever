@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import io
+import signal
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -336,9 +337,10 @@ def test_helm_runner_collects_failure_logs_and_cleans_up(
     assert names.count("stop") == 1
 
 
-def test_port_forward_permission_error_does_not_abort_cleanup(monkeypatch) -> None:
+def test_port_forward_permission_error_retains_process_for_retry(monkeypatch) -> None:
     manager = object.__new__(HelmServiceManager)
-    manager.port_forward_processes = [SimpleNamespace(pid=123)]
+    proc = SimpleNamespace(pid=123)
+    manager.port_forward_processes = [proc]
     output = io.BytesIO()
     manager._port_forward_logs = {123: output}
     monkeypatch.setattr("nemo_retriever.harness.helm_manager.os.getpgid", lambda _pid: 456)
@@ -348,6 +350,36 @@ def test_port_forward_permission_error_does_not_abort_cleanup(monkeypatch) -> No
     )
 
     manager.stop_port_forwards()
+    assert manager.port_forward_processes == [proc]
+    assert not output.closed
+
+
+def test_port_forward_waits_after_sigkill(monkeypatch) -> None:
+    manager = object.__new__(HelmServiceManager)
+    waits = []
+
+    class TimedOutProcess:
+        pid = 123
+
+        def wait(_self, *, timeout):
+            waits.append(timeout)
+            if len(waits) == 1:
+                raise subprocess.TimeoutExpired("kubectl", timeout)
+
+    manager.port_forward_processes = [TimedOutProcess()]
+    output = io.BytesIO()
+    manager._port_forward_logs = {123: output}
+    signals = []
+    monkeypatch.setattr("nemo_retriever.harness.helm_manager.os.getpgid", lambda _pid: 456)
+    monkeypatch.setattr(
+        "nemo_retriever.harness.helm_manager.os.killpg",
+        lambda _pgid, sent_signal: signals.append(sent_signal),
+    )
+
+    manager.stop_port_forwards()
+
+    assert waits == [5, 5]
+    assert signals == [signal.SIGTERM, signal.SIGKILL]
     assert manager.port_forward_processes == []
     assert output.closed
 
@@ -370,7 +402,7 @@ def test_port_forward_uses_seekable_output_and_preserves_startup_error(monkeypat
             return 1
 
     def fake_popen(command, **kwargs):
-        captured.update(command=command, **kwargs)
+        captured.update(command=command, seekable=kwargs["stdout"].seekable(), **kwargs)
         kwargs["stdout"].write(b"unable to listen on port 17670\n")
         return FailedProcess()
 
@@ -381,6 +413,8 @@ def test_port_forward_uses_seekable_output_and_preserves_startup_error(monkeypat
         manager.start_port_forward("retriever")
 
     assert captured["stdout"] is not subprocess.PIPE
-    assert captured["stdout"].seekable()
+    assert captured["seekable"]
     assert captured["stderr"] is subprocess.STDOUT
-    assert manager._port_forward_logs[123] is captured["stdout"]
+    assert manager.port_forward_processes == []
+    assert manager._port_forward_logs == {}
+    assert captured["stdout"].closed

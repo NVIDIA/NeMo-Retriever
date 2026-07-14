@@ -224,25 +224,30 @@ class HelmServiceManager:
             output.flush()
             output.seek(0)
             detail = output.read().decode("utf-8", errors="replace").strip()
+            self.port_forward_processes.remove(proc)
+            self._port_forward_logs.pop(proc.pid).close()
             raise RuntimeError(f"kubectl port-forward failed for {service_name}: {detail}")
 
     def stop_port_forwards(self) -> None:
+        remaining_processes = []
         for proc in self.port_forward_processes:
+            stopped = False
             try:
                 pgid = os.getpgid(proc.pid)
             except ProcessLookupError:
-                pgid = None
-            try:
-                if pgid is None:
-                    continue
+                stopped = proc.poll() is not None
+            else:
                 try:
                     os.killpg(pgid, signal.SIGTERM)
                     proc.wait(timeout=5)
+                    stopped = True
                 except PermissionError as exc:
                     logger.warning("Could not signal port-forward process group %s for pid %s: %s", pgid, proc.pid, exc)
                 except subprocess.TimeoutExpired:
                     try:
                         os.killpg(pgid, signal.SIGKILL)
+                        proc.wait(timeout=5)
+                        stopped = True
                     except PermissionError as exc:
                         logger.warning(
                             "Could not force-kill port-forward process group %s for pid %s: %s",
@@ -250,15 +255,19 @@ class HelmServiceManager:
                             proc.pid,
                             exc,
                         )
+                    except subprocess.TimeoutExpired:
+                        logger.warning("Port-forward process %s did not exit after SIGKILL", proc.pid)
                     except ProcessLookupError:
-                        pass
+                        stopped = proc.poll() is not None
                 except ProcessLookupError:
-                    pass
-            finally:
+                    stopped = proc.poll() is not None
+            if stopped:
                 output = self._port_forward_logs.pop(proc.pid, None)
                 if output is not None:
                     output.close()
-        self.port_forward_processes = []
+            else:
+                remaining_processes.append(proc)
+        self.port_forward_processes = remaining_processes
 
     def get_service_url(self, service: str = "api") -> str:
         base = f"http://localhost:{self.local_port}"
