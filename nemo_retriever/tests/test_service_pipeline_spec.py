@@ -73,6 +73,30 @@ def test_compact_result_schema_populates_pipeline_payload() -> None:
     assert PipelineSpec.model_validate(payload).result_schema == "compact"
 
 
+def test_legacy_pipeline_payload_disables_bulk_result_payloads() -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing.all_tasks()
+    payload = ing._pipeline_payload(result_schema="legacy")
+    assert payload is not None
+    assert payload["result_schema"] == "legacy"
+    assert payload["return_embeddings"] is False
+    assert payload["return_images"] is False
+
+    spec = PipelineSpec.model_validate(payload)
+    assert spec.return_embeddings is False
+    assert spec.return_images is False
+
+
+def test_legacy_pipeline_payload_accepts_bulk_result_flags() -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+
+    payload = ing._pipeline_payload(result_schema="legacy", return_embeddings=True, return_images=True)
+
+    assert payload is not None
+    assert payload["return_embeddings"] is True
+    assert payload["return_images"] is True
+
+
 def test_execute_time_result_schema_overrides_stored_spec_value() -> None:
     ing = ServiceIngestor(base_url="http://example:7670")
     ing._pipeline_spec["result_schema"] = "compact"
@@ -459,6 +483,9 @@ def test_build_graph_ingestor_attaches_asr_params_for_explicit_audio_mode() -> N
     ("filename", "expected"),
     [
         ("notes.txt", "text"),
+        ("README.md", "text"),
+        ("payload.json", "text"),
+        ("setup.sh", "text"),
         ("page.html", "html"),
         ("report.pdf", "pdf"),
         ("diagram.png", "image"),
@@ -489,8 +516,8 @@ def test_build_graph_ingestor_uses_typed_txt_html_shortcuts() -> None:
     spec = {"extraction_mode": "auto", "stage_order": ["extract"]}
 
     txt_ingestor, txt_mode, _ = _build_graph_ingestor_from_spec(
-        "notes.txt",
-        b"The quick brown fox",
+        "README.md",
+        b"# The quick brown fox",
         base_extract,
         None,
         spec,

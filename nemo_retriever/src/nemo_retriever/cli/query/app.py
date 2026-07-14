@@ -10,12 +10,16 @@ from typing import cast
 
 import click
 import typer
-from typer.core import TyperGroup
+from typer.core import TyperCommand, TyperGroup
 
 from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.cli.query import options as opts
 from nemo_retriever.cli.query_workflow import agentic_query_documents as query_agentic_documents
 from nemo_retriever.cli.query_workflow import query_documents_with_metadata as query_local_documents_with_metadata
+from nemo_retriever.query.agentic_options import (
+    agentic_backend_top_k_error,
+    agentic_temperature_error,
+)
 from nemo_retriever.cli.shared import (
     ROOT_CLI_ERRORS,
     quiet_capture,
@@ -36,7 +40,7 @@ from nemo_retriever.query.options import (
 from nemo_retriever.query.service import query_documents as query_service_documents
 
 _DEFAULT_COMMAND = "_local"
-_GROUP_OPTIONS = {"--help", "-h", "--install-completion", "--show-completion"}
+_GROUP_OPTIONS = {"-h", "--install-completion", "--show-completion"}
 _RETRIEVAL_MODES: set[str] = {"auto", "dense", "hybrid", "sparse"}
 
 
@@ -47,11 +51,21 @@ class DefaultLocalQueryGroup(TyperGroup):
         return super().parse_args(ctx, args)
 
 
+class PublicDefaultQueryContext(typer.Context):
+    @property
+    def command_path(self) -> str:
+        return self.parent.command_path if self.parent is not None else super().command_path
+
+
+class DefaultLocalQueryCommand(TyperCommand):
+    context_class = PublicDefaultQueryContext
+
+
 app = typer.Typer(
     cls=DefaultLocalQueryGroup,
     help=(
-        "Query Retriever indexes. The local root CLI supports LanceDB indexes; "
-        "use the SDK VDB interface for other backends."
+        "Query Retriever indexes. Use retriever query QUERY for LanceDB indexes produced by local or batch ingest, "
+        "or retriever query service QUERY for a service deployment."
     ),
     no_args_is_help=True,
 )
@@ -108,20 +122,6 @@ def _validate_retrieval_mode(retrieval_mode: str) -> QueryRetrievalMode:
     return cast(QueryRetrievalMode, normalized)
 
 
-def _query_retrieval_mode(ctx: typer.Context, retrieval_mode: str, hybrid: bool) -> QueryRetrievalMode:
-    resolved = _validate_retrieval_mode(retrieval_mode)
-    hybrid_source = ctx.get_parameter_source("hybrid")
-    has_hybrid_alias = hybrid_source is not None and getattr(hybrid_source, "name", "") != "DEFAULT"
-    retrieval_mode_source = ctx.get_parameter_source("retrieval_mode")
-    has_retrieval_mode = retrieval_mode_source is not None and getattr(retrieval_mode_source, "name", "") != "DEFAULT"
-    if has_hybrid_alias and has_retrieval_mode:
-        typer.echo("Error: pass only one of --retrieval-mode or deprecated --hybrid.", err=True)
-        raise typer.Exit(1)
-    if has_hybrid_alias and hybrid:
-        return "hybrid"
-    return resolved
-
-
 def _emit_query_output(
     hits: list[RetrievalHit],
     *,
@@ -157,14 +157,16 @@ def _retrieval_options(
 
 @app.command(
     "_local",
+    cls=DefaultLocalQueryCommand,
     hidden=True,
     help=(
-        f"Query a local LanceDB index. Default embedding model: {opts.DEFAULT_EMBED_MODEL}. "
-        f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}."
+        "Query a LanceDB index produced by local or batch ingest; retrieval mode auto-detects the index.\n\n"
+        f"Default embedding model: {opts.DEFAULT_EMBED_MODEL}.\n\n"
+        f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}.\n\n"
+        "For a service deployment, use retriever query service --help."
     ),
 )
 def _local_command(
-    ctx: typer.Context,
     query: opts.QueryArgument,
     top_k: opts.TopKOption = 10,
     candidate_k: opts.CandidateKOption = None,
@@ -174,13 +176,13 @@ def _local_command(
     table_name: opts.TableNameOption = "nemo-retriever",
     embed_invoke_url: opts.EmbedInvokeUrlOption = None,
     embed_model_name: opts.EmbedModelNameOption = None,
+    embed_model_provider_prefix: opts.EmbedModelProviderPrefixOption = None,
     reranker_invoke_url: opts.RerankerInvokeUrlOption = None,
     reranker_api_key_env: opts.RerankerApiKeyEnvOption = None,
     reranker_model_name: opts.RerankerModelNameOption = None,
     reranker_backend: opts.RerankerBackendOption = None,
     rerank: opts.RerankOption = False,
     retrieval_mode: opts.RetrievalModeOption = "auto",
-    hybrid: opts.HybridOption = False,
     output_format: opts.OutputFormatOption = "hits",
     max_text_chars: opts.MaxTextCharsOption = None,
     agentic: opts.AgenticOption = False,
@@ -203,9 +205,19 @@ def _local_command(
         typer.echo("Error: --agentic requires --agentic-llm-model.", err=True)
         raise typer.Exit(1)
 
+    if agentic:
+        backend_error = agentic_backend_top_k_error(agentic_backend_top_k, target_top_k=top_k)
+        if backend_error:
+            typer.echo(f"Error: {backend_error}", err=True)
+            raise typer.Exit(1)
+        temperature_error = agentic_temperature_error(agentic_temperature, invoke_url=agentic_invoke_url)
+        if temperature_error:
+            typer.echo(f"Error: {temperature_error}", err=True)
+            raise typer.Exit(1)
+
     try:
         reranker_api_key = _api_key_from_env_option(reranker_api_key_env) if reranker_invoke_url else None
-        effective_retrieval_mode = _query_retrieval_mode(ctx, retrieval_mode, hybrid)
+        effective_retrieval_mode = _validate_retrieval_mode(retrieval_mode)
 
         if agentic:
             request = QueryRequest(
@@ -220,6 +232,7 @@ def _local_command(
                 embed=QueryEmbedOptions(
                     embed_invoke_url=embed_invoke_url,
                     embed_model_name=embed_model_name,
+                    embed_model_provider_prefix=embed_model_provider_prefix,
                 ),
                 rerank=QueryRerankOptions(
                     enabled=rerank,
@@ -261,6 +274,7 @@ def _local_command(
                 embed=QueryEmbedOptions(
                     embed_invoke_url=embed_invoke_url,
                     embed_model_name=embed_model_name,
+                    embed_model_provider_prefix=embed_model_provider_prefix,
                 ),
                 rerank=QueryRerankOptions(
                     enabled=rerank,
@@ -286,7 +300,7 @@ def _local_command(
     _emit_query_output(hits, strategies=strategies, output_format=output_format, max_text_chars=max_text_chars)
 
 
-@app.command("service")
+@app.command("service", help="Query a Retriever service deployment.")
 def _service_command(
     query: opts.QueryArgument,
     service_url: opts.ServiceUrlOption = "http://localhost:7670",

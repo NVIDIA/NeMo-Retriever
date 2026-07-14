@@ -1,168 +1,100 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2024-26, NVIDIA CORPORATION & AFFILIATES. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Retriever harness handoff
+# Retriever Harness Maintainer Notes
 
-Operator notes for the revamped internal `retriever harness`.
+The user and agent contract is documented in [`README.md`](README.md). Keep this
+file limited to implementation boundaries that maintainers need when changing
+the harness.
 
-## Scope
+## Product Boundary
 
-- Developer-only benchmark harness for Retriever engineers.
-- Artifact-first: stdout is for humans; agents and orchestrators should read
-  JSON artifacts.
-- Uses shared Retriever ingest/query workflow code.
-- Does not route phase-one commands through `retriever pipeline run` or
-  `nemo_retriever.examples.graph_pipeline`.
+- `retriever ingest` and `retriever query` are the direct product workflows.
+- `retriever harness` is a developer benchmark/evaluation runner built on the
+  same planning and workflow APIs.
+- `run` executes one registered benchmark using registry paths or explicit
+  overrides.
+- `run-set` executes a code-owned benchmark group using registry paths.
+- `run-files` executes one or more checked-in runfiles and can apply a
+  machine-local dataset path map. It is the portable suite entry point and owns
+  dry-run behavior for the complete session.
+- `post-slack` only reads completed artifacts. It does not execute benchmarks
+  or mutate their results.
+- Scheduling, deployment, retries, locking, and secret distribution are outside
+  this harness surface.
+- `service` is a system-under-test mode that uses an endpoint supplied by the
+  caller; Helm is only an optional outer provisioning mechanism.
 
-## Core commands
+The harness must not route these commands through `retriever pipeline run` or
+`nemo_retriever.examples.graph_pipeline`.
 
-Run from the repository root through the `nemo_retriever` project:
+## Implementation Map
 
-```bash
-uv run --project nemo_retriever retriever harness list --json
-uv run --project nemo_retriever retriever harness show jp20_beir --json
-uv run --project nemo_retriever retriever harness run jp20_beir \
-  --dry-run \
-  --output-dir /tmp/retriever-harness-dry-run \
-  --json
+- `runfile.py` parses one portable run request; `dataset_paths.py` resolves the
+  machine-local dataset map.
+- `execution.py` preflights and executes one benchmark.
+- `runsets.py` converts runsets or runfiles into prepared runs, then executes
+  both through one session loop.
+- `json_io.py` atomically publishes JSON artifacts; `artifact_writer.py` owns
+  per-run status, events, logs, and artifact cleanup.
+- `slack.py` reads completed artifacts and renders or posts a report. It does
+  not participate in benchmark execution.
+- `helm_runner.py` and `HelmServiceManager` provision an immutable service,
+  invoke the shared `run-files` CLI, collect failure logs, and tear down. They
+  do not implement benchmark sessions or reporting.
 
-uv run --project nemo_retriever retriever harness run jp20_beir \
-  --output-dir /tmp/retriever-harness-jp20-beir \
-  --require 'files==20' \
-  --require 'pages==1940' \
-  --require 'query_count==115' \
-  --require 'recall_5>=0.85' \
-  --require 'ndcg_10>=0.75' \
-  --json
-```
+## Configuration Ownership
 
-The primary command surface is intentionally small:
+The Python registry owns benchmark and dataset semantics. Checked-in runfiles
+own concrete modes, metric gates, and narrow overrides. A local
+`dataset_paths.yaml` owns machine-specific document and query locations and
+must remain outside source control.
 
-- `list`
-- `show`
-- `run`
-- `run-set`
-- `diff`
+Resolution precedence is:
 
-Legacy graph-pipeline harness execution, sweep, nightly, runner, reporting, and
-portal commands are not part of the phase-one CLI surface. Portal and Helm
-support files are preserved for follow-on owner work.
+1. Registry defaults.
+2. Runfile overrides.
+3. Machine-local dataset paths.
+4. CLI `--set` overrides.
 
-For review, start with `README.md`, then inspect the core implementation in
-`benchmark_registry.py`, `resolution.py`, `execution.py`, `beir_runner.py`,
-`metrics.py`, `artifact_writer.py`, and `json_io.py`. `json_io.py` is the shared
-artifact JSON read/write seam used to avoid duplicate JSON helper behavior. The
-intentional deletion set is the old subprocess-oriented
-runner/sweep/nightly/reporting/stdout-parser machinery, not the portal or Helm
-ownership surfaces.
+Large checked-in benchmark runfiles use batch ingest. Do not silently change
+their mode or hardware-sensitive worker tuning without fresh validation.
 
-Useful negative-path checks:
+## Artifact Contract
 
-```bash
-uv run --project nemo_retriever retriever harness run jp20_beir \
-  --dry-run \
-  --output-dir /tmp/retriever-harness-invalid \
-  --set query.nope=1 \
-  --json
+Poll `status.json` while a run is active. Read `results.json` after one run is
+terminal and `session_summary.json` after a multi-run session is terminal.
+Those files contain summary metrics and relative pointers to detailed evidence.
 
-uv run --project nemo_retriever retriever harness run jp20_beir \
-  --dry-run \
-  --output-dir /tmp/retriever-harness-missing \
-  --set dataset.path=/tmp/retriever-harness-does-not-exist \
-  --json
+Detailed run evidence can include:
 
-uv run --project nemo_retriever retriever harness run jp20_beir \
-  --dry-run \
-  --output-dir /tmp/retriever-harness-gate-fail \
-  --require 'files>20' \
-  --json
-```
-
-Expected exit codes:
-
-- `0`: success
-- `2`: invalid benchmark/config/override
-- `3`: dataset or input missing
-- `10`: ingest failure
-- `11`: query failure
-- `12`: evaluation failure
-- `20`: metric gate failure
-- `30`: artifact write failure
-- `70`: unexpected internal error
-
-## Built-in benchmarks
-
-The current code-owned registry includes:
-
-- `jp20_smoke`: cheap JP20 fast-text ingest check; no BEIR queries.
-- `jp20_beir`: full JP20 ingest plus 115 BEIR queries and recall/NDCG metrics.
-- `bo20_smoke`
-- `bo767_beir`
-- `financebench_beir`
-- `bo10k_beir_fast_text`
-
-`earnings_consulting` corpus exists locally, but the old
-`data/earnings_consulting_multimodal.csv` query/qrels file is not present in
-this checkout. Do not treat `earnings_beir` as phase-one-ready until that file
-is restored or replaced.
-
-## Artifact contract
-
-Per run, read these files instead of scraping CLI text:
-
-- `status.json`
 - `events.jsonl`
+- `runfile.json`
 - `resolved_benchmark.json`
 - `ingest_plan.json`
 - `query_plan.json`
-- `summary_metrics.json`
 - `environment.json`
-- `results.json`
-- `run.log` when ingest/query execution runs
-- `beir_metrics.json` when BEIR evaluation executes
-- `beir_run.trec` when BEIR evaluation executes
-- `query_results.jsonl` when queries execute
+- `run.log`
+- `beir_metrics.json`
+- `beir_run.trec`
+- `query_results.jsonl`
+- `lancedb/`
+- `service_logs/`
 
-Dry-runs resolve the benchmark, ingest plan, query plan, and summary metrics,
-but intentionally do not execute ingest or BEIR queries. Dry-run artifact
-payloads list only files that were actually written; they do not create or
-advertise empty BEIR result files.
+New runs do not write `summary_metrics.json`. Compatibility readers may still
+accept that file in older artifact directories. Failure summaries stay concise;
+full tracebacks belong in `run.log`.
 
-Non-dry harness runs use the same quiet capture behavior as `retriever ingest
---quiet`: noisy lower-level model/progress output is suppressed on success and
-flushed on failure. Suppressed output is persisted to `run.log` for both
-successful and failed non-dry runs.
+## Validation
 
-## Expectations And Gates
+At minimum, changes should cover:
 
-Use explicit `--require` gates. The harness intentionally does not encode
-recommended thresholds in Python; known results live in
-`nemo_retriever/harness/EXPECTED_RESULTS.md` so humans and agents can inspect
-and update them as benchmarks mature.
+- CLI help and dry-run behavior for `run`, `run-set`, and `run-files`.
+- One-run and multi-run terminal artifact shapes.
+- Missing inputs, invalid overrides, and metric-gate failures.
+- Dataset path precedence and secret redaction.
+- Slack preview without a webhook and transport errors without secret leakage.
+- A real benchmark smoke run when execution behavior changes.
 
-Current JP20 examples:
-
-- `jp20_smoke`: `files==20`, `pages==1940`
-- `jp20_beir`: `files==20`, `pages==1940`, `query_count==115`,
-  `recall_5>=0.85`, `ndcg_10>=0.75`
-
-Dry-runs can only evaluate gates for metrics available without execution, such
-as `files` and `pages`.
-
-## Current validated smoke
-
-Validated in the dedicated Retriever harness worktree:
-
-- `retriever harness list --json` exits `0`.
-- `retriever harness show jp20_beir --json` exits `0`.
-- `retriever harness run jp20_beir --dry-run --output-dir /tmp/retriever-harness-dry-run --json` exits `0`.
-- Invalid override `--set query.nope=1` exits `2`.
-- Missing dataset override exits `3`.
-- Passing gate `--require 'files>=20'` exits `0`.
-- Failing gate `--require 'files>20'` exits `20` with
-  `failure_reason=metric_gate_failed`.
-- Invalid gate syntax exits `2` with `failure_reason=invalid_metric_gate`.
-- `run-set jp20_core --dry-run --require 'files>=20'` exits `0`.
-- `run-set jp20_core --dry-run --require 'files>20'` exits `20`.
-- `retriever harness run jp20_beir --require 'recall_5>=0.85' --require 'ndcg_10>=0.75' --json`
-  exits `0` on the current local dataset/hardware.
+Use `EXPECTED_RESULTS.md` for dataset facts and observed metric ranges. Do not
+turn hardware-sensitive reference numbers into implicit global pass/fail policy.

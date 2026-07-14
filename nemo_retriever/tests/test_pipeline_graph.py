@@ -204,6 +204,22 @@ class AdaptiveAddOperator(ArchetypeOperator):
         self.value = value
 
 
+class CountingCPUAdaptiveAddOperator(CPUAdaptiveAddOperator):
+    constructions = 0
+
+    def __init__(self, value: int = 1) -> None:
+        type(self).constructions += 1
+        super().__init__(value=value)
+
+
+class CountingAdaptiveAddOperator(ArchetypeOperator):
+    _cpu_variant_class = CountingCPUAdaptiveAddOperator
+
+    def __init__(self, value: int = 1) -> None:
+        super().__init__(value=value)
+        self.value = value
+
+
 # =====================================================================
 # Node tests
 # =====================================================================
@@ -546,6 +562,19 @@ class TestGraphExecute:
 
         assert g.execute(7) == [12]
 
+    def test_execute_in_place_reuses_archetype_delegate(self, monkeypatch):
+        resources = Resources(cpu_count=8, gpu_count=0)
+        monkeypatch.setattr(
+            "nemo_retriever.common.ray_resource_hueristics.gather_local_resources",
+            lambda: resources,
+        )
+        CountingCPUAdaptiveAddOperator.constructions = 0
+        graph = Graph() >> CountingAdaptiveAddOperator(5)
+
+        assert graph.execute_in_place(7) == [12]
+        assert graph.execute_in_place(8) == [13]
+        assert CountingCPUAdaptiveAddOperator.constructions == 1
+
     def test_single_node(self):
         g = Graph()
         g.add_root(Node(AddOperator(10)))
@@ -835,7 +864,6 @@ class TestMultiTypeExtractOperator:
                 extract_tables=True,
                 use_table_structure=True,
                 extract_charts=True,
-                use_graphic_elements=True,
                 extract_infographics=True,
             ),
         )
@@ -847,7 +875,6 @@ class TestMultiTypeExtractOperator:
         assert [name for name, _resources in calls] == [
             "PageElementDetectionActor",
             "TableStructureActor",
-            "GraphicElementsActor",
             "OCRActor",
         ]
         assert len({id(resources) for _name, resources in calls}) == 1

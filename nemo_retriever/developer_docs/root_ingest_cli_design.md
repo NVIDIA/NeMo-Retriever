@@ -39,7 +39,8 @@ Behavior intentionally preserved:
 - Local and batch success summaries report files and LanceDB rows.
 - Service success summaries report files, service URL, and service-returned row
   count when available.
-- `retriever pipeline run` compatibility behavior is left in place.
+- Legacy stage and pipeline applications remain callable for compatibility but
+  are hidden from root help while callers migrate.
 
 Behavior intentionally changed:
 
@@ -50,6 +51,8 @@ Behavior intentionally changed:
   `--run-mode service`.
 - Service-local invalid options are parser-level unknown options instead of
   runtime-denied options.
+- Internal graph-stage selectors such as `use_page_elements` and
+  `use_table_structure` are not public root CLI options.
 
 ## Why Not `--run-mode`
 
@@ -143,8 +146,10 @@ retriever ingest service docs/
 
 ## Handling The Large Option Surface
 
-The large number of flags is real public surface area, so the CLI keeps it
-visible. The cleanup is how those values move inward:
+The remaining flags are real public surface area, so the CLI keeps them visible.
+Internal graph-stage selectors are resolved by profiles and high-level format
+choices instead of being exposed beside user capabilities. The cleanup is how
+the remaining values move inward:
 
 - Typer command signatures declare the public knobs explicitly.
 - `options.py` centralizes repeated Typer metadata only when the flag spelling,
@@ -213,8 +218,8 @@ the ingest CLI.
 ## Pipeline Compatibility
 
 `retriever pipeline run` is not the future public ingest interface. It remains
-the compatibility and development command for
-pipeline-only behavior such as:
+callable, but hidden from root help, for compatibility and development behavior
+such as:
 
 - intermediate Parquet artifacts
 - pipeline reports and runtime metrics

@@ -15,7 +15,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from nemo_retriever.harness.config import HarnessConfig, NEMO_RETRIEVER_ROOT
+from nemo_retriever.harness.config import NEMO_RETRIEVER_ROOT
 
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class HelmServiceManager:
         "audio",
     )
 
-    def __init__(self, config: HarnessConfig, repo_root: Path | None = None) -> None:
+    def __init__(self, config: Any, repo_root: Path | None = None) -> None:
         self.config = config
         self.repo_root = repo_root or NEMO_RETRIEVER_ROOT.parent
         self.release_name = config.helm_release
@@ -118,8 +118,10 @@ class HelmServiceManager:
         if self.config.helm_values_file:
             cmd += ["-f", self.config.helm_values_file]
 
-        for key in sorted(self.config.helm_set):
-            flag, assignment = self._helm_set_arg(key, self.config.helm_set[key])
+        effective_set = getattr(self.config, "effective_helm_set", None)
+        helm_set = effective_set() if callable(effective_set) else self.config.helm_set
+        for key in sorted(helm_set):
+            flag, assignment = self._helm_set_arg(key, helm_set[key])
             cmd += [flag, assignment]
 
         return cmd

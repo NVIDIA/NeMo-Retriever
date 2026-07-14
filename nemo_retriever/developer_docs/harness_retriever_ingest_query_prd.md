@@ -1,6 +1,15 @@
 # Retriever Harness PRD: End-to-End Ingest/Query Benchmarks
 
-Last updated: 2026-06-24
+Last updated: 2026-07-01
+
+## Implementation Status
+
+The current implementation includes the core runner described here plus two
+orchestration-neutral extensions: `run-files` applies a machine-local dataset
+path map to one or more checked-in runfiles, and `post-slack` renders or posts
+completed artifacts. It does not include recurring scheduling, deployment,
+locking, retry policy, or secret distribution. The harness README is the
+normative user and agent guide; this PRD records the design rationale.
 
 ## Summary
 
@@ -12,7 +21,7 @@ engineers. The harness should run the new library direction end to end:
    `retriever query`.
 3. Run full BEIR-style evaluation.
 4. Emit stable `summary_metrics` and machine-readable artifacts for humans,
-   agents, and future nightly reporting.
+   agents, and downstream reporting.
 
 This is a total revamp, not a compatibility wrapper around the current harness.
 Assume `retriever pipeline run` is deleted in the next release. The current
@@ -26,7 +35,7 @@ in the repository as reviewed Python objects.
 
 The second most important design choice: stdout is not an API. The harness can
 print concise human summaries, but agents and orchestrators must rely on stable
-files such as `status.json`, `summary_metrics.json`, `beir_metrics.json`, and
+files such as `status.json`, `results.json`, `beir_metrics.json`, and
 `query_results.jsonl`.
 
 ## Research Notes
@@ -84,19 +93,19 @@ Reference links are at the end of this document.
 - Do not adopt Hydra, MLflow Projects, W&B Sweeps, or another orchestration
   framework in phase one.
 - Do not make this a public supported product API.
-- Do not build Slack posting in phase one. Design artifacts so a Slack sink can
-  be added later.
+- Do not couple benchmark execution to Slack or another reporting transport.
+- Do not add recurring scheduling or deployment infrastructure to the harness.
 - Do not make CLI text formatting part of the run contract.
-- Do not make pytest the validation strategy for the harness. This harness is
-  itself a functional evaluation tool; success should be judged by harness
-  command exit codes and artifact contracts.
+- Do not make pytest the sole validation strategy for the harness. Unit tests
+  protect artifact and reporting contracts; real harness exit codes and
+  artifacts validate end-to-end behavior.
 
 ## Users
 
 - Retriever engineers validating ingest/query behavior.
 - Performance owners running throughput and quality ablations.
 - Agents asked to run a named benchmark or ablation.
-- Future nightly automation that needs stable result files.
+- External automation that needs stable result files.
 
 ## Design Principles
 
@@ -263,6 +272,13 @@ Rules:
 - During `--dry-run`, gates for unavailable execution metrics are skipped and
   reported in `results.json`; static dataset gates are still evaluated.
 
+Machine-specific document and query paths belong in a separate, untracked
+dataset path map. `run-files --dataset-paths <file>` applies that map after
+runfile overrides and before CLI `--set` overrides. Passing one runfile creates
+a one-dataset session; passing multiple runfiles creates a suite session.
+`run-files` owns dry-run behavior for the session so a session cannot mix
+planned and executed children.
+
 ### Ablations
 
 Prefer explicit runsets in code for recurring ablations. Phase one runsets are
@@ -326,7 +342,7 @@ Write `status.json` early and update it at phase transitions:
   "started_at": "2026-06-23T12:00:00Z",
   "updated_at": "2026-06-23T12:34:56Z",
   "artifact_dir": "/artifacts/jp20_beir_20260623_120000",
-  "summary_metrics_path": null,
+  "results_path": null,
   "failure": null
 }
 ```
@@ -396,8 +412,8 @@ Use coarse but stable exit codes:
 - `30`: artifact write failure
 - `70`: unexpected internal error
 
-Agents should prefer `status.json` for detail and exit codes for coarse process
-control.
+Agents should poll `status.json` while a run is active, read `results.json` when
+it is terminal, and use exit codes for coarse process control.
 
 ### Metric Gates
 
@@ -523,12 +539,13 @@ The exact values above are illustrative. The key names should be stable.
 Per run:
 
 - `results.json`: authoritative run result.
-- `summary_metrics.json`: the same compact object from `results.json`, written
-  separately for simple consumers.
 - `status.json`: current and final phase/status state.
 - `events.jsonl`: append-only phase changes and run milestones.
+- `runfile.json`: original runfile payload when one was used.
 - `resolved_benchmark.json`: fully resolved benchmark spec.
 - `ingest_plan.json`: redacted dry-run ingest plan.
+- `query_plan.json`: resolved query execution plan.
+- `run.log`: captured lower-level output and full exception tracebacks.
 - `beir_metrics.json`: full BEIR metrics.
 - `beir_run.trec`: BEIR/TREC runfile.
 - `query_results.jsonl`: per-query hits and latency.
@@ -542,10 +559,11 @@ Session/runset:
 - `expanded_runs.json`: resolved run order for runsets.
 
 Do not make `compare` phase-one critical. Comparing runs can be rebuilt later
-from `summary_metrics.json` and `session_summary.json`.
+from `results.json` and `session_summary.json`.
 
-`results.json` should include pointers to every artifact path so external
-systems can ingest one file and discover the rest.
+`results.json` should include relative pointers to every artifact path so
+external systems can ingest one file, discover the rest, and move the complete
+run directory without rewriting its manifest.
 
 ## CLI
 
@@ -562,6 +580,9 @@ retriever harness run <benchmark> --set query.top_k=20
 retriever harness run <benchmark> --set ingest.profile=fast-text
 retriever harness run --runfile /tmp/ablation.yaml
 retriever harness run-set <runset>
+retriever harness run-files --dataset-paths /local/dataset_paths.yaml <runfile>...
+retriever harness post-slack --preview <session-or-results>...
+retriever harness post-slack <session-or-results>...
 retriever harness diff <run-a-dir> <run-b-dir> --json
 ```
 
@@ -573,6 +594,8 @@ Notes:
 - `--dry-run` should be available on `run` and `run-set`.
 - `--json` on read-only commands writes machine-readable output to stdout.
   Human formatting remains non-contractual.
+- `post-slack` consumes existing artifacts and never runs ingest or query.
+- No CLI command installs or owns recurring scheduling.
 
 Defer or remove:
 
@@ -591,9 +614,10 @@ reporting UI.
 
 ## Functional Validation
 
-The harness should be validated like an evaluation runner, not like a conventional
-pytest-heavy library component. Developers should prove behavior by running the
-harness commands and inspecting stable artifacts.
+The harness should be validated both as a library contract and as an evaluation
+runner. Focused tests protect resolution, artifact, and reporting behavior;
+developers should also prove execution behavior by running harness commands and
+inspecting stable artifacts.
 
 Minimum local validation commands:
 
@@ -610,7 +634,7 @@ Functional validation should assert:
 - parseable `--json` output for read-only commands
 - `status.json` exists and has the expected final status
 - `events.jsonl` exists and includes phase transitions
-- `resolved_benchmark.json`, `summary_metrics.json`, and `results.json` exist
+- `resolved_benchmark.json` and `results.json` exist
 - `run.log` exists for non-dry execution runs and contains suppressed
   lower-level stdout/stderr
 - invalid overrides exit with code `2`
@@ -638,9 +662,8 @@ Known dataset facts, benchmark result ranges, and suggested gates should live in
 `nemo_retriever/harness/EXPECTED_RESULTS.md`, not in benchmark Python code.
 
 The harness may include tiny no-GPU fixtures or fake benchmark specs to make
-developer validation cheap, but the primary confidence signal is functional
-execution through the CLI and artifact contract. Existing pytest-style harness
-tests can be retired as this replacement matures.
+developer validation cheap, but execution changes still require functional
+validation through the CLI and artifact contract.
 
 ## Implementation Plan
 
@@ -675,7 +698,8 @@ tests can be retired as this replacement matures.
 - Build `diff --json` around `summary_metrics` and BEIR deltas.
 - Rebuild richer `compare` only if the team needs it after stable artifacts
   exist.
-- Add nightly runner and Slack sink later.
+- Keep Slack as an optional post-hoc artifact sink.
+- Keep recurring execution and deployment in separately reviewed infrastructure.
 
 ## Open Decisions
 
@@ -711,8 +735,11 @@ tests can be retired as this replacement matures.
   set, writes BEIR outputs, and emits stable `summary_metrics`.
 - `retriever harness run-set <name>` expands a code-owned ablation and writes
   `expanded_runs.json`.
-- Every run writes `status.json`, `events.jsonl`, `summary_metrics.json`, and
-  `results.json`.
+- `retriever harness run-files` runs one or more checked-in requests with an
+  optional machine-local dataset path map.
+- `retriever harness post-slack --preview` reads artifacts without requiring a
+  webhook or contacting Slack.
+- Every run writes `status.json`, `events.jsonl`, and `results.json`.
 - Failed runs write typed failure data without requiring stdout inspection.
 - Unknown `--set` keys fail before execution.
 - The harness has no user-facing `--engine` flag.
@@ -722,7 +749,8 @@ tests can be retired as this replacement matures.
   `nemo_retriever.examples.graph_pipeline`.
 - CLI text formatting is explicitly non-contractual; machine consumers use
   artifact files or `--json` read-only commands.
-- Phase-one validation is functional and artifact-driven, not pytest-gated.
+- Validation combines focused contract tests with functional, artifact-driven
+  benchmark execution.
 
 ## References
 

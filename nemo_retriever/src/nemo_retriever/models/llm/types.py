@@ -13,6 +13,7 @@ framework (``nemo_retriever.evaluation``) and the live RAG surface on
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol, runtime_checkable
 
@@ -40,6 +41,34 @@ class LLMClient(Protocol):
 
 
 @runtime_checkable
+class TextCompletionClient(Protocol):
+    """Provisional synchronous, thread-safe, single-turn text client contract.
+
+    Implementations return exactly one text completion. Tools, streaming,
+    multiple choices, and structured domain responses are intentionally
+    outside this contract.
+    """
+
+    @property
+    def model(self) -> str:
+        """Return the model identifier used for generated results."""
+        ...
+
+    def complete(
+        self,
+        messages: list[dict[str, Any]],
+        max_tokens: Optional[int] = None,
+        extra_params: Optional[dict[str, Any]] = None,
+    ) -> tuple[str, float]:
+        """Return generated text and wall-clock latency in seconds."""
+        ...
+
+
+class UnsupportedTextResponseError(RuntimeError):
+    """Raised when a provider response cannot be represented as plain text."""
+
+
+@runtime_checkable
 class AnswerJudge(Protocol):
     """Pluggable answer scoring interface."""
 
@@ -59,6 +88,47 @@ class GenerationResult:
     """Result from a single LLM generation call."""
 
     answer: str
+    latency_s: float
+    model: str
+    error: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class GenerationRequest:
+    """One text-only request produced by a generation task.
+
+    Tools, streaming, multiple choices, and structured domain results are not
+    supported by this provisional contract.
+    """
+
+    messages: list[dict[str, Any]]
+    max_tokens: Optional[int] = None
+    extra_params: Optional[dict[str, Any]] = None
+
+    def __post_init__(self) -> None:
+        """Snapshot mutable inputs and reject non-text or protected state."""
+        # Keep this types module lightweight and avoid a package import cycle.
+        from nemo_retriever.common.params.models import validate_llm_extra_params
+
+        messages = deepcopy(self.messages)
+        extra_params = deepcopy(self.extra_params)
+        if not isinstance(messages, list) or not all(isinstance(message, dict) for message in messages):
+            raise TypeError("GenerationRequest.messages must be a list of message dictionaries")
+        for message in messages:
+            if not isinstance(message.get("role"), str) or not isinstance(message.get("content"), str):
+                raise TypeError("GenerationRequest messages require string role and content fields")
+            if {"tool_calls", "function_call", "tool_call_id"}.intersection(message):
+                raise ValueError("GenerationRequest does not support tool messages or tool calls")
+        validate_llm_extra_params(extra_params or {}, source="GenerationRequest.extra_params")
+        object.__setattr__(self, "messages", messages)
+        object.__setattr__(self, "extra_params", extra_params)
+
+
+@dataclass(frozen=True)
+class GeneratedTextResult:
+    """Task-neutral result from a single text-generation request."""
+
+    text: str
     latency_s: float
     model: str
     error: Optional[str] = None
@@ -104,7 +174,7 @@ class AnswerResult(BaseModel):
     to produce it and -- when a ``reference`` answer and/or ``judge`` are
     supplied -- the Tier-1 / Tier-2 / Tier-3 scoring artefacts produced by
     :mod:`nemo_retriever.evaluation.scoring` and
-    :class:`~nemo_retriever.llm.clients.judge.LLMJudge`.
+    :class:`~nemo_retriever.models.llm.clients.judge.LLMJudge`.
 
     Attributes:
         query: The question that was answered.
