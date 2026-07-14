@@ -164,6 +164,7 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
         "uri": "lancedb",
         "table_name": "nemo-retriever",
         "overwrite": True,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
     }
     assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
@@ -204,6 +205,7 @@ def test_root_ingest_without_mode_accepts_local_options_before_documents(monkeyp
         "uri": "/tmp/default-lancedb",
         "table_name": "nemo-retriever",
         "overwrite": False,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
     }
 
 
@@ -397,6 +399,7 @@ def test_root_ingest_passes_vdb_options_and_run_mode(monkeypatch, tmp_path) -> N
         "uri": "/tmp/lancedb",
         "table_name": "docs",
         "overwrite": True,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
     }
     assert "Ingested 2 file(s) → 12 row(s) in LanceDB /tmp/lancedb/docs." in result.output
 
@@ -415,6 +418,7 @@ def test_root_ingest_append_forwards_overwrite_false(monkeypatch, tmp_path) -> N
         "uri": "lancedb",
         "table_name": "nemo-retriever",
         "overwrite": False,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
     }
 
 
@@ -512,8 +516,9 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
     assert isinstance(embed_params, EmbedParams)
     assert embed_params.embed_invoke_url == "http://embed:8000/v1/embeddings"
     assert embed_params.embedding_endpoint == "http://embed:8000/v1/embeddings"
-    assert embed_params.model_name == "nvidia/nvidia/llama-nemotron-embed-1b-v2"
-    assert embed_params.embed_model_name == "nvidia/nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_params.model_name == "nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_params.embed_model_name == "nvidia/llama-nemotron-embed-1b-v2"
+    assert embed_params.embed_model_provider_prefix == "nvidia"
 
 
 def test_root_ingest_passes_embedding_overrides_without_stage_flags(monkeypatch, tmp_path) -> None:
@@ -1698,6 +1703,7 @@ def test_root_ingest_index_mode_hybrid_passes_hybrid_into_vdb_kwargs(monkeypatch
         "table_name": "docs",
         "overwrite": True,
         "hybrid": True,
+        "embedding_model_name": "nvidia/llama-nemotron-embed-vl-1b-v2",
     }
 
 
@@ -1760,5 +1766,9 @@ def test_root_ingest_index_mode_sparse_skips_embedding_and_writes_fts_table(monk
     table = lancedb.connect(str(tmp_path / "db")).open_table("sparse_docs")
     assert "vector" not in table.schema.names
     assert table.schema.metadata[b"retrieval_mode"] == b"sparse"
+    assert table.schema.metadata[b"nemo_retriever.retrieval_mode"] == b"sparse"
+    assert table.schema.metadata[b"nemo_retriever.index_format_version"] == b"1"
+    assert table.schema.metadata[b"nemo_retriever.producer_version"]
+    assert b"nemo_retriever.embedding_model_name" not in table.schema.metadata
     index_names = {index.name.lower() for index in table.list_indices()}
     assert any("text" in name or "fts" in name for name in index_names)

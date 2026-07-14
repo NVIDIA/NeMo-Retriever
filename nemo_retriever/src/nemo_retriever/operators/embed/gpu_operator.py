@@ -11,6 +11,7 @@ from typing import Any
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.gpu_operator import GPUOperator
 from nemo_retriever.common.params import EmbedParams
+from nemo_retriever.common.params.utils import route_embed_model_kwargs
 from nemo_retriever.models.inference.runtime import embed_text_main_text_embed
 from nemo_retriever.models.inference.shared import build_embed_kwargs, _to_bool
 
@@ -32,6 +33,7 @@ class _BatchEmbedActor(AbstractOperator, GPUOperator):
         self._kwargs = build_embed_kwargs(params)
 
         endpoint = (self._kwargs.get("embedding_endpoint") or self._kwargs.get("embed_invoke_url") or "").strip()
+        self._kwargs = route_embed_model_kwargs(self._kwargs)
         if endpoint:
             self._model = None
             return

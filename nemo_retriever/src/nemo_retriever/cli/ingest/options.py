@@ -241,6 +241,7 @@ EmbedInvokeUrlOption = Annotated[
     str | None,
     typer.Option(
         "--embed-invoke-url",
+        envvar="EMBED_INVOKE_URL",
         help=(
             "Embedding endpoint override. On CPU-only hosts, ingest automatically uses NVIDIA's hosted "
             "embedding endpoint with NVIDIA_API_KEY or NGC_API_KEY; pass this only for another endpoint."
@@ -251,6 +252,7 @@ EmbedModelNameOption = Annotated[
     str | None,
     typer.Option(
         "--embed-model-name",
+        envvar="EMBED_MODEL_NAME",
         help=f"Optional embedding model name override. Defaults to {DEFAULT_EMBED_MODEL} when omitted.",
     ),
 ]
@@ -258,6 +260,7 @@ EmbedModelProviderPrefixOption = Annotated[
     str | None,
     typer.Option(
         "--embed-model-provider-prefix",
+        envvar="EMBED_MODEL_PROVIDER_PREFIX",
         help="Optional LiteLLM provider prefix prepended to the remote embedding model name.",
     ),
 ]

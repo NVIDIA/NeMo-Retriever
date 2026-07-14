@@ -152,8 +152,9 @@ def test_root_query_passes_embed_options(monkeypatch) -> None:
             "embed_kwargs": {
                 "embed_invoke_url": "http://embed:8000/v1/embeddings",
                 "embedding_endpoint": "http://embed:8000/v1/embeddings",
-                "model_name": "nvidia/nvidia/llama-nemotron-embed-1b-v2",
-                "embed_model_name": "nvidia/nvidia/llama-nemotron-embed-1b-v2",
+                "model_name": "nvidia/llama-nemotron-embed-1b-v2",
+                "embed_model_name": "nvidia/llama-nemotron-embed-1b-v2",
+                "embed_model_provider_prefix": "nvidia",
             },
         }
     ]
@@ -593,11 +594,13 @@ def test_root_query_local_help_shows_retrieval_mode_not_hybrid() -> None:
     assert "--hybrid" not in result.output
 
 
-def test_root_query_local_help_names_default_models() -> None:
+def test_root_query_local_help_describes_model_resolution() -> None:
     result = RUNNER.invoke(cli_main.app, ["query", "q", "--help"])
 
     assert result.exit_code == 0
-    assert "Default embedding model" in result.output
+    assert "Embedding model: read from the selected table" in result.output
+    assert "legacy tables" in result.output
+    assert "fall back" in result.output
     assert VL_EMBED_MODEL in result.output
     assert "Default local reranker model" in result.output
     assert VL_RERANK_MODEL in result.output

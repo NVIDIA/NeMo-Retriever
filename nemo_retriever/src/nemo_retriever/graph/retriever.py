@@ -6,12 +6,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Optional, Sequence, cast
 
 import pandas as pd
 
-from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL, resolve_embed_model
 from nemo_retriever.graph.retriever_utils import (
     filter_retrieval_kwargs,
     rerank_long_dataframe_to_hits,
@@ -21,6 +22,7 @@ from nemo_retriever.common.vdb.lancedb_capabilities import (
     LanceTableCapabilities,
     inspect_lancedb_table,
 )
+from nemo_retriever.common.vdb.lancedb_metadata import INDEX_FORMAT_VERSION
 from nemo_retriever.common.vdb.records import RetrievalHit, normalize_retrieval_results
 from nemo_retriever.query.shaping import shape_query_hits
 from nemo_retriever.operators.vdb import RetrieveVdbOperator
@@ -271,6 +273,11 @@ class Retriever:
         )
         table_name = str(lancedb_kwargs.get("table_name") or lancedb_kwargs.get("lancedb_table") or "nv-ingest")
         caps = self._inspect_lancedb_capabilities(uri, table_name)
+        if caps.index_format_version is not None and caps.index_format_version != INDEX_FORMAT_VERSION:
+            raise ValueError(
+                f"LanceDB table {table_name!r} at {uri!r} uses unsupported NeMo Retriever index format "
+                f"{caps.index_format_version!r}; this reader supports {INDEX_FORMAT_VERSION!r}."
+            )
 
         mode_override = str(lancedb_kwargs.get("retrieval_mode") or "auto").strip().lower()
         if mode_override not in {"auto", "dense", "hybrid", "sparse"}:
@@ -301,6 +308,62 @@ class Retriever:
             )
 
         return mode, caps, uri, table_name, mode_override != "auto"
+
+    @staticmethod
+    def _embedding_model_from_kwargs(kwargs: Optional[dict[str, Any]]) -> str | None:
+        values = dict(kwargs or {})
+        for key in ("model_name", "embed_model_name"):
+            value = str(values.get(key) or "").strip()
+            if value:
+                return value
+        return None
+
+    def _resolve_lancedb_embed_kwargs(
+        self,
+        caps: LanceTableCapabilities,
+        runtime_embed_kwargs: Optional[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Resolve canonical model identity before applying runtime provider routing."""
+        resolved = dict(runtime_embed_kwargs or {})
+        configured_model = self._embedding_model_from_kwargs(runtime_embed_kwargs)
+        source = "per-query override"
+        if configured_model is None:
+            configured_model = self._embedding_model_from_kwargs(self.embed_kwargs)
+            source = "configured override"
+        if configured_model is None:
+            configured_model = str(os.environ.get("EMBED_MODEL_NAME") or "").strip() or None
+            source = "EMBED_MODEL_NAME"
+        if configured_model is None:
+            configured_model = caps.embedding_model_name
+            source = "table metadata"
+        if configured_model is None:
+            configured_model = VL_EMBED_MODEL
+            source = "built-in default"
+
+        canonical_model = resolve_embed_model(configured_model)
+        table_model = resolve_embed_model(caps.embedding_model_name) if caps.embedding_model_name else None
+        if table_model is not None and source != "table metadata" and canonical_model != table_model:
+            logger.warning(
+                "Embedding model %r selected from %s conflicts with table embedding model %r; "
+                "preserving the higher-precedence override.",
+                canonical_model,
+                source,
+                table_model,
+            )
+
+        resolved["model_name"] = canonical_model
+        resolved["embed_model_name"] = canonical_model
+
+        configured = {**dict(self.embed_kwargs or {}), **resolved}
+        if not (configured.get("embedding_endpoint") or configured.get("embed_invoke_url")):
+            embed_invoke_url = str(os.environ.get("EMBED_INVOKE_URL") or "").strip()
+            if embed_invoke_url:
+                resolved["embed_invoke_url"] = embed_invoke_url
+        if not configured.get("embed_model_provider_prefix"):
+            provider_prefix = str(os.environ.get("EMBED_MODEL_PROVIDER_PREFIX") or "").strip()
+            if provider_prefix:
+                resolved["embed_model_provider_prefix"] = provider_prefix
+        return resolved
 
     def _execute_sparse_lancedb_queries(
         self,
@@ -428,6 +491,7 @@ class Retriever:
                 vdb_call_kwargs["hybrid"] = False
             if caps.vector_column and caps.vector_column != "vector":
                 vdb_call_kwargs.setdefault("vector_column_name", caps.vector_column)
+            embed_kwargs = self._resolve_lancedb_embed_kwargs(caps, embed_kwargs)
 
         raw_hits = self._execute_queries_graph(
             query_texts,

@@ -29,7 +29,7 @@ def coerce_params[T](params: T | None, model_cls: type[T], kwargs: dict[str, Any
 
 
 def normalize_embed_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize embedding endpoint aliases in an existing kwargs dict."""
+    """Normalize embedding endpoint aliases without changing model identity."""
     normalized = dict(kwargs)
     embed_invoke_url = (
         str(normalized.get("embed_invoke_url") or "").strip() if "embed_invoke_url" in normalized else None
@@ -52,13 +52,19 @@ def normalize_embed_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
 
     if "embed_invoke_url" in normalized:
         normalized.setdefault("embedding_endpoint", normalized["embed_invoke_url"])
-    endpoint = normalized.get("embedding_endpoint") or normalized.get("embed_invoke_url")
-    model_provider_prefix = normalized.pop("embed_model_provider_prefix", None)
+    return normalized
+
+
+def route_embed_model_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply remote-provider routing after the effective endpoint is known."""
+    routed = normalize_embed_kwargs(kwargs)
+    endpoint = routed.get("embedding_endpoint") or routed.get("embed_invoke_url")
+    model_provider_prefix = routed.pop("embed_model_provider_prefix", None)
     if endpoint and model_provider_prefix:
         for key in ("model_name", "embed_model_name"):
-            if key in normalized:
-                normalized[key] = prepend_model_provider_prefix(normalized[key], str(model_provider_prefix))
-    return normalized
+            if key in routed:
+                routed[key] = prepend_model_provider_prefix(routed[key], str(model_provider_prefix))
+    return routed
 
 
 def build_embed_option_kwargs(
@@ -145,7 +151,7 @@ def build_embed_kwargs(resolved: Any, *, include_batch_tuning: bool = False) -> 
     if include_batch_tuning:
         kwargs.update(resolved.batch_tuning.model_dump(mode="python", exclude_none=True))
 
-    return normalize_embed_kwargs(kwargs)
+    return route_embed_model_kwargs(kwargs)
 
 
 SPLIT_CONFIG_VALID_KEYS = frozenset({"text", "html", "pdf", "audio", "image", "video"})

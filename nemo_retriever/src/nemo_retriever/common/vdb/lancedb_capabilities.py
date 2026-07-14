@@ -11,12 +11,10 @@ from typing import Any, Literal
 
 import pyarrow as pa
 
+from nemo_retriever.common.vdb.lancedb_metadata import read_index_metadata
+
 LanceRetrievalMode = Literal["dense", "hybrid", "sparse", "unknown"]
 
-_RETRIEVAL_MODE_METADATA_KEYS = (
-    "retrieval_mode",
-    "nemo_retriever.retrieval_mode",
-)
 _RETRIEVAL_MODES: dict[str, LanceRetrievalMode] = {
     "dense": "dense",
     "hybrid": "hybrid",
@@ -31,6 +29,9 @@ class LanceTableCapabilities:
     retrieval_mode: LanceRetrievalMode
     vector_column: str | None
     text_column: str | None
+    index_format_version: str | None = None
+    producer_version: str | None = None
+    embedding_model_name: str | None = None
 
 
 def _table_schema(table: Any) -> pa.Schema:
@@ -39,12 +40,9 @@ def _table_schema(table: Any) -> pa.Schema:
 
 
 def _metadata_retrieval_mode(schema: pa.Schema) -> LanceRetrievalMode | None:
-    metadata = schema.metadata or {}
-    for key in _RETRIEVAL_MODE_METADATA_KEYS:
-        value = metadata.get(key.encode("utf-8"))
-        if value is None:
-            continue
-        normalized = value.decode("utf-8", errors="replace").strip().lower()
+    value = read_index_metadata(schema).retrieval_mode
+    if value is not None:
+        normalized = value.lower()
         if normalized in _RETRIEVAL_MODES:
             return _RETRIEVAL_MODES[normalized]
     return None
@@ -127,6 +125,7 @@ def inspect_lancedb_table(uri: str, table_name: str) -> LanceTableCapabilities:
 
 def inspect_lancedb_table_object(table: Any) -> LanceTableCapabilities:
     schema = _table_schema(table)
+    index_metadata = read_index_metadata(schema)
     fts_columns = _detect_fts_columns(table)
     vector_column = _detect_vector_column(schema)
     text_column = _detect_text_column(schema, fts_columns)
@@ -141,4 +140,7 @@ def inspect_lancedb_table_object(table: Any) -> LanceTableCapabilities:
         retrieval_mode=retrieval_mode,
         vector_column=vector_column,
         text_column=text_column,
+        index_format_version=index_metadata.index_format_version,
+        producer_version=index_metadata.producer_version,
+        embedding_model_name=index_metadata.embedding_model_name,
     )

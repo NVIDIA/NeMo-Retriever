@@ -389,7 +389,13 @@ class TestBatchEmbedCPUActor:
         from nemo_retriever.operators.embed.cpu_operator import _BatchEmbedCPUActor
         from nemo_retriever.common.params import EmbedParams
 
-        actor = _BatchEmbedCPUActor(params=EmbedParams(model_name="test-model", api_key="test-key"))
+        actor = _BatchEmbedCPUActor(
+            params=EmbedParams(
+                model_name="test-model",
+                embed_model_provider_prefix="nvidia",
+                api_key="test-key",
+            )
+        )
         assert actor._model is None
         assert "integrate.api.nvidia.com" in actor._kwargs["embedding_endpoint"]
         mock_probe.assert_called_once_with(
@@ -398,7 +404,7 @@ class TestBatchEmbedCPUActor:
             prefix="_BatchEmbedCPUActor",
             api_key="test-key",
             post_url=actor.DEFAULT_EMBED_INVOKE_URL,
-            post_body={"input": [], "model": "test-model"},
+            post_body={"input": [], "model": "nvidia/test-model"},
         )
 
     def test_default_hosted_endpoint_requires_api_key(self):

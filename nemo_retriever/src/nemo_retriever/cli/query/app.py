@@ -161,7 +161,8 @@ def _retrieval_options(
     hidden=True,
     help=(
         "Query a LanceDB index produced by local or batch ingest; retrieval mode auto-detects the index.\n\n"
-        f"Default embedding model: {opts.DEFAULT_EMBED_MODEL}.\n\n"
+        "Embedding model: read from the selected table when available; "
+        f"legacy tables fall back to {opts.DEFAULT_EMBED_MODEL}.\n\n"
         f"Default local reranker model when reranking: {opts.DEFAULT_RERANK_MODEL}.\n\n"
         "For a service deployment, use retriever query service --help."
     ),

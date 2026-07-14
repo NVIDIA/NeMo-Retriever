@@ -16,6 +16,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from nemo_retriever.common.vdb.adt_vdb import VDB
+from nemo_retriever.common.vdb.lancedb_metadata import INDEX_FORMAT_VERSION, read_index_metadata, with_index_metadata
 
 
 logger = logging.getLogger(__name__)
@@ -23,8 +24,6 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_VECTOR_DIM: Final[int] = 2048
 _VALID_ON_BAD_VECTORS: Final[FrozenSet[str]] = frozenset({"drop", "fill", "null", "error"})
-_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"retrieval_mode"
-_NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY: Final[bytes] = b"nemo_retriever.retrieval_mode"
 
 
 def _normalize_on_bad_vectors(value: str) -> str:
@@ -116,17 +115,12 @@ def _effective_ivf_num_partitions(num_rows: int, requested: int) -> int | None:
     return min(int(requested), max(1, cap))
 
 
-def _with_retrieval_mode_metadata(schema: pa.Schema, retrieval_mode: str | None) -> pa.Schema:
-    if retrieval_mode is None:
-        return schema
-    metadata = dict(schema.metadata or {})
-    encoded_mode = str(retrieval_mode).encode("utf-8")
-    metadata[_RETRIEVAL_MODE_METADATA_KEY] = encoded_mode
-    metadata[_NEMO_RETRIEVER_RETRIEVAL_MODE_METADATA_KEY] = encoded_mode
-    return schema.with_metadata(metadata)
-
-
-def _lancedb_arrow_schema(vector_dim: int, *, retrieval_mode: str | None = None) -> pa.Schema:
+def _lancedb_arrow_schema(
+    vector_dim: int,
+    *,
+    retrieval_mode: str | None = None,
+    embedding_model_name: str | None = None,
+) -> pa.Schema:
     schema = pa.schema(
         [
             pa.field("vector", pa.list_(pa.float32(), int(vector_dim))),
@@ -136,7 +130,11 @@ def _lancedb_arrow_schema(vector_dim: int, *, retrieval_mode: str | None = None)
             pa.field("id", pa.string()),
         ]
     )
-    return _with_retrieval_mode_metadata(schema, retrieval_mode)
+    return with_index_metadata(
+        schema,
+        retrieval_mode=retrieval_mode,
+        embedding_model_name=embedding_model_name,
+    )
 
 
 def _sparse_lancedb_arrow_schema(*, retrieval_mode: str | None = "sparse") -> pa.Schema:
@@ -148,7 +146,7 @@ def _sparse_lancedb_arrow_schema(*, retrieval_mode: str | None = "sparse") -> pa
             pa.field("id", pa.string()),
         ]
     )
-    return _with_retrieval_mode_metadata(schema, retrieval_mode)
+    return with_index_metadata(schema, retrieval_mode=retrieval_mode, embedding_model_name=None)
 
 
 def _table_schema(table: Any) -> pa.Schema:
@@ -174,6 +172,36 @@ def _validate_append_schema(table: Any, expected_schema: pa.Schema, *, table_nam
                 f"{expected_field.name!r}: got {existing_field.type}, expected {expected_field.type}; "
                 "use overwrite=True to replace the table."
             )
+
+    existing_metadata = read_index_metadata(existing_schema)
+    expected_metadata = read_index_metadata(expected_schema)
+    if existing_metadata.index_format_version is None:
+        logger.warning(
+            "Appending to legacy LanceDB table %r at %s without NeMo Retriever index metadata; "
+            "index-format and embedding compatibility cannot be verified.",
+            table_name,
+            uri,
+        )
+    elif existing_metadata.index_format_version != INDEX_FORMAT_VERSION:
+        raise ValueError(
+            f"LanceDB table {table_name!r} at {uri!r} uses unsupported index format "
+            f"{existing_metadata.index_format_version!r}; this writer requires {INDEX_FORMAT_VERSION!r}."
+        )
+
+    existing_model = existing_metadata.embedding_model_name
+    expected_model = expected_metadata.embedding_model_name
+    if existing_model and expected_model and existing_model != expected_model:
+        raise ValueError(
+            f"LanceDB table {table_name!r} at {uri!r} was created with embedding model "
+            f"{existing_model!r}, but this append uses {expected_model!r}."
+        )
+    if expected_model and not existing_model and existing_metadata.index_format_version is not None:
+        logger.warning(
+            "Appending to LanceDB table %r at %s without embedding-model metadata; "
+            "embedding compatibility cannot be verified.",
+            table_name,
+            uri,
+        )
 
 
 def _is_missing_lancedb_table_error(exc: ValueError) -> bool:
@@ -408,6 +436,7 @@ class LanceDB(VDB):
         hybrid: bool = False,
         sparse: bool = False,
         fts_language: str = "English",
+        embedding_model_name: str | None = None,
         vector_dim: int = _DEFAULT_VECTOR_DIM,
         on_bad_vectors: str = "drop",
         fill_value: float = 0.0,
@@ -436,6 +465,7 @@ class LanceDB(VDB):
         self.hybrid = hybrid
         self.sparse = bool(sparse)
         self.fts_language = fts_language
+        self.embedding_model_name = embedding_model_name
         self.vector_dim = int(vector_dim)
         self.on_bad_vectors = _normalize_on_bad_vectors(on_bad_vectors)
         self.fill_value = float(fill_value)
@@ -469,7 +499,11 @@ class LanceDB(VDB):
                 expected_dim = None
 
             results, counts = _create_lancedb_results(records or [], expected_dim=expected_dim)
-            schema = _lancedb_arrow_schema(self.vector_dim, retrieval_mode="hybrid" if self.hybrid else "dense")
+            schema = _lancedb_arrow_schema(
+                self.vector_dim,
+                retrieval_mode="hybrid" if self.hybrid else "dense",
+                embedding_model_name=self.embedding_model_name,
+            )
 
             write_kwargs = {
                 "on_bad_vectors": self.on_bad_vectors,

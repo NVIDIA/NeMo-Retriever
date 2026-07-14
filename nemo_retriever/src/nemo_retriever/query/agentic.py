@@ -20,7 +20,7 @@ from typing import Any, Optional, Sequence
 import pandas as pd
 
 from nemo_retriever.operators.abstract_operator import AbstractOperator
-from nemo_retriever.models import VL_EMBED_MODEL, VL_RERANK_MODEL
+from nemo_retriever.models import VL_RERANK_MODEL
 from nemo_retriever.query.agentic_options import (
     agentic_backend_top_k_error,
     agentic_int_min_error,
@@ -126,7 +126,7 @@ class AgenticRetrievalConfig:
 
     vdb_op: str = "lancedb"
     vdb_kwargs: dict[str, Any] = field(default_factory=dict)
-    query_embedder: str = VL_EMBED_MODEL
+    query_embedder: Optional[str] = None
     query_embedder_provider_prefix: Optional[str] = None
     embedding_endpoint: Optional[str] = None
     embedding_api_key: str = ""
@@ -203,22 +203,25 @@ class AgenticRetriever:
         self._doc_id_field = str(doc_id_field) if doc_id_field else None
         if self._doc_id_field is not None and self._doc_id_field not in VALID_BEIR_DOC_ID_FIELDS:
             raise ValueError(f"Unsupported doc_id_field: {self._doc_id_field}")
+        embed_kwargs: dict[str, Any] = {
+            "embed_model_provider_prefix": cfg.query_embedder_provider_prefix,
+            "embedding_endpoint": cfg.embedding_endpoint,
+            "api_key": cfg.embedding_api_key,
+            "input_type": "query",
+            "local_ingest_embed_backend": str(cfg.local_query_embed_backend),
+            "inference_batch_size": int(cfg.local_hf_batch_size),
+            "embed_inference_batch_size": int(cfg.local_hf_batch_size),
+        }
+        if cfg.query_embedder:
+            embed_kwargs["model_name"] = str(cfg.query_embedder)
+            embed_kwargs["embed_model_name"] = str(cfg.query_embedder)
+
         self._retriever = Retriever(
             vdb_kwargs={
                 "vdb_op": str(cfg.vdb_op),
                 "vdb_kwargs": dict(cfg.vdb_kwargs or {}),
             },
-            embed_kwargs={
-                "model_name": str(cfg.query_embedder or VL_EMBED_MODEL),
-                "embed_model_name": str(cfg.query_embedder or VL_EMBED_MODEL),
-                "embed_model_provider_prefix": cfg.query_embedder_provider_prefix,
-                "embedding_endpoint": cfg.embedding_endpoint,
-                "api_key": cfg.embedding_api_key,
-                "input_type": "query",
-                "local_ingest_embed_backend": str(cfg.local_query_embed_backend),
-                "inference_batch_size": int(cfg.local_hf_batch_size),
-                "embed_inference_batch_size": int(cfg.local_hf_batch_size),
-            },
+            embed_kwargs=embed_kwargs,
             top_k=AGENTIC_RETRIEVER_TOP_K,
             rerank=bool(cfg.reranker),
             rerank_kwargs={

@@ -14,10 +14,16 @@ pa = pytest.importorskip("pyarrow")
 
 import nemo_retriever.graph.retriever as retriever_module  # noqa: E402
 from nemo_retriever.common.vdb.lancedb_capabilities import LanceTableCapabilities, inspect_lancedb_table  # noqa: E402
+from nemo_retriever.common.vdb.lancedb import LanceDB  # noqa: E402
 from nemo_retriever.graph.retriever import Retriever  # noqa: E402
 
 
-def _create_vector_table(uri: str, table_name: str, *, fts: bool = False) -> None:
+def _create_vector_table(
+    uri: str,
+    table_name: str,
+    *,
+    fts: bool = False,
+) -> None:
     schema = pa.schema(
         [
             pa.field("vector", pa.list_(pa.float32(), 2)),
@@ -92,6 +98,36 @@ def test_detector_returns_dense_for_vector_only_table(tmp_path) -> None:
     assert caps.vector_column == "vector"
     assert caps.text_column == "text"
     assert caps.retrieval_mode == "dense"
+
+
+def test_retriever_created_table_reports_index_provenance(tmp_path) -> None:
+    uri = str(tmp_path / "db")
+    records = [
+        [
+            {
+                "document_type": "text",
+                "metadata": {
+                    "content": "alpha safety manual",
+                    "embedding": [1.0, 0.0],
+                    "content_metadata": {"id": "alpha"},
+                    "source_metadata": {"source_id": "alpha.pdf"},
+                },
+            }
+        ]
+    ]
+    LanceDB(
+        uri=uri,
+        table_name="docs",
+        vector_dim=2,
+        build_index=False,
+        embedding_model_name="nvidia/llama-nemotron-embed-vl-1b-v2",
+    ).run(records)
+
+    caps = inspect_lancedb_table(uri, "docs")
+
+    assert caps.index_format_version == "1"
+    assert caps.producer_version
+    assert caps.embedding_model_name == "nvidia/llama-nemotron-embed-vl-1b-v2"
 
 
 def test_detector_returns_hybrid_for_vector_plus_fts_table(tmp_path) -> None:

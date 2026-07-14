@@ -12,6 +12,7 @@ from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.models.nim.probe import probe_endpoint
 from nemo_retriever.common.params import EmbedParams
+from nemo_retriever.common.params.utils import route_embed_model_kwargs
 from nemo_retriever.models.inference.runtime import embed_text_main_text_embed
 from nemo_retriever.models.inference.shared import build_embed_kwargs
 
@@ -32,6 +33,7 @@ class _BatchEmbedCPUActor(AbstractOperator, CPUOperator):
         if not endpoint:
             self._kwargs["embedding_endpoint"] = self.DEFAULT_EMBED_INVOKE_URL
             endpoint = self.DEFAULT_EMBED_INVOKE_URL
+        self._kwargs = route_embed_model_kwargs(self._kwargs)
         self._model = None
 
         api_key = self._kwargs.get("api_key")
