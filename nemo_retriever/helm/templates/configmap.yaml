@@ -129,6 +129,7 @@ resources:
   max_memory_mb: {{ .Values.serviceConfig.resources.maxMemoryMb | default "null" }}
   max_cpu_cores: {{ .Values.serviceConfig.resources.maxCpuCores | default "null" }}
   gpu_devices: {{ toJson .Values.serviceConfig.resources.gpuDevices }}
+  max_upload_bytes: {{ .Values.serviceConfig.resources.maxUploadBytes | int64 }}
 
 auth:
   api_token: {{ .Values.serviceConfig.auth.apiToken | default "null" }}

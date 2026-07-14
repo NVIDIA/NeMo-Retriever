@@ -651,6 +651,7 @@ serviceConfig:
     maxMemoryMb: null
     maxCpuCores: null
     gpuDevices: []
+    maxUploadBytes: 500000000
 
   # VectorDB pod configuration.  When enabled, a dedicated LanceDB pod
   # is deployed.  Workers POST embeddings to it; the gateway proxies
