@@ -333,7 +333,7 @@ def test_batch_tuning_to_node_overrides_scales_local_caption_on_multi_gpu() -> N
     assert overrides["_BatchEmbedActor"]["num_gpus"] == 0.5
 
 
-def test_batch_tuning_to_node_overrides_keeps_default_pdf_pipeline_within_cpu_budget() -> None:
+def test_batch_tuning_to_node_overrides_reserves_ray_headroom_for_default_pdf_pipeline() -> None:
     cluster = ClusterResources(
         total_resources=Resources(cpu_count=224, gpu_count=8),
         available_resources=Resources(cpu_count=224, gpu_count=8),
@@ -358,7 +358,7 @@ def test_batch_tuning_to_node_overrides_keeps_default_pdf_pipeline_within_cpu_bu
         )
     )
 
-    assert requested_cpu <= cluster.total_cpu_count()
+    assert cluster.total_cpu_count() - requested_cpu == 14
 
 
 def test_batch_tuning_to_node_overrides_honors_table_structure_tuning() -> None:

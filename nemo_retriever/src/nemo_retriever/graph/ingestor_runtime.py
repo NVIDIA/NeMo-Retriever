@@ -47,6 +47,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_STORE_WORKERS = 4
 DEFAULT_STORE_CPUS_PER_ACTOR = 0.1
+# Preserve one logical CPU in sixteen for Ray scheduling and actor-pool growth.
+PDF_PIPELINE_CPU_HEADROOM_FRACTION = 1 / 16
 
 
 def _batch_tuning(params: Any) -> Any:
@@ -342,8 +344,14 @@ def batch_tuning_to_node_overrides(
             # the content-reshape UDF before embedding. Caption adds its actor
             # and one additional UDF.
             fixed_cpu_overhead = 6 + (2 if caption_params is not None else 0)
+            # Keep part of the cluster free for Ray scheduling and actor-pool
+            # scale-up. The 224-CPU QA topology reserves 14 CPUs, matching the
+            # last known-good allocation without relying on a removed actor.
+            total_cpus = cluster_resources.total_cpu_count()
+            ray_cpu_headroom = max(1, int(total_cpus * PDF_PIPELINE_CPU_HEADROOM_FRACTION))
             non_pdf_cpu_overhead = (
                 fixed_cpu_overhead
+                + ray_cpu_headroom
                 + page_elements_concurrency * page_elements_cpus
                 + ocr_concurrency * ocr_cpus
                 + embed_concurrency * embed_cpus
@@ -351,7 +359,7 @@ def batch_tuning_to_node_overrides(
             )
             pdf_extract_tasks = min(
                 pdf_extract_tasks,
-                max(1, int((cluster_resources.total_cpu_count() - non_pdf_cpu_overhead) // pdf_extract_cpus)),
+                max(1, int((total_cpus - non_pdf_cpu_overhead) // pdf_extract_cpus)),
             )
 
         _set(PDFExtractionActor.__name__, "batch_size", pdf_bs)
