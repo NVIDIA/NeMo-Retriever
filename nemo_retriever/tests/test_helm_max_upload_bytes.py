@@ -37,8 +37,7 @@ def _render(*extra_args: str) -> dict:
     configmap = next(
         document
         for document in documents
-        if document.get("kind") == "ConfigMap"
-        and "retriever-service.yaml" in document.get("data", {})
+        if document.get("kind") == "ConfigMap" and "retriever-service.yaml" in document.get("data", {})
     )
     return yaml.safe_load(configmap["data"]["retriever-service.yaml"])
 
