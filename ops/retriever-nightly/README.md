@@ -3,12 +3,27 @@
 
 # Retriever Nightly Launcher
 
-This directory provides a manual launcher, a latest-main controller, and a
-portable systemd installer. They run the library and ViDoRe v3 benchmark suite
-through the portable harness interface. The manual launcher never changes Git
-state; the controller fetches and manages immutable detached worktrees; the
-installer renders a daily service for the current user and checkout. The tools
-do not distribute datasets.
+This directory provides a manual launcher and a latest-main controller. Both
+run the library and ViDoRe v3 benchmark suite through the portable harness
+interface. The manual launcher never changes Git state; the controller fetches
+and manages immutable detached worktrees. Neither tool installs a scheduler or
+distributes datasets.
+
+## One-Command Full Run
+
+Export the two supported secrets and invoke the launcher from a clean checkout:
+
+```bash
+export HF_TOKEN=...
+export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+./ops/retriever-nightly/run-nightly.sh
+```
+
+That foreground command runs all twelve benchmarks and posts one terminal
+Slack summary. `SLACK_WEBHOOK_URL` is optional; omit it to run without posting.
+The launcher writes artifacts outside the checkout and prints the terminal
+session directory. No `sudo`, systemd service, or configuration file is
+required.
 
 ## Manual Teammate Kickoff
 
@@ -31,8 +46,8 @@ The supported v1 host is a Linux NVIDIA workstation with:
 and the repository dependencies.
 
 Batch mode starts its models locally, so it needs no model-provider API keys.
-On a host with the standard `/datasets/nv-ingest` layout, `nightly.env` accepts
-only two secrets and one optional path override:
+On a host with the standard `/datasets/nv-ingest` layout, the environment or
+optional `nightly.env` accepts only two secrets and one optional path override:
 
 | Setting | Required | Purpose |
 | --- | --- | --- |
@@ -44,7 +59,9 @@ On hosts with a writable `/raid/$USER`, the launcher automatically keeps its
 private configuration, artifacts, and managed latest-main checkouts there.
 Other hosts use `$HOME`.
 
-Create the private configuration and populate `HF_TOKEN`:
+Direct exports are the smallest configuration interface. A private file is
+optional for operators who do not want to export the same values in every
+shell. To create it:
 
 ```bash
 if [[ -d /raid/$USER && -w /raid/$USER ]]; then
@@ -66,9 +83,10 @@ The checked-in `dataset_paths.datasets.yaml` already describes the standard
 and edit `nemo_retriever/harness/dataset_paths.example.yaml`, then set
 `RETRIEVER_DATASET_PATHS` in `nightly.env`.
 
-The launcher sources only the detected mode-`600` configuration; it does not
-discover a repository `.env` file. `RETRIEVER_CONFIG_FILE` remains an advanced
-override for deployments that deliberately store the file elsewhere.
+Both launchers source the detected file only when it exists; otherwise they use
+the current environment. An existing secrets file must be owned by the
+invoking user with mode `600`. The launchers do not discover a repository
+`.env` file. `RETRIEVER_CONFIG_FILE` remains an optional advanced path override.
 
 Verify the token and read one byte from one remote parquet object in every
 ViDoRe evaluation partition before starting GPU work:
@@ -136,10 +154,11 @@ changes are rejected so a result is attributable to the recorded commit.
 Ignored cache files do not make the checkout dirty; datasets, configuration,
 and artifacts remain outside the checkout.
 
-### Scheduled Latest-Main Selection
+### Latest-Main Selection
 
 Manual `run-nightly.sh` invocations deliberately run the current clean
-checkout. The scheduled service instead calls `run-latest-main.sh`, which:
+checkout. `run-latest-main.sh` is the corresponding one-command controller for
+a checkout where this feature is already present; it:
 
 1. fetches `main` from the `upstream` remote;
 2. resolves the fetched commit before doing any GPU work;
@@ -160,8 +179,8 @@ detected nightly root at `retriever-nightly-checkouts`; on `/raid` hosts this is
 worktrees are retained. Modified managed worktrees are never deleted
 automatically.
 
-The one-time deployment setup must provide an `upstream` remote. Scheduled
-users do not choose a branch or commit after that:
+The one-time checkout setup must provide an `upstream` remote. Operators do not
+choose a branch or commit after that:
 
 ```bash
 git remote get-url upstream >/dev/null 2>&1 || \
@@ -172,15 +191,20 @@ git remote get-url upstream >/dev/null 2>&1 || \
 The dry-run fetches and selects the latest commit but skips remote access and
 GPU execution. Use `run-latest-main.sh --check-vidore-access` to validate the
 selected latest-main commit and its machine credentials without starting a
-session.
+session. Once that selected main commit contains this launcher, the complete
+latest-main suite is also one command:
+
+```bash
+./ops/retriever-nightly/run-latest-main.sh
+```
 
 ### Slack Report
 
-To enable Slack for real runs, add the incoming-webhook URL to the same private
-mode-`600` `nightly.env` used for `HF_TOKEN`:
+To enable Slack for real runs, export the incoming-webhook URL or place it in
+the optional mode-`600` `nightly.env`:
 
 ```bash
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 ```
 
 The URL itself is the Slack switch. If it is unset or empty, real runs complete
@@ -246,62 +270,3 @@ dataset and VDB write complete while a child remains idle at high RSS, capture
 `run.log`, `status.json`, process RSS, and the Ray task summary. Retry only that
 runfile as a focused reproduction; do not classify the symptom as GPU OOM
 unless the GPU process or kernel logs show an actual allocation failure.
-
-## Portable System Service And Timer
-
-Manual kickoff does not install recurrence. Run the installer as the intended
-service user from a clean, reviewed controller checkout:
-
-```bash
-./ops/retriever-nightly/install-systemd.sh
-```
-
-The installer derives the service user, group, home directory, and absolute
-controller path; renders both units; installs them through `sudo`; and enables
-the timer. No checked-in username or checkout path is used. The launcher still
-selects writable `/raid/$USER` automatically for configuration, managed
-latest-main worktrees, the shared `uv` environment, and artifacts. Other hosts
-use the service user's home directory.
-
-The private `nightly.env` must already be owned by the service user with mode
-`600`. It must contain `HF_TOKEN`; a nonempty `SLACK_WEBHOOK_URL` enables one
-terminal Slack post for every real scheduled run. Before installing the timer,
-run `run-latest-main.sh --dry-run` and
-`run-latest-main.sh --check-vidore-access` as that user. The production service
-fetches `upstream/main` on every invocation and fails closed rather than running
-a stale commit.
-
-For pre-merge validation only, install a timer that discovers and fetches the
-current branch's configured tracking remote and branch:
-
-```bash
-./ops/retriever-nightly/install-systemd.sh --test-current-branch
-```
-
-This mode lets a second host exercise the draft branch through the real service
-and timer. After the PR merges, rerun the installer without
-`--test-current-branch`; that removes the test override and restores the
-production `upstream/main` selection. The timer starts the service every day at
-midnight in `America/New_York`. `Persistent=false` deliberately avoids an
-unscheduled catch-up run if the host was unavailable at midnight.
-
-Kick off one complete service run immediately after installation:
-
-```bash
-sudo systemctl start --no-block nrl-harness-batch-hf.service
-```
-
-Inspect the schedule and the most recent run:
-
-```bash
-systemctl list-timers nrl-harness-batch-hf.timer --all
-systemctl show nrl-harness-batch-hf.service \
-  -p Result -p ExecMainCode -p ExecMainStatus
-journalctl -u nrl-harness-batch-hf.service --since today --no-pager
-```
-
-Disable and remove the service and timer without changing completed artifacts:
-
-```bash
-./ops/retriever-nightly/install-systemd.sh --uninstall
-```

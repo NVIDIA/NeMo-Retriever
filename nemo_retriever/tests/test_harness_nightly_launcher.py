@@ -63,6 +63,9 @@ def nightly_launcher(tmp_path: Path):
                 "expected_warmup = os.environ.get('EXPECT_DEEP_GEMM_WARMUP')",
                 "if expected_warmup is not None and os.environ.get('VLLM_DEEP_GEMM_WARMUP') != expected_warmup:",
                 "    raise SystemExit(98)",
+                "expected_hf_token = os.environ.get('EXPECT_HF_TOKEN')",
+                "if expected_hf_token is not None and os.environ.get('HF_TOKEN') != expected_hf_token:",
+                "    raise SystemExit(95)",
                 "with Path(os.environ['FAKE_UV_CALLS']).open('a', encoding='utf-8') as stream:",
                 "    stream.write(json.dumps(args) + '\\n')",
                 "if 'run-files' in args:",
@@ -221,6 +224,23 @@ def test_configured_webhook_posts_terminal_session_to_slack(nightly_launcher, tm
     assert "post-slack" in post_invocation
     assert post_invocation[-1] == str(session_dir)
     assert (session_dir / ".slack_post_attempted").exists()
+
+
+def test_exported_secrets_post_without_config_file(nightly_launcher) -> None:
+    run, calls = nightly_launcher
+
+    result = run(
+        extra_env={
+            "HF_TOKEN": "exported-read-token",
+            "EXPECT_HF_TOKEN": "exported-read-token",
+            "SLACK_WEBHOOK_URL": SLACK_WEBHOOK_URL,
+        }
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert len(calls()) == 2
+    assert "run-files" in calls()[0]
+    assert "post-slack" in calls()[1]
 
 
 def test_missing_webhook_completes_without_slack(nightly_launcher) -> None:

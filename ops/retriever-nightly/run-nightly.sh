@@ -45,7 +45,7 @@ nightly_root="${RETRIEVER_NIGHTLY_ROOT:-$default_nightly_root}"
 readonly config_file="${RETRIEVER_CONFIG_FILE:-$nightly_root/.config/nemo-retriever/nightly/nightly.env}"
 if [[ -f "$config_file" ]]; then
     if [[ "$(stat -c '%a' "$config_file")" != "600" || "$(stat -c '%u' "$config_file")" != "$(id -u)" ]]; then
-        log "nightly configuration must be owned by the service user with mode 600"
+        log "nightly configuration must be owned by the invoking user with mode 600"
         exit "$EXIT_CONFIG"
     fi
     set -a

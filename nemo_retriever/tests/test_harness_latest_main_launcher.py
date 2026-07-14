@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import shutil
 import subprocess
 
 import pytest
@@ -13,7 +12,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LATEST_MAIN_LAUNCHER = REPO_ROOT / "ops" / "retriever-nightly" / "run-latest-main.sh"
-SYSTEMD_INSTALLER = REPO_ROOT / "ops" / "retriever-nightly" / "install-systemd.sh"
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/test/webhook/value"
 
 
 def _git(repository: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -49,6 +48,13 @@ def latest_main_fixture(tmp_path: Path):
                 'if [[ -n "${EXPECT_DEEP_GEMM_WARMUP+x}" && '
                 '"${VLLM_DEEP_GEMM_WARMUP:-}" != "$EXPECT_DEEP_GEMM_WARMUP" ]]; then',
                 "    exit 98",
+                "fi",
+                'if [[ -n "${EXPECT_HF_TOKEN+x}" && "${HF_TOKEN:-}" != "$EXPECT_HF_TOKEN" ]]; then',
+                "    exit 97",
+                "fi",
+                'if [[ -n "${EXPECT_SLACK_WEBHOOK_URL+x}" && '
+                '"${SLACK_WEBHOOK_URL:-}" != "$EXPECT_SLACK_WEBHOOK_URL" ]]; then',
+                "    exit 96",
                 "fi",
                 'checkout="$(git -C "$(dirname -- "$0")" rev-parse --show-toplevel)"',
                 'commit="$(git -C "$checkout" rev-parse HEAD)"',
@@ -147,6 +153,24 @@ def test_help_does_not_require_configuration_or_fetch(tmp_path: Path) -> None:
     assert "Fetch upstream/main" in result.stdout
 
 
+def test_scheduled_launcher_uses_exported_secrets_without_config_file(latest_main_fixture, tmp_path: Path) -> None:
+    run, calls, _source, _controller, _checkout_root, _initial_commit, latest_commit = latest_main_fixture
+
+    result = run(
+        "--dry-run",
+        extra_env={
+            "RETRIEVER_CONFIG_FILE": str(tmp_path / "missing-nightly.env"),
+            "HF_TOKEN": "exported-read-token",
+            "SLACK_WEBHOOK_URL": SLACK_WEBHOOK_URL,
+            "EXPECT_HF_TOKEN": "exported-read-token",
+            "EXPECT_SLACK_WEBHOOK_URL": SLACK_WEBHOOK_URL,
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert calls() == [(latest_commit, "--dry-run", str(_checkout_root / ".venv"))]
+
+
 @pytest.mark.parametrize("configured, expected", [(None, "skip"), ("full", "full")])
 def test_scheduled_run_has_safe_warmup_default_and_allows_override(
     latest_main_fixture, configured: str | None, expected: str
@@ -200,51 +224,3 @@ def test_scheduled_launcher_prunes_only_old_managed_worktrees(latest_main_fixtur
     assert result.returncode == 0, result.stderr
     assert not (checkout_root / f"main-{latest_commit}").exists()
     assert (checkout_root / f"main-{newer_commit}").is_dir()
-
-
-def test_systemd_installer_renders_portable_latest_main_service(tmp_path: Path) -> None:
-    result = subprocess.run(
-        [str(SYSTEMD_INSTALLER), "--render", str(tmp_path)],
-        cwd=REPO_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-    service = (tmp_path / "nrl-harness-batch-hf.service").read_text(encoding="utf-8")
-    timer = (tmp_path / "nrl-harness-batch-hf.timer").read_text(encoding="utf-8")
-    assert f"WorkingDirectory={REPO_ROOT}" in service
-    assert f'ExecStart=/usr/bin/bash "{LATEST_MAIN_LAUNCHER}"' in service
-    assert "User=" in service
-    assert "Group=" in service
-    assert "local-jioffe" not in service
-    assert "/localhome/" not in service
-    assert "OnCalendar=*-*-* 00:00:00 America/New_York" in timer
-    assert "Persistent=false" in timer
-
-
-def test_systemd_installer_can_schedule_current_tracking_branch_for_draft(tmp_path: Path) -> None:
-    controller = tmp_path / "controller with space"
-    nightly_ops = controller / "ops" / "retriever-nightly"
-    shutil.copytree(REPO_ROOT / "ops" / "retriever-nightly", nightly_ops)
-    subprocess.run(["git", "init", "-q", "-b", "review", str(controller)], check=True)
-    _git(controller, "config", "branch.review.remote", "fork")
-    _git(controller, "config", "branch.review.merge", "refs/heads/feature/nightly")
-    output_dir = tmp_path / "units"
-
-    result = subprocess.run(
-        [str(nightly_ops / "install-systemd.sh"), "--render", str(output_dir), "--test-current-branch"],
-        cwd=controller,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-    service = (output_dir / "nrl-harness-batch-hf.service").read_text(encoding="utf-8")
-    escaped_controller = str(controller).replace(" ", r"\x20")
-    assert 'Environment="RETRIEVER_LATEST_SOURCE=fork"' in service
-    assert 'Environment="RETRIEVER_LATEST_REF=feature/nightly"' in service
-    assert f"WorkingDirectory={escaped_controller}" in service
-    assert f'ExecStart=/usr/bin/bash "{controller}/ops/retriever-nightly/run-latest-main.sh"' in service

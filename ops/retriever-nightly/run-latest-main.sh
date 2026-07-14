@@ -77,19 +77,18 @@ main() {
     fi
     local nightly_root="${RETRIEVER_NIGHTLY_ROOT:-$default_nightly_root}"
     local config_file="${RETRIEVER_CONFIG_FILE:-$nightly_root/.config/nemo-retriever/nightly/nightly.env}"
-    if [[ ! -f "$config_file" ]]; then
-        log "nightly configuration is missing: $config_file"
-        return "$EXIT_CONFIG"
+    if [[ -f "$config_file" ]]; then
+        if [[ "$(stat -c '%a' "$config_file")" != "600" || \
+            "$(stat -c '%u' "$config_file")" != "$(id -u)" ]]; then
+            log "nightly configuration must be owned by the invoking user with mode 600"
+            return "$EXIT_CONFIG"
+        fi
+        set -a
+        # shellcheck disable=SC1090
+        source "$config_file"
+        set +a
     fi
-    if [[ "$(stat -c '%a' "$config_file")" != "600" || \
-        "$(stat -c '%u' "$config_file")" != "$(id -u)" ]]; then
-        log "nightly configuration must be owned by the service user with mode 600"
-        return "$EXIT_CONFIG"
-    fi
-    set -a
-    # shellcheck disable=SC1090
-    source "$config_file"
-    set +a
+    local slack_webhook_url="${SLACK_WEBHOOK_URL:-}"
     unset SLACK_WEBHOOK_URL
 
     nightly_root="${RETRIEVER_NIGHTLY_ROOT:-$nightly_root}"
@@ -188,7 +187,11 @@ main() {
         "$target_launcher" --check-vidore-access || run_rc=$?
     fi
     if ((run_rc == 0)); then
+        if [[ -n "$slack_webhook_url" ]]; then
+            export SLACK_WEBHOOK_URL="$slack_webhook_url"
+        fi
         "$target_launcher" "$@" || run_rc=$?
+        unset SLACK_WEBHOOK_URL
     else
         log "ViDoRe access preflight failed; skipping GPU work"
     fi
