@@ -190,6 +190,11 @@ def _validate_append_schema(table: Any, expected_schema: pa.Schema, *, table_nam
 
     existing_model = existing_metadata.embedding_model_name
     expected_model = expected_metadata.embedding_model_name
+    if existing_model and not expected_model:
+        raise ValueError(
+            f"LanceDB table {table_name!r} at {uri!r} was created with embedding model "
+            f"{existing_model!r}, but this append did not specify an embedding model."
+        )
     if existing_model and expected_model and existing_model != expected_model:
         raise ValueError(
             f"LanceDB table {table_name!r} at {uri!r} was created with embedding model "
