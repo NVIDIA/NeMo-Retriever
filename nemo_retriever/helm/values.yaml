@@ -267,7 +267,7 @@ topology:
     # Horizontal Pod Autoscaler — realtime
     # -------------------------------------------------------------------
     # The HPA combines three independent signals (any can be disabled):
-    #   • queueDepthRatio       — pool fill (0..1), via prometheus-adapter
+    #   • queueBacklog          — gateway backlog per replica
     #   • processingLatencyP95  — 95th-percentile pipeline duration (s)
     #   • cpu                   — utilization fallback, plain Resource metric
     #
@@ -286,12 +286,10 @@ topology:
       minReplicas: 1
       maxReplicas: 8
       metrics:
-        queueDepthRatio:
+        queueBacklog:
           enabled: true
-          # AverageValue across replicas — scale up when per-replica
-          # queue fill exceeds 0.5 (50%). Quantity strings are passed
-          # verbatim to the HPA; `500m` == 0.5 in k8s quantity notation.
-          target: "500m"
+          # AverageValue across replicas; one pod normally has 24 slots.
+          target: "24"
         processingLatencyP95:
           enabled: true
           # Seconds of per-item p95 latency that triggers scale-up.
@@ -354,9 +352,9 @@ topology:
       minReplicas: 1
       maxReplicas: 4
       metrics:
-        queueDepthRatio:
+        queueBacklog:
           enabled: true
-          target: "700m"   # 70% — batch runs hot by design
+          target: "48"
         processingLatencyP95:
           enabled: true
           targetSeconds: "120"
@@ -647,6 +645,14 @@ serviceConfig:
     batchWorkers: 48
     batchQueueSize: 8192
 
+  workQueue:
+    spoolDirectory: /tmp/nemo-retriever-work
+    spoolLimitBytes: 21474836480
+    claimTimeoutS: 30.0
+    leaseTtlS: 60.0
+    heartbeatIntervalS: 20.0
+    maxDeliveryAttempts: 3
+
   resources:
     maxMemoryMb: null
     maxCpuCores: null
@@ -803,7 +809,7 @@ autoscaling:
       # External-metrics API names exposed by the adapter for our two
       # PromQL queries. These are what the HPA `metric.name` field
       # references; the adapter ConfigMap's `name.as` field has to match.
-      queueDepthRatioMetric: "nemo_retriever_pool_queue_depth_ratio_avg"
+      queueBacklogMetric: "nemo_retriever_gateway_work_queue_backlog"
       processingLatencyP95Metric: "nemo_retriever_pool_processing_duration_p95_seconds"
       # When `rules.create` is true the chart renders a ConfigMap with
       # the PromQL rules below; the operator wires their existing

@@ -9,7 +9,7 @@ Split mode renders one HPA per stateless role (`realtime`, `batch`).
 Each HPA mixes up to three signals, gated by per-metric `enabled` flags
 on `topology.<role>.hpa.metrics`:
 
-  • queueDepthRatio       — External metric via prometheus-adapter
+  • queueBacklog          — gateway backlog External metric
   • processingLatencyP95  — External metric via prometheus-adapter
   • cpu                   — Resource metric (built-in)
 
@@ -69,7 +69,7 @@ spec:
 {{- $backend := .Values.autoscaling.queueDepth.backend | default "prometheus-adapter" }}
 {{- $promAdapter := and (eq $backend "prometheus-adapter") (hasKey .Values.autoscaling "queueDepth") }}
 {{- $adapterCfg := .Values.autoscaling.queueDepth.prometheusAdapter | default dict }}
-{{- $queueRatioMetric := $adapterCfg.queueDepthRatioMetric | default "nemo_retriever_pool_queue_depth_ratio_avg" }}
+{{- $queueBacklogMetric := $adapterCfg.queueBacklogMetric | default "nemo_retriever_gateway_work_queue_backlog" }}
 {{- $latencyMetric := $adapterCfg.processingLatencyP95Metric | default "nemo_retriever_pool_processing_duration_p95_seconds" }}
 {{- range $role := list "realtime" "batch" }}
 {{- $roleCfg := index $.Values.topology $role }}
@@ -81,7 +81,7 @@ spec:
 */ -}}
 {{- $metrics := $roleCfg.hpa.metrics | default dict }}
 {{- $cpuMetric := $metrics.cpu | default dict }}
-{{- $queueMetric := $metrics.queueDepthRatio | default dict }}
+{{- $queueMetric := $metrics.queueBacklog | default dict }}
 {{- $latencyMetricCfg := $metrics.processingLatencyP95 | default dict }}
 {{- /*
   Back-compat: when the legacy alias is set AND the new cpu block
@@ -134,13 +134,13 @@ spec:
     - type: External
       external:
         metric:
-          name: {{ $queueRatioMetric }}
+          name: {{ $queueBacklogMetric }}
           selector:
             matchLabels:
               pool: {{ $role }}
         target:
           type: AverageValue
-          averageValue: {{ $queueMetric.target | default "500m" | quote }}
+          averageValue: {{ $queueMetric.target | default "1" | quote }}
     {{- end }}
     {{- if and $promAdapter $latencyMetricCfg.enabled }}
     # 95th-percentile processing latency — catches GPU stalls and

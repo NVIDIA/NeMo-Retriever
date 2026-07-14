@@ -290,6 +290,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
             - name: NGC_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -353,7 +357,10 @@ spec:
           configMap:
             name: {{ include "nemo-retriever.role.configMapName" (dict "context" $ "role" $role) }}
         - name: tmp
-          emptyDir: {}
+          emptyDir:
+            {{- if eq $role "gateway" }}
+            sizeLimit: {{ div $.Values.serviceConfig.workQueue.spoolLimitBytes 1073741824 }}Gi
+            {{- end }}
         {{- if and $.Values.retrieverResults.enabled (eq $role "gateway") }}
         - name: retriever-results
           persistentVolumeClaim:

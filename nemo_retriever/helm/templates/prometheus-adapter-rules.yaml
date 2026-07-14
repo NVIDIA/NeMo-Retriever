@@ -21,11 +21,7 @@ adapter at this ConfigMap one of two ways:
 
 The PromQL is intentionally simple:
 
-  • queueDepthRatioMetric — gauge-divided-by-gauge, averaged by ``pool``.
-    Publisher emits the ratio directly too (``..._ratio``), but doing
-    the division here keeps the publisher dumb and lets operators swap
-    the denominator (e.g. a custom "effective capacity" gauge) without
-    redeploying the service.
+  • queueBacklogMetric — gateway-owned queued items, summed by ``pool``.
 
   • processingLatencyP95Metric — standard histogram_quantile() over
     a configurable window (autoscaling.queueDepth.prometheusAdapter.rules.latencyWindow,
@@ -36,7 +32,7 @@ The PromQL is intentionally simple:
 {{- $adapterCfg := .Values.autoscaling.queueDepth.prometheusAdapter | default dict }}
 {{- $rulesCfg := $adapterCfg.rules | default dict }}
 {{- if $rulesCfg.create | default true -}}
-{{- $queueRatioMetric := $adapterCfg.queueDepthRatioMetric | default "nemo_retriever_pool_queue_depth_ratio_avg" }}
+{{- $queueBacklogMetric := $adapterCfg.queueBacklogMetric | default "nemo_retriever_gateway_work_queue_backlog" }}
 {{- $latencyMetric := $adapterCfg.processingLatencyP95Metric | default "nemo_retriever_pool_processing_duration_p95_seconds" }}
 {{- $latencyWindow := $rulesCfg.latencyWindow | default "2m" }}
 apiVersion: v1
@@ -67,33 +63,17 @@ data:
     # ----------------------------------------------------------------
     externalRules:
       # ---------------------------------------------------------------
-      # Queue-depth ratio per pool, averaged across replicas.
-      #
-      # Why a ratio rather than raw depth? It normalises across
-      # `realtime_queue_size` vs `batch_queue_size` so the same HPA
-      # target ("scale up when >0.5") works for both pools and
-      # survives queue-size tuning.
-      #
-      # The publisher emits ``nemo_retriever_pool_queue_depth_ratio``
-      # *and* ``nemo_retriever_pool_queue_depth`` /
-      # ``nemo_retriever_pool_max_queue_size``. We compute the ratio
-      # here (rather than just averaging the publisher's ratio gauge)
-      # so the math lives in one place — if someone tweaks the
-      # denominator's meaning later, only the PromQL changes.
+      # Gateway backlog per pool. There is one authoritative publisher,
+      # independent of worker replica churn.
       # ---------------------------------------------------------------
-      - seriesQuery: 'nemo_retriever_pool_queue_depth{pool!=""}'
+      - seriesQuery: 'nemo_retriever_work_queue_items{pool!=""}'
         resources:
           template: <<.Resource>>
         name:
-          matches: "^nemo_retriever_pool_queue_depth$"
-          as: "{{ $queueRatioMetric }}"
+          matches: "^nemo_retriever_work_queue_items$"
+          as: "{{ $queueBacklogMetric }}"
         metricsQuery: |
-          avg by (pool) (
-            nemo_retriever_pool_queue_depth{<<.LabelMatchers>>}
-            /
-            on(pool, instance) group_left()
-            nemo_retriever_pool_max_queue_size{<<.LabelMatchers>>}
-          )
+          sum by (pool) (nemo_retriever_work_queue_items{<<.LabelMatchers>>})
 
       # ---------------------------------------------------------------
       # 95th-percentile processing latency per pool.

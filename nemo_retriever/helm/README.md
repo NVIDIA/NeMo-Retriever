@@ -847,10 +847,10 @@ while workers are still processing; see the commented example on
 ## Queue-depth autoscaling (split mode)
 
 In `topology.mode: split` deployments the realtime and batch worker
-pods scale horizontally based on **queue fill ratio** and
-**95th-percentile processing latency**. Both signals come straight out
-of the pods' `/metrics` endpoint — the publisher is always on (see
-`nemo_retriever_pool_queue_depth_ratio` in
+pods scale horizontally based on the gateway's **central work backlog** and
+**95th-percentile processing latency**. Backlog comes from the gateway while
+latency comes from workers; both publishers are always on (see
+`nemo_retriever_work_queue_items` in
 [`prometheus.py`](../src/nemo_retriever/service/services/prometheus.py)).
 The only choice you have to make is **how the metrics get from
 Prometheus into the Kubernetes HPA**.
@@ -1004,20 +1004,20 @@ topology:
   realtime:
     hpa:
       metrics:
-        queueDepthRatio: { enabled: true, target: "500m" }   # 0.5
+        queueBacklog: { enabled: true, target: "24" }
         processingLatencyP95: { enabled: true, targetSeconds: "30" }
   batch:
     hpa:
       metrics:
-        queueDepthRatio: { enabled: true, target: "700m" }   # 0.7 — batch can run hot
+        queueBacklog: { enabled: true, target: "48" }
         processingLatencyP95: { enabled: true, targetSeconds: "120" }
 ```
 
-Quantity-string conventions are k8s standard: `500m == 0.5`, `2`, `2k`,
-etc. The `target` is **per-replica** because the HPA template uses
-`type: AverageValue` for both External metrics — that's what makes
-"scale up when *average* queue fill across pods exceeds 0.5" work
-without baking the pod count into the publisher.
+The backlog `target` is documents per replica because the HPA uses
+`type: AverageValue`. When migrating an existing values file, rename
+`metrics.queueDepthRatio` to `metrics.queueBacklog`, choose a document-count
+target near the role's execution-slot count, and rename
+`prometheusAdapter.queueDepthRatioMetric` to `queueBacklogMetric`.
 
 ### Verifying it scales
 
