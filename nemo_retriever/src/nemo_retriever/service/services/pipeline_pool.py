@@ -33,10 +33,12 @@ from typing import Any, Callable, Mapping
 
 from pydantic import ConfigDict, Field
 
-from nemo_retriever.service.config import PipelinePoolConfig
+from nemo_retriever.service.config import AuthConfig, PipelinePoolConfig, WorkQueueConfig
 from nemo_retriever.common.schemas.base import RichModel
 from nemo_retriever.service.services.prometheus import (
     POOL_CALLBACK_BACKPRESSURE_TOTAL,
+    POOL_ACTIVE_SLOTS,
+    POOL_COMPLETED_CLAIMS,
     POOL_DEFERRED_CALLBACKS,
     POOL_MAX_QUEUE_SIZE,
     POOL_PROCESSED_TOTAL,
@@ -108,6 +110,10 @@ class WorkItem(RichModel):
     pipeline_spec: dict[str, Any] | None = None
     trace_context: dict[str, str] = Field(default_factory=dict)
     enqueued_at_monotonic_s: float | None = None
+    lease_id: str | None = None
+    lease_generation: int | None = None
+    delivery_attempt: int = 0
+    worker_uid: str | None = None
 
 
 async def _fire_gateway_callback(
@@ -120,6 +126,8 @@ async def _fire_gateway_callback(
     result_worker_ip: str | None = None,
     callback_headers: Mapping[str, str] | None = None,
     retry_after_cap_s: float = _CALLBACK_RETRY_DELAYS_S[-1],
+    lease_id: str | None = None,
+    lease_generation: int | None = None,
 ) -> _CallbackDeliveryOutcome:
     """POST a lightweight completion notification to the gateway pod.
 
@@ -138,6 +146,9 @@ async def _fire_gateway_callback(
         payload["error"] = error
     if result_worker_ip:
         payload["result_worker_ip"] = result_worker_ip
+    if lease_id is not None:
+        payload["lease_id"] = lease_id
+        payload["lease_generation"] = lease_generation
 
     try:
         async with httpx.AsyncClient(timeout=10.0, headers=dict(callback_headers or {})) as client:
@@ -198,11 +209,13 @@ class _Pool:
         num_workers: int,
         max_queue_size: int,
         work_fn: Callable[[WorkItem], Any] | None = None,
+        pull_client: Any | None = None,
     ) -> None:
         self._name = name
         self._num_workers = num_workers
         self._max_queue_size = max_queue_size
         self._work_fn = work_fn
+        self._pull_client = pull_client
         self._queue: asyncio.Queue[WorkItem | None] | None = None
         self._workers: list[asyncio.Task[None]] = []
         self._reporter_task: asyncio.Task[None] | None = None
@@ -240,7 +253,7 @@ class _Pool:
     def start(self) -> None:
         if self._running:
             return
-        self._queue = asyncio.Queue(maxsize=self._max_queue_size)
+        self._queue = None if self._pull_client is not None else asyncio.Queue(maxsize=self._max_queue_size)
         self._handoff_slots = asyncio.BoundedSemaphore(self._num_workers)
         self._running = True
         self._workers = [asyncio.create_task(self._worker_loop(i)) for i in range(self._num_workers)]
@@ -252,6 +265,7 @@ class _Pool:
         POOL_QUEUE_DEPTH.labels(pool=self._name).set(0)
         POOL_QUEUE_DEPTH_RATIO.labels(pool=self._name).set(0.0)
         POOL_DEFERRED_CALLBACKS.labels(pool=self._name).set(0)
+        POOL_ACTIVE_SLOTS.labels(pool=self._name).set(0)
 
         # Periodic gauge reporter — keeps the queue-depth series live so
         # HPA decisions don't lag behind reality between submissions. We
@@ -317,6 +331,7 @@ class _Pool:
         result_worker_ip: str | None = None,
         callback_headers: Mapping[str, str] | None = None,
         retain_results: bool = False,
+        work_item: WorkItem | None = None,
     ) -> None:
         """Continue callback delivery with bounded, backpressured concurrency."""
         if not self._running or item_id in self._handoff_tasks:
@@ -340,12 +355,25 @@ class _Pool:
                 result_worker_ip=result_worker_ip,
                 callback_headers=callback_headers,
                 retain_results=retain_results,
+                work_item=work_item,
             )
         )
+        lease_heartbeat_task: asyncio.Task[None] | None = None
+        if work_item is not None and self._pull_client is not None:
+
+            async def _keep_deferred_lease() -> None:
+                while True:
+                    await asyncio.sleep(self._pull_client.config.heartbeat_interval_s)
+                    if not await self._pull_client.heartbeat(work_item):
+                        return
+
+            lease_heartbeat_task = asyncio.create_task(_keep_deferred_lease())
         self._handoff_tasks[item_id] = task
         POOL_DEFERRED_CALLBACKS.labels(pool=self._name).inc()
 
         def _remove_finished(finished: asyncio.Task[None]) -> None:
+            if lease_heartbeat_task is not None:
+                lease_heartbeat_task.cancel()
             if self._handoff_tasks.get(item_id) is finished:
                 self._handoff_tasks.pop(item_id, None)
                 POOL_DEFERRED_CALLBACKS.labels(pool=self._name).dec()
@@ -369,6 +397,7 @@ class _Pool:
         result_worker_ip: str | None,
         callback_headers: Mapping[str, str] | None,
         retain_results: bool,
+        work_item: WorkItem | None,
     ) -> None:
         from nemo_retriever.service.services.worker_result_store import (
             discard_local_result_data,
@@ -391,8 +420,12 @@ class _Pool:
                 result_worker_ip=result_worker_ip,
                 callback_headers=callback_headers,
                 retry_after_cap_s=_CALLBACK_DEFERRED_MAX_DELAY_S,
+                lease_id=work_item.lease_id if work_item is not None else None,
+                lease_generation=work_item.lease_generation if work_item is not None else None,
             )
             if delivery_outcome == _CallbackDeliveryOutcome.ACKNOWLEDGED:
+                if work_item is not None:
+                    POOL_COMPLETED_CLAIMS.labels(pool=self._name).inc()
                 if retain_results:
                     discard_local_result_data(item_id)
                 logger.info("Deferred gateway callback succeeded for item %s", item_id)
@@ -422,15 +455,39 @@ class _Pool:
         from nemo_retriever.service import tracing
         from nemo_retriever.service.services.job_tracker import get_job_tracker
 
-        assert self._queue is not None
         duration_h = POOL_PROCESSING_DURATION.labels(pool=self._name)
         processed_ok = POOL_PROCESSED_TOTAL.labels(pool=self._name, outcome="completed")
         processed_err = POOL_PROCESSED_TOTAL.labels(pool=self._name, outcome="failed")
         while True:
-            item = await self._queue.get()
+            if self._pull_client is not None:
+                try:
+                    item = await self._pull_client.claim()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("Pool '%s' worker %d claim failed", self._name, worker_id)
+                    await asyncio.sleep(1.0)
+                    continue
+                if item is None:
+                    continue
+            else:
+                assert self._queue is not None
+                item = await self._queue.get()
             if item is None:
-                self._queue.task_done()
+                if self._queue is not None:
+                    self._queue.task_done()
                 return
+            heartbeat_task: asyncio.Task[None] | None = None
+            if item.lease_id is not None and self._pull_client is not None:
+                POOL_ACTIVE_SLOTS.labels(pool=self._name).inc()
+
+                async def _heartbeat_loop(claimed_item: WorkItem = item) -> None:
+                    while True:
+                        await asyncio.sleep(self._pull_client.config.heartbeat_interval_s)
+                        if not await self._pull_client.heartbeat(claimed_item):
+                            return
+
+                heartbeat_task = asyncio.create_task(_heartbeat_loop())
             ctx = _safe_extract_trace_context(item.trace_context, pool_name=self._name, item_id=item.id)
             with tracing.start_span(
                 f"pool.{self._name}.process",
@@ -439,6 +496,9 @@ class _Pool:
                     "pool": self._name,
                     "document.id": item.id,
                     "job.id": item.job_id or "",
+                    "worker.uid": item.worker_uid or "",
+                    "lease.generation": item.lease_generation or 0,
+                    "delivery.attempt": item.delivery_attempt,
                 },
             ) as span:
                 if item.enqueued_at_monotonic_s is not None and hasattr(span, "set_attribute"):
@@ -485,8 +545,12 @@ class _Pool:
                             result_rows=result_rows,
                             result_worker_ip=(os.environ.get("POD_IP") if retain_results and result_rows > 0 else None),
                             callback_headers=item.callback_headers,
+                            lease_id=item.lease_id,
+                            lease_generation=item.lease_generation,
                         )
                         if callback_outcome == _CallbackDeliveryOutcome.ACKNOWLEDGED:
+                            if item.lease_id is not None:
+                                POOL_COMPLETED_CLAIMS.labels(pool=self._name).inc()
                             if retain_results:
                                 from nemo_retriever.service.services.worker_result_store import (
                                     discard_local_result_data,
@@ -504,6 +568,7 @@ class _Pool:
                                 ),
                                 callback_headers=item.callback_headers,
                                 retain_results=retain_results,
+                                work_item=item,
                             )
                     elif tracker is not None:
                         tracker.mark_completed(
@@ -522,6 +587,8 @@ class _Pool:
                             "failed",
                             error=error,
                             callback_headers=item.callback_headers,
+                            lease_id=item.lease_id,
+                            lease_generation=item.lease_generation,
                         )
                         if callback_outcome == _CallbackDeliveryOutcome.RETRYABLE:
                             await self._schedule_gateway_callback_retry(
@@ -530,6 +597,7 @@ class _Pool:
                                 status="failed",
                                 error=error,
                                 callback_headers=item.callback_headers,
+                                work_item=item,
                             )
                     else:
                         tracker = get_job_tracker()
@@ -550,7 +618,12 @@ class _Pool:
                         processed_ok.inc()
                     else:
                         processed_err.inc()
-                    self._queue.task_done()
+                    if heartbeat_task is not None:
+                        heartbeat_task.cancel()
+                        await asyncio.gather(heartbeat_task, return_exceptions=True)
+                        POOL_ACTIVE_SLOTS.labels(pool=self._name).dec()
+                    if self._queue is not None:
+                        self._queue.task_done()
 
     async def submit(self, item: WorkItem) -> bool:
         """Enqueue a work item.  Returns ``False`` if the queue is full."""
@@ -616,6 +689,8 @@ class _Pool:
         self._workers.clear()
         self._queue = None
         self._handoff_slots = None
+        if self._pull_client is not None:
+            await self._pull_client.close()
         # Reset depth gauges so a terminating pod doesn't keep its last
         # high-water mark live on the scraper. We deliberately leave the
         # *configuration* gauges (max_queue_size, workers) untouched —
@@ -653,11 +728,24 @@ class PipelinePool:
         mode: str = "standalone",
         realtime_work_fn: Callable[[WorkItem], Any] | None = None,
         batch_work_fn: Callable[[WorkItem], Any] | None = None,
+        work_queue_config: WorkQueueConfig | None = None,
+        auth_config: AuthConfig | None = None,
     ) -> None:
         self._config = config
         self._mode = mode
         self._realtime: _Pool | None = None
         self._batch: _Pool | None = None
+
+        pull_client = None
+        if mode in ("realtime", "batch") and work_queue_config is not None:
+            from nemo_retriever.service.auth import auth_headers
+            from nemo_retriever.service.services.work_queue import GatewayWorkClient
+
+            pull_client = GatewayWorkClient(
+                work_queue_config,
+                pool=PoolType(mode),
+                headers=auth_headers(auth_config or AuthConfig()),
+            )
 
         if mode in ("standalone", "realtime"):
             self._realtime = _Pool(
@@ -665,6 +753,7 @@ class PipelinePool:
                 num_workers=config.realtime_workers,
                 max_queue_size=config.realtime_queue_size,
                 work_fn=realtime_work_fn,
+                pull_client=pull_client,
             )
         if mode in ("standalone", "batch"):
             self._batch = _Pool(
@@ -672,6 +761,7 @@ class PipelinePool:
                 num_workers=config.batch_workers,
                 max_queue_size=config.batch_queue_size,
                 work_fn=batch_work_fn,
+                pull_client=pull_client,
             )
 
     @property
@@ -727,6 +817,8 @@ def init_pipeline_pool(
     mode: str = "standalone",
     realtime_work_fn: Callable[[WorkItem], Any] | None = None,
     batch_work_fn: Callable[[WorkItem], Any] | None = None,
+    work_queue_config: WorkQueueConfig | None = None,
+    auth_config: AuthConfig | None = None,
 ) -> PipelinePool:
     """Create and start the global pipeline pool (call once at startup).
 
@@ -743,6 +835,8 @@ def init_pipeline_pool(
         mode=mode,
         realtime_work_fn=realtime_work_fn,
         batch_work_fn=batch_work_fn,
+        work_queue_config=work_queue_config,
+        auth_config=auth_config,
     )
     pool.start()
     _instance = pool
