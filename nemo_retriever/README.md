@@ -314,9 +314,17 @@ Agentic retrieval runs an LLM-driven ReAct loop over an existing LanceDB index.
 It does not ingest documents. Build the index with one of the ingestion flows
 above, then query the same `lancedb_uri`, `table_name`, and embedding model.
 
-For [build.nvidia.com](https://build.nvidia.com/) hosted inference, set
-`NVIDIA_API_KEY`. On CPU-only machines, the CPU embedding actor and agent LLM
-use the hosted NVIDIA endpoints by default:
+The agent LLM supports hosted NVIDIA inference or a local OpenAI-compatible
+chat-completions endpoint. Pass `--agentic-invoke-url` for a local vLLM or
+self-hosted NIM server; when omitted, the agent uses the built-in NVIDIA hosted
+endpoint. Embedding follows the same local/remote split as dense retrieval:
+CPU-only hosts default to hosted endpoints; GPU-capable hosts use local GPU
+embedding unless you pass `--embed-invoke-url`, for example
+`--embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings`.
+
+**Hosted inference.** For [build.nvidia.com](https://build.nvidia.com/) hosted
+inference, set `NVIDIA_API_KEY`. On CPU-only machines, the CPU embedding actor
+and agent LLM use the hosted NVIDIA endpoints by default:
 
 ```bash
 export NVIDIA_API_KEY=nvapi-...
@@ -329,11 +337,21 @@ retriever query "Given their activities, which animal is responsible for the typ
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
 ```
 
-When `--agentic-invoke-url` is omitted, the agent LLM uses the built-in NVIDIA
-hosted chat-completions endpoint. Embedding follows the same local/remote split
-as dense retrieval: CPU-only hosts default to hosted endpoints; GPU-capable
-hosts use local GPU embedding unless you pass `--embed-invoke-url`, for example
-`--embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings`.
+**Local agent LLM.** Point `--agentic-invoke-url` at your OpenAI-compatible
+chat-completions server (for example vLLM or a self-hosted NIM):
+
+```bash
+retriever query "What is RAG?" \
+  --agentic \
+  --agentic-llm-model nvidia/llama-3.3-nemotron-super-49b-v1.5 \
+  --agentic-invoke-url http://localhost:9000/v1/chat/completions \
+  --lancedb-uri lancedb \
+  --table-name nemo-retriever \
+  --embed-model-name nvidia/llama-nemotron-embed-1b-v2
+```
+
+Native local Hugging Face LLM inference for the agent is in active development;
+this README will be updated when that path ships.
 
 Unlike dense retrieval, agentic mode returns ranked document IDs as JSON, not
 text-enriched hits.
@@ -352,8 +370,9 @@ retriever query "What is RAG?" \
   --agentic-backend-top-k 1
 ```
 
-You can run the same flow from Python with the same `NVIDIA_API_KEY`
-environment variable for hosted embedding and chat-completions requests.
+You can run the same flow from Python. Set `NVIDIA_API_KEY` for hosted inference,
+or pass `invoke_url` on `QueryAgenticOptions` for a local chat-completions
+endpoint.
 
 ```python
 from nemo_retriever.cli.query_workflow import agentic_query_documents
@@ -365,7 +384,8 @@ from nemo_retriever.query.options import (
     QueryStorageOptions,
 )
 
-# Requires NVIDIA_API_KEY=nvapi-... in the environment.
+# Hosted: set NVIDIA_API_KEY=nvapi-... in the environment.
+# Local agent LLM: pass invoke_url="http://localhost:9000/v1/chat/completions".
 results = agentic_query_documents(
     QueryRequest(
         query="What is RAG?",
