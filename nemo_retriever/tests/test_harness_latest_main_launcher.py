@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 
 import pytest
@@ -12,6 +13,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LATEST_MAIN_LAUNCHER = REPO_ROOT / "ops" / "retriever-nightly" / "run-latest-main.sh"
+SYSTEMD_INSTALLER = REPO_ROOT / "ops" / "retriever-nightly" / "install-systemd.sh"
 
 
 def _git(repository: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -200,10 +202,49 @@ def test_scheduled_launcher_prunes_only_old_managed_worktrees(latest_main_fixtur
     assert (checkout_root / f"main-{newer_commit}").is_dir()
 
 
-def test_systemd_service_uses_latest_main_controller() -> None:
-    service = (REPO_ROOT / "ops" / "retriever-nightly" / "systemd" / "nrl-harness-batch-hf.service").read_text(
-        encoding="utf-8"
+def test_systemd_installer_renders_portable_latest_main_service(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [str(SYSTEMD_INSTALLER), "--render", str(tmp_path)],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
     )
 
-    assert "ExecStart=" in service
-    assert "/run-latest-main.sh" in service
+    assert result.returncode == 0, result.stderr
+    service = (tmp_path / "nrl-harness-batch-hf.service").read_text(encoding="utf-8")
+    timer = (tmp_path / "nrl-harness-batch-hf.timer").read_text(encoding="utf-8")
+    assert f"WorkingDirectory={REPO_ROOT}" in service
+    assert f'ExecStart=/usr/bin/bash "{LATEST_MAIN_LAUNCHER}"' in service
+    assert "User=" in service
+    assert "Group=" in service
+    assert "local-jioffe" not in service
+    assert "/localhome/" not in service
+    assert "OnCalendar=*-*-* 00:00:00 America/New_York" in timer
+    assert "Persistent=false" in timer
+
+
+def test_systemd_installer_can_schedule_current_tracking_branch_for_draft(tmp_path: Path) -> None:
+    controller = tmp_path / "controller with space"
+    nightly_ops = controller / "ops" / "retriever-nightly"
+    shutil.copytree(REPO_ROOT / "ops" / "retriever-nightly", nightly_ops)
+    subprocess.run(["git", "init", "-q", "-b", "review", str(controller)], check=True)
+    _git(controller, "config", "branch.review.remote", "fork")
+    _git(controller, "config", "branch.review.merge", "refs/heads/feature/nightly")
+    output_dir = tmp_path / "units"
+
+    result = subprocess.run(
+        [str(nightly_ops / "install-systemd.sh"), "--render", str(output_dir), "--test-current-branch"],
+        cwd=controller,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    service = (output_dir / "nrl-harness-batch-hf.service").read_text(encoding="utf-8")
+    escaped_controller = str(controller).replace(" ", r"\x20")
+    assert 'Environment="RETRIEVER_LATEST_SOURCE=fork"' in service
+    assert 'Environment="RETRIEVER_LATEST_REF=feature/nightly"' in service
+    assert f"WorkingDirectory={escaped_controller}" in service
+    assert f'ExecStart=/usr/bin/bash "{controller}/ops/retriever-nightly/run-latest-main.sh"' in service

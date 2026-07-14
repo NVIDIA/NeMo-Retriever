@@ -5,8 +5,9 @@
 
 Use this checklist on a separate Linux NVIDIA workstation before handing the
 launcher to additional teammates. The review uses the pushed feature branch,
-keeps datasets and artifacts outside the repository, and does not install a
-timer or post to Slack.
+keeps datasets and artifacts outside the repository, validates the functional
+path before installing recurrence, and finishes with one complete service run
+and terminal Slack post.
 
 ## 1. Create a Local Review Branch
 
@@ -41,7 +42,8 @@ nvidia-smi
 
 This host has the standard `/datasets/nv-ingest` layout and `/raid/$USER`, so
 the checked-in dataset map and launcher path defaults apply. Create one private
-configuration file and populate `HF_TOKEN`. A read token is sufficient:
+configuration file and populate `HF_TOKEN` and `SLACK_WEBHOOK_URL`. A read
+Hugging Face token is sufficient:
 
 ```bash
 RETRIEVER_NIGHTLY_CONFIG_DIR="/raid/$USER/.config/nemo-retriever/nightly"
@@ -105,35 +107,34 @@ For the dry-run and JP20 sessions, record:
 - any failed child name and its artifact directory; and
 - the GPU model and driver from `nvidia-smi`.
 
-The pre-handoff validation is complete when the ViDoRe access check, twelve-run
+The functional validation is complete when the ViDoRe access check, twelve-run
 dry-run, and real JP20 canary succeed with terminal summaries attributed to the
-review branch commit. A second full suite is not required before handoff. Do
-not enable the timer or post to Slack as part of this functional review.
+review branch commit. These steps do not post to Slack.
 
-## 7. Validate Latest-Main Selection After Merge
+## 7. Install the Portable Daily Timer
 
-Do not use the latest-main controller while validating the feature branch; its
-purpose is to select `upstream/main`. After the PR merges, validate the
-scheduled selection path without GPU work:
+Install the root-managed service and daily timer for the current service user,
+absolute controller checkout, and current branch's tracked remote branch:
 
 ```bash
-git remote get-url upstream
-./ops/retriever-nightly/run-latest-main.sh --dry-run
+./ops/retriever-nightly/install-systemd.sh --test-current-branch
+systemctl list-timers nrl-harness-batch-hf.timer --all
+systemctl cat nrl-harness-batch-hf.service
 ```
 
-Confirm that the printed selected SHA matches
-`git rev-parse refs/retriever-nightly/latest-main`, the controller checkout did
-not move, and the dry-run summary has that SHA as `run_commit`. The installed
-systemd service uses this controller automatically, so scheduled users do not
-fetch or select a commit themselves.
+The rendered service must name the current user and checkout, not a checked-in
+host identity. Test mode embeds the tracking remote and branch in the service,
+so the scheduled controller exercises the unmerged PR instead of selecting an
+older `upstream/main`. The timer runs daily at midnight in
+`America/New_York`; it does not run immediately when enabled.
 
-## 8. Run the Lead's First Complete Nightly
+## 8. Start the Complete Nightly and Slack Report
 
-After the latest-main dry-run succeeds, run the controller without positional
-runfiles or `--no-slack`:
+Start the installed service once without waiting for the next timer event:
 
 ```bash
-./ops/retriever-nightly/run-latest-main.sh
+sudo systemctl start --no-block nrl-harness-batch-hf.service
+journalctl -fu nrl-harness-batch-hf.service
 ```
 
 The controller checks ViDoRe access, then runs the four library benchmarks and
@@ -141,4 +142,24 @@ all eight ViDoRe v3 domains. Each child runs in a fresh process; failures do not
 prevent later children from running, and the parent writes one terminal
 `session_summary.json`. If `SLACK_WEBHOOK_URL` is configured, that terminal
 summary posts once. Confirm the full `run_commit`, twelve child results, final
-exit code, and Slack message before enabling the timer described in `README.md`.
+service exit status, and Slack message. The already-enabled timer will launch
+the next run at the following scheduled midnight.
+
+## 9. Switch the Timer to Production After Merge
+
+After the PR merges, validate production latest-main selection and reinstall
+without the test override:
+
+```bash
+git remote get-url upstream
+./ops/retriever-nightly/run-latest-main.sh --dry-run
+./ops/retriever-nightly/install-systemd.sh
+systemctl cat nrl-harness-batch-hf.service
+```
+
+Confirm that the selected SHA matches
+`git rev-parse refs/retriever-nightly/latest-main`, the summary records that SHA
+as `run_commit`, and the reinstalled service no longer contains
+`RETRIEVER_LATEST_SOURCE` or `RETRIEVER_LATEST_REF`. Future timer events now
+fetch and run the latest `upstream/main` automatically. A second complete suite
+is not required solely to make this production switch.

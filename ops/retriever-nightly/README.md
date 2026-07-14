@@ -3,11 +3,12 @@
 
 # Retriever Nightly Launcher
 
-This directory provides a manual launcher and a latest-main controller for the
-existing systemd deployment. Both run the library and ViDoRe v3 benchmark suite
+This directory provides a manual launcher, a latest-main controller, and a
+portable systemd installer. They run the library and ViDoRe v3 benchmark suite
 through the portable harness interface. The manual launcher never changes Git
-state; the controller fetches and manages immutable detached worktrees. Neither
-installs a scheduler or distributes datasets.
+state; the controller fetches and manages immutable detached worktrees; the
+installer renders a daily service for the current user and checkout. The tools
+do not distribute datasets.
 
 ## Manual Teammate Kickoff
 
@@ -246,49 +247,48 @@ dataset and VDB write complete while a child remains idle at high RSS, capture
 runfile as a focused reproduction; do not classify the symptom as GPU OOM
 unless the GPU process or kernel logs show an actual allocation failure.
 
-## System Service And Timer
+## Portable System Service And Timer
 
-Manual kickoff does not install recurrence. The existing root-managed service
-is a separate adapter for one deployment host. For its `local-jioffe` service
-user, the detected nightly root is `/raid/local-jioffe` when that directory is
-writable and `/localhome/local-jioffe` otherwise. Its layout is:
-
-- clean deployment worktree:
-  `/localhome/local-jioffe/NeMo-Retriever-deploy/nightly` (the reviewed,
-  pinned controller checkout);
-- immutable latest-main worktrees and shared `uv` environment:
-  `<nightly-root>/retriever-nightly-checkouts`;
-- machine configuration:
-  `<nightly-root>/.config/nemo-retriever/nightly/nightly.env`;
-- full local artifacts:
-  `<nightly-root>/retriever-nightly-artifacts`.
-
-The configuration file must be owned by `local-jioffe` with mode `600`. It must
-contain `HF_TOKEN`; an optional nonempty `SLACK_WEBHOOK_URL` enables Slack for
-real scheduled runs. Before enabling the timer, run
-`run-latest-main.sh --dry-run` and
-`run-latest-main.sh --check-vidore-access` as the service user with the same
-`HOME` and configuration file used by systemd. Use `--no-slack` on any real
-deployment canary that must not post. The reviewed controller checkout remains
-pinned; each scheduled invocation independently selects the latest fetched
-`upstream/main` commit.
-
-The root-managed service runs as `local-jioffe`. The timer starts it every day
-at midnight in `America/New_York`, preserving local midnight across EDT and EST
-changes. `Persistent=false` deliberately avoids an unscheduled catch-up run if
-the host was unavailable at midnight.
-
-Install or refresh the units from the deployment checkout:
+Manual kickoff does not install recurrence. Run the installer as the intended
+service user from a clean, reviewed controller checkout:
 
 ```bash
-sudo install -m 0644 \
-  ops/retriever-nightly/systemd/nrl-harness-batch-hf.service \
-  /etc/systemd/system/nrl-harness-batch-hf.service
-sudo install -m 0644 \
-  ops/retriever-nightly/systemd/nrl-harness-batch-hf.timer \
-  /etc/systemd/system/nrl-harness-batch-hf.timer
-sudo systemctl daemon-reload
-sudo systemctl enable --now nrl-harness-batch-hf.timer
+./ops/retriever-nightly/install-systemd.sh
+```
+
+The installer derives the service user, group, home directory, and absolute
+controller path; renders both units; installs them through `sudo`; and enables
+the timer. No checked-in username or checkout path is used. The launcher still
+selects writable `/raid/$USER` automatically for configuration, managed
+latest-main worktrees, the shared `uv` environment, and artifacts. Other hosts
+use the service user's home directory.
+
+The private `nightly.env` must already be owned by the service user with mode
+`600`. It must contain `HF_TOKEN`; a nonempty `SLACK_WEBHOOK_URL` enables one
+terminal Slack post for every real scheduled run. Before installing the timer,
+run `run-latest-main.sh --dry-run` and
+`run-latest-main.sh --check-vidore-access` as that user. The production service
+fetches `upstream/main` on every invocation and fails closed rather than running
+a stale commit.
+
+For pre-merge validation only, install a timer that discovers and fetches the
+current branch's configured tracking remote and branch:
+
+```bash
+./ops/retriever-nightly/install-systemd.sh --test-current-branch
+```
+
+This mode lets a second host exercise the draft branch through the real service
+and timer. After the PR merges, rerun the installer without
+`--test-current-branch`; that removes the test override and restores the
+production `upstream/main` selection. The timer starts the service every day at
+midnight in `America/New_York`. `Persistent=false` deliberately avoids an
+unscheduled catch-up run if the host was unavailable at midnight.
+
+Kick off one complete service run immediately after installation:
+
+```bash
+sudo systemctl start --no-block nrl-harness-batch-hf.service
 ```
 
 Inspect the schedule and the most recent run:
@@ -300,8 +300,8 @@ systemctl show nrl-harness-batch-hf.service \
 journalctl -u nrl-harness-batch-hf.service --since today --no-pager
 ```
 
-Disable future recurrence without changing completed artifacts:
+Disable and remove the service and timer without changing completed artifacts:
 
 ```bash
-sudo systemctl disable --now nrl-harness-batch-hf.timer
+./ops/retriever-nightly/install-systemd.sh --uninstall
 ```
