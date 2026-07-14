@@ -79,6 +79,48 @@ def test_load_config_vectordb_retrieval_mode(tmp_path) -> None:
     assert cfg.vectordb.retrieval_mode == "hybrid"
 
 
+def test_service_start_vectordb_retrieval_mode_cli_override(tmp_path, monkeypatch) -> None:
+    from typer.testing import CliRunner
+
+    from nemo_retriever.service.cli import app as service_cli_app
+
+    config_path = tmp_path / "retriever-service.yaml"
+    config_path.write_text("mode: standalone\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def _fake_create_app(config):
+        captured["config"] = config
+        return object()
+
+    monkeypatch.setattr("nemo_retriever.service.app.create_app", _fake_create_app)
+    monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: None)
+
+    result = CliRunner().invoke(
+        service_cli_app,
+        ["start", "--config", str(config_path), "--vectordb-retrieval-mode", "auto"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["config"].vectordb.retrieval_mode == "auto"
+
+
+def test_service_start_rejects_invalid_vectordb_retrieval_mode(tmp_path) -> None:
+    from typer.testing import CliRunner
+
+    from nemo_retriever.service.cli import app as service_cli_app
+
+    config_path = tmp_path / "retriever-service.yaml"
+    config_path.write_text("mode: standalone\n", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        service_cli_app,
+        ["start", "--config", str(config_path), "--vectordb-retrieval-mode", "sparse"],
+    )
+
+    assert result.exit_code != 0
+    assert "sparse" in result.output.lower() or "sparse" in str(result.exception).lower()
+
+
 def test_vector_db_config_default_retrieval_mode() -> None:
     assert VectorDbConfig().retrieval_mode == "dense"
 
@@ -86,6 +128,39 @@ def test_vector_db_config_default_retrieval_mode() -> None:
 def test_strategies_for_retrieval_mode() -> None:
     assert _strategies_for_retrieval_mode("dense") == ["dense"]
     assert _strategies_for_retrieval_mode("hybrid") == ["hybrid"]
+
+
+def test_table_present_on_disk_uses_list_tables(tmp_path) -> None:
+    state = VectorDBState(
+        lancedb_uri=str(tmp_path),
+        table_name="nemo_retriever",
+        embed_endpoint="http://embed.example/v1/embeddings",
+        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
+        embed_api_key="",
+        retrieval_mode="dense",
+    )
+    assert state._table_present_on_disk() is False
+
+    state.write_rows(
+        [
+            {
+                "vector": [1.0, 0.0, 0.0, 0.0],
+                "text": "seed",
+                "pdf_page": "p1",
+                "filename": "f.pdf",
+                "pdf_basename": "f.pdf",
+                "page_number": 1,
+                "source": "f.pdf",
+                "source_id": "f.pdf",
+                "path": "/f.pdf",
+                "metadata": "{}",
+                "stored_image_uri": "",
+                "content_type": "text",
+                "bbox_xyxy_norm": "",
+            }
+        ]
+    )
+    assert state._table_present_on_disk() is True
 
 
 def test_tensor_to_embedding_rows_handles_batch() -> None:

@@ -149,14 +149,20 @@ class VectorDBState:
         self._local_embedder: Any | None = None
         self._db = lancedb.connect(uri=lancedb_uri)
         self._table_exists = False
-        try:
+        if self.table_name in self._db.list_tables().tables:
             self._db.open_table(table_name)
             self._table_exists = True
             logger.info("Opened existing LanceDB table '%s' at %s", table_name, lancedb_uri)
-        except Exception:
+        else:
             logger.info("LanceDB table '%s' does not exist yet at %s", table_name, lancedb_uri)
 
-        # Build the FTS index for a pre-existing table when hybrid is configured.
+        # Build the FTS index for a pre-existing table only when hybrid is
+        # explicitly configured: hybrid promises vector + FTS, so we make good
+        # on that promise even for a table this process did not create. `auto`
+        # is intentionally excluded here — it performs non-destructive detection
+        # of an existing table and must not mutate one it did not just write
+        # (a caller who wants FTS built should configure hybrid, or ingest under
+        # auto, which builds it on write; see `write_rows`/`_ensure_hybrid_indexes`).
         # Kept outside the open-table probe above so a build failure fails fast
         # at startup instead of being silently swallowed and leaving the service
         # advertising hybrid while queries return HTTP 422.
@@ -189,12 +195,12 @@ class VectorDBState:
         published after the FTS index is built. This probe reflects raw on-disk
         presence so ``write_rows`` never overwrites rows that were persisted by
         an earlier write whose FTS build failed before the flag was set.
+
+        Uses ``list_tables()`` rather than interpreting ``open_table`` errors so
+        a transient I/O failure cannot be misread as "table absent" and route
+        execution into the destructive ``overwrite=True`` create path.
         """
-        try:
-            self._db.open_table(self.table_name)
-            return True
-        except Exception:
-            return False
+        return self.table_name in self._db.list_tables().tables
 
     def resolve_effective_retrieval_mode(self, caps=None) -> LanceRetrievalMode:
         """Resolve the configured retrieval mode against table capabilities.
@@ -244,6 +250,13 @@ class VectorDBState:
         ``self._table_exists`` so it can run against a freshly created table
         before that flag is published to concurrent readers.
 
+        This builds FTS for both ``hybrid`` and ``auto`` (only ``dense`` is
+        skipped). Under ``auto`` this is intentional at *write* time: the
+        service owns the rows it ingests, so it makes them hybrid-capable and
+        lets ``resolve_effective_retrieval_mode`` upgrade queries to hybrid.
+        Detection over a *pre-existing* table stays non-destructive — see the
+        startup path in ``__init__``, which only builds FTS for explicit hybrid.
+
         LanceDB keeps freshly appended rows outside the persisted FTS/vector
         indexes and flat-scans them at query time, so BM25/FTS results remain
         correct after an append even without touching the index. Query latency
@@ -257,6 +270,12 @@ class VectorDBState:
         table = self._db.open_table(self.table_name)
         caps = inspect_lancedb_table_object(table)
         if not caps.has_vector:
+            logger.warning(
+                "Skipping FTS index build for LanceDB table '%s' at %s: no vector column detected, "
+                "so the table cannot support hybrid retrieval.",
+                self.table_name,
+                self.lancedb_uri,
+            )
             return
 
         if caps.has_fts:
@@ -349,7 +368,21 @@ class VectorDBState:
             else:
                 table = self._db.open_table(self.table_name)
                 table.add(rows)
-                self._ensure_hybrid_indexes(refresh_after_append=True)
+                # The rows are durable on disk after ``add``. Refresh the index
+                # so hybrid stays fast; mirror the create branch by logging a
+                # refresh failure clearly before propagating it.
+                try:
+                    self._ensure_hybrid_indexes(refresh_after_append=True)
+                except Exception:
+                    logger.exception(
+                        "Index refresh failed after appending %d rows to LanceDB table '%s' at %s; "
+                        "the rows are persisted and remain searchable, but index maintenance did "
+                        "not complete — retry the write to re-run it.",
+                        len(rows),
+                        self.table_name,
+                        self.lancedb_uri,
+                    )
+                    raise
                 # Publish readiness: covers recovery of a table that exists on
                 # disk from a prior write whose FTS build had failed.
                 self._table_exists = True
@@ -364,6 +397,12 @@ class VectorDBState:
             table = self._db.open_table(self.table_name)
             return table.count_rows()
         except Exception:
+            logger.warning(
+                "Failed to count rows in LanceDB table '%s' at %s; reporting 0 to health",
+                self.table_name,
+                self.lancedb_uri,
+                exc_info=True,
+            )
             return 0
 
     def search(

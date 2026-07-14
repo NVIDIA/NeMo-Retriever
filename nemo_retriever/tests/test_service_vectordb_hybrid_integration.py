@@ -84,6 +84,31 @@ def test_fts_build_failure_on_create_preserves_rows_on_retry(tmp_path) -> None:
 
 
 @pytest.mark.integration
+def test_unexpected_probe_error_does_not_trigger_overwrite(tmp_path) -> None:
+    state = VectorDBState(
+        lancedb_uri=str(tmp_path),
+        table_name="nemo_retriever",
+        embed_endpoint="http://embed.example/v1/embeddings",
+        embed_model="nvidia/llama-nemotron-embed-vl-1b-v2",
+        embed_api_key="",
+        retrieval_mode="hybrid",
+    )
+    assert state.write_rows([_ROW]) == 1
+    assert state._table_exists is True
+
+    # Simulate a first write that persisted rows but never published readiness
+    # (FTS build had failed), then a transient I/O error listing tables.
+    state._table_exists = False
+    with patch.object(state._db, "list_tables", side_effect=OSError("transient I/O error")):
+        with pytest.raises(OSError, match="transient I/O error"):
+            state.write_rows([_ROW])
+
+    # The original row must still be intact — nothing was overwritten.
+    table = state._db.open_table("nemo_retriever")
+    assert table.count_rows() == 1
+
+
+@pytest.mark.integration
 def test_appended_rows_are_added_to_fts_index_in_hybrid_mode(tmp_path) -> None:
     state = VectorDBState(
         lancedb_uri=str(tmp_path),
