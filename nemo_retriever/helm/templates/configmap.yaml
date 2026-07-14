@@ -83,7 +83,6 @@ local_models:
   extract:
     enabled: {{ .Values.serviceConfig.localModels.extract.enabled }}
     use_table_structure: {{ .Values.serviceConfig.localModels.extract.useTableStructure }}
-    use_graphic_elements: {{ .Values.serviceConfig.localModels.extract.useGraphicElements }}
     ocr_version: {{ .Values.serviceConfig.localModels.extract.ocrVersion | quote }}
     ocr_lang: {{ if .Values.serviceConfig.localModels.extract.ocrLang }}{{ .Values.serviceConfig.localModels.extract.ocrLang | quote }}{{ else }}null{{ end }}
   embed:

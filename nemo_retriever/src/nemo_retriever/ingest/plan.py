@@ -118,13 +118,11 @@ class IngestExtractOptions:
     extract_infographics: bool | None = None
     extract_page_as_image: bool | None = None
     use_page_elements: bool | None = None
-    use_graphic_elements: bool | None = None
     use_table_structure: bool | None = None
     page_elements_invoke_url: str | None = None
     ocr_invoke_url: str | None = None
     ocr_version: OcrVersionValue | None = None
     ocr_lang: OcrLangValue | None = None
-    graphic_elements_invoke_url: str | None = None
     table_structure_invoke_url: str | None = None
     table_output_format: TableOutputFormatValue | None = None
     extract_api_key: str | None = None
@@ -617,13 +615,11 @@ def resolve_ingest_plan(request: IngestPlanRequest) -> ResolvedIngestPlan:
                 "extract_infographics": extract.extract_infographics,
                 "extract_page_as_image": extract.extract_page_as_image,
                 "use_page_elements": extract.use_page_elements,
-                "use_graphic_elements": extract.use_graphic_elements,
                 "use_table_structure": extract.use_table_structure,
                 "page_elements_invoke_url": extract.page_elements_invoke_url,
                 "ocr_invoke_url": extract.ocr_invoke_url,
                 "ocr_version": extract.ocr_version,
                 "ocr_lang": extract.ocr_lang,
-                "graphic_elements_invoke_url": extract.graphic_elements_invoke_url,
                 "table_structure_invoke_url": extract.table_structure_invoke_url,
                 "table_output_format": extract.table_output_format,
                 "api_key": extract.extract_api_key,

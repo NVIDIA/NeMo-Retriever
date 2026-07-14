@@ -129,7 +129,12 @@ def test_resolve_input_file_patterns_recurses_for_directory_inputs(tmp_path) -> 
     doc_patterns = resolve_input_patterns(dataset_dir, "doc")
 
     assert pdf_patterns == [str(dataset_dir / "**" / "*.pdf")]
-    assert txt_patterns == [str(dataset_dir / "**" / "*.txt")]
+    assert txt_patterns == [
+        str(dataset_dir / "**" / "*.txt"),
+        str(dataset_dir / "**" / "*.md"),
+        str(dataset_dir / "**" / "*.json"),
+        str(dataset_dir / "**" / "*.sh"),
+    ]
     assert doc_patterns == [str(dataset_dir / "**" / "*.docx"), str(dataset_dir / "**" / "*.pptx")]
 
 

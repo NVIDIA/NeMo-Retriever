@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -139,6 +140,122 @@ def test_ingest_operator_converts_graph_rows_to_client_vdb_records() -> None:
             ]
         ]
     ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [pytest.param("", id="empty"), pytest.param(" \n\t ", id="whitespace")],
+)
+def test_ingest_operator_retains_embedded_blank_image_row_without_text_fidelity(text: str) -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = [
+        {
+            "text": text,
+            "document_type": "structured",
+            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "_image_b64": "page-image",
+            "source_id": "/tmp/scanned.pdf",
+            "page_number": 7,
+            "metadata": {"content_metadata": {"type": "text", "fidelity": "verbatim"}},
+        }
+    ]
+
+    assert operator(data) is data
+
+    record = vdb.run_calls[0][0][0]
+    assert record["document_type"] == "image"
+    assert record["metadata"]["content"] == ""
+    assert record["metadata"]["embedding"] == [0.1] * 2048
+    assert record["metadata"]["content_metadata"] == {
+        "type": "image",
+        "page_number": 7,
+    }
+    assert record["metadata"]["source_metadata"] == {
+        "source_id": "/tmp/scanned.pdf",
+        "source_name": "scanned.pdf",
+    }
+
+
+@pytest.mark.parametrize(
+    "image_payload",
+    [
+        pytest.param(b"page-image", id="bytes"),
+        pytest.param(np.ones((2, 2), dtype=np.uint8), id="numpy"),
+    ],
+)
+def test_ingest_operator_noncanonical_image_payload_fails_closed_without_truthiness(image_payload: Any) -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = [
+        {
+            "text": "",
+            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            "_image_b64": image_payload,
+            "source_id": "/tmp/scanned.pdf",
+            "page_number": 7,
+        }
+    ]
+
+    assert operator(data) is data
+    assert vdb.run_calls == []
+
+
+@pytest.mark.parametrize("uri_field", ["_stored_image_uri", "stored_image_uri"])
+def test_ingest_operator_retains_image_only_row_with_stored_image_uri(uri_field: str) -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = [
+        {
+            "text": "",
+            "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+            uri_field: "file:///tmp/scanned-page-7.png",
+            "source_id": "/tmp/scanned.pdf",
+            "page_number": 7,
+        }
+    ]
+
+    assert operator(data) is data
+    record = vdb.run_calls[0][0][0]
+    assert record["document_type"] == "image"
+    assert record["metadata"]["content_metadata"] == {
+        "type": "image",
+        "page_number": 7,
+        "stored_image_uri": "file:///tmp/scanned-page-7.png",
+    }
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        pytest.param(
+            {
+                "text": "",
+                "text_embeddings_1b_v2": {"embedding": [0.1] * 2048},
+                "source_id": "/tmp/empty.pdf",
+                "page_number": 1,
+            },
+            id="no-image-backing",
+        ),
+        pytest.param(
+            {
+                "text": "",
+                "text_embeddings_1b_v2": {"embedding": None},
+                "_image_b64": "page-image",
+                "source_id": "/tmp/scanned.pdf",
+                "page_number": 7,
+            },
+            id="no-embedding",
+        ),
+    ],
+)
+def test_ingest_operator_drops_ineligible_blank_row(row: dict[str, Any]) -> None:
+    vdb = FakeVDB()
+    operator = IngestVdbOperator(vdb=vdb)
+    data = [row]
+
+    assert operator(data) is data
+    assert vdb.run_calls == []
 
 
 def test_retrieve_operator_delegates_vectors_to_retrieval() -> None:
