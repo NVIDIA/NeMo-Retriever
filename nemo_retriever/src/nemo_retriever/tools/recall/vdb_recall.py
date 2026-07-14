@@ -233,7 +233,7 @@ def run(
         help=(
             "Embedding endpoint (http(s) URL or host:port for gRPC). "
             "If omitted, you may specify --embedding-http-endpoint/--embedding-grpc-endpoint instead; "
-            "if no endpoints are provided, stage7 falls back to local HF embeddings."
+            "if no endpoints are provided, recall falls back to local HF embeddings."
         ),
     ),
     embedding_http_endpoint: Optional[str] = typer.Option(

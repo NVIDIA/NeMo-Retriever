@@ -1224,13 +1224,6 @@ class GraphIngestor(ingestor):
                 invoke_url=self._param_value(extract, "table_structure_invoke_url"),
                 role="table_structure",
             )
-        if self._params_has_configured_field(extract, ("graphic_elements_invoke_url",)):
-            diagnostics["graphic_elements_ocr_v1"] = _StageDiagnostic(
-                column="graphic_elements_ocr_v1",
-                display_name="Graphic Elements NIM",
-                invoke_url=self._param_value(extract, "graphic_elements_invoke_url"),
-                role="graphic_elements",
-            )
         if self._params_has_configured_field(extract, ("invoke_url", "nemotron_parse_invoke_url")):
             url = self._param_value(extract, "nemotron_parse_invoke_url") or self._param_value(extract, "invoke_url")
             diagnostics["nemotron_parse_v1_2"] = _StageDiagnostic(

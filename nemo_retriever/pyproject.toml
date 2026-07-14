@@ -130,7 +130,6 @@ local = [
   "timm==1.0.22",
   "albumentations==2.0.8",
   "nemotron-page-elements-v3>=3.0.1,<4",
-  "nemotron-graphic-elements-v1>=1.0.0,<2",
   "nemotron-table-structure-v1>=1.0.0,<2",
   "nemotron-ocr>=2.0.0,<3; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
   "nvidia-ml-py",
@@ -213,7 +212,6 @@ dev = [
   "nemo_retriever[all]",
   "nemo_retriever[dev]",
   "nemotron-page-elements-v3>=3.0.1.dev0,!=3.0.1,!=3.0.2,<4",
-  "nemotron-graphic-elements-v1>=1.0.1.dev0,!=1.0.1,<2",
   "nemotron-table-structure-v1>=1.0.1.dev0,!=1.0.1,<2",
   "nemotron-ocr>=2.0.1.dev0,!=2.0.1,<3; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
 ]

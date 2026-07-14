@@ -16,6 +16,8 @@ import os
 from typing import Any
 
 from nemo_retriever.common.vdb.records import _derive_fidelity
+from nemo_retriever.common.vdb.sidecar_metadata import parse_hit_content_metadata
+from nemo_retriever.query.shaping import resolve_hit_content_type
 
 _KNOWN_MODALITIES = {"text", "table", "chart", "image", "audio", "video_frame"}
 
@@ -38,12 +40,12 @@ def _normalize_modality(value: Any) -> str:
 
 
 def _evidence_item(hit: dict[str, Any]) -> dict[str, Any]:
-    meta = hit.get("metadata") if isinstance(hit.get("metadata"), dict) else {}
+    meta = parse_hit_content_metadata(hit)
     src_raw = hit.get("pdf_basename") or hit.get("source") or ""
     source = os.path.basename(str(src_raw))
     if source.lower().endswith(".pdf"):
         source = source[:-4]
-    raw_modality = hit.get("content_type") or meta.get("type") or "text"
+    raw_modality = resolve_hit_content_type(hit) or "text"
     modality = _normalize_modality(raw_modality)
 
     page = hit.get("page_number")
@@ -83,6 +85,11 @@ def _evidence_item(hit: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _is_answer_ready_evidence(item: dict[str, Any]) -> bool:
+    text = item.get("text")
+    return isinstance(text, str) and bool(text.strip())
+
+
 def build_evidence_result(hits: list, strategies_used: list[str]) -> dict[str, Any]:
     """Assemble the answer-ready ``{evidence, coverage}`` contract shape from raw hits.
 
@@ -92,16 +99,34 @@ def build_evidence_result(hits: list, strategies_used: list[str]) -> dict[str, A
     reasons over — emitted by ``retriever query --format evidence`` and by the
     service ``/v1/query`` endpoint with ``format=evidence``.
     """
-    evidence = [_evidence_item(h) for h in (hits or [])]
-    sources = {e["source"] for e in evidence if e.get("source")}
+    projected = [_evidence_item(h) for h in (hits or [])]
+    omitted: list[dict[str, Any]] = []
+    evidence: list[dict[str, Any]] = []
+    for item in projected:
+        if _is_answer_ready_evidence(item):
+            evidence.append(item)
+        else:
+            omitted.append(item)
+    sources = {item["source"] for item in projected if item.get("source")}
+    evidence_sources = {item["source"] for item in evidence if item.get("source")}
+    only_visual_omissions = bool(omitted) and all(item.get("modality") == "image" for item in omitted)
     thin: list[str] = []
     if not evidence:
-        thin.append("no matches — likely out of corpus")
+        if only_visual_omissions:
+            thin.append("only visual matches — no answer-ready text")
+        elif omitted:
+            thin.append("matches found — no answer-ready text")
+        else:
+            thin.append("no matches — likely out of corpus")
     else:
-        if len(sources) == 1:
+        if len(evidence_sources) == 1:
             thin.append("single source")
         if all(e["fidelity"] == "vlm_caption" for e in evidence):
             thin.append("only low-fidelity (chart/image) evidence")
+        if omitted:
+            thin.append(
+                "visual-only matches omitted" if only_visual_omissions else "matches without answer-ready text omitted"
+            )
     return {
         "evidence": evidence,
         "coverage": {"strategies_used": strategies_used, "n_docs_seen": len(sources), "thin_spots": thin},

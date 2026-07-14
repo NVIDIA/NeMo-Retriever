@@ -1,10 +1,9 @@
 # Benchmarking with the `retriever` CLI
 
 `retriever benchmark` and `retriever harness` are development and experimental subcommands
-with no guarantees — see [Supported vs development / experimental subcommands](README.md#supported-vs-development--experimental-subcommands).
+with no guarantees — refer to [Supported vs development / experimental subcommands](README.md#supported-vs-development--experimental-subcommands).
 
-This page covers benchmark workflows for NeMo Retriever Library. See also
-`docs/docs/extraction/benchmarking.md` for published extraction benchmark notes and
+This page covers benchmark workflows for NeMo Retriever Library. Also refer to
 [`nemo_retriever/harness/HANDOFF.md`](../../harness/HANDOFF.md) for operator-oriented
 notes on `retriever harness`.
 
