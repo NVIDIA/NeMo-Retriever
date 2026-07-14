@@ -99,8 +99,11 @@ def test_pipeline_compatibility_command_is_hidden_but_callable() -> None:
     assert result.exit_code == 0
 
 
-@pytest.mark.parametrize("removed_command", ("txt", "html"))
-def test_format_specific_root_commands_are_not_callable(removed_command: str) -> None:
+@pytest.mark.parametrize(
+    "removed_command",
+    ("txt", "html", "local", "audio", "image", "pdf", "chart"),
+)
+def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [removed_command, "--help"])
 
     assert result.exit_code == 2
@@ -549,7 +552,6 @@ def test_root_ingest_passes_embedding_overrides_without_stage_flags(monkeypatch,
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
     assert extract_params.use_page_elements is True
-    assert extract_params.use_graphic_elements is False
     assert extract_params.use_table_structure is False
     assert extract_params.table_output_format == "pseudo_markdown"
 

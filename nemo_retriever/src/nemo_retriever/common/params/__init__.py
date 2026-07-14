@@ -13,7 +13,6 @@ from nemo_retriever.common.params.models import EmbedParams
 from nemo_retriever.common.params.models import ExtractParams
 from nemo_retriever.common.params.models import GpuAllocationParams
 from nemo_retriever.common.params.models import HtmlChunkParams
-from nemo_retriever.common.params.models import InfographicParams
 from nemo_retriever.common.params.models import IngestExecuteParams
 from nemo_retriever.common.params.models import IngestorCreateParams
 from nemo_retriever.common.params.models import IngestorRunMode
@@ -54,7 +53,6 @@ __all__ = [
     "ExtractParams",
     "GpuAllocationParams",
     "HtmlChunkParams",
-    "InfographicParams",
     "IngestExecuteParams",
     "IngestorCreateParams",
     "IngestorRunMode",
