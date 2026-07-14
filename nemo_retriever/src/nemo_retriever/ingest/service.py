@@ -63,7 +63,6 @@ class ServiceIngestExtractOptions:
     extract_infographics: bool | None = None
     extract_page_as_image: bool | None = None
     use_page_elements: bool | None = None
-    use_graphic_elements: bool | None = None
     use_table_structure: bool | None = None
     table_output_format: str | None = None
     ocr_version: str | None = None
@@ -186,7 +185,6 @@ def resolve_service_ingest_request(request: ServiceIngestPlanRequest) -> Service
                 "extract_infographics": request.extract.extract_infographics,
                 "extract_page_as_image": request.extract.extract_page_as_image,
                 "use_page_elements": request.extract.use_page_elements,
-                "use_graphic_elements": request.extract.use_graphic_elements,
                 "use_table_structure": request.extract.use_table_structure,
                 "table_output_format": request.extract.table_output_format,
                 "ocr_version": request.extract.ocr_version,

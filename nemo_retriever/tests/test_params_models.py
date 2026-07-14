@@ -17,6 +17,13 @@ class TestVideoFrameParams:
             VideoFrameParams(fps=0)
 
 
+class TestExtractParams:
+    def test_graphic_elements_controls_are_removed(self) -> None:
+        assert "use_graphic_elements" not in ExtractParams.model_fields
+        assert "graphic_elements_invoke_url" not in ExtractParams.model_fields
+        assert "extract_charts" in ExtractParams.model_fields
+
+
 class TestStoreParams:
     def test_storage_options_redacted_from_repr(self) -> None:
         params = StoreParams(storage_options={"key": "AKIA_TEST", "secret": "SECRET_TEST"})

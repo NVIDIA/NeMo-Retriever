@@ -24,24 +24,20 @@ class TestGPUOperatorFlag:
 
     def test_gpu_operators_have_flag(self):
         from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionGPUActor
-        from nemo_retriever.operators.extract.chart.chart_detection import GraphicElementsGPUActor
         from nemo_retriever.operators.extract.table.table_detection import TableStructureGPUActor
         from nemo_retriever.operators.extract.ocr.ocr import OCRGPUActor
         from nemo_retriever.operators.extract.parse.nemotron_parse import NemotronParseGPUActor
         from nemo_retriever.operators.embed.operators import _BatchEmbedGPUActor
         from nemo_retriever.operators.extract.caption.caption import CaptionGPUActor
-        from nemo_retriever.common.modality.infographic.infographic_detection import InfographicDetectionGPUActor
         from nemo_retriever.operators.rerank import NemotronRerankGPUActor
         from nemo_retriever.operators.embed.text_embed import TextEmbedGPUActor
 
         assert issubclass(PageElementDetectionGPUActor, GPUOperator)
-        assert issubclass(GraphicElementsGPUActor, GPUOperator)
         assert issubclass(TableStructureGPUActor, GPUOperator)
         assert issubclass(OCRGPUActor, GPUOperator)
         assert issubclass(NemotronParseGPUActor, GPUOperator)
         assert issubclass(_BatchEmbedGPUActor, GPUOperator)
         assert issubclass(CaptionGPUActor, GPUOperator)
-        assert issubclass(InfographicDetectionGPUActor, GPUOperator)
         assert issubclass(NemotronRerankGPUActor, GPUOperator)
         assert issubclass(TextEmbedGPUActor, GPUOperator)
 
@@ -65,7 +61,6 @@ class TestCPUOperatorFlag:
         from nemo_retriever.operators.graph_ops.content_operators import ExplodeContentActor
         from nemo_retriever.operators.extract.audio.asr_actor import ASRCPUActor
         from nemo_retriever.operators.extract.caption.caption import CaptionCPUActor
-        from nemo_retriever.common.modality.infographic.infographic_detection import InfographicDetectionCPUActor
         from nemo_retriever.operators.rerank import NemotronRerankCPUActor
 
         assert issubclass(DocToPdfConversionCPUActor, CPUOperator)
@@ -78,7 +73,6 @@ class TestCPUOperatorFlag:
         assert issubclass(ExplodeContentActor, CPUOperator)
         assert issubclass(ASRCPUActor, CPUOperator)
         assert issubclass(CaptionCPUActor, CPUOperator)
-        assert issubclass(InfographicDetectionCPUActor, CPUOperator)
         assert issubclass(NemotronRerankCPUActor, CPUOperator)
 
     def test_cpu_operators_are_not_gpu(self):
@@ -89,14 +83,12 @@ class TestCPUOperatorFlag:
     def test_public_actor_names_are_archetypes(self):
         from nemo_retriever.operators.extract.audio.asr_actor import ASRActor
         from nemo_retriever.operators.extract.caption.caption import CaptionActor
-        from nemo_retriever.operators.extract.chart.chart_detection import GraphicElementsActor
         from nemo_retriever.operators.extract.ocr.ocr import OCRActor
         from nemo_retriever.operators.extract.page_elements.page_elements import PageElementDetectionActor
         from nemo_retriever.operators.extract.table.table_detection import TableStructureActor
 
         assert issubclass(ASRActor, ArchetypeOperator)
         assert issubclass(CaptionActor, ArchetypeOperator)
-        assert issubclass(GraphicElementsActor, ArchetypeOperator)
         assert issubclass(OCRActor, ArchetypeOperator)
         assert issubclass(PageElementDetectionActor, ArchetypeOperator)
         assert issubclass(TableStructureActor, ArchetypeOperator)
@@ -108,7 +100,6 @@ class TestCPUOperatorFlag:
         from nemo_retriever.operators.extract.audio.asr_actor import ASRActor
         from nemo_retriever.operators.extract.audio.chunk_actor import MediaChunkActor
         from nemo_retriever.operators.extract.caption.caption import CaptionActor
-        from nemo_retriever.common.modality.infographic.infographic_detection import InfographicDetectionActor
         from nemo_retriever.operators.rerank import NemotronRerankActor
         from nemo_retriever.operators.embed.text_embed import TextEmbedActor
         from nemo_retriever.operators.extract.pdf.split import PDFSplitActor
@@ -118,7 +109,6 @@ class TestCPUOperatorFlag:
         assert issubclass(ASRActor, AbstractOperator)
         assert issubclass(MediaChunkActor, AbstractOperator)
         assert issubclass(CaptionActor, AbstractOperator)
-        assert issubclass(InfographicDetectionActor, AbstractOperator)
         assert issubclass(NemotronRerankActor, AbstractOperator)
         assert issubclass(PDFSplitActor, AbstractOperator)
         assert issubclass(PageElementDetectionActor, AbstractOperator)
@@ -164,44 +154,6 @@ class TestPageElementDetectionCPUActor:
         expected = pd.DataFrame({"page_elements_v3": ["det"]})
         mock_fn.return_value = expected
         actor = PageElementDetectionCPUActor(invoke_url="http://fake")
-        result = actor.process(pd.DataFrame({"page_image": ["x"]}))
-        mock_fn.assert_called_once()
-        pd.testing.assert_frame_equal(result, expected)
-
-
-class TestGraphicElementsCPUActor:
-    def test_inherits_cpu_operator(self):
-        from nemo_retriever.operators.extract.chart.cpu_actor import GraphicElementsCPUActor
-
-        assert issubclass(GraphicElementsCPUActor, CPUOperator)
-        assert not issubclass(GraphicElementsCPUActor, GPUOperator)
-
-    def test_uses_default_urls(self):
-        from nemo_retriever.operators.extract.chart.cpu_actor import GraphicElementsCPUActor
-
-        actor = GraphicElementsCPUActor()
-        assert actor._graphic_elements_model is None
-        assert actor._ocr_model is None
-        assert "nemotron-graphic-elements-v1" in actor._graphic_elements_invoke_url
-        assert "nemotron-ocr-v2" in actor._ocr_invoke_url
-
-    def test_creates_with_custom_urls(self):
-        from nemo_retriever.operators.extract.chart.cpu_actor import GraphicElementsCPUActor
-
-        actor = GraphicElementsCPUActor(
-            graphic_elements_invoke_url="http://custom1",
-            ocr_invoke_url="http://custom2",
-        )
-        assert actor._graphic_elements_invoke_url == "http://custom1"
-        assert actor._ocr_invoke_url == "http://custom2"
-
-    @patch("nemo_retriever.operators.extract.chart.cpu_actor.graphic_elements_ocr_page_elements")
-    def test_process(self, mock_fn):
-        from nemo_retriever.operators.extract.chart.cpu_actor import GraphicElementsCPUActor
-
-        expected = pd.DataFrame({"chart": [[]]})
-        mock_fn.return_value = expected
-        actor = GraphicElementsCPUActor()
         result = actor.process(pd.DataFrame({"page_image": ["x"]}))
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
@@ -285,25 +237,6 @@ class TestTableStructureCPUActor:
         result = actor.process(pd.DataFrame({"page_image": ["x"]}))
         mock_fn.assert_called_once()
         pd.testing.assert_frame_equal(result, expected)
-
-
-class TestInfographicDetectionCPUActor:
-    def test_uses_default_invoke_url(self, monkeypatch):
-        from nemo_retriever.common.modality.infographic.infographic_detection import InfographicDetectionCPUActor
-
-        monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
-        monkeypatch.delenv("NGC_API_KEY", raising=False)
-        actor = InfographicDetectionCPUActor()
-        assert actor._model is None
-        assert "nemotron-graphic-elements-v1" in actor.detect_kwargs["invoke_url"]
-
-    def test_resolves_api_key_for_default_endpoint(self, monkeypatch):
-        from nemo_retriever.common.modality.infographic.infographic_detection import InfographicDetectionCPUActor
-
-        monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
-        monkeypatch.delenv("NGC_API_KEY", raising=False)
-        actor = InfographicDetectionCPUActor()
-        assert actor.detect_kwargs["api_key"] == "nvapi-test"
 
 
 class TestOCRCPUActor:

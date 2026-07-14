@@ -56,7 +56,6 @@ _DENYLIST_KEY_SUBSTRINGS: tuple[str, ...] = (
     "page_elements_invoke_url",
     "ocr_invoke_url",
     "table_structure_invoke_url",
-    "graphic_elements_invoke_url",
     "nemotron_parse_invoke_url",
     "profile_name",
 )
@@ -84,7 +83,6 @@ _DEFAULT_ALLOWED_EXTRACT_KEYS: frozenset[str] = frozenset(
         "use_page_elements",
         "use_table_structure",
         "table_output_format",
-        "use_graphic_elements",
         "dpi",
         "image_format",
         "jpeg_quality",

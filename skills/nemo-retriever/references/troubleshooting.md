@@ -2,24 +2,32 @@
 
 Read this only after you hit one of the named errors below. Don't read it pre-emptively.
 
-## If the index is missing or `retriever query` returns empty `evidence`
+## If ingest fails or the index is missing
 
-Means ingest didn't complete (e.g. the text-only pipeline still hit the turn wall, or the table is empty). Tight fallback using the retriever's own pdfium-based extractor (always available — same binary the agent just used for `retriever query`):
+Stay on `retriever ingest`; do not switch to format-specific, stage, or pipeline
+commands.
 
-1. `ls ./pdfs/` (one call) to see filenames.
-2. Pick the SINGLE PDF whose name best matches the question.
-3. ONE call: `<RETRIEVER_VENV>/bin/retriever pdf stage page-elements ./pdfs --method pdfium --json-output-dir /tmp/pdf_text --compact-json`. This emits a JSON sidecar per PDF at `/tmp/pdf_text/<basename>.pdf.pdf_extraction.json` containing per-page text primitives — pdfium only, no OCR, no NIM, fast.
-4. `Read` `/tmp/pdf_text/<name>.pdf.pdf_extraction.json` for the chosen PDF and synthesize from the per-page text. If the answer isn't there, still write your best guess based on the filename + extracted pages plus a one-sentence acknowledgement of uncertainty in `final_answer`. Then stop.
+1. Read the surfaced error. If more context is needed, rerun the same ingest once
+   with `--no-quiet`.
+2. On a CPU-only host, verify that `NVIDIA_API_KEY` or `NGC_API_KEY` is non-empty
+   without printing its value. The default hosted embedding endpoint is automatic.
+3. Use `--embed-invoke-url` only when the user supplied a different endpoint.
+4. If the retry fails, report the ingestion failure and its surfaced error. Do
+   not bypass the index by extracting PDFs individually.
 
-Do NOT keep doing text-extract calls across many PDFs to hunt — that exhausts the turn budget. Better to answer partially than to time out. Never re-run `retriever ingest`.
+## If `retriever query` returns empty `evidence`
 
-For an unlisted subcommand: `<RETRIEVER_VENV>/bin/retriever <subcommand> --help`.
+Read `coverage.thin_spots` to distinguish an incomplete index from a genuinely
+out-of-corpus question. If the index is missing, follow the ingest recovery
+above. If it exists, run the exact-term sparse query described in `SKILL.md`.
+If that also returns no evidence, say the requested fact is not supported by
+the indexed corpus; do not bypass retrieval with a format-specific command.
 
 ## Failure modes (expected, not errors)
 
 - **First `ingest` takes ~60s+** — vLLM warmup. Expected.
 - **First `query` is slow** — embedder cold-start. ~10–15s on an idle GPU, but **1–3 minutes under concurrent load**. Expected — wait for it; do not kill or relaunch. It is wrapped in `timeout 2000`, so let it run to that ceiling before treating it as failed.
-- **Empty `evidence`** — ingest didn't run (use the fallback above), or the question is genuinely out-of-corpus — read `coverage.thin_spots` to tell which.
+- **Empty `evidence`** — ingest didn't run, or the question is genuinely out-of-corpus; use the recovery above.
 - **`Clamping num_partitions ...`** — informational on tiny corpora, not an error.
 - **Low-relevance top hit on tiny corpus** — even an unrelated query returns *something*; trust the ranking order (the `score` field is informational, not calibrated confidence).
 - **Page-element-detection warnings during ingest** — non-fatal as long as the embedding step itself succeeds (and they're silenced on a successful run, since `ingest` is quiet by default).
@@ -38,14 +46,13 @@ find <dir> -type f -name '*.*' | sed 's/.*\.//' | sort -u
 If unsupported extensions appear, name them in your reply and ask the user
 whether to skip or convert them.
 
-## You ran more than 2 Bash calls on a query turn
-
-Budget violation. Stop, write `final_answer` from what you have, end the turn. Long turns cost ~5× a disciplined turn and usually still produce the wrong answer.
-
 ## Query-turn cost discipline (recap)
 
-- ONE `retriever query` per turn. ONE optional targeted text-extract on the rank-1 PDF if the chunks miss the asked-for fact. That's the budget — it is a hard cap, not a soft preference.
-- After your 2nd tool call, write `final_answer` with what you have and STOP. If both calls left the asked-for fact unresolved, write `final_answer` that **explicitly states the retrieved pages don't contain the requested fact** (naming the closest related content if any) — **do not run more tool calls hunting for it, and do not extrapolate a plausible value.**
+- Use the semantic and exact-term query passes described in `SKILL.md`. Re-query
+  only to resolve a distinct term, entity, or ambiguous result.
+- If the required fact remains unsupported, explicitly state that the indexed
+  evidence does not contain it. Do not extrapolate a plausible value or switch
+  to per-file extraction.
 - Don't read whole PDFs.
 - Don't make speculative Read/Glob/Grep calls "to confirm". The retriever already found the relevant pages — trust the ranking.
 - Don't spawn agents, write plans, or make todo lists. The workflow is the workflow.
