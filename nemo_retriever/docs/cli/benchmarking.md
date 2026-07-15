@@ -1,15 +1,15 @@
 # Benchmarking with the `retriever` CLI
 
 `retriever benchmark` and `retriever harness` are development and experimental subcommands
-with no guarantees — see [Supported vs development / experimental subcommands](README.md#supported-vs-development--experimental-subcommands).
+with no guarantees — refer to [Supported vs development / experimental subcommands](README.md#supported-vs-development--experimental-subcommands).
 
-This page covers benchmark workflows for NeMo Retriever Library. See also
-`docs/docs/extraction/benchmarking.md` for published extraction benchmark notes and
+This page covers benchmark workflows for NeMo Retriever Library. Also refer to
 [`nemo_retriever/harness/HANDOFF.md`](../../harness/HANDOFF.md) for operator-oriented
 notes on `retriever harness`.
 
 Use `retriever harness` for benchmark orchestration and `retriever benchmark` for
-per-stage micro-benchmarks.
+per-stage micro-benchmarks. `retriever benchmark` remains callable but is hidden
+from root help.
 
 ## Harness (development / experimental)
 
@@ -96,7 +96,8 @@ follow `--embed-granularity` (page vs element images).
 
 ## Per-stage micro-benchmarks
 
-Stage throughput benchmarks on the main CLI (no full harness required):
+Stage throughput benchmarks remain callable for compatibility even though they
+are hidden from root help:
 
 ```bash
 retriever benchmark --help           # split, extract, audio-extract, page-elements, ocr, all

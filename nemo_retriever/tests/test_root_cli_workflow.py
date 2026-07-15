@@ -17,6 +17,7 @@ from unittest.mock import create_autospec
 
 import pytest
 from pydantic import ValidationError
+import typer.rich_utils as typer_rich_utils
 from typer.testing import CliRunner
 
 import nemo_retriever.ingest.execution as ingest_execution
@@ -42,7 +43,6 @@ from nemo_retriever.common.params import (
     VideoFrameTextDedupParams,
 )
 
-
 RUNNER = CliRunner()
 cli_main = importlib.import_module("nemo_retriever.cli.main")
 
@@ -65,6 +65,68 @@ def _make_fake_ingestor() -> Any:
     fake_ingestor.vdb_upload.return_value = fake_ingestor
     fake_ingestor.ingest.return_value = [{"status": "ok"}]
     return fake_ingestor
+
+
+def test_root_help_lists_only_product_workflows() -> None:
+    result = RUNNER.invoke(cli_main.app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "service" in result.output
+    assert "ingest" in result.output
+    assert "query" in result.output
+    assert "harness" in result.output
+    for developer_command in (
+        "audio",
+        "image",
+        "pdf",
+        "local",
+        "chart",
+        "compare",
+        "eval",
+        "benchmark",
+        "recall",
+        "skill-eval",
+        "txt",
+        "html",
+        "pipeline",
+    ):
+        assert f"│ {developer_command} " not in result.output
+
+
+def test_pipeline_compatibility_command_is_hidden_but_callable() -> None:
+    result = RUNNER.invoke(cli_main.app, ["pipeline", "--help"])
+
+    assert result.exit_code == 0
+
+
+@pytest.mark.parametrize(
+    "removed_command",
+    ("txt", "html", "local", "audio", "image", "pdf", "chart"),
+)
+def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
+    result = RUNNER.invoke(cli_main.app, [removed_command, "--help"])
+
+    assert result.exit_code == 2
+    assert f"No such command '{removed_command}'" in result.output
+
+
+def test_root_ingest_help_explains_cpu_hosted_embedding_default() -> None:
+    result = RUNNER.invoke(cli_main.app, ["ingest", "local", "--help"])
+
+    assert result.exit_code == 0
+    assert "CPU-only hosts" in result.output
+    assert "NVIDIA_API_KEY" in result.output
+    assert "another endpoint." in result.output
+
+
+def test_service_root_is_operator_only() -> None:
+    result = RUNNER.invoke(cli_main.app, ["service", "--help"])
+
+    assert result.exit_code == 0
+    assert "start" in result.output
+    assert "mcp-stdio" in result.output
+    assert "│ ingest " not in result.output
+    assert "retriever ingest service" in result.output
 
 
 def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None:
@@ -101,7 +163,11 @@ def test_root_ingest_runs_default_execution_chain(monkeypatch, tmp_path) -> None
     assert fake_ingestor.embed.call_args.args == ()
     vdb_upload_params = fake_ingestor.vdb_upload.call_args.args[0]
     assert vdb_upload_params.vdb_op == "lancedb"
-    assert vdb_upload_params.vdb_kwargs == {"uri": "lancedb", "table_name": "nemo-retriever", "overwrite": True}
+    assert vdb_upload_params.vdb_kwargs == {
+        "uri": "lancedb",
+        "table_name": "nemo-retriever",
+        "overwrite": True,
+    }
     assert "Ingested 1 file(s) → 7 row(s) in LanceDB lancedb/nemo-retriever." in result.output
 
 
@@ -426,8 +492,6 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
             "http://ocr:8000/v1/infer",
             "--ocr-version",
             "v1",
-            "--graphic-elements-invoke-url",
-            "http://graphic-elements:8000/v1/infer",
             "--table-structure-invoke-url",
             "http://table-structure:8000/v1/infer",
             "--embed-invoke-url",
@@ -445,7 +509,6 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
     assert extract_params.page_elements_invoke_url == "http://page-elements:8000/v1/infer"
     assert extract_params.ocr_invoke_url == "http://ocr:8000/v1/infer"
     assert extract_params.ocr_version == "v1"
-    assert extract_params.graphic_elements_invoke_url == "http://graphic-elements:8000/v1/infer"
     assert extract_params.table_structure_invoke_url == "http://table-structure:8000/v1/infer"
 
     embed_params = fake_ingestor.embed.call_args.args[0]
@@ -456,7 +519,7 @@ def test_root_ingest_passes_nim_url_options(monkeypatch, tmp_path) -> None:
     assert embed_params.embed_model_name == "nvidia/nvidia/llama-nemotron-embed-1b-v2"
 
 
-def test_root_ingest_passes_migrated_extraction_and_embedding_flags(monkeypatch, tmp_path) -> None:
+def test_root_ingest_passes_embedding_overrides_without_stage_flags(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "jp20-style.pdf"
     document.write_bytes(b"%PDF-1.4\n")
@@ -469,8 +532,6 @@ def test_root_ingest_passes_migrated_extraction_and_embedding_flags(monkeypatch,
             "ingest",
             "local",
             str(document),
-            "--use-graphic-elements",
-            "--use-table-structure",
             "--embed-modality",
             "text_image",
             "--embed-granularity",
@@ -485,8 +546,9 @@ def test_root_ingest_passes_migrated_extraction_and_embedding_flags(monkeypatch,
     assert result.exit_code == 0
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
-    assert extract_params.use_graphic_elements is True
-    assert extract_params.use_table_structure is True
+    assert extract_params.use_page_elements is True
+    assert extract_params.use_table_structure is False
+    assert extract_params.table_output_format == "pseudo_markdown"
 
     embed_params = fake_ingestor.embed.call_args.args[0]
     assert isinstance(embed_params, EmbedParams)
@@ -597,7 +659,15 @@ def test_root_ingest_rejects_ocr_lang_with_legacy_ocr_version(monkeypatch, tmp_p
 
     result = RUNNER.invoke(
         cli_main.app,
-        ["ingest", "local", str(document), "--ocr-version", "v1", "--ocr-lang", "english"],
+        [
+            "ingest",
+            "local",
+            str(document),
+            "--ocr-version",
+            "v1",
+            "--ocr-lang",
+            "english",
+        ],
     )
 
     assert result.exit_code == 1
@@ -954,21 +1024,93 @@ def test_root_ingest_routes_text_inputs_by_default_to_auto_planner(monkeypatch, 
     assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
-def test_root_ingest_help_lists_mode_subcommands() -> None:
-    result = RUNNER.invoke(cli_main.app, ["ingest", "--help"])
+@pytest.mark.parametrize("suffix", [".md", ".json", ".sh"])
+def test_root_ingest_treats_documented_plain_text_extensions_as_text(monkeypatch, tmp_path, suffix) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / f"notes{suffix}"
+    document.write_text("plain text content", encoding="utf-8")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
 
     assert result.exit_code == 0
-    assert "local" in result.output
-    assert "batch" in result.output
-    assert "service" in result.output
+    assert fake_ingestor.files.call_args.args == ([str(document)],)
+    assert isinstance(fake_ingestor.extract.call_args.args[0], ExtractParams)
+    assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
+
+
+def test_root_ingest_help_defaults_to_local_workflow(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
+    monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", "--help"],
+        prog_name="retriever",
+    )
+
+    assert result.exit_code == 0
+    assert "Usage: retriever ingest [OPTIONS] DOCUMENTS..." in result.output
+    assert "input formats, not commands" in result.output
+    assert "CPU-only hosts use NVIDIA's hosted embedding endpoint" in result.output
+    assert "retriever ingest batch --help" in result.output
+    assert "retriever ingest service --help" in result.output
+    for option in (
+        "--index-mode",
+        "--lancedb-uri",
+        "--table-name",
+        "--embed-invoke-url",
+        "--embed-model-name",
+        "--append",
+    ):
+        assert option in result.output
+    assert "--input-type" not in result.output
     assert "--run-mode" not in result.output
-    assert "--profile" not in result.output
+    assert "Commands" not in result.output
+    assert "│ html " not in result.output
+    assert "│ txt " not in result.output
+
+
+def test_root_ingest_mode_overview_hides_legacy_local_alias() -> None:
+    result = RUNNER.invoke(cli_main.app, ["ingest"], prog_name="retriever", env={"COLUMNS": "200"})
+
+    assert result.exit_code == 2
+    assert "retriever ingest DOCUMENTS" in result.output
+    assert "│ batch " in result.output
+    assert "│ service " in result.output
+    assert "│ local " not in result.output
+    assert "retriever ingest local" not in result.output
+
+
+def test_root_ingest_errors_reference_only_the_public_help_path() -> None:
+    for flag in ("-h", "--not-an-ingest-option"):
+        result = RUNNER.invoke(cli_main.app, ["ingest", flag], prog_name="retriever")
+
+        assert result.exit_code == 2
+        assert "Try 'retriever ingest --help' for help" in result.output
+        assert "retriever ingest local" not in result.output
+
+
+def test_root_ingest_batch_help_remains_mode_specific(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
+    monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
+    result = RUNNER.invoke(cli_main.app, ["ingest", "batch", "--help"])
+
+    assert result.exit_code == 0
+    assert "Usage: root ingest batch [OPTIONS] DOCUMENTS..." in result.output
+    assert "--ray-address" in result.output
+    assert "--pdf-extract-workers" in result.output
+    assert "--lancedb-uri" in result.output
+    assert "--service-url" not in result.output
+    assert "--input-type" not in result.output
 
 
 def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
-    result = RUNNER.invoke(cli_main.app, ["ingest", "local", "--help"])
+    result = RUNNER.invoke(cli_main.app, ["ingest", "local", "--help"], prog_name="retriever")
 
     assert result.exit_code == 0
+    assert "Usage: retriever ingest [OPTIONS] DOCUMENTS..." in result.output
+    assert "retriever ingest local" not in result.output
     assert "--input-type" not in result.output
     assert "--run-mode" not in result.output
     assert "--service-url" not in result.output
@@ -976,9 +1118,9 @@ def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
     assert "--profile" in result.output
     assert "[auto|fast-text]" in result.output
     assert "--extract-images" in result.output
-    # Rich help truncates long option names in narrow test terminals.
-    assert "--use-graphic-el" in result.output
-    assert "--use-table-stru" in result.output
+    assert "--use-page" not in result.output
+    assert "--use-graphic" not in result.output
+    assert "--use-table" not in result.output
     assert "--embed-modality" in result.output
     assert "--embed-granular" in result.output
     assert "--text-elements-" in result.output
@@ -1025,9 +1167,10 @@ def test_root_ingest_default_local_rejects_batch_only_options(tmp_path) -> None:
 
 
 def test_root_ingest_service_help_hides_local_only_options() -> None:
-    result = RUNNER.invoke(cli_main.app, ["ingest", "service", "--help"])
+    result = RUNNER.invoke(cli_main.app, ["ingest", "service", "--help"], env={"COLUMNS": "200"})
 
     assert result.exit_code == 0
+    assert "Usage: root ingest service [OPTIONS] DOCUMENTS..." in result.output
     assert "--service-url" in result.output
     assert "--extract-images" in result.output
     assert "--embed-granular" in result.output
@@ -1051,7 +1194,10 @@ def test_root_ingest_dry_run_prints_plan_without_creating_ingestor(monkeypatch, 
 
     monkeypatch.setattr(ingest_execution, "create_ingestor", fail_create_ingestor)
 
-    result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(document), "--profile", "fast-text", "--dry-run"])
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", "local", str(document), "--profile", "fast-text", "--dry-run"],
+    )
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
@@ -1096,7 +1242,7 @@ def test_dry_run_secret_redaction_covers_common_credential_names() -> None:
     }
 
 
-def test_root_ingest_passes_extract_overrides_without_ocr_profile(monkeypatch, tmp_path) -> None:
+def test_root_ingest_passes_high_level_extract_overrides(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     document = tmp_path / "manual.pdf"
     document.write_bytes(b"%PDF-1.4\n")
@@ -1115,9 +1261,7 @@ def test_root_ingest_passes_extract_overrides_without_ocr_profile(monkeypatch, t
             "--no-extract-tables",
             "--no-extract-images",
             "--no-extract-charts",
-            "--no-extract-infographics",
             "--no-extract-page-as-image",
-            "--no-use-page-elements",
         ],
     )
 
@@ -1132,7 +1276,29 @@ def test_root_ingest_passes_extract_overrides_without_ocr_profile(monkeypatch, t
     assert extract_params.extract_charts is False
     assert extract_params.extract_infographics is False
     assert extract_params.extract_page_as_image is False
-    assert extract_params.use_page_elements is False
+    assert extract_params.use_page_elements is True
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--use-page-elements",
+        "--no-use-page-elements",
+        "--use-graphic-elements",
+        "--no-use-graphic-elements",
+        "--use-table-structure",
+        "--no-use-table-structure",
+        "--graphic-elements-invoke-url",
+    ],
+)
+def test_root_ingest_rejects_internal_stage_flags(tmp_path, flag: str) -> None:
+    document = tmp_path / "manual.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document), flag])
+
+    assert result.exit_code != 0
+    assert "No such option" in result.output
 
 
 def test_root_ingest_caption_is_optional_and_passes_minimal_caption_params(monkeypatch, tmp_path) -> None:
@@ -1183,7 +1349,13 @@ def test_root_ingest_rejects_caption_options_without_caption(monkeypatch, tmp_pa
 
     result = RUNNER.invoke(
         cli_main.app,
-        ["ingest", "local", str(document), "--caption-invoke-url", "http://vlm:8000/v1/chat/completions"],
+        [
+            "ingest",
+            "local",
+            str(document),
+            "--caption-invoke-url",
+            "http://vlm:8000/v1/chat/completions",
+        ],
     )
 
     assert result.exit_code == 1
@@ -1198,7 +1370,8 @@ def test_root_ingest_auto_passes_audio_params(monkeypatch, tmp_path) -> None:
     document.write_bytes(b"audio")
     monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
     monkeypatch.setattr(
-        "nemo_retriever.operators.extract.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False)
+        "nemo_retriever.operators.extract.audio.asr_actor.asr_params_from_env",
+        lambda: ASRParams(segment_audio=False),
     )
 
     result = RUNNER.invoke(
@@ -1230,7 +1403,8 @@ def test_root_ingest_auto_passes_video_params(monkeypatch, tmp_path) -> None:
     document.write_bytes(b"video")
     monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
     monkeypatch.setattr(
-        "nemo_retriever.operators.extract.audio.asr_actor.asr_params_from_env", lambda: ASRParams(segment_audio=False)
+        "nemo_retriever.operators.extract.audio.asr_actor.asr_params_from_env",
+        lambda: ASRParams(segment_audio=False),
     )
 
     result = RUNNER.invoke(
@@ -1309,8 +1483,76 @@ def test_root_ingest_auto_mixed_directory_uses_auto_extraction(monkeypatch, tmp_
     result = RUNNER.invoke(cli_main.app, ["ingest", "local", str(dataset)])
 
     assert result.exit_code == 0
-    assert set(fake_ingestor.files.call_args.args[0]) == {str(pdf.resolve()), str(text.resolve()), str(image.resolve())}
+    assert set(fake_ingestor.files.call_args.args[0]) == {
+        str(pdf.resolve()),
+        str(text.resolve()),
+        str(image.resolve()),
+    }
     assert isinstance(fake_ingestor.extract.call_args.args[0], ExtractParams)
+    assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
+
+
+def test_root_ingest_text_formats_directory_includes_documented_plain_text_extensions(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    dataset = tmp_path / "data"
+    dataset.mkdir()
+    html = dataset / "architecture.html"
+    text = dataset / "api_changelog.txt"
+    markdown = dataset / "aurora_README.md"
+    json_document = dataset / "metadata.json"
+    shell_script = dataset / "setup.sh"
+    html.write_text("<h1>Architecture</h1>", encoding="utf-8")
+    text.write_text("API changelog", encoding="utf-8")
+    markdown.write_text("# Aurora", encoding="utf-8")
+    json_document.write_text('{"project": "aurora"}', encoding="utf-8")
+    shell_script.write_text("#!/bin/sh\necho aurora\n", encoding="utf-8")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 5)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(dataset)])
+
+    assert result.exit_code == 0, result.output
+    assert set(fake_ingestor.files.call_args.args[0]) == {
+        str(html.resolve()),
+        str(text.resolve()),
+        str(markdown.resolve()),
+        str(json_document.resolve()),
+        str(shell_script.resolve()),
+    }
+    extract_kwargs = fake_ingestor.extract.call_args.kwargs
+    assert isinstance(extract_kwargs["text_params"], TextChunkParams)
+    assert isinstance(extract_kwargs["html_params"], HtmlChunkParams)
+    assert "Ingested 5 file(s) → 5 row(s)" in result.output
+
+
+def test_root_ingest_directory_discovers_text_extensions_case_insensitively(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "README.MD"
+    document.write_text("# Heading\n", encoding="utf-8")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert fake_ingestor.files.call_args.args == ([str(document.resolve())],)
+    assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
+
+
+def test_root_ingest_expands_documented_plain_text_glob(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    script = nested / "setup.sh"
+    script.write_text("#!/bin/sh\necho hello\n", encoding="utf-8")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(tmp_path / "**" / "*.sh")])
+
+    assert result.exit_code == 0
+    assert fake_ingestor.files.call_args.args == ([str(script)],)
     assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
@@ -1330,7 +1572,9 @@ def test_root_cli_error_handler_includes_pydantic_validation_error() -> None:
     assert ValidationError in cli_shared.ROOT_CLI_ERRORS
 
 
-def test_resolve_ingest_plan_validates_run_mode_before_creating_ingestor(monkeypatch) -> None:
+def test_resolve_ingest_plan_validates_run_mode_before_creating_ingestor(
+    monkeypatch,
+) -> None:
     def fail_create_ingestor(**_kwargs: Any) -> Any:
         raise AssertionError("create_ingestor should not be called for an invalid run mode")
 
@@ -1366,7 +1610,9 @@ def test_silence_noisy_libraries_sets_env_vars(monkeypatch) -> None:
     assert logging.getLogger("transformers").level == logging.ERROR
 
 
-def test_quiet_capture_swallows_output_on_success(capfd: pytest.CaptureFixture[str]) -> None:
+def test_quiet_capture_swallows_output_on_success(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
     with cli_shared.quiet_capture():
         sys.stdout.write("noisy stdout\n")
         sys.stdout.flush()
@@ -1436,7 +1682,16 @@ def test_root_ingest_index_mode_hybrid_passes_hybrid_into_vdb_kwargs(monkeypatch
 
     result = RUNNER.invoke(
         cli_main.app,
-        ["ingest", str(doc), "--lancedb-uri", "/tmp/lancedb", "--table-name", "docs", "--index-mode", "hybrid"],
+        [
+            "ingest",
+            str(doc),
+            "--lancedb-uri",
+            "/tmp/lancedb",
+            "--table-name",
+            "docs",
+            "--index-mode",
+            "hybrid",
+        ],
     )
 
     assert result.exit_code == 0
@@ -1448,26 +1703,25 @@ def test_root_ingest_index_mode_hybrid_passes_hybrid_into_vdb_kwargs(monkeypatch
     }
 
 
-def test_root_ingest_deprecated_hybrid_alias_still_maps_to_hybrid(monkeypatch, tmp_path) -> None:
-    fake_ingestor = _make_fake_ingestor()
+@pytest.mark.parametrize("flag", ["--hybrid", "--sparse"])
+def test_root_ingest_rejects_deprecated_index_mode_aliases(tmp_path, flag: str) -> None:
     doc = tmp_path / "a.pdf"
     doc.write_bytes(b"%PDF-1.4\n")
 
-    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_: fake_ingestor)
-    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 1)
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(doc), flag])
 
-    result = RUNNER.invoke(
-        cli_main.app,
-        ["ingest", str(doc), "--lancedb-uri", "/tmp/lancedb", "--table-name", "docs", "--hybrid"],
-    )
+    assert result.exit_code != 0
+    assert "No such option" in result.output
 
-    assert result.exit_code == 0
-    assert fake_ingestor.vdb_upload.call_args.args[0].vdb_kwargs == {
-        "uri": "/tmp/lancedb",
-        "table_name": "docs",
-        "overwrite": True,
-        "hybrid": True,
-    }
+
+def test_root_ingest_rejects_redundant_no_dedup_flag(tmp_path) -> None:
+    doc = tmp_path / "a.pdf"
+    doc.write_bytes(b"%PDF-1.4\n")
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(doc), "--no-dedup"])
+
+    assert result.exit_code != 0
+    assert "No such option" in result.output
 
 
 def test_root_ingest_index_mode_sparse_skips_embedding_and_writes_fts_table(monkeypatch, tmp_path) -> None:
@@ -1510,70 +1764,3 @@ def test_root_ingest_index_mode_sparse_skips_embedding_and_writes_fts_table(monk
     assert table.schema.metadata[b"retrieval_mode"] == b"sparse"
     index_names = {index.name.lower() for index in table.list_indices()}
     assert any("text" in name or "fts" in name for name in index_names)
-
-
-def test_root_ingest_deprecated_sparse_alias_still_maps_to_sparse(monkeypatch, tmp_path) -> None:
-    fake_ingestor = _make_fake_ingestor()
-    doc = tmp_path / "a.pdf"
-    doc.write_bytes(b"%PDF-1.4\n")
-    fake_ingestor.ingest.return_value = [{"text": "alpha sparse manual"}]
-    writes: list[dict[str, Any]] = []
-
-    def fake_write_sparse_result(result: object, *, lancedb_uri: str, table_name: str, overwrite: bool) -> None:
-        writes.append(
-            {
-                "result": result,
-                "lancedb_uri": lancedb_uri,
-                "table_name": table_name,
-                "overwrite": overwrite,
-            }
-        )
-
-    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_: fake_ingestor)
-    monkeypatch.setattr(ingest_execution, "_write_sparse_lancedb_result", fake_write_sparse_result)
-    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 1)
-
-    result = RUNNER.invoke(
-        cli_main.app,
-        [
-            "ingest",
-            str(doc),
-            "--lancedb-uri",
-            "/tmp/lancedb",
-            "--table-name",
-            "sparse_docs",
-            "--sparse",
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-    fake_ingestor.embed.assert_not_called()
-    fake_ingestor.vdb_upload.assert_not_called()
-    assert writes == [
-        {
-            "result": [{"text": "alpha sparse manual"}],
-            "lancedb_uri": "/tmp/lancedb",
-            "table_name": "sparse_docs",
-            "overwrite": True,
-        }
-    ]
-
-
-def test_root_ingest_rejects_multiple_index_mode_options(tmp_path) -> None:
-    doc = tmp_path / "a.pdf"
-    doc.write_bytes(b"%PDF-1.4\n")
-
-    result = RUNNER.invoke(cli_main.app, ["ingest", str(doc), "--index-mode", "hybrid", "--sparse"])
-
-    assert result.exit_code == 1
-    assert "pass only one index mode option" in result.output
-
-
-def test_root_ingest_rejects_deprecated_sparse_and_hybrid_aliases_together(tmp_path) -> None:
-    doc = tmp_path / "a.pdf"
-    doc.write_bytes(b"%PDF-1.4\n")
-
-    result = RUNNER.invoke(cli_main.app, ["ingest", str(doc), "--sparse", "--hybrid"])
-
-    assert result.exit_code == 1
-    assert "pass only one index mode option" in result.output

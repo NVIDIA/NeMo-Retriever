@@ -19,7 +19,7 @@ The root CLI is intentionally LanceDB-first: `retriever ingest ...` writes Lance
 
 Flow (see `operators.py` and `records.py`):
 
-1. **`to_client_vdb_records(data)`** — converts rows to `list[list[dict]]` (one outer batch). Rows without both **text** and **embedding** are dropped.
+1. **`to_client_vdb_records(data)`** — converts rows to `list[list[dict]]` (one outer batch). Dense rows require an **embedding** plus either nonblank **text** or concrete image backing. Image-backed rows without text are stored as `type=image` and `text=""`; they are searchable through dense retrieval but add no FTS terms. The answer-oriented evidence formatter omits every hit without nonblank text and reports the omission in coverage. Sparse-only ingestion continues to require nonblank text.
 2. Optional **sidecar metadata** — if `vdb_kwargs` contains `meta_dataframe` / `meta_source_field` / `meta_fields`, those keys are stripped for the concrete DB constructor and merged onto records via `sidecar_metadata.py`.
 3. **`self._vdb.run(records)`** — delegates to the concrete backend (e.g. `LanceDB.run`).
 

@@ -28,7 +28,7 @@ If `command -v retriever` returns nothing, follow `references/install.md` to ins
 Run two complementary passes — these are your FIRST calls; don't `ls`/`find`/`sed`/Read to orient first. Semantic hybrid finds topically-relevant pages; a **lexical (sparse/BM25) pass on the exact term** finds the precise page a number/code/proper-noun lives on, which dense retrieval often misses:
 
 - **Semantic pass** — the full question, hybrid (dense + lexical fusion):
-  `<RETRIEVER_VENV>/bin/retriever query "<question>" --format evidence --hybrid --top-k 10`
+  `<RETRIEVER_VENV>/bin/retriever query "<question>" --format evidence --retrieval-mode hybrid --top-k 10`
 - **Lexical pass** — the EXACT term/figure/code/proper-noun the question targets (just the term, not the whole question — that's what makes BM25 precise):
   `<RETRIEVER_VENV>/bin/retriever query "<exact term, e.g. Management VaR / Level 3 / a code>" --format evidence --retrieval-mode sparse --top-k 10`
 
@@ -41,8 +41,6 @@ Each returns `{ evidence: [ { text, source, locator, modality, fidelity, score, 
 - Open `references/cli/query.md` ONLY for the fallback path (chart text-extract, compose-reply detail).
 
 For the full `retriever ingest` CLI spec, see `references/cli/ingest.md`. For `retriever query` flags, `<RETRIEVER_VENV>/bin/retriever query --help` is authoritative (and faster) — you do not need it for routine turns.
-
-Before ingesting a mixed folder, inventory extensions (`find <dir> -name '*.*' | sed 's/.*\.//' | sort -u`) — `--input-type=auto` silently drops anything outside the supported set. See `references/troubleshooting.md` "Unsupported file types".
 
 ## Hard limits (apply to every turn)
 

@@ -96,7 +96,8 @@ Skip this step if you are using remote NIM inference only.
 The [test PDF](../data/multimodal_test.pdf) contains text, tables, charts, and images. Additional test data resides [here](../data/).
 
 > **Note:** `retriever ingest` defaults to local, in-process execution. Use `retriever ingest batch ...` for Ray Data scale-out on larger workloads.
-> `retriever pipeline run` keeps its legacy `--run-mode` flag for compatibility and development workflows.
+> File formats and internal extraction stages are not separate root commands; configure supported behavior through `retriever ingest`.
+> `retriever pipeline run` remains callable for compatibility while existing callers migrate, but it is hidden from root help.
 
 The examples below use default local GPU inference (no `invoke_url` specified) and require the `[local]` extra and the CUDA 13 torch override from the setup steps above. For remote NIM inference without a local GPU, refer to [Run with remote inference](#run-with-remote-inference-no-local-gpu-required).
 
@@ -177,7 +178,7 @@ python -m nemo_retriever.examples.graph_pipeline \
   /your-example-dir \
   --vdb-kwargs-json '{"uri":"lancedb","table_name":"nemo-retriever"}' \
   --page-elements-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3 \
-  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1 \
+  --ocr-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2 \
   --table-structure-invoke-url https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1 \
   --embed-invoke-url https://integrate.api.nvidia.com/v1/embeddings \
   --embed-model-name nvidia/llama-nemotron-embed-1b-v2
@@ -635,7 +636,7 @@ ingestor = (
   .extract(
     # for self hosted NIMs, your URLs will depend on your NIM container DNS settings
     page_elements_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3",
-    ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1",
+    ocr_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2",
     table_structure_invoke_url="https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1",
   )
   .embed(
