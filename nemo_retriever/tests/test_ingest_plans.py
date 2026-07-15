@@ -1,5 +1,3 @@
-import logging
-
 import pytest
 
 from tests import _have_ffmpeg_binary
@@ -215,7 +213,6 @@ def test_build_graph_resolves_endpoint_configured_nodes_to_cpu_variants(
             page_elements_invoke_url="http://page.example/v1",
             ocr_invoke_url="http://ocr.example/v1",
             table_structure_invoke_url="http://table.example/v1",
-            graphic_elements_invoke_url="http://graphic.example/v1",
             ocr_version=ocr_version,
         ),
         embed_params=EmbedParams(
@@ -228,42 +225,12 @@ def test_build_graph_resolves_endpoint_configured_nodes_to_cpu_variants(
 
     assert classes["PageElementDetectionActor"].__name__ == "PageElementDetectionCPUActor"
     assert classes["TableStructureActor"].__name__ == "TableStructureCPUActor"
-    assert classes["GraphicElementsActor"].__name__ == "GraphicElementsCPUActor"
+    assert "GraphicElementsActor" not in classes
     assert classes[expected_node_name].__name__ == expected_cpu_class_name
     assert classes["_BatchEmbedActor"].__name__ == "_BatchEmbedCPUActor"
     assert issubclass(classes["PageElementDetectionActor"], CPUOperator)
     assert issubclass(classes[expected_node_name], CPUOperator)
     assert issubclass(classes["_BatchEmbedActor"], CPUOperator)
-
-
-def test_build_graph_keeps_partial_graphic_endpoint_on_gpu_for_local_ocr(caplog) -> None:
-    caplog.set_level(logging.WARNING, logger="nemo_retriever.operators.extract.chart.chart_detection")
-    graph = build_graph(
-        extract_params=ExtractParams(
-            method="ocr",
-            extract_text=True,
-            extract_tables=False,
-            extract_charts=True,
-            extract_infographics=False,
-            page_elements_invoke_url="http://page.example/v1",
-            graphic_elements_invoke_url="http://graphic.example/v1",
-            ocr_invoke_url=None,
-            ocr_version="v1",
-        ),
-        embed_params=EmbedParams(
-            model_name="nvidia/llama-nemotron-embed-1b-v2", embed_invoke_url="http://embed.example/v1"
-        ),
-    )
-
-    resolved = graph.resolve(Resources(cpu_count=8, gpu_count=4))
-    classes = {node.name: node.operator_class for node in _linear_nodes(resolved)}
-
-    assert classes["PageElementDetectionActor"].__name__ == "PageElementDetectionCPUActor"
-    assert classes["GraphicElementsActor"].__name__ == "GraphicElementsActor"
-    assert classes["OCRActor"].__name__ == "OCRActor"
-    assert issubclass(classes["GraphicElementsActor"], GPUOperator)
-    assert "received graphic_elements_invoke_url without ocr_invoke_url" in caplog.text
-    assert issubclass(classes["OCRActor"], GPUOperator)
 
 
 @pytest.mark.parametrize(
@@ -364,6 +331,34 @@ def test_batch_tuning_to_node_overrides_scales_local_caption_on_multi_gpu() -> N
     assert overrides["CaptionActor"]["num_gpus"] == 1.0
     assert overrides["_BatchEmbedActor"]["concurrency"] == 2
     assert overrides["_BatchEmbedActor"]["num_gpus"] == 0.5
+
+
+def test_batch_tuning_to_node_overrides_keeps_default_pdf_pipeline_within_cpu_budget() -> None:
+    cluster = ClusterResources(
+        total_resources=Resources(cpu_count=224, gpu_count=8),
+        available_resources=Resources(cpu_count=224, gpu_count=8),
+    )
+
+    overrides = batch_tuning_to_node_overrides(
+        extract_params=ExtractParams(extract_tables=True, use_table_structure=True),
+        embed_params=EmbedParams(model_name="nvidia/llama-nemotron-embed-1b-v2"),
+        cluster_resources=cluster,
+    )
+
+    # The documented extract -> chunk -> dedup -> reshape -> embed pipeline
+    # has six additional one-CPU tasks alongside these persistent actor pools.
+    requested_cpu = 6 + sum(
+        overrides[actor]["concurrency"] * overrides[actor].get("num_cpus", 1)
+        for actor in (
+            "PDFExtractionActor",
+            "PageElementDetectionActor",
+            "TableStructureActor",
+            "OCRActor",
+            "_BatchEmbedActor",
+        )
+    )
+
+    assert requested_cpu <= cluster.total_cpu_count()
 
 
 def test_batch_tuning_to_node_overrides_honors_table_structure_tuning() -> None:

@@ -99,8 +99,11 @@ def test_pipeline_compatibility_command_is_hidden_but_callable() -> None:
     assert result.exit_code == 0
 
 
-@pytest.mark.parametrize("removed_command", ("txt", "html"))
-def test_format_specific_root_commands_are_not_callable(removed_command: str) -> None:
+@pytest.mark.parametrize(
+    "removed_command",
+    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare"),
+)
+def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [removed_command, "--help"])
 
     assert result.exit_code == 2
@@ -544,7 +547,6 @@ def test_root_ingest_passes_embedding_overrides_without_stage_flags(monkeypatch,
     extract_params = fake_ingestor.extract.call_args.args[0]
     assert isinstance(extract_params, ExtractParams)
     assert extract_params.use_page_elements is True
-    assert extract_params.use_graphic_elements is False
     assert extract_params.use_table_structure is False
     assert extract_params.table_output_format == "pseudo_markdown"
 
@@ -1022,6 +1024,22 @@ def test_root_ingest_routes_text_inputs_by_default_to_auto_planner(monkeypatch, 
     assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
+@pytest.mark.parametrize("suffix", [".md", ".json", ".sh"])
+def test_root_ingest_treats_documented_plain_text_extensions_as_text(monkeypatch, tmp_path, suffix) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / f"notes{suffix}"
+    document.write_text("plain text content", encoding="utf-8")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(document)])
+
+    assert result.exit_code == 0
+    assert fake_ingestor.files.call_args.args == ([str(document)],)
+    assert isinstance(fake_ingestor.extract.call_args.args[0], ExtractParams)
+    assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
+
+
 def test_root_ingest_help_defaults_to_local_workflow(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
     monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
@@ -1474,19 +1492,23 @@ def test_root_ingest_auto_mixed_directory_uses_auto_extraction(monkeypatch, tmp_
     assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
-def test_root_ingest_text_formats_directory_skips_markdown(monkeypatch, tmp_path) -> None:
+def test_root_ingest_text_formats_directory_includes_documented_plain_text_extensions(monkeypatch, tmp_path) -> None:
     fake_ingestor = _make_fake_ingestor()
     dataset = tmp_path / "data"
     dataset.mkdir()
     html = dataset / "architecture.html"
     text = dataset / "api_changelog.txt"
     markdown = dataset / "aurora_README.md"
+    json_document = dataset / "metadata.json"
+    shell_script = dataset / "setup.sh"
     html.write_text("<h1>Architecture</h1>", encoding="utf-8")
     text.write_text("API changelog", encoding="utf-8")
-    markdown.write_text("# Unsupported markdown", encoding="utf-8")
+    markdown.write_text("# Aurora", encoding="utf-8")
+    json_document.write_text('{"project": "aurora"}', encoding="utf-8")
+    shell_script.write_text("#!/bin/sh\necho aurora\n", encoding="utf-8")
 
     monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
-    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 2)
+    monkeypatch.setattr(ingest_execution, "_count_lancedb_rows", lambda *_, **__: 5)
 
     result = RUNNER.invoke(cli_main.app, ["ingest", str(dataset)])
 
@@ -1494,12 +1516,44 @@ def test_root_ingest_text_formats_directory_skips_markdown(monkeypatch, tmp_path
     assert set(fake_ingestor.files.call_args.args[0]) == {
         str(html.resolve()),
         str(text.resolve()),
+        str(markdown.resolve()),
+        str(json_document.resolve()),
+        str(shell_script.resolve()),
     }
-    assert str(markdown.resolve()) not in fake_ingestor.files.call_args.args[0]
     extract_kwargs = fake_ingestor.extract.call_args.kwargs
     assert isinstance(extract_kwargs["text_params"], TextChunkParams)
     assert isinstance(extract_kwargs["html_params"], HtmlChunkParams)
-    assert "Ingested 2 file(s) → 2 row(s)" in result.output
+    assert "Ingested 5 file(s) → 5 row(s)" in result.output
+
+
+def test_root_ingest_directory_discovers_text_extensions_case_insensitively(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    document = tmp_path / "README.MD"
+    document.write_text("# Heading\n", encoding="utf-8")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert fake_ingestor.files.call_args.args == ([str(document.resolve())],)
+    assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
+
+
+def test_root_ingest_expands_documented_plain_text_glob(monkeypatch, tmp_path) -> None:
+    fake_ingestor = _make_fake_ingestor()
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    script = nested / "setup.sh"
+    script.write_text("#!/bin/sh\necho hello\n", encoding="utf-8")
+
+    monkeypatch.setattr(ingest_execution, "create_ingestor", lambda **_kwargs: fake_ingestor)
+
+    result = RUNNER.invoke(cli_main.app, ["ingest", str(tmp_path / "**" / "*.sh")])
+
+    assert result.exit_code == 0
+    assert fake_ingestor.files.call_args.args == ([str(script)],)
+    assert isinstance(fake_ingestor.extract.call_args.kwargs["text_params"], TextChunkParams)
 
 
 def test_root_ingest_reports_os_errors(monkeypatch) -> None:

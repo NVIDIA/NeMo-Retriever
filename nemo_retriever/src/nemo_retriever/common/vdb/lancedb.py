@@ -239,10 +239,14 @@ def _create_lancedb_results(
     Extracts the appropriate searchable text per ``document_type`` and, when
     ``expected_dim`` is set, validates that each row's embedding is shaped
     consistently with the LanceDB fixed-size-list schema before forwarding it
-    to the writer. Rows whose embedding is missing, of the wrong type, or of
-    the wrong length are dropped and counted; per-row reasons are emitted at
-    ``DEBUG`` and a single structured ``WARNING`` summary is emitted at the
-    end of the call when any drops occurred.
+    to the writer. Canonical image records may use ``text=""`` when both
+    ``document_type`` and ``content_metadata.type`` are ``"image"``; all other
+    dense records still require text. The graph adapter owns image-backing
+    validation and emits that normalized record shape.
+    Rows whose embedding is missing, of the wrong type, or of the wrong length
+    are dropped and counted; per-row reasons are emitted at ``DEBUG`` and a
+    single structured ``WARNING`` summary is emitted at the end of the call
+    when any drops occurred.
 
     Passing ``expected_dim=None`` disables the length check entirely. Callers
     that prefer to defer to LanceDB's ``on_bad_vectors`` policy on the writer
@@ -296,12 +300,17 @@ def _create_lancedb_results(
 
             text = _get_text_for_element(element)
 
-            if not text:
-                dropped_no_text += 1
-                source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
-                pg_num = content_meta.get("page_number")
-                logger.debug(f"No text found for entity: {source_name} page: {pg_num} type: {doc_type}")
-                continue
+            if not isinstance(text, str) or not text.strip():
+                is_canonical_image = (
+                    doc_type == "image" and isinstance(content_meta, dict) and content_meta.get("type") == "image"
+                )
+                if not is_canonical_image:
+                    dropped_no_text += 1
+                    source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
+                    pg_num = content_meta.get("page_number")
+                    logger.debug(f"No text found for entity: {source_name} page: {pg_num} type: {doc_type}")
+                    continue
+                text = ""
 
             row_id = content_meta.get("id") if isinstance(content_meta, dict) else None
             if row_id is None and isinstance(metadata, dict):
@@ -353,7 +362,7 @@ def _create_sparse_lancedb_results(results) -> tuple[list, dict[str, int]]:
             content_meta = metadata.get("content_metadata", {})
             text = _get_text_for_element(element)
 
-            if not text:
+            if not isinstance(text, str) or not text.strip():
                 dropped_no_text += 1
                 source_name = metadata.get("source_metadata", {}).get("source_name", "unknown")
                 pg_num = content_meta.get("page_number") if isinstance(content_meta, dict) else None

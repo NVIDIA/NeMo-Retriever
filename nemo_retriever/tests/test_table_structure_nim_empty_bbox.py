@@ -31,7 +31,7 @@ The fix has two layers, and these tests pin both down:
    ``bounding_boxes: {}`` is trusted as "zero detections, done".
 
 2. **Defence-in-depth** — :func:`_prediction_to_detections` in the
-   table / chart / infographic modules now extracts candidate
+   table module now extracts candidate
    boxes / labels BEFORE checking ``torch``, so a dict input with no
    detection fields returns ``[]`` instead of raising ``ImportError``
    in torch-free environments. This means a future caller that
@@ -157,11 +157,7 @@ class TestPredictionToDetectionsTorchOptional:
 
     @pytest.mark.parametrize(
         "module_path",
-        [
-            "nemo_retriever.common.modality.table.shared",
-            "nemo_retriever.common.modality.chart.shared",
-            "nemo_retriever.common.modality.infographic.infographic_detection",
-        ],
+        ["nemo_retriever.common.modality.table.shared"],
     )
     def test_empty_nim_response_returns_empty_without_torch(self, module_path: str) -> None:
         module = importlib.import_module(module_path)
@@ -176,11 +172,7 @@ class TestPredictionToDetectionsTorchOptional:
 
     @pytest.mark.parametrize(
         "module_path",
-        [
-            "nemo_retriever.common.modality.table.shared",
-            "nemo_retriever.common.modality.chart.shared",
-            "nemo_retriever.common.modality.infographic.infographic_detection",
-        ],
+        ["nemo_retriever.common.modality.table.shared"],
     )
     def test_dict_with_only_index_returns_empty_without_torch(self, module_path: str) -> None:
         """A dict that lacks every box/label/score key must not require torch."""
@@ -195,11 +187,7 @@ class TestPredictionToDetectionsTorchOptional:
 
     @pytest.mark.parametrize(
         "module_path",
-        [
-            "nemo_retriever.common.modality.table.shared",
-            "nemo_retriever.common.modality.chart.shared",
-            "nemo_retriever.common.modality.infographic.infographic_detection",
-        ],
+        ["nemo_retriever.common.modality.table.shared"],
     )
     def test_none_input_returns_empty_without_torch(self, module_path: str) -> None:
         module = importlib.import_module(module_path)
@@ -210,11 +198,7 @@ class TestPredictionToDetectionsTorchOptional:
 
     @pytest.mark.parametrize(
         "module_path",
-        [
-            "nemo_retriever.common.modality.table.shared",
-            "nemo_retriever.common.modality.chart.shared",
-            "nemo_retriever.common.modality.infographic.infographic_detection",
-        ],
+        ["nemo_retriever.common.modality.table.shared"],
     )
     def test_payload_with_boxes_still_requires_torch(self, module_path: str) -> None:
         """If the caller really did hand us a torch-shaped payload, the
@@ -300,7 +284,7 @@ class TestTableStructureNimEmptyBboxEndToEnd:
                 df,
                 table_structure_invoke_url="http://nemotron-table-structure-v1:8000/v1/infer",
                 page_elements_invoke_url="http://nemotron-page-elements-v3:8000/v1/infer",
-                ocr_invoke_url="http://nemotron-ocr-v1:8000/v1/infer",
+                ocr_invoke_url="http://nemotron-ocr-v2:8000/v1/infer",
             )
 
         # Stage finished successfully, no row-level error recorded.
@@ -336,7 +320,7 @@ class TestTableStructureNimEmptyBboxEndToEnd:
                 df,
                 table_structure_invoke_url="http://nemotron-table-structure-v1:8000/v1/infer",
                 page_elements_invoke_url="http://nemotron-page-elements-v3:8000/v1/infer",
-                ocr_invoke_url="http://nemotron-ocr-v1:8000/v1/infer",
+                ocr_invoke_url="http://nemotron-ocr-v2:8000/v1/infer",
             )
 
     def test_non_bbox_response_still_falls_through_to_legacy_parser(self) -> None:
@@ -364,7 +348,7 @@ class TestTableStructureNimEmptyBboxEndToEnd:
                 df,
                 table_structure_invoke_url="http://nemotron-table-structure-v1:8000/v1/infer",
                 page_elements_invoke_url="http://nemotron-page-elements-v3:8000/v1/infer",
-                ocr_invoke_url="http://nemotron-ocr-v1:8000/v1/infer",
+                ocr_invoke_url="http://nemotron-ocr-v2:8000/v1/infer",
             )
 
         # The non-bbox legacy response triggers the fallback exactly once.

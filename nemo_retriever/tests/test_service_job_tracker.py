@@ -21,6 +21,7 @@ ingestion pipeline depends on:
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -35,6 +36,7 @@ from nemo_retriever.service.services.job_tracker import (
     JobTracker,
     JobTrackerAtCapacityError,
     JobTrackerError,
+    MarkOutcome,
 )
 
 
@@ -58,6 +60,13 @@ def _make_tracker_with_bus() -> tuple[JobTracker, _RecordingBus]:
     bus = _RecordingBus()
     tracker.set_event_bus(bus)
     return tracker, bus
+
+
+def _age_job(tracker: JobTracker, job_id: str, *, seconds: float, terminal: bool = False) -> None:
+    with tracker._lock:
+        stamp = (datetime.now(timezone.utc) - timedelta(seconds=seconds)).isoformat()
+        field = "finalized_at" if terminal else "created_at"
+        setattr(tracker._jobs[job_id], field, stamp)
 
 
 # ----------------------------------------------------------------------
@@ -133,8 +142,6 @@ def test_register_job_rejects_at_max_jobs() -> None:
 
 
 def test_stale_pending_job_evicted_to_make_room() -> None:
-    from datetime import datetime, timedelta, timezone
-
     tracker = JobTracker(max_jobs=1, stale_job_ttl_s=60.0)
     tracker.register_job("old", expected_documents=5)
     with tracker._lock:
@@ -142,6 +149,101 @@ def test_stale_pending_job_evicted_to_make_room() -> None:
     agg = tracker.register_job("new", expected_documents=1)
     assert agg.job_id == "new"
     assert tracker.get_job("old") is None
+
+
+def test_expired_job_id_can_be_reused() -> None:
+    tracker = JobTracker(max_jobs=1, stale_job_ttl_s=60.0)
+    tracker.register_job("reusable", expected_documents=1)
+    _age_job(tracker, "reusable", seconds=61)
+
+    replacement = tracker.register_job("reusable", expected_documents=2)
+
+    assert replacement.expected_documents == 2
+
+
+@pytest.mark.parametrize(
+    "reader",
+    [
+        "get_job",
+        "all_jobs",
+        "should_retain_results",
+        "job_documents",
+        "all_documents",
+        "get_document",
+        "get_result_data",
+        "summary",
+    ],
+)
+def test_stale_job_is_evicted_on_every_read_path(reader: str) -> None:
+    tracker = JobTracker(stale_job_ttl_s=60.0)
+    tracker.register_job("stale", expected_documents=2, retain_results=True)
+    tracker.register_document("doc", job_id="stale")
+    _age_job(tracker, "stale", seconds=61)
+
+    if reader == "get_job":
+        result = tracker.get_job("stale")
+    elif reader == "all_jobs":
+        result = tracker.all_jobs()
+    elif reader == "should_retain_results":
+        result = tracker.should_retain_results("stale")
+    elif reader == "job_documents":
+        result = tracker.job_documents("stale")
+    elif reader == "all_documents":
+        result = tracker.all_documents()
+    elif reader == "get_document":
+        result = tracker.get_document("doc")
+    elif reader == "get_result_data":
+        result = tracker.get_result_data("doc")
+    else:
+        result = tracker.summary()["total_jobs"]
+
+    assert result in (None, False, 0, [])
+    with tracker._lock:
+        assert "stale" not in tracker._jobs
+        assert "doc" not in tracker._documents
+
+
+def test_stale_job_rejects_document_registration() -> None:
+    tracker = JobTracker(stale_job_ttl_s=60.0)
+    tracker.register_job("stale", expected_documents=1)
+    _age_job(tracker, "stale", seconds=61)
+
+    with pytest.raises(JobNotFoundError, match="not found"):
+        tracker.register_document("late", job_id="stale")
+
+
+@pytest.mark.parametrize("transition", ["processing", "completed", "failed"])
+def test_stale_job_cannot_be_revived_by_late_transition(transition: str) -> None:
+    tracker = JobTracker(stale_job_ttl_s=60.0)
+    tracker.register_job("stale", expected_documents=1)
+    tracker.register_document("doc", job_id="stale")
+    _age_job(tracker, "stale", seconds=61)
+
+    if transition == "processing":
+        tracker.mark_processing("doc")
+    elif transition == "completed":
+        assert tracker.mark_completed("doc") == MarkOutcome.UNKNOWN_DOCUMENT
+    else:
+        assert tracker.mark_failed("doc", "late") == MarkOutcome.UNKNOWN_DOCUMENT
+
+    with tracker._lock:
+        assert "stale" not in tracker._jobs
+        assert "doc" not in tracker._documents
+
+
+def test_terminal_job_results_remain_idempotent_until_terminal_ttl() -> None:
+    tracker = JobTracker(ttl_s=60.0, stale_job_ttl_s=60.0)
+    tracker.register_job("terminal", expected_documents=1, retain_results=True)
+    tracker.register_document("doc", job_id="terminal")
+    tracker.mark_completed("doc", result_data=[{"x": 1}])
+    _age_job(tracker, "terminal", seconds=59, terminal=True)
+
+    assert tracker.get_result_data("doc") == [{"x": 1}]
+    assert tracker.get_result_data("doc") == [{"x": 1}]
+
+    _age_job(tracker, "terminal", seconds=61, terminal=True)
+    assert tracker.get_result_data("doc") is None
+    assert tracker.get_job("terminal") is None
 
 
 # ----------------------------------------------------------------------
@@ -568,14 +670,22 @@ def test_mark_completed_drops_result_data_when_retain_false() -> None:
     assert rec is not None
     assert rec.result_rows == 3
     assert rec.result_data is None
-    assert tracker.consume_result_data("d") is None
+    assert tracker.get_result_data("d") is None
 
 
-def test_consume_result_data_clears_after_read() -> None:
+def test_get_result_data_is_idempotent_until_job_eviction() -> None:
     tracker = JobTracker()
     tracker.register_job("j", expected_documents=1, retain_results=True)
     tracker.register_document("d", job_id="j")
-    tracker.mark_completed("d", result_data=[{"x": 1}])
-    assert tracker.consume_result_data("d") == [{"x": 1}]
-    # Subsequent calls return None — bulky data is purged.
-    assert tracker.consume_result_data("d") is None
+    rows = [{"metadata": {"tags": ["original"]}}]
+    expected = [{"metadata": {"tags": ["original"]}}]
+
+    tracker.mark_completed("d", result_data=rows)
+    rows[0]["metadata"]["tags"].append("producer-mutation")
+
+    first_read = tracker.get_result_data("d")
+    assert first_read == expected
+    assert first_read is not None
+    first_read[0]["metadata"]["tags"].append("reader-mutation")
+
+    assert tracker.get_result_data("d") == expected
