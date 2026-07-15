@@ -322,22 +322,28 @@ class Retriever:
         caps: LanceTableCapabilities,
         runtime_embed_kwargs: Optional[dict[str, Any]],
     ) -> dict[str, Any]:
-        """Resolve canonical model identity before applying runtime provider routing."""
+        """Choose the query model: explicit override, table metadata, or default."""
         resolved = dict(runtime_embed_kwargs or {})
-        explicit_model = self._embedding_model_from_kwargs(runtime_embed_kwargs) or self._embedding_model_from_kwargs(
-            self.embed_kwargs
-        )
-        table_model = resolve_embed_model(caps.embedding_model_name) if caps.embedding_model_name else None
-        canonical_model = resolve_embed_model(explicit_model or table_model or VL_EMBED_MODEL)
-        if explicit_model is not None and table_model is not None and canonical_model != table_model:
+        override_model = self._embedding_model_from_kwargs(runtime_embed_kwargs)
+        if override_model is None:
+            override_model = self._embedding_model_from_kwargs(self.embed_kwargs)
+        if override_model:
+            override_model = resolve_embed_model(override_model)
+
+        table_model = caps.embedding_model_name
+        if table_model:
+            table_model = resolve_embed_model(table_model)
+
+        query_model = override_model or table_model or VL_EMBED_MODEL
+        if override_model and table_model and override_model != table_model:
             logger.warning(
                 "Explicit embedding model %r conflicts with table embedding model %r; preserving the override.",
-                canonical_model,
+                override_model,
                 table_model,
             )
 
-        resolved["model_name"] = canonical_model
-        resolved["embed_model_name"] = canonical_model
+        resolved["model_name"] = query_model
+        resolved["embed_model_name"] = query_model
         return resolved
 
     def _execute_sparse_lancedb_queries(
