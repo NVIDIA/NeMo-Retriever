@@ -5,6 +5,7 @@
 from contextlib import contextmanager
 import json
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -24,6 +25,7 @@ from nemo_retriever.harness.contracts import (
     HarnessRunError,
 )
 from nemo_retriever.harness.diff import diff_artifact_dirs
+from nemo_retriever.harness import environment as harness_environment
 from nemo_retriever.harness.environment import collect_environment
 from nemo_retriever.harness.execution import _concise_message, _run_result_payload, _write_failure_result, run_benchmark
 
@@ -400,3 +402,21 @@ def test_environment_records_relevant_runtime_flags_without_credentials(monkeypa
     assert payload["runtime_environment"]["HF_HUB_OFFLINE"] == "1"
     assert payload["runtime_environment"]["NEMO_RETRIEVER_HF_CACHE_DIR"] == "/models/huggingface"
     assert "SLACK_WEBHOOK_URL" not in payload["runtime_environment"]
+
+
+def test_environment_records_gpu_sku_count_and_driver(monkeypatch):
+    monkeypatch.setattr(
+        harness_environment.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout="NVIDIA H100 NVL, 580.159.03\nNVIDIA H100 NVL, 580.159.03\n",
+            stderr="",
+        ),
+    )
+
+    payload = collect_environment()
+
+    assert payload["gpu_sku"] == "NVIDIA H100 NVL"
+    assert payload["gpu_count"] == 2
+    assert payload["cuda_driver"] == "580.159.03"

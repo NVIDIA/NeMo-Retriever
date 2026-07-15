@@ -272,8 +272,30 @@ writes local artifacts and never contacts Slack. `post-slack` reads an existing
 session or run artifact, builds a summary, and sends that summary without
 rerunning ingestion or queries.
 
+Each new run records both `gpu_sku` (from `nvidia-smi`) and `gpu_count` in
+`environment.json`; Slack reports show both values. This matters when results
+move between materially different products within one GPU family.
+
 This separation lets you inspect a completed session before reporting it and
 reuse the same artifacts when report formatting changes.
+
+To compare a run with an approved historical reference, pass a local baseline
+file to `post-slack`:
+
+```bash
+uv run --project nemo_retriever retriever harness post-slack \
+  --baseline-file /private/path/retriever-baselines.json \
+  --preview \
+  /local/path/to/session
+```
+
+The JSON file uses `schema_version: 1` and a non-empty `baselines` list. Each
+entry has `name`, `dataset`, numeric `metrics`, and optional `environment`,
+`comparability`, `notes`, and `source` objects. Baselines match report runs by
+dataset. Keep confidential references outside the repository: the harness reads
+the file only while rendering the report and does not copy it into artifacts.
+The selected reference values and notes do appear in the resulting Slack
+payload, so post only to an approved destination.
 
 ### Prerequisites
 

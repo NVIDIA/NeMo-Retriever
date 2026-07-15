@@ -10,6 +10,7 @@ import requests
 from typer.testing import CliRunner
 
 from nemo_retriever.harness.benchmark_registry import VIDORE_V3_PUBLIC_DATASETS
+from nemo_retriever.harness.baselines import HarnessBaseline, load_baselines
 from nemo_retriever.harness.cli import app
 from nemo_retriever.harness.slack import (
     DEFAULT_SLACK_METRIC_KEYS,
@@ -54,6 +55,7 @@ def _write_session(tmp_path: Path, *, dry_run: bool = False) -> Path:
         {
             "git_sha": "abc1234",
             "host": "benchmark-host",
+            "gpu_sku": "NVIDIA H100 NVL",
             "gpu_count": 8,
             "python": "3.12.12",
             "ray_version": "2.49.0",
@@ -143,6 +145,7 @@ def test_slack_report_loads_runfile_session_and_omits_local_paths(tmp_path):
     assert "nemo-retriever library benchmarks" in payload_text
     assert "recall@5" in payload_text
     assert str(tmp_path) not in payload_text
+    assert ["-    gpu_sku", "NVIDIA H100 NVL"] in _table_rows(payload["blocks"][3])
 
 
 def test_slack_report_labels_dry_run_without_reporting_pass(tmp_path):
@@ -228,6 +231,59 @@ def test_slack_payload_truncates_tables_at_slack_row_limit(tmp_path):
     assert len(table["rows"]) == MAX_SLACK_TABLE_ROWS
     assert "TRUNCATED" in json.dumps(table["rows"][-1])
     assert "rows omitted" in json.dumps(table["rows"][-1])
+
+
+def test_slack_payload_adds_explicitly_labeled_baseline_comparison(tmp_path):
+    report = load_session_report(_write_session(tmp_path))
+    baseline = HarnessBaseline(
+        name="26.05 directional reference",
+        dataset="jp20",
+        environment={"gpu_sku": "H100 80GB HBM3", "gpu_count": 8},
+        metrics={"pages": 1940, "recall_5": 0.8},
+        comparability="directional_only",
+        notes="Different GPU SKU and harness profile.",
+    )
+
+    payload = build_slack_payload(
+        report,
+        {"metric_keys": DEFAULT_SLACK_METRIC_KEYS, "post_artifact_paths": False},
+        baselines=[baseline],
+    )
+
+    assert payload["blocks"][-2]["text"]["text"].endswith("Different GPU SKU and harness profile.")
+    assert _table_rows(payload["blocks"][-1]) == [
+        ["METRIC", "CURRENT", "BASELINE", "DELTA"],
+        ["gpu_sku", "NVIDIA H100 NVL", "H100 80GB HBM3", "N/A"],
+        ["gpu_count", "8", "8", "N/A"],
+        ["pages", "1940", "1940", "+0.0%"],
+        ["recall@5", "0.887", "0.800", "+10.9%"],
+    ]
+
+
+def test_load_baselines_validates_private_reference_file(tmp_path):
+    baseline_path = tmp_path / "baselines.json"
+    _write_json(
+        baseline_path,
+        {
+            "schema_version": 1,
+            "baselines": [
+                {
+                    "name": "release reference",
+                    "dataset": "bo767",
+                    "environment": {"gpu_sku": "H100 80GB HBM3", "gpu_count": 8},
+                    "metrics": {"ingest_secs": 4000.0},
+                    "comparability": "directional_only",
+                    "source": {"release": "26.05"},
+                }
+            ],
+        },
+    )
+
+    baselines = load_baselines(baseline_path)
+
+    assert baselines[0].dataset == "bo767"
+    assert baselines[0].metrics == {"ingest_secs": 4000.0}
+    assert baselines[0].source == {"release": "26.05"}
 
 
 def test_slack_payload_summarizes_complete_vidore_v3_suite(tmp_path):

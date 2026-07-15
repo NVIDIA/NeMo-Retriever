@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from nemo_retriever.harness.baselines import HarnessBaseline
 from nemo_retriever.harness.json_io import read_json_object
 
 DEFAULT_USERNAME = "nemo_retriever Harness"
@@ -18,6 +19,7 @@ METRIC_LABELS = {
     "pages_per_sec_ingest": "pages/s",
     "ingest_secs": "ingest_s",
     "pages": "pages",
+    "rows_processed": "rows",
     "query_count": "queries",
     "query_latency_p50_ms": "query p50 ms",
     "query_latency_p95_ms": "query p95 ms",
@@ -326,7 +328,7 @@ def _format_metric_value(metric_name: str, value: Any) -> str:
         return formatted
     if metric_name.endswith("_per_sec_ingest"):
         return f"{float(value):.2f}"
-    if metric_name.startswith("recall_"):
+    if metric_name.startswith(("recall_", "ndcg_")):
         return f"{float(value):.3f}"
     if isinstance(value, float):
         return f"{value:.2f}"
@@ -372,6 +374,22 @@ def _three_column_row(left: str, middle: str, right: str, *, bold: bool = False)
         _table_cell(left, bold=bold),
         _table_cell(middle, bold=bold),
         _table_cell(right, bold=bold),
+    ]
+
+
+def _four_column_row(
+    first: str,
+    second: str,
+    third: str,
+    fourth: str,
+    *,
+    bold: bool = False,
+) -> list[dict[str, Any]]:
+    return [
+        _table_cell(first, bold=bold),
+        _table_cell(second, bold=bold),
+        _table_cell(third, bold=bold),
+        _table_cell(fourth, bold=bold),
     ]
 
 
@@ -459,7 +477,73 @@ def _vidore_v3_performance(runs: list[HarnessRunReport]) -> tuple[float | None, 
     return total_ingest_secs, pages_per_sec
 
 
-def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, Any]) -> dict[str, Any]:
+def _format_percent_delta(current: Any, baseline: Any) -> str:
+    try:
+        current_value = float(current)
+        baseline_value = float(baseline)
+    except (TypeError, ValueError):
+        return "N/A"
+    if baseline_value == 0:
+        return "N/A"
+    return f"{((current_value - baseline_value) / abs(baseline_value)) * 100:+.1f}%"
+
+
+def _baseline_comparison_blocks(
+    report: HarnessSessionReport,
+    baselines: list[HarnessBaseline],
+) -> list[dict[str, Any]]:
+    blocks: list[dict[str, Any]] = []
+    for baseline in baselines:
+        matching_runs = [run for run in report.results if run.dataset == baseline.dataset]
+        for run in matching_runs:
+            rows = [_four_column_row("METRIC", "CURRENT", "BASELINE", "DELTA", bold=True)]
+            for key in ("gpu_sku", "gpu_count"):
+                current_value = run.run_metadata.get(key)
+                baseline_value = baseline.environment.get(key)
+                if current_value is None and baseline_value is None:
+                    continue
+                rows.append(
+                    _four_column_row(
+                        _format_metric_label(key),
+                        _format_metric_value(key, current_value),
+                        _format_metric_value(key, baseline_value),
+                        "N/A",
+                    )
+                )
+            for metric_name, baseline_value in baseline.metrics.items():
+                current_value = run.metrics.get(metric_name)
+                rows.append(
+                    _four_column_row(
+                        _format_metric_label(metric_name),
+                        _format_metric_value(metric_name, current_value),
+                        _format_metric_value(metric_name, baseline_value),
+                        _format_percent_delta(current_value, baseline_value),
+                    )
+                )
+
+            context = [
+                f"*Baseline comparison — {run.dataset}*",
+                f"Reference: {baseline.name}",
+                f"Comparability: {baseline.comparability.replace('_', ' ')}",
+            ]
+            if baseline.notes:
+                context.append(baseline.notes)
+            blocks.extend(
+                [
+                    {"type": "divider"},
+                    {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(context)}},
+                    {"type": "table", "rows": rows[:MAX_SLACK_TABLE_ROWS]},
+                ]
+            )
+    return blocks
+
+
+def build_slack_payload(
+    report: HarnessSessionReport,
+    slack_config: dict[str, Any],
+    *,
+    baselines: list[HarnessBaseline] | None = None,
+) -> dict[str, Any]:
     metric_keys = [str(key) for key in slack_config.get("metric_keys", [])]
     post_artifact_paths = bool(slack_config.get("post_artifact_paths", False))
     vidore_v3_runs = _vidore_v3_runs(report.results)
@@ -495,7 +579,7 @@ def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, An
         rows.append(_two_column_row("-    session_dir", str(report.session_dir)))
     if report.latest_commit:
         rows.append(_two_column_row("-    git_commit", report.latest_commit))
-    for key in ["host", "gpu_count", "cuda_driver", "ray_version", "python_version"]:
+    for key in ["host", "gpu_sku", "gpu_count", "cuda_driver", "ray_version", "python_version"]:
         if key not in first_metadata or first_metadata[key] is None:
             continue
         rows.append(_two_column_row(f"-    {key}", _format_metric_value(key, first_metadata[key])))
@@ -584,6 +668,7 @@ def build_slack_payload(report: HarnessSessionReport, slack_config: dict[str, An
                 {"type": "table", "rows": _vidore_v3_accuracy_rows(vidore_v3_runs)},
             ]
         )
+    blocks.extend(_baseline_comparison_blocks(report, baselines or []))
 
     return {
         "username": DEFAULT_USERNAME,
@@ -623,7 +708,8 @@ def post_report_to_slack(
     slack_config: dict[str, Any],
     *,
     webhook_url: str | None = None,
+    baselines: list[HarnessBaseline] | None = None,
 ) -> dict[str, Any]:
-    payload = build_slack_payload(report, slack_config)
+    payload = build_slack_payload(report, slack_config, baselines=baselines)
     post_slack_payload(payload, resolve_slack_webhook_url(webhook_url))
     return payload
