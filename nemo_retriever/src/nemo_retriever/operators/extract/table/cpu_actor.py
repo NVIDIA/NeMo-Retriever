@@ -23,9 +23,8 @@ logger = logging.getLogger(__name__)
 class TableStructureCPUActor(AbstractOperator, CPUOperator):
     """CPU-only variant of :class:`TableStructureActor`.
 
-    Defaults to the build.nvidia.com endpoint for
-    ``nemotron-table-structure-v1`` and hosted ``nemotron-ocr-v1``. Remote OCR
-    remains URL-driven until OCR v2 NIM is released.
+    Uses NVIDIA's hosted table-structure service by default. OCR is not turned on
+    unless you provide an ``ocr_invoke_url``.
     """
 
     DEFAULT_TABLE_STRUCTURE_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1"

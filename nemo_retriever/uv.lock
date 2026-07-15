@@ -361,15 +361,6 @@ wheels = [
 ]
 
 [[package]]
-name = "boltons"
-version = "25.0.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/63/54/71a94d8e02da9a865587fb3fff100cb0fc7aa9f4d5ed9ed3a591216ddcc7/boltons-25.0.0.tar.gz", hash = "sha256:e110fbdc30b7b9868cb604e3f71d4722dd8f4dcb4a5ddd06028ba8f1ab0b5ace", size = 246294, upload-time = "2025-02-03T05:57:59.129Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/45/7f/0e961cf3908bc4c1c3e027de2794f867c6c89fb4916fc7dba295a0e80a2d/boltons-25.0.0-py3-none-any.whl", hash = "sha256:dc9fb38bf28985715497d1b54d00b62ea866eca3938938ea9043e254a3a6ca62", size = 194210, upload-time = "2025-02-03T05:57:56.705Z" },
-]
-
-[[package]]
 name = "botocore"
 version = "1.43.0"
 source = { registry = "https://pypi.org/simple" }
@@ -987,18 +978,6 @@ wheels = [
 ]
 
 [[package]]
-name = "face"
-version = "26.0.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "boltons" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/24/4e/0e106b0ba486cc38c858fb5efe899002f2ec4765e0808b298d8e19a16efb/face-26.0.0.tar.gz", hash = "sha256:ae12136ff0052f124811f5319670a8d9d29b7d2caaaabe542813690967cc6bca", size = 49862, upload-time = "2026-02-14T00:17:12.576Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/63/1d/c2f7a4334f7501a3474766b5bc0948e8e0b0916217a54d092dd700a5ed3c/face-26.0.0-py3-none-any.whl", hash = "sha256:6ec9cf271d8ee2447f04b14264209a09ec9cbe8252255e61fb7ab6b154e300f9", size = 54825, upload-time = "2026-02-14T00:17:11.519Z" },
-]
-
-[[package]]
 name = "fastapi"
 version = "0.136.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1310,20 +1289,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/48/ae/17f1308ae45cd7b08ebb521747d5b23f4efc4d172038a4e228dd5106c3ff/gguf-0.19.0.tar.gz", hash = "sha256:dbadcd6cc7ccd44256f2229fe7c2dff5e8aa5cf0612ab987fd2b1a57e428923f", size = 111220, upload-time = "2026-05-06T13:04:03.667Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/bb/d71d6da82763528c2c2ed6b59a9d6142c6595545a4c448e2085d155e88c2/gguf-0.19.0-py3-none-any.whl", hash = "sha256:70bcd10edfe697fb2dad6e40af2234b9d8ece9a41a99761405121ebda1c3c1cd", size = 118475, upload-time = "2026-05-06T13:04:02.588Z" },
-]
-
-[[package]]
-name = "glom"
-version = "25.12.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "attrs" },
-    { name = "boltons" },
-    { name = "face" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/78/74/8387f95565ba7c30cd152a585b275ebb9a834d1d32782425c5d2fe0a102c/glom-25.12.0.tar.gz", hash = "sha256:1ae7da88be3693df40ad27bdf57a765a55c075c86c971bcddd67927403eb0069", size = 196128, upload-time = "2025-12-29T06:29:07.274Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a7/e6/4129d9a3baa72d747533bb33376543ccadd9a7f9944e5a6e3ae2e245f5d6/glom-25.12.0-py3-none-any.whl", hash = "sha256:b9f21e77f71a6576a43864e85066b8cc3f0f778d0d50961563f8981377a6dcb1", size = 103295, upload-time = "2025-12-29T06:29:06.074Z" },
 ]
 
 [[package]]
@@ -2485,11 +2450,9 @@ all = [
     { name = "einops" },
     { name = "flashinfer-cubin", marker = "sys_platform == 'linux'" },
     { name = "flashinfer-python", marker = "sys_platform == 'linux'" },
-    { name = "glom" },
     { name = "langgraph" },
     { name = "librosa" },
     { name = "litellm" },
-    { name = "nemotron-graphic-elements-v1" },
     { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemotron-page-elements-v3" },
     { name = "nemotron-table-structure-v1" },
@@ -2533,8 +2496,6 @@ local = [
     { name = "einops" },
     { name = "flashinfer-cubin", marker = "sys_platform == 'linux'" },
     { name = "flashinfer-python", marker = "sys_platform == 'linux'" },
-    { name = "glom" },
-    { name = "nemotron-graphic-elements-v1" },
     { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemotron-page-elements-v3" },
     { name = "nemotron-table-structure-v1" },
@@ -2568,7 +2529,6 @@ service = [
     { name = "apscheduler" },
     { name = "backoff" },
     { name = "easydict" },
-    { name = "glom" },
     { name = "librosa" },
     { name = "litellm" },
     { name = "numba", version = "0.61.2", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
@@ -2586,7 +2546,6 @@ tabular = [
 [package.dev-dependencies]
 dev = [
     { name = "nemo-retriever", extra = ["all", "dev"] },
-    { name = "nemotron-graphic-elements-v1" },
     { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemotron-page-elements-v3" },
     { name = "nemotron-table-structure-v1" },
@@ -2618,8 +2577,6 @@ requires-dist = [
     { name = "flashinfer-cubin", marker = "sys_platform == 'linux' and extra == 'local'", specifier = "==0.6.8.post1" },
     { name = "flashinfer-python", marker = "sys_platform == 'linux' and extra == 'local'", specifier = "==0.6.8.post1" },
     { name = "fsspec", specifier = ">=2025.5.1" },
-    { name = "glom", marker = "extra == 'local'" },
-    { name = "glom", marker = "extra == 'service'" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "lancedb" },
     { name = "langchain-nvidia-ai-endpoints", specifier = ">=1.4.0" },
@@ -2630,7 +2587,6 @@ requires-dist = [
     { name = "litellm", marker = "extra == 'service'", specifier = ">=1.86.0,<2" },
     { name = "markitdown" },
     { name = "nemo-retriever", extras = ["benchmarks", "llm", "local", "multimedia", "nemotron-parse", "service", "tabular"], marker = "extra == 'all'" },
-    { name = "nemotron-graphic-elements-v1", marker = "extra == 'local'", specifier = ">=1.0.0,<2" },
     { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'local') or (platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'local')", specifier = ">=2.0.0,<3" },
     { name = "nemotron-page-elements-v3", marker = "extra == 'local'", specifier = ">=3.0.1,<4" },
     { name = "nemotron-table-structure-v1", marker = "extra == 'local'", specifier = ">=1.0.0,<2" },
@@ -2689,28 +2645,9 @@ provides-extras = ["service", "local", "multimedia", "nemotron-parse", "tabular"
 dev = [
     { name = "nemo-retriever", extras = ["all"] },
     { name = "nemo-retriever", extras = ["dev"] },
-    { name = "nemotron-graphic-elements-v1", specifier = ">=1.0.1.dev0,!=1.0.1,<2" },
     { name = "nemotron-ocr", marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')", specifier = ">=2.0.1.dev0,!=2.0.1,<3" },
     { name = "nemotron-page-elements-v3", specifier = ">=3.0.1.dev0,!=3.0.1,!=3.0.2,<4" },
     { name = "nemotron-table-structure-v1", specifier = ">=1.0.1.dev0,!=1.0.1,<2" },
-]
-
-[[package]]
-name = "nemotron-graphic-elements-v1"
-version = "1.0.1.dev20260608195023"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "huggingface-hub" },
-    { name = "matplotlib" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pillow" },
-    { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
-    { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/da/91/cd578f94cf70708ee65a3342e7954a683757332b231cc7378806ddfcc79f/nemotron_graphic_elements_v1-1.0.1.dev20260608195023.tar.gz", hash = "sha256:7c7412632d01e28af35cb2b1a8671e10dd2e13ca93cd311e6dc81ed82ebd396c", size = 40143, upload-time = "2026-06-08T19:50:56.548Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/27/49cbae1da591806231cb802dcc0640a999718747c73de1826d4b1856a4c8/nemotron_graphic_elements_v1-1.0.1.dev20260608195023-py3-none-any.whl", hash = "sha256:9ebc965bee30de76ed28a90e251e42d5e0f0eafe4b9da124d6202e750751fca5", size = 34239, upload-time = "2026-06-08T19:50:55.649Z" },
 ]
 
 [[package]]

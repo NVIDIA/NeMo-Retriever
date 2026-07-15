@@ -214,7 +214,6 @@ _SERVER_OWNED_KEYS: frozenset[str] = frozenset(
         "page_elements_api_key",
         "ocr_invoke_url",
         "ocr_api_key",
-        "graphic_elements_invoke_url",
         "table_structure_invoke_url",
         "nemotron_parse_invoke_url",
         "embed_invoke_url",
@@ -450,8 +449,8 @@ class ServiceIngestor(ingestor):
     def _fetch_document_result_data(self, document_id: str) -> list[dict[str, Any]]:
         """Fetch ``result_data`` for *document_id* from the status endpoint.
 
-        The status endpoint consumes ``result_data`` on first read, so
-        callers must invoke this exactly once per document.
+        The status endpoint retains ``result_data`` through the job retention
+        window, so retrying this read is safe.
         """
         if not document_id:
             raise ValueError("_fetch_document_result_data(): empty document_id")

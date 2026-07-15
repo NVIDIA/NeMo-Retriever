@@ -51,6 +51,9 @@ class FileClassifier:
         ".pptx": (FileCategory.DOCUMENT, "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
         # Plain text
         ".txt": (FileCategory.TEXT, "text/plain"),
+        ".md": (FileCategory.TEXT, "text/plain"),
+        ".json": (FileCategory.TEXT, "text/plain"),
+        ".sh": (FileCategory.TEXT, "text/plain"),
         # Web / markup
         ".html": (FileCategory.HTML, "text/html"),
         # Image
