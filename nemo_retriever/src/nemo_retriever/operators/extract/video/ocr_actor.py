@@ -87,11 +87,11 @@ class VideoFrameOCRGPUActor(AbstractOperator, GPUOperator):
 class VideoFrameOCRCPUActor(AbstractOperator, CPUOperator):
     """Remote Nemotron OCR on full video frames, batched per call.
 
-    Hosted OCR NIM is currently v1-only; the local GPU variant uses
+    Hosted OCR NIM defaults to Nemotron OCR v2; the local GPU variant uses
     ``NemotronOCRV2`` with the selected OCR mode.
     """
 
-    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1"
+    DEFAULT_INVOKE_URL = "https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v2"
 
     def __init__(self, **ocr_kwargs: Any) -> None:
         super().__init__(**ocr_kwargs)

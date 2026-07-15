@@ -251,7 +251,7 @@ class TestOCRCPUActor:
 
         actor = OCRCPUActor()
         assert actor._model is None
-        assert "nemotron-ocr-v1" in actor.ocr_kwargs["invoke_url"]
+        assert "nemotron-ocr-v2" in actor.ocr_kwargs["invoke_url"]
 
     def test_creates_with_custom_invoke_url(self):
         from nemo_retriever.operators.extract.ocr.cpu_ocr import OCRCPUActor
