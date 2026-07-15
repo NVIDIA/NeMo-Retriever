@@ -35,17 +35,20 @@ import base64
 import hashlib
 import json
 import logging
+import os
 import threading
+import hmac
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Union
 
 import lancedb
 import uvicorn
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from nemo_retriever.common.schemas.collections import (
+    CollectionDeleteResult,
     CollectionCreateRequest,
     CollectionInfo,
     CollectionPage,
@@ -326,12 +329,15 @@ class VectorDBState:
             )
             return self._collection_info(old)
 
-    def delete_collection(self, scope: str, name: str, if_exists: bool) -> CollectionInfo | None:
+    def delete_collection(self, scope: str, name: str, if_exists: bool) -> CollectionDeleteResult:
         with self._write_lock:
             row = self._collection_row(scope, name)
             if not row:
                 if if_exists:
-                    return None
+                    return CollectionDeleteResult(
+                        name=name, scope=scope, existed=False, deleted=False,
+                        status="deleted", cleanup_pending=False,
+                    )
                 raise HTTPException(404, "Collection not found")
             row["status"] = "deleting"
             row["updated_at"] = _now()
@@ -354,7 +360,10 @@ class VectorDBState:
             except Exception:
                 logger.exception("Collection deletion is incomplete and may be retried")
                 raise
-            return self._collection_info(row)
+            return CollectionDeleteResult(
+                name=name, scope=scope, existed=True, deleted=True,
+                status="deleted", cleanup_pending=False,
+            )
 
     def _resolved_table(self, scope: str, name: str) -> str:
         row = self._collection_row(scope, name, active=True)
@@ -525,7 +534,10 @@ class VectorDBState:
             self.get_document(scope, collection, document_id)
         except HTTPException:
             if if_exists:
-                return DocumentDeleteResult(document_id=document_id, collection_name=collection, deleted=False)
+                return DocumentDeleteResult(
+                    document_id=document_id, collection_name=collection, scope=scope,
+                    existed=False, deleted=False, status="deleted", cleanup_pending=False,
+                )
             raise
         with self._write_lock:
             if self._has_table(table_name):
@@ -534,7 +546,10 @@ class VectorDBState:
                 f"scope = {_quoted(scope)} AND collection_name = {_quoted(collection)} "
                 f"AND document_id = {_quoted(document_id)}"
             )
-        return DocumentDeleteResult(document_id=document_id, collection_name=collection, deleted=True)
+        return DocumentDeleteResult(
+            document_id=document_id, collection_name=collection, scope=scope,
+            existed=True, deleted=True, status="deleted", cleanup_pending=False,
+        )
 
     def _get_local_embedder(self) -> Any:
         if self._local_embedder is None:
@@ -593,6 +608,7 @@ def create_vectordb_app(
     hf_cache_dir: str | None = None,
     device: str | None = None,
     gpu_memory_utilization: float = 0.45,
+    internal_api_token: str | None = None,
 ) -> FastAPI:
     """Build the VectorDB FastAPI application."""
 
@@ -637,6 +653,19 @@ def create_vectordb_app(
         version="1.0.0",
         lifespan=lifespan,
     )
+
+    required_internal_token = (internal_api_token or "").strip()
+
+    @app.middleware("http")
+    async def require_internal_credential(request: Request, call_next):
+        if request.url.path == "/v1/health" or not required_internal_token:
+            return await call_next(request)
+        supplied = request.headers.get("X-NRL-Internal-Token", "")
+        if not supplied or not hmac.compare_digest(supplied, required_internal_token):
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse(status_code=401, content={"detail": "Missing or invalid internal credential."})
+        return await call_next(request)
 
     @app.get("/v1/health", tags=["system"])
     async def health() -> dict[str, Any]:
@@ -695,10 +724,10 @@ def create_vectordb_app(
             raise HTTPException(503, "VectorDB not initialised")
         return await asyncio.to_thread(_state.update_collection, _scope(x_nrl_scope), name, req)
 
-    @app.delete("/v1/collections/{name}", response_model=CollectionInfo | None, tags=["collections"])
+    @app.delete("/v1/collections/{name}", response_model=CollectionDeleteResult, tags=["collections"])
     async def delete_collection(
         name: str, if_exists: bool = False, x_nrl_scope: str | None = Header(None),
-    ) -> CollectionInfo | None:
+    ) -> CollectionDeleteResult:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
         return await asyncio.to_thread(_state.delete_collection, _scope(x_nrl_scope), name, if_exists)
@@ -787,6 +816,11 @@ def main() -> None:
     parser.add_argument("--embed-model-provider-prefix", default="", help="Optional LiteLLM provider prefix")
     parser.add_argument("--embed-api-key", default="")
     parser.add_argument(
+        "--internal-api-token",
+        default=os.environ.get("NRL_INTERNAL_VDB_TOKEN", ""),
+        help="Dedicated internal credential (prefer NRL_INTERNAL_VDB_TOKEN from a Secret).",
+    )
+    parser.add_argument(
         "--local-embed",
         action="store_true",
         help="Load Hugging Face embedder in-pod for /v1/query (requires [local] extras + GPU).",
@@ -830,6 +864,7 @@ def main() -> None:
         hf_cache_dir=args.hf_cache_dir or None,
         device=args.device or None,
         gpu_memory_utilization=args.gpu_memory_utilization,
+        internal_api_token=args.internal_api_token or None,
     )
     uvicorn.run(app, host=args.host, port=args.port)
 

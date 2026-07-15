@@ -52,6 +52,7 @@ from rich.progress import (
 )
 
 from nemo_retriever.common.schemas.collections import (
+    CollectionDeleteResult,
     CollectionInfo,
     CollectionPage,
     DocumentDeleteResult,
@@ -253,16 +254,28 @@ class RetrieverServiceClient:
         raise error_type(f"{operation} failed: HTTP {resp.status_code}: {detail}", status_code=resp.status_code)
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
-        with httpx.Client(timeout=httpx.Timeout(300.0, connect=30.0), headers=self._auth_headers) as client:
-            resp = client.request(method, f"{self._base_url}{path}", **kwargs)
+        try:
+            with httpx.Client(timeout=httpx.Timeout(300.0, connect=30.0), headers=self._auth_headers) as client:
+                resp = client.request(method, f"{self._base_url}{path}", **kwargs)
+        except httpx.HTTPError as exc:
+            raise RetrieverServiceError(f"{method} {path} transport failure: {exc}") from exc
         self._raise_for_response(resp, f"{method} {path}")
-        return resp.json() if resp.content else None
+        try:
+            return resp.json() if resp.content else None
+        except ValueError as exc:
+            raise RetrieverServiceError(f"{method} {path} returned malformed JSON") from exc
 
     async def _arequest(self, method: str, path: str, **kwargs: Any) -> Any:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=30.0), headers=self._auth_headers) as client:
-            resp = await client.request(method, f"{self._base_url}{path}", **kwargs)
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=30.0), headers=self._auth_headers) as client:
+                resp = await client.request(method, f"{self._base_url}{path}", **kwargs)
+        except httpx.HTTPError as exc:
+            raise RetrieverServiceError(f"{method} {path} transport failure: {exc}") from exc
         self._raise_for_response(resp, f"{method} {path}")
-        return resp.json() if resp.content else None
+        try:
+            return resp.json() if resp.content else None
+        except ValueError as exc:
+            raise RetrieverServiceError(f"{method} {path} returned malformed JSON") from exc
 
     # ------------------------------------------------------------------
     # Collection and document lifecycle
@@ -300,13 +313,13 @@ class RetrieverServiceClient:
     async def aupdate_collection(self, name: str, **changes: Any) -> CollectionInfo:
         return CollectionInfo.model_validate(await self._arequest("PATCH", f"/v1/collections/{name}", json=changes))
 
-    def delete_collection(self, name: str, *, if_exists: bool = False) -> CollectionInfo | None:
+    def delete_collection(self, name: str, *, if_exists: bool = False) -> CollectionDeleteResult:
         body = self._request("DELETE", f"/v1/collections/{name}", params={"if_exists": if_exists})
-        return CollectionInfo.model_validate(body) if body else None
+        return CollectionDeleteResult.model_validate(body)
 
-    async def adelete_collection(self, name: str, *, if_exists: bool = False) -> CollectionInfo | None:
+    async def adelete_collection(self, name: str, *, if_exists: bool = False) -> CollectionDeleteResult:
         body = await self._arequest("DELETE", f"/v1/collections/{name}", params={"if_exists": if_exists})
-        return CollectionInfo.model_validate(body) if body else None
+        return CollectionDeleteResult.model_validate(body)
 
     def list_documents(
         self, collection_name: str, *, limit: int = 100, continuation_token: str | None = None,
@@ -372,28 +385,22 @@ class RetrieverServiceClient:
         self, query: str | list[str], *, top_k: int, collection_name: str | None = None,
     ) -> list[list[dict[str, Any]]] | list[QueryHit]:
         """Search ingested documents through ``POST /v1/query``."""
-        url = f"{self._base_url}/v1/query"
         expected_results = len(query) if isinstance(query, list) else 1
         payload: dict[str, Any] = {"query": query, "top_k": int(top_k)}
         if collection_name:
             payload["collection_name"] = collection_name
         try:
             with httpx.Client(
-                timeout=httpx.Timeout(300.0, connect=30.0),
-                headers=self._auth_headers,
+                timeout=httpx.Timeout(300.0, connect=30.0), headers=self._auth_headers,
             ) as client:
-                resp = client.post(url, json=payload)
+                resp = client.post(f"{self._base_url}/v1/query", json=payload)
         except httpx.HTTPError as exc:
-            raise RuntimeError(f"Service query failed: {type(exc).__name__}: {exc}") from exc
-
-        if resp.status_code >= 400:
-            detail = resp.text[:500] if resp.text else "(empty)"
-            raise RuntimeError(f"Service query failed: HTTP {resp.status_code}: {detail}")
-
+            raise RetrieverServiceError(f"Service query transport failure: {exc}") from exc
+        self._raise_for_response(resp, "service query")
         try:
             body = resp.json()
         except ValueError as exc:
-            raise RuntimeError("Service query returned invalid JSON.") from exc
+            raise RetrieverServiceError("Service query returned malformed JSON") from exc
 
         try:
             query_response = QueryResponse.model_validate(body)
@@ -402,7 +409,7 @@ class RetrieverServiceClient:
                 return [self._query_hit(hit) for hit in results[0]]
             return results
         except (ValidationError, ValueError) as exc:
-            raise RuntimeError(f"Service query returned invalid response: {exc}") from exc
+            raise RetrieverServiceError(f"Service query returned invalid response: {exc}") from exc
 
     @staticmethod
     def _query_hit(hit: dict[str, Any]) -> QueryHit:
@@ -420,9 +427,12 @@ class RetrieverServiceClient:
         if collection_name:
             payload["collection_name"] = collection_name
         body = await self._arequest("POST", "/v1/query", json=payload)
-        parsed = QueryResponse.model_validate(body).hits_by_query(
-            expected_results=len(query) if isinstance(query, list) else 1
-        )
+        try:
+            parsed = QueryResponse.model_validate(body).hits_by_query(
+                expected_results=len(query) if isinstance(query, list) else 1
+            )
+        except (ValidationError, ValueError) as exc:
+            raise RetrieverServiceError(f"Service query returned invalid response: {exc}") from exc
         if collection_name and isinstance(query, str):
             return [self._query_hit(hit) for hit in parsed[0]]
         return parsed
@@ -480,14 +490,11 @@ class RetrieverServiceClient:
                     body=resp.text if resp.text else "",
                 )
             )
-        if resp.status_code >= 400:
-            detail = resp.text[:500] if resp.text else "(empty)"
-            raise httpx.HTTPStatusError(
-                f"Job creation failed: HTTP {resp.status_code}: {detail}",
-                request=resp.request,
-                response=resp,
-            )
-        body = resp.json()
+        self._raise_for_response(resp, "create ingestion job")
+        try:
+            body = resp.json()
+        except ValueError as exc:
+            raise RetrieverServiceError("Job creation returned malformed JSON") from exc
         job_id = body.get("job_id")
         if not job_id:
             raise RuntimeError(f"Job creation returned no job_id: {body!r}")
@@ -519,10 +526,17 @@ class RetrieverServiceClient:
             raise RetrieverServiceValidationError("At least one file is required")
         timeout = httpx.Timeout(timeout=None, connect=30.0)
         limits = httpx.Limits(max_connections=200, max_keepalive_connections=100)
-        manifest = [
-            {"filename": path.name, "content_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-            for path in paths
-        ]
+        manifest = []
+        for position, path in enumerate(paths):
+            content_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+            manifest_entry_id = hashlib.sha256(
+                f"{position}\0{path.name}\0{content_sha256}".encode("utf-8")
+            ).hexdigest()
+            manifest.append({
+                "manifest_entry_id": manifest_entry_id,
+                "filename": path.name,
+                "content_sha256": content_sha256,
+            })
         async with httpx.AsyncClient(timeout=timeout, limits=limits, headers=self._auth_headers) as client:
             created = await self._create_job(
                 client, expected_documents=len(paths), collection_name=collection_name,
@@ -530,19 +544,16 @@ class RetrieverServiceClient:
                 idempotency_key=idempotency_key,
                 document_manifest=manifest,
             )
-            if created.replayed:
-                resp = await client.get(f"{self._base_url}/v1/ingest/job/{created.job_id}")
-                self._raise_for_response(resp, "get idempotent job")
-                return JobAggregateResponse.model_validate(resp.json())
             sem = asyncio.Semaphore(self._max_concurrency)
 
-            async def upload(path: Path) -> None:
+            async def upload(path: Path, entry: dict[str, str]) -> None:
                 async with sem:
                     await self._upload_one(
                         client, path, job_id=created.job_id, metadata=metadata, pipeline_spec=pipeline_spec,
+                        manifest_entry_id=entry["manifest_entry_id"],
                     )
 
-            await asyncio.gather(*(upload(path) for path in paths))
+            await asyncio.gather(*(upload(path, entry) for path, entry in zip(paths, manifest, strict=True)))
             resp = await client.get(f"{self._base_url}/v1/ingest/job/{created.job_id}")
             self._raise_for_response(resp, "get accepted job")
             return JobAggregateResponse.model_validate(resp.json())
@@ -587,6 +598,7 @@ class RetrieverServiceClient:
         job_id: str,
         metadata: dict[str, Any] | None = None,
         pipeline_spec: dict[str, Any] | None = None,
+        manifest_entry_id: str | None = None,
     ) -> dict[str, Any]:
         """Upload a file under an existing job, with retry on 429 + transient errors.
 
@@ -609,7 +621,10 @@ class RetrieverServiceClient:
                 resp = await client.post(
                     url,
                     files={"file": (filename, file_bytes, "application/octet-stream")},
-                    data={"metadata": meta_json},
+                    data={
+                        "metadata": meta_json,
+                        **({"manifest_entry_id": manifest_entry_id} if manifest_entry_id else {}),
+                    },
                 )
             except _TRANSIENT_ERRORS as exc:
                 transport_attempts += 1
@@ -641,17 +656,13 @@ class RetrieverServiceClient:
                     )
                 )
 
-            if resp.status_code >= 400:
-                detail = resp.text[:500] if resp.text else "(empty)"
-                raise httpx.HTTPStatusError(
-                    f"Upload of {filename} returned HTTP {resp.status_code}: {detail}",
-                    request=resp.request,
-                    response=resp,
-                )
+            self._raise_for_response(resp, f"upload {filename}")
+            try:
+                return resp.json()
+            except ValueError as exc:
+                raise RetrieverServiceError(f"Upload of {filename} returned malformed JSON") from exc
 
-            return resp.json()
-
-        raise RuntimeError(f"Upload of {filename} failed after {_MAX_UPLOAD_RETRIES} retries")
+        raise RetrieverServiceError(f"Upload of {filename} failed after {_MAX_UPLOAD_RETRIES} retries")
 
     # ------------------------------------------------------------------
     # SSE consumer

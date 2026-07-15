@@ -15,6 +15,7 @@ class IngestAccepted(RichModel):
     """Response for the general ``POST /v1/ingest`` endpoint."""
 
     document_id: str
+    attempt_id: str
     job_id: str | None = None
     content_sha256: str
     status: str
@@ -36,6 +37,7 @@ class DocumentIngestAccepted(RichModel):
     """Response for ``POST /v1/ingest/document`` (whole document upload)."""
 
     document_id: str
+    attempt_id: str
     filename: str
     file_size_bytes: int
     content_sha256: str
@@ -116,6 +118,7 @@ class DocumentStatusResponse(RichModel):
     """
 
     document_id: str
+    attempt_id: str
     job_id: str
     status: str
     submitted_at: str

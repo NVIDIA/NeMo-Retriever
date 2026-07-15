@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from nemo_retriever.common.schemas.collections import (
+    CollectionDeleteResult,
     CollectionInfo,
     CollectionPage,
     DocumentDeleteResult,
@@ -22,7 +23,7 @@ from nemo_retriever.common.schemas.responses import JobAggregateResponse
 
 class AIQCompatibleClient(Protocol):
     def create_collection(self, name: str, **kwargs: Any) -> CollectionInfo: ...
-    def delete_collection(self, name: str, **kwargs: Any) -> CollectionInfo | None: ...
+    def delete_collection(self, name: str, **kwargs: Any) -> CollectionDeleteResult: ...
     def list_collections(self, **kwargs: Any) -> CollectionPage: ...
     def submit_documents(
         self, collection_name: str, files: list[str | Path], **kwargs: Any,

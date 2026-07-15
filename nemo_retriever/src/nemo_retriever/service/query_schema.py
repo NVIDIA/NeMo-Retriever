@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 QueryFormat = Literal["hits", "evidence"]
 
@@ -15,9 +15,6 @@ class QueryRequest(BaseModel):
     query: str | list[str]
     top_k: int = Field(default=10, ge=1, le=1000)
     collection_name: str | None = Field(default=None, min_length=1, max_length=128)
-    # Kept only for legacy fixed-table callers. Collection-aware requests may
-    # never select physical storage.
-    table_name: str | None = None
     format: QueryFormat = Field(
         default="hits",
         description=(
@@ -26,9 +23,18 @@ class QueryRequest(BaseModel):
         ),
     )
 
-    def model_post_init(self, __context: Any) -> None:
-        if self.collection_name and self.table_name:
-            raise ValueError("collection_name and table_name cannot be supplied together")
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_raw_storage_keys(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            raw_keys = {
+                "table_name", "table", "physical_table", "lancedb_uri", "lance_uri",
+                "uri", "table_path", "database_uri", "vdb_uri",
+            }
+            supplied = sorted(raw_keys.intersection(value))
+            if supplied:
+                raise ValueError(f"client-selected storage is not supported: {', '.join(supplied)}")
+        return value
 
 
 class QueryResult(BaseModel):

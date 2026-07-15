@@ -285,6 +285,7 @@ def _post_rows_to_vectordb(
     rows: list[dict[str, Any]], vectordb_url: str, filename: str, *, scope: str = "default",
     collection_name: str | None = None, document_id: str | None = None,
     job_id: str | None = None, content_sha256: str | None = None, operation: str = "append",
+    internal_api_token: str | None = None,
 ) -> None:
     """Post rows to VectorDB, preserving legacy best-effort behavior.
 
@@ -310,7 +311,10 @@ def _post_rows_to_vectordb(
     req = urllib.request.Request(
         url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            **({"X-NRL-Internal-Token": internal_api_token} if internal_api_token else {}),
+        },
         method="POST",
     )
     try:
@@ -680,6 +684,7 @@ def _run_pipeline_in_process(
     job_id: str | None = None,
     content_sha256: str | None = None,
     operation: str = "append",
+    internal_api_token: str | None = None,
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
 
@@ -761,6 +766,7 @@ def _run_pipeline_in_process(
             lancedb_rows, vectordb_url, filename, scope=scope,
             collection_name=collection_name, document_id=document_id, job_id=job_id,
             content_sha256=content_sha256, operation=operation,
+            internal_api_token=internal_api_token,
         )
 
     result_options = pipeline_spec or {}
@@ -1040,6 +1046,7 @@ def _make_work_fn(
                 getattr(item, "job_id", None),
                 getattr(item, "content_sha256", None),
                 getattr(item, "operation", "append"),
+                config.vectordb.internal_api_token,
             )
         except BrokenProcessPool:
             logger.error(

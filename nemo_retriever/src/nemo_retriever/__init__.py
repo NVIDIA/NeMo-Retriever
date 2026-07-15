@@ -36,6 +36,7 @@ __all__ = [
     "RetrieverServiceConflictError",
     "RetrieverServiceValidationError",
     "CollectionInfo",
+    "CollectionDeleteResult",
     "CollectionPage",
     "DocumentInfo",
     "DocumentPage",
@@ -93,6 +94,7 @@ def __getattr__(name: str):
         return locals()[name]
     if name in {
         "CollectionInfo",
+        "CollectionDeleteResult",
         "CollectionPage",
         "DocumentInfo",
         "DocumentPage",
@@ -100,6 +102,7 @@ def __getattr__(name: str):
         "QueryHit",
     }:
         from nemo_retriever.common.schemas.collections import (
+            CollectionDeleteResult,
             CollectionInfo,
             CollectionPage,
             DocumentDeleteResult,

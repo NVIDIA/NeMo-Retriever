@@ -214,11 +214,14 @@ class ResourceLimitsConfig(RichModel):
 
 
 class AuthConfig(RichModel):
-    """Optional bearer-token authentication."""
+    """Bearer authentication and authorization for logical workspace scopes."""
 
     model_config = ConfigDict(extra="forbid")
 
     api_token: str | None = None
+    default_scope: str = "default"
+    scope_token_file: str | None = None
+    allow_unscoped_dev: bool = True
     header_name: str = "Authorization"
     bypass_paths: list[str] = Field(default_factory=lambda: ["/v1/health", "/docs", "/openapi.json", "/redoc"])
 
@@ -327,6 +330,10 @@ class VectorDbConfig(RichModel):
     vectordb_url: str = Field(
         default="http://nemo-retriever-vectordb:7671",
         description="URL of the vectordb service (for workers to POST embeddings to)",
+    )
+    internal_api_token: str | None = Field(
+        default=None,
+        description="Dedicated gateway/worker credential for the VectorDB service.",
     )
 
 

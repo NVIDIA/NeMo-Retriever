@@ -32,6 +32,14 @@ class IngestRequest(RichModel):
     pipeline: PipelineSpec | None = None
 
 
+class DocumentManifestEntry(RichModel):
+    """One immutable file identity in a resumable ingestion job."""
+
+    manifest_entry_id: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    filename: str
+    content_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+
+
 class JobCreateRequest(RichModel):
     """Body for ``POST /v1/ingest/job`` — open a new ingestion job.
 
@@ -59,14 +67,25 @@ class JobCreateRequest(RichModel):
     operation: str = Field(default="append", pattern=r"^(append|replace)$")
     target_document_id: str | None = None
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=256)
-    document_manifest: list[dict[str, str]] = Field(default_factory=list)
-    table_name: str | None = None
-    lancedb_uri: str | None = None
+    document_manifest: list[DocumentManifestEntry] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_raw_storage_keys(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            raw_keys = {
+                "table_name", "table", "physical_table", "lancedb_uri", "lance_uri",
+                "uri", "table_path", "database_uri", "vdb_uri",
+            }
+            supplied = sorted(raw_keys.intersection(value))
+            if supplied:
+                raise ValueError(f"client-selected storage is not supported: {', '.join(supplied)}")
+        return value
 
     @model_validator(mode="after")
     def _reject_physical_collection_storage(self) -> "JobCreateRequest":
-        if self.collection_name and (self.table_name or self.lancedb_uri):
-            raise ValueError("collection-aware jobs cannot specify a table name or LanceDB URI")
         if self.document_manifest and len(self.document_manifest) != self.expected_documents:
             raise ValueError("document_manifest length must match expected_documents")
+        if len({entry.manifest_entry_id for entry in self.document_manifest}) != len(self.document_manifest):
+            raise ValueError("document_manifest contains duplicate manifest_entry_id values")
         return self

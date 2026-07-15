@@ -251,17 +251,19 @@ def create_app(config: ServiceConfig) -> FastAPI:
 
     app.add_middleware(_RequestIdMiddleware)
 
-    if config.auth.api_token:
-        from nemo_retriever.service.auth import BearerAuthMiddleware
+    if config.mode == "gateway":
+        app.add_middleware(_GatewayBodyCacheMiddleware)
+        logger.info("Gateway body-cache middleware ENABLED")
 
-        app.add_middleware(BearerAuthMiddleware, config=config.auth)
-        logger.info(
-            "Bearer-token authentication ENABLED (header=%s, bypass=%s)",
-            config.auth.header_name,
-            config.auth.bypass_paths,
-        )
-    else:
-        logger.info("Bearer-token authentication DISABLED (no api_token configured)")
+    from nemo_retriever.service.auth import BearerAuthMiddleware
+
+    app.add_middleware(BearerAuthMiddleware, config=config.auth)
+    logger.info(
+        "Scope authorization configured (header=%s, secret_file=%s, allow_unscoped_dev=%s)",
+        config.auth.header_name,
+        bool(config.auth.scope_token_file),
+        config.auth.allow_unscoped_dev,
+    )
 
     if mcp_asgi_app is not None:
         app.mount(config.mcp.path, mcp_asgi_app)

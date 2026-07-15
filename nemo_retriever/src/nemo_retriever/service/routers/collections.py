@@ -18,6 +18,8 @@ router = APIRouter(tags=["collections"])
 
 
 async def _forward(request: Request, suffix: str) -> Response:
+    from nemo_retriever.service.auth import authorized_scope, internal_auth_headers
+
     config = request.app.state.config
     if not config.vectordb.enabled:
         raise HTTPException(404, "VectorDB is not enabled in the service configuration.")
@@ -26,8 +28,8 @@ async def _forward(request: Request, suffix: str) -> Response:
 
     target = f"{config.vectordb.vectordb_url.rstrip('/')}/v1/{suffix}"
     headers = {"Content-Type": request.headers.get("content-type", "application/json")}
-    if scope := request.headers.get("X-NRL-Scope"):
-        headers["X-NRL-Scope"] = scope
+    headers["X-NRL-Scope"] = authorized_scope(request)
+    headers.update(internal_auth_headers(config.vectordb.internal_api_token))
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.request(

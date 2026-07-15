@@ -59,8 +59,20 @@ values and opaque continuation tokens; callers must not interpret tokens.
 ## Append, idempotency, and replacement
 
 Normal submission appends documents without changing existing documents. An
-idempotency key replay with the same request returns the original job; reuse
-with a different request returns `RetrieverServiceConflictError` (HTTP 409).
+idempotency key replay with the same request returns the original job. The SDK
+then safely replays every manifest entry, including after the client loses a
+response before, during, or after upload. Each file has a deterministic
+`manifest_entry_id` derived from its position, filename, and SHA-256. The
+service returns the original acceptance for entries it already accepted,
+without consuming capacity or starting duplicate processing. Reusing the key
+or an entry ID with different content returns
+`RetrieverServiceConflictError` (HTTP 409).
+
+Job document status separates `attempt_id` (one processing attempt) from
+`document_id` (the stable collection identity). Append creates a new stable
+document ID. Replacement creates a new attempt but retains the target document
+ID. Collection document APIs show only indexed materializations; pending,
+processing, and failed attempts remain visible through job APIs.
 
 `replace_document()` submits one replacement file. NeMo Retriever builds the
 new version first, then uses a single LanceDB merge transaction to insert its
@@ -75,11 +87,29 @@ The SDK raises `RetrieverServiceNotFoundError`,
 `RetrieverServiceError`. Resources are isolated by `scope`; cross-scope reads
 return 404. `expires_at` can be set at collection creation or update time for an
 operator cleanup process. Deletion is retryable and `if_exists=True` makes
-repeated deletion safe.
+repeated deletion safe. Delete results report `existed`, `deleted`, `status`,
+and `cleanup_pending`; synchronous completion returns HTTP 200 and a retryable
+pending cleanup may return HTTP 202.
+
+Production deployments map bearer tokens to allowed workspace scopes. A valid
+token requesting an unauthorized scope receives 404 so resource existence is
+not disclosed; missing or invalid credentials receive 401. Configure either a
+single token bound to `default_scope`, or mount a Secret-backed JSON file:
+
+```json
+{"tokens":[{"token":"<secret>","scopes":["workspace-123"]}]}
+```
+
+Set `allow_unscoped_dev` only for an explicitly auth-disabled development
+deployment. The gateway records the authorized scope on the request and sends
+a separate internal credential to VectorDB; it never forwards an external
+bearer token to that service.
 
 Legacy fixed-table ingestion and query remain available when
-`collection_name` is omitted. A collection-aware request may not specify a raw
-table name, storage URI, or other physical LanceDB location.
+`collection_name` is omitted, but only against the operator-configured table.
+No service request may specify a raw table name, storage URI, or physical
+LanceDB location. `/document` is the canonical ingestion route and `/whole` is
+supported; collection-aware `/page` returns 422 before work is registered.
 
 ## Future AIQ adapter
 

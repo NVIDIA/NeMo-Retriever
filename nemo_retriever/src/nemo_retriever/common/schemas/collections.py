@@ -19,6 +19,7 @@ from nemo_retriever.common.schemas.base import RichModel
 
 CollectionStatus = Literal["active", "deleting"]
 IngestOperation = Literal["append", "replace"]
+DeleteStatus = Literal["deleting", "deleted"]
 
 
 class CollectionCreateRequest(RichModel):
@@ -73,7 +74,20 @@ class DocumentPage(RichModel):
 class DocumentDeleteResult(RichModel):
     document_id: str
     collection_name: str
+    scope: str
+    existed: bool
     deleted: bool
+    status: DeleteStatus
+    cleanup_pending: bool = False
+
+
+class CollectionDeleteResult(RichModel):
+    name: str
+    scope: str
+    existed: bool
+    deleted: bool
+    status: DeleteStatus
+    cleanup_pending: bool = False
 
 
 class QueryHit(RichModel):

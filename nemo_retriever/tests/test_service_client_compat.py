@@ -174,13 +174,13 @@ def test_create_job_raises_compat_error_for_404_and_410(status: int) -> None:
     assert request_paths == ["/v1/ingest/job"], request_paths
 
 
-def test_create_job_500_still_raises_generic_http_status_error() -> None:
+def test_create_job_500_raises_typed_service_error() -> None:
     """A real server error must NOT be misreported as a version mismatch.
 
     If the deployed service is the right version but transiently broken
     (500/503/etc.) the SDK should surface the existing
-    :class:`httpx.HTTPStatusError` so retry/alerting logic in the
-    caller still triggers as before. Mis-coding this as a
+    typed service error so retry/alerting logic can use one SDK error
+    hierarchy. Mis-coding this as a
     ``RetrieverServiceCompatibilityError`` would hide a real outage.
     """
 
@@ -193,7 +193,9 @@ def test_create_job_500_still_raises_generic_http_status_error() -> None:
         async with httpx.AsyncClient(transport=_make_transport(_handler)) as client:
             await rc._create_job(client, expected_documents=1)
 
-    with pytest.raises(httpx.HTTPStatusError) as ei:
+    from nemo_retriever.service.errors import RetrieverServiceError
+
+    with pytest.raises(RetrieverServiceError) as ei:
         _run_async(_call())
     assert "HTTP 500" in str(ei.value)
 
