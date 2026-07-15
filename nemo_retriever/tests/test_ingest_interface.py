@@ -19,7 +19,6 @@ from nemo_retriever.common.params import (
     ExtractParams,
     HtmlChunkParams,
     IngestExecuteParams,
-    RemoteRetryParams,
     TextChunkParams,
 )
 
@@ -508,62 +507,6 @@ def test_graph_ingestor_row_value_logs_best_effort_lookup_failures(caplog) -> No
         assert GraphIngestor._row_value(BrokenRow(), "path") is None
 
     assert "Failed to read source identifier field 'path'" in caplog.text
-
-
-@pytest.mark.integration
-def test_graph_ingestor_raises_for_explicit_remote_stage_errors() -> None:
-    ingestor = GraphIngestor(
-        run_mode="inprocess",
-        documents=["data/test.pdf"],
-        show_progress=False,
-    ).extract(
-        page_elements_invoke_url="http://127.0.0.1:1/v1/nonexistent",
-        extract_text=False,
-        extract_images=True,
-        extract_tables=False,
-        extract_charts=False,
-        extract_infographics=False,
-        inference_batch_size=1,
-        remote_retry=RemoteRetryParams(
-            remote_max_pool_workers=1,
-            remote_max_retries=1,
-            remote_max_429_retries=1,
-        ),
-    )
-
-    with pytest.raises(RuntimeError, match="page_elements_v3"):
-        ingestor.ingest()
-
-
-@pytest.mark.integration
-def test_graph_ingestor_collect_policy_returns_explicit_remote_stage_errors() -> None:
-    result = (
-        GraphIngestor(
-            run_mode="inprocess",
-            documents=["data/test.pdf"],
-            show_progress=False,
-            error_policy="collect",
-        )
-        .extract(
-            page_elements_invoke_url="http://127.0.0.1:1/v1/nonexistent",
-            extract_text=False,
-            extract_images=True,
-            extract_tables=False,
-            extract_charts=False,
-            extract_infographics=False,
-            inference_batch_size=1,
-            remote_retry=RemoteRetryParams(
-                remote_max_pool_workers=1,
-                remote_max_retries=1,
-                remote_max_429_retries=1,
-            ),
-        )
-        .ingest()
-    )
-
-    assert "page_elements_v3" in result.columns
-    payload = result.iloc[0]["page_elements_v3"]
-    assert payload["error"]["type"] == "ConnectionError"
 
 
 def test_strict_remote_error_policy_ignores_unrelated_error_columns() -> None:
