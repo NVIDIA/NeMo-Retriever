@@ -172,24 +172,20 @@ class VectorDBState:
         return inspect_lancedb_table_object(table)
 
     def resolve_effective_retrieval_mode(self, caps=None) -> LanceRetrievalMode:
-        """Resolve retrieval mode from the table's own capabilities (auto only).
+        """Resolve retrieval mode from table capabilities (auto).
 
-        Query is a pure read: the service never forces a mode or mutates the
-        table. The index built at ingestion time is the contract — a table with
-        both a vector column and an FTS index runs hybrid, a vector-only table
-        runs dense. Callers that already hold a capabilities object (e.g.
-        ``search``) may pass it in to avoid re-opening the LanceDB table.
+        Optional ``caps`` avoids re-opening the table when the caller already has it.
         """
         if not self._table_exists:
             return "dense"
 
         if caps is None:
             caps = self._table_capabilities()
-        if caps is None:
-            raise ValueError(
-                f"Unable to inspect LanceDB table {self.table_name!r} at {self.lancedb_uri!r}: "
-                "capabilities could not be determined."
-            )
+            if caps is None:
+                raise ValueError(
+                    f"Unable to inspect LanceDB table {self.table_name!r} at {self.lancedb_uri!r}: "
+                    "capabilities could not be determined."
+                )
 
         mode: LanceRetrievalMode = caps.retrieval_mode
         if mode == "unknown":
@@ -205,13 +201,7 @@ class VectorDBState:
         return mode
 
     def write_rows(self, rows: list[dict[str, Any]]) -> int:
-        """Append rows to the LanceDB table (creates table on first write).
-
-        The service only persists rows; it never builds or mutates a vector or
-        FTS index. Any hybrid (BM25/FTS) index must be created at ingestion time
-        by the ingestion pipeline. The query path then detects whatever the
-        table already supports (see ``resolve_effective_retrieval_mode``).
-        """
+        """Append rows to the LanceDB table (creates table on first write)."""
         if not rows:
             return 0
 
