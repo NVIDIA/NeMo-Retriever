@@ -57,8 +57,6 @@ _HEAVY_INTERNAL = [
     "nemo_retriever.table.stage",
     # -- PDF (pypdfium2 and heavy extraction dependencies) -------------------
     "nemo_retriever.pdf",
-    "nemo_retriever.common.modality.pdf.config",
-    "nemo_retriever.common.modality.pdf.io",
     "nemo_retriever.operators.extract.pdf.extract",
     "nemo_retriever.operators.extract.pdf.split",
 ]
