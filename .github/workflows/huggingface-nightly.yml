@@ -382,8 +382,8 @@ jobs:
               "torch": f"~={os.environ['OCR_TORCH_VERSION']}",
               "torchvision": f"~={os.environ['OCR_TORCHVISION_VERSION']}",
           }
-          expected_license = "NVIDIA Open Model License"
-          expected_license_classifier = "License :: Other/Proprietary License"
+          expected_license = "Apache-2.0"
+          expected_license_classifier = "License :: OSI Approved :: Apache Software License"
 
           def expanded_compatible_specifier(specifier):
               if not specifier.startswith("~="):

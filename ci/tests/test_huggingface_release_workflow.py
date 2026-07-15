@@ -128,6 +128,28 @@ def test_nightly_builder_rejects_non_stable_release_versions(version: str) -> No
         nightly_build_publish._pep440_stable_release(version)
 
 
+def test_nightly_builder_relaxes_single_quoted_requires_python(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    pyproject = project_dir / "pyproject.toml"
+    pyproject.write_text(
+        """
+[project]
+name = "example"
+version = "2.0.0"
+requires-python = '>=3.12,<3.13'
+""".lstrip(),
+        encoding="utf-8",
+    )
+    nightly_build_publish = _load_nightly_build_publish_module()
+
+    assert nightly_build_publish._patch_pyproject_requires_python(project_dir, ">=3.11,<3.14")
+
+    text = pyproject.read_text(encoding="utf-8")
+    assert "requires-python = '>=3.11,<3.14'" in text
+    assert text.count("requires-python") == 1
+
+
 def test_nightly_builder_rejects_empty_release_version_with_nightly_base(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -223,8 +245,8 @@ requires-python = ">=3.12,<3.13"
     )
 
     text = pyproject.read_text(encoding="utf-8")
-    assert 'license = {text = "NVIDIA Open Model License"}' in text
-    assert '"License :: Other/Proprietary License",' in text
+    assert 'license = "Apache-2.0"' in text
+    assert '"License :: OSI Approved :: Apache Software License",' in text
     assert not nightly_build_publish._patch_pyproject_license(
         project_dir,
         license_text=nightly_build_publish._DEFAULT_LICENSE_TEXT,
@@ -232,7 +254,7 @@ requires-python = ">=3.12,<3.13"
     )
 
 
-def test_nightly_builder_copies_parent_license_into_project_subdir(tmp_path: Path) -> None:
+def test_nightly_builder_writes_orchestrator_apache_license_into_project_subdir(tmp_path: Path) -> None:
     repo_dir = tmp_path / "nemotron-ocr-v2"
     project_dir = repo_dir / "nemotron-ocr"
     project_dir.mkdir(parents=True)
@@ -243,14 +265,47 @@ def test_nightly_builder_copies_parent_license_into_project_subdir(tmp_path: Pat
         project_dir,
         search_roots=[project_dir, project_dir.parent, repo_dir],
     )
-    assert (project_dir / "LICENSE").read_text(encoding="utf-8").startswith("NVIDIA Open Model License Agreement")
+    bundled = (project_dir / "LICENSE").read_text(encoding="utf-8")
+    assert bundled.startswith("                                 Apache License")
+    assert "NVIDIA Open Model License Agreement" not in bundled
     assert not nightly_build_publish._ensure_license_file(
         project_dir,
         search_roots=[project_dir, project_dir.parent, repo_dir],
     )
 
 
-def test_nightly_builder_leaves_existing_license_metadata_unchanged(tmp_path: Path) -> None:
+def test_nightly_builder_replaces_existing_nvidia_open_model_license_metadata(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    pyproject = project_dir / "pyproject.toml"
+    pyproject.write_text(
+        """
+[project]
+name = "nemotron-page-elements-v3"
+version = "3.0.1"
+license = {text = "NVIDIA Open Model License"}
+classifiers = [
+    "License :: Other/Proprietary License",
+]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    nightly_build_publish = _load_nightly_build_publish_module()
+
+    assert nightly_build_publish._patch_pyproject_license(
+        project_dir,
+        license_text=nightly_build_publish._DEFAULT_LICENSE_TEXT,
+        license_classifier=nightly_build_publish._DEFAULT_LICENSE_CLASSIFIER,
+    )
+
+    text = pyproject.read_text(encoding="utf-8")
+    assert 'license = "Apache-2.0"' in text
+    assert "NVIDIA Open Model License" not in text
+    assert "License :: OSI Approved :: Apache Software License" in text
+    assert "License :: Other/Proprietary License" not in text
+
+
+def test_nightly_builder_leaves_existing_apache_license_metadata_unchanged(tmp_path: Path) -> None:
     project_dir = tmp_path / "project"
     project_dir.mkdir()
     pyproject = project_dir / "pyproject.toml"
@@ -258,9 +313,9 @@ def test_nightly_builder_leaves_existing_license_metadata_unchanged(tmp_path: Pa
 [project]
 name = "nemotron-page-elements-v3"
 version = "3.0.1"
-license = {text = "NVIDIA Open Model License"}
+license = "Apache-2.0"
 classifiers = [
-    "License :: Other/Proprietary License",
+    "License :: OSI Approved :: Apache Software License",
 ]
 """.lstrip()
     pyproject.write_text(original, encoding="utf-8")
@@ -277,8 +332,8 @@ classifiers = [
 def test_huggingface_workflow_verifies_ocr_wheel_license_metadata() -> None:
     workflow = (REPO_ROOT / ".github" / "workflows" / "huggingface-nightly.yml").read_text(encoding="utf-8")
 
-    assert 'expected_license = "NVIDIA Open Model License"' in workflow
-    assert 'expected_license_classifier = "License :: Other/Proprietary License"' in workflow
+    assert 'expected_license = "Apache-2.0"' in workflow
+    assert 'expected_license_classifier = "License :: OSI Approved :: Apache Software License"' in workflow
     assert "Built wheel metadata does not declare expected license" in workflow
 
 

@@ -492,9 +492,16 @@ def _patch_pyproject_runtime_dependency_pins(project_dir: Path, pins: dict[str, 
     return True
 
 
-_DEFAULT_LICENSE_TEXT = "NVIDIA Open Model License"
-_DEFAULT_LICENSE_CLASSIFIER = "License :: Other/Proprietary License"
-_LICENSE_FILE_NAMES = ("LICENSE", "LICENSE.txt", "LICENSE.md")
+_DEFAULT_LICENSE_TEXT = "Apache-2.0"
+_DEFAULT_LICENSE_CLASSIFIER = "License :: OSI Approved :: Apache Software License"
+_PROPRIETARY_LICENSE_CLASSIFIER = "License :: Other/Proprietary License"
+_ORCHESTRATOR_APACHE_LICENSE = Path(__file__).resolve().parents[2] / "nemo_retriever" / "LICENSE"
+
+
+def _pyproject_license_line(license_text: str) -> str:
+    if license_text == "Apache-2.0":
+        return 'license = "Apache-2.0"\n'
+    return f'license = {{text = "{license_text}"}}\n'
 
 
 def _patch_pyproject_license(
@@ -506,9 +513,9 @@ def _patch_pyproject_license(
     """
     Ensure PyPI-visible license metadata is present in ``[project]``.
 
-    Upstream HF repos (e.g. Nemotron OCR) may omit ``license`` and Trove
-    classifiers even though the model is governed by the NVIDIA Open Model
-    License. Hatch/setuptools only emit wheel/sdist METADATA from these fields.
+    Published Nemotron Python packages ship source code governed by Apache-2.0.
+    Upstream HF repos may omit license metadata or declare the NVIDIA Open Model
+    License for the overall model card even though the wheel/sdist is source code.
     """
     pyproject = project_dir / "pyproject.toml"
     if not pyproject.exists():
@@ -524,7 +531,7 @@ def _patch_pyproject_license(
     changed = False
 
     if not re.search(r"(?m)^\s*license\s*=", project_text):
-        line = f'license = {{text = "{license_text}"}}\n'
+        line = _pyproject_license_line(license_text)
         version_m = re.search(r"(?m)^(\s*version\s*=\s*[^\n]+\n)", project_text)
         if version_m:
             insert_at = version_m.end()
@@ -533,6 +540,14 @@ def _patch_pyproject_license(
             project_text = "\n" + line + project_text
         changed = True
         print(f"Added pyproject.toml license: {license_text!r}")
+    else:
+        license_m = re.search(r"(?m)^(\s*license\s*=\s*)(.+)$", project_text)
+        if license_m:
+            desired = _pyproject_license_line(license_text).strip()
+            if license_m.group(0).strip() != desired:
+                project_text = project_text[: license_m.start()] + desired + "\n" + project_text[license_m.end() :]
+                changed = True
+                print(f"Patched pyproject.toml license -> {license_text!r}")
 
     if license_classifier and f'"{license_classifier}"' not in project_text:
         classifiers_m = re.search(r"(?ms)^(\s*classifiers\s*=\s*\[)(.*?)(^\s*\])", project_text)
@@ -545,6 +560,12 @@ def _patch_pyproject_license(
             project_text += "\nclassifiers = [\n" f'    "{license_classifier}",\n' "]\n"
             changed = True
             print(f"Added pyproject.toml classifiers with: {license_classifier!r}")
+
+    if license_classifier == _DEFAULT_LICENSE_CLASSIFIER and f'"{_PROPRIETARY_LICENSE_CLASSIFIER}"' in project_text:
+        project_text = project_text.replace(f'    "{_PROPRIETARY_LICENSE_CLASSIFIER}",\n', "")
+        project_text = project_text.replace(f'"{_PROPRIETARY_LICENSE_CLASSIFIER}",\n', "")
+        changed = True
+        print(f"Removed pyproject.toml classifier: {_PROPRIETARY_LICENSE_CLASSIFIER!r}")
 
     if not changed:
         return False
@@ -597,22 +618,21 @@ def _patch_setup_cfg_license(
 
 
 def _ensure_license_file(project_dir: Path, *, search_roots: list[Path]) -> bool:
-    """Copy a LICENSE file into the Python project dir when upstream keeps it elsewhere."""
-    for candidate_name in _LICENSE_FILE_NAMES:
-        if (project_dir / candidate_name).is_file():
-            return False
+    """Bundle the Apache-2.0 LICENSE that governs published Python package source."""
+    _ = search_roots  # kept for call-site compatibility; source is orchestrator-local.
+    source = _ORCHESTRATOR_APACHE_LICENSE
+    if not source.is_file():
+        print(f"No Apache-2.0 license source found at {source}; continuing without bundled LICENSE.")
+        return False
 
-    for root in search_roots:
-        for candidate_name in _LICENSE_FILE_NAMES:
-            source = root / candidate_name
-            if source.is_file():
-                dest = project_dir / "LICENSE"
-                shutil.copy2(source, dest)
-                print(f"Copied license file into project dir: {source} -> {dest}")
-                return True
+    dest = project_dir / "LICENSE"
+    apache_text = _read_text(source)
+    if dest.is_file() and _read_text(dest) == apache_text:
+        return False
 
-    print("No LICENSE file found in upstream tree; continuing without a bundled license file.")
-    return False
+    _write_text(dest, apache_text)
+    print(f"Wrote Apache-2.0 license file into project dir: {source} -> {dest}")
+    return True
 
 
 def _patch_pyproject_requires_python(repo_dir: Path, requires_python: str) -> bool:
@@ -636,7 +656,7 @@ def _patch_pyproject_requires_python(repo_dir: Path, requires_python: str) -> bo
 
     project_start, project_end = bounds
     project_text = text[project_start:project_end]
-    m = re.search(r'(?m)^(\s*requires-python\s*=\s*")([^"]*)(")\s*$', project_text)
+    m = re.search(r"""(?m)^(\s*requires-python\s*=\s*["'])([^"']*)(['"])\s*$""", project_text)
     if m:
         old_value = m.group(2)
         if old_value == requires_python:

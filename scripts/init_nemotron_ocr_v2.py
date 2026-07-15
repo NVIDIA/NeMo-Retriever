@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Initialize Nemotron OCR v2 from Hugging Face (nvidia/nemotron-ocr-v2).
 
-Requires the ``nemotron-ocr`` package (>=2.0.0), PyTorch with CUDA, and Python 3.12.
+Requires the ``nemotron-ocr`` package (>=2.0.0), PyTorch with CUDA, and Python 3.11–3.13.
 Install: https://huggingface.co/nvidia/nemotron-ocr-v2
 """
 
