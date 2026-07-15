@@ -39,6 +39,7 @@ Highlights for the 26.05 release include:
 - Nemotron OCR v2 is the default OCR engine for HuggingFace, with CLI language selectors and unified OCR actors. For Helm NIM deployments, Nemotron OCR v1 is the default.  
 - Nemotron Parse is available as an alternate PDF extraction method (v1.2 HTTP interface; optional Helm NIM; local inference via vLLM where configured)  
 - VLM image captioning via vLLM (including Omni caption model profiles) addresses the capability deferred in 26.03  
+- Nemotron 3 Nano Omni 30B BF16 is the default local caption model, and the Omni API model is the default for hosted and shipped pipeline captioning. The local BF16 checkpoint has approximately 62 GiB of weights; Nano caption profiles remain supported as explicit overrides.
 - vLLM-backed text and vision-language embedders, multimodal VL reranker, and torch 2.11 for local GPU installs  
 
 ### Multimodal extraction

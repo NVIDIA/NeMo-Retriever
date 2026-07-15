@@ -88,6 +88,8 @@ Image captioning generates natural-language descriptions for unstructured image 
 
 **Captioning is optional** — enable it in your ingest configuration (for example, the `caption` API or pipeline flag) when you need natural-language descriptions of image content. Reasoning traces are disabled by default for captioning.
 
+Direct local captioning defaults to `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`. Its BF16 weights are approximately 62 GiB, so plan for a larger GPU footprint than the Nano caption profiles, which remain available through explicit model overrides. Hosted captioning defaults to `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` at the NVIDIA API endpoint.
+
 Chart-classified PDF regions stay on the layout/OCR path; only non-chart image regions and optional infographics (`caption_infographics=True`) receive Omni captions.
 
 **Related**

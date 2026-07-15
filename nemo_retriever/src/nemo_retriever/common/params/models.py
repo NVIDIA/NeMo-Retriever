@@ -24,6 +24,7 @@ from pydantic import (
     model_validator,
 )
 
+from nemo_retriever.common.modality.caption.model_profiles import DEFAULT_LOCAL_CAPTION_MODEL_ID
 from nemo_retriever.common.remote_auth import resolve_remote_api_key
 
 IngestorRunMode = Literal["inprocess", "batch", "service"]
@@ -965,7 +966,7 @@ class TextGenerationParams(_ParamsModel):
 
 class CaptionParams(LLMInferenceParams):
     endpoint_url: Optional[str] = None
-    model_name: str = "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16"
+    model_name: str = DEFAULT_LOCAL_CAPTION_MODEL_ID
     api_key: Optional[str] = None
     prompt: str = "Caption the content of this image:"
     system_prompt: Optional[str] = "/no_think"

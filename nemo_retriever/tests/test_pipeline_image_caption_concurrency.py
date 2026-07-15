@@ -88,6 +88,9 @@ _MIN_STATIC_REPLICAS = 2
 # provisioned.
 _MIN_MAX_REPLICAS = 4
 
+_CANONICAL_REMOTE_CAPTION_MODEL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+_CAPTION_MODEL_ENV_EXPRESSION = f'$VLM_CAPTION_MODEL_NAME|"{_CANONICAL_REMOTE_CAPTION_MODEL}"'
+
 
 # ---------------------------------------------------------------------
 # YAML helpers
@@ -156,6 +159,23 @@ def _replica_value(stage: dict[str, Any], slot: str) -> int:
 # ---------------------------------------------------------------------
 # Per-pipeline assertions
 # ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "yaml_name, yaml_path",
+    sorted(_PIPELINE_YAMLS.items()),
+    ids=sorted(_PIPELINE_YAMLS.keys()),
+)
+def test_image_caption_uses_canonical_remote_model_with_env_override(
+    yaml_name: str, yaml_path: Path
+) -> None:
+    pipeline = _load_pipeline(yaml_path)
+    stage = _find_stage(pipeline, _STAGE_NAME)
+
+    assert stage["config"]["model_name"] == _CAPTION_MODEL_ENV_EXPRESSION, (
+        f"{yaml_name}: keep VLM_CAPTION_MODEL_NAME as the highest-precedence override "
+        f"and use {_CANONICAL_REMOTE_CAPTION_MODEL!r} as the shipped fallback."
+    )
 
 
 @pytest.mark.parametrize(
