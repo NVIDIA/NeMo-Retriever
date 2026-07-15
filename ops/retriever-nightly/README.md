@@ -3,15 +3,27 @@
 
 # Retriever Nightly Launcher
 
-This directory provides a manual launcher and a latest-main controller. Both
-run the library and ViDoRe v3 benchmark suite through the portable harness
-interface. The manual launcher never changes Git state; the controller fetches
-and manages immutable detached worktrees. Neither tool installs a scheduler or
-distributes datasets.
+This directory provides one public launcher for the library and ViDoRe v3
+benchmark suite:
 
-## One-Command Full Run
+| Workflow | Command | Code that runs |
+| --- | --- | --- |
+| Regular nightly | `run-nightly.sh` | Freshly fetched `upstream/main`. |
+| Review the checked-out PR | `run-nightly.sh --ref HEAD` | The current checkout's committed `HEAD`. |
+| Reproduce an exact revision | `run-nightly.sh --ref <SHA>` | An already available local Git commit. |
 
-Export the two supported secrets and invoke the launcher from a clean checkout:
+The launcher resolves one commit, creates or reuses an immutable detached
+worktree, and exits after one terminal session summary. Recurrence is
+deliberately kept outside its interface; the [daily `tmux`
+workflow](#daily-runs-with-tmux) is a small shell loop rather than an installed
+scheduler. The launcher never merges into or moves the controller checkout,
+and it does not distribute datasets.
+
+## Quick Start On A Standard Host
+
+After this launcher is present on `upstream/main`, a workstation with
+`/datasets/nv-ingest` and writable `/raid/$USER` needs only a Hugging Face token
+and, optionally, a Slack webhook:
 
 ```bash
 export HF_TOKEN=...
@@ -21,11 +33,20 @@ export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 
 That foreground command runs all twelve benchmarks and posts one terminal
 Slack summary. `SLACK_WEBHOOK_URL` is optional; omit it to run without posting.
-The launcher writes artifacts outside the checkout and prints the terminal
-session directory. No `sudo`, systemd service, or configuration file is
-required.
+Before GPU work, it fetches `upstream/main`, selects its exact commit, and
+checks ViDoRe access. It then uses the checked-in `/datasets/nv-ingest` map,
+writes artifacts under `/raid/$USER/retriever-nightly-artifacts`, and prints the
+terminal session directory. No model-provider API key, `nightly.env`, `sudo`,
+systemd service, or timer is required.
 
-## Manual Teammate Kickoff
+The only required operator input on that host is `HF_TOKEN`. Set
+`SLACK_WEBHOOK_URL` when the terminal summary should post to Slack. A custom
+dataset map or artifact root is needed only when the host does not have the
+standard paths. While reviewing this unmerged PR, add `--ref HEAD` to every
+launcher command so the review commit runs instead of the current upstream
+`main`.
+
+## Validate The Current PR Checkout
 
 ### Prerequisites
 
@@ -56,7 +77,7 @@ optional `nightly.env` accepts only two secrets and one optional path override:
 | `RETRIEVER_DATASET_PATHS` | nonstandard hosts only | Replaces the checked-in `/datasets/nv-ingest` map. |
 
 On hosts with a writable `/raid/$USER`, the launcher automatically keeps its
-private configuration, artifacts, and managed latest-main checkouts there.
+private configuration, artifacts, and managed Git checkouts there.
 Other hosts use `$HOME`.
 
 Direct exports are the smallest configuration interface. A private file is
@@ -83,16 +104,16 @@ The checked-in `dataset_paths.datasets.yaml` already describes the standard
 and edit `nemo_retriever/harness/dataset_paths.example.yaml`, then set
 `RETRIEVER_DATASET_PATHS` in `nightly.env`.
 
-Both launchers source the detected file only when it exists; otherwise they use
+The launcher sources the detected file only when it exists; otherwise it uses
 the current environment. An existing secrets file must be owned by the
-invoking user with mode `600`. The launchers do not discover a repository
+invoking user with mode `600`. The launcher does not discover a repository
 `.env` file. `RETRIEVER_CONFIG_FILE` remains an optional advanced path override.
 
 Verify the token and read one byte from one remote parquet object in every
 ViDoRe evaluation partition before starting GPU work:
 
 ```bash
-./ops/retriever-nightly/run-nightly.sh --check-vidore-access
+./ops/retriever-nightly/run-nightly.sh --ref HEAD --check-vidore-access
 ```
 
 The access check does not download full parquet objects. A redirect failure
@@ -103,7 +124,7 @@ Then preflight the complete twelve-benchmark suite without starting ingest or
 query:
 
 ```bash
-./ops/retriever-nightly/run-nightly.sh --dry-run
+./ops/retriever-nightly/run-nightly.sh --ref HEAD --dry-run
 ```
 
 Inspect the resulting `session_summary.json` and child plans. Dry-runs never
@@ -115,57 +136,31 @@ Use one positional runfile for a smaller real canary before the full run:
 
 ```bash
 ./ops/retriever-nightly/run-nightly.sh \
+  --ref HEAD \
   --no-slack \
   nemo_retriever/harness/runfiles/jp20_beir.json
 ```
 
-Run the complete suite from the current checkout with no positional runfiles:
+Run the complete suite from the review commit with no positional runfiles:
 
 ```bash
-./ops/retriever-nightly/run-nightly.sh
+./ops/retriever-nightly/run-nightly.sh --ref HEAD
 ```
 
 If `SLACK_WEBHOOK_URL` is configured, that real run posts its terminal summary.
 Add `--no-slack` only when the full run is itself a functional test that must
 not post.
 
-### Select the Code Under Test
+## Git Selection
 
-The launcher runs the current clean checkout and records its commit in the
-session artifacts. It never changes that checkout. To run the latest fetched
-`upstream/main` without disturbing another worktree:
-
-```bash
-git fetch upstream main
-git worktree add --detach ../NeMo-Retriever-benchmark-main upstream/main
-cd ../NeMo-Retriever-benchmark-main
-```
-
-To run an exact fetched commit, replace `upstream/main` with its SHA and choose
-a distinct worktree directory:
-
-```bash
-git worktree add --detach ../NeMo-Retriever-benchmark-abc1234 abc1234
-cd ../NeMo-Retriever-benchmark-abc1234
-```
-
-Run the same launcher command from that worktree. Tracked, staged, and untracked
-changes are rejected so a result is attributable to the recorded commit.
-Ignored cache files do not make the checkout dirty; datasets, configuration,
-and artifacts remain outside the checkout.
-
-### Latest-Main Selection
-
-Manual `run-nightly.sh` invocations deliberately run the current clean
-checkout. `run-latest-main.sh` is the corresponding one-command controller for
-a checkout where this feature is already present; it:
+With no `--ref`, `run-nightly.sh`:
 
 1. fetches `main` from the `upstream` remote;
 2. resolves the fetched commit before doing any GPU work;
-3. creates or reuses an immutable detached worktree named `main-<full SHA>`;
+3. creates or reuses an immutable detached worktree named `commit-<full SHA>`;
 4. runs the ViDoRe access check from that selected commit; and
-5. invokes that commit's `run-nightly.sh` only when fetch and access preflight
-   both succeed.
+5. invokes that commit's nightly execution path only when fetch and access
+   preflight both succeed.
 
 A fetch failure is fail-closed: the controller does not fall back to yesterday's
 commit. It never runs `git pull`, merges into the controller checkout, or moves
@@ -179,26 +174,71 @@ detected nightly root at `retriever-nightly-checkouts`; on `/raid` hosts this is
 worktrees are retained. Modified managed worktrees are never deleted
 automatically.
 
-The one-time checkout setup must provide an `upstream` remote. Operators do not
-choose a branch or commit after that:
+The one-time controller checkout setup must provide an `upstream` remote.
+Operators do not choose a branch or commit for normal nightlies after that:
 
 ```bash
 git remote get-url upstream >/dev/null 2>&1 || \
   git remote add upstream https://github.com/NVIDIA/NeMo-Retriever.git
-./ops/retriever-nightly/run-latest-main.sh --dry-run
+./ops/retriever-nightly/run-nightly.sh --dry-run
 ```
 
 The dry-run fetches and selects the latest commit but skips remote access and
-GPU execution. Use `run-latest-main.sh --check-vidore-access` to validate the
+GPU execution. Use `run-nightly.sh --check-vidore-access` to validate the
 selected latest-main commit and its machine credentials without starting a
 session. Once that selected main commit contains this launcher, the complete
-latest-main suite is also one command:
+latest-main suite remains the same one command:
 
 ```bash
-./ops/retriever-nightly/run-latest-main.sh
+./ops/retriever-nightly/run-nightly.sh
 ```
 
-### Slack Report
+`--ref REF` skips the fetch and resolves an existing local Git ref or commit.
+The selected commit still runs from a managed detached worktree, so current
+branch state is never moved. Use `--ref HEAD` for this draft PR and `--ref
+<full-SHA>` to reproduce an earlier run. The controller checkout must be clean;
+tracked, staged, and untracked changes are rejected so every result is
+attributable to its recorded commit. Ignored cache files do not make the
+checkout dirty.
+
+## Daily Runs With `tmux`
+
+The launcher remains a one-shot developer tool. Use a transparent shell loop
+inside `tmux` when a workstation should start the latest `upstream/main`
+nightly approximately every 24 hours:
+
+```bash
+tmux new -s retriever-nightly
+
+export HF_TOKEN=...
+export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+
+interval=86400
+while true; do
+  started="$(date +%s)"
+  ./ops/retriever-nightly/run-nightly.sh
+  elapsed=$(( $(date +%s) - started ))
+  if (( elapsed < interval )); then
+    sleep "$(( interval - elapsed ))"
+  fi
+done
+```
+
+Enter the exports inside the new `tmux` session so they do not depend on an
+older tmux server's saved environment. Detach with `Ctrl-b d`, inspect it with
+`tmux attach -t retriever-nightly`, and stop it with `tmux kill-session -t
+retriever-nightly`.
+
+The loop is serial: runs never overlap. It targets a 24-hour start-to-start
+interval; if one run exceeds 24 hours, the next begins only after it finishes.
+The loop survives an SSH disconnect but not a workstation reboot. This is an
+operator-owned development workflow, not an installed service or timer.
+
+While the launcher PR is unmerged, use `run-nightly.sh --ref HEAD` in the loop
+to exercise the review commit. After merge, remove `--ref HEAD`; the default
+fetches and runs the latest `upstream/main` on every iteration.
+
+## Slack Report
 
 To enable Slack for real runs, export the incoming-webhook URL or place it in
 the optional mode-`600` `nightly.env`:
@@ -216,8 +256,8 @@ never post. The launcher removes the URL from the benchmark child environment
 and exposes it only to the final Slack command.
 
 Command-line flags override values loaded from `RETRIEVER_CONFIG_FILE`; those
-values override the launcher defaults. Run either launcher with `--help` for
-its supported interface.
+values override the launcher defaults. Run the launcher with `--help` for its
+supported interface.
 
 ## Runtime Contract
 

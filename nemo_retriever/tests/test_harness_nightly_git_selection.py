@@ -11,7 +11,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-LATEST_MAIN_LAUNCHER = REPO_ROOT / "ops" / "retriever-nightly" / "run-latest-main.sh"
+NIGHTLY_LAUNCHER = REPO_ROOT / "ops" / "retriever-nightly" / "run-nightly.sh"
 SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/test/webhook/value"
 
 
@@ -104,7 +104,7 @@ def latest_main_fixture(tmp_path: Path):
 
     def run(*args: str, extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            [str(LATEST_MAIN_LAUNCHER), *args],
+            [str(NIGHTLY_LAUNCHER), *args],
             cwd=tmp_path,
             env=env | (extra_env or {}),
             check=False,
@@ -120,7 +120,7 @@ def latest_main_fixture(tmp_path: Path):
     return run, calls, source, controller, checkout_root, initial_commit, latest_commit
 
 
-def test_scheduled_launcher_fetches_latest_main_into_immutable_worktree(latest_main_fixture) -> None:
+def test_launcher_fetches_latest_main_into_immutable_worktree(latest_main_fixture) -> None:
     run, calls, _source, controller, checkout_root, initial_commit, latest_commit = latest_main_fixture
 
     result = run()
@@ -131,7 +131,7 @@ def test_scheduled_launcher_fetches_latest_main_into_immutable_worktree(latest_m
         (latest_commit, "--check-vidore-access", str(checkout_root / ".venv")),
         (latest_commit, "", str(checkout_root / ".venv")),
     ]
-    selected_checkout = checkout_root / f"main-{latest_commit}"
+    selected_checkout = checkout_root / f"commit-{latest_commit}"
     assert selected_checkout.is_dir()
     assert _git(selected_checkout, "rev-parse", "HEAD").stdout.strip() == latest_commit
 
@@ -142,7 +142,7 @@ def test_help_does_not_require_configuration_or_fetch(tmp_path: Path) -> None:
     env.pop("RETRIEVER_CONFIG_FILE", None)
 
     result = subprocess.run(
-        [str(LATEST_MAIN_LAUNCHER), "--help"],
+        [str(NIGHTLY_LAUNCHER), "--help"],
         env=env,
         check=False,
         capture_output=True,
@@ -150,10 +150,25 @@ def test_help_does_not_require_configuration_or_fetch(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert "Fetch upstream/main" in result.stdout
+    assert "latest" in result.stdout
+    assert "--ref REF" in result.stdout
 
 
-def test_scheduled_launcher_uses_exported_secrets_without_config_file(latest_main_fixture, tmp_path: Path) -> None:
+def test_explicit_ref_runs_local_commit_without_fetching(latest_main_fixture) -> None:
+    run, calls, _source, _controller, checkout_root, initial_commit, _latest_commit = latest_main_fixture
+
+    result = run(
+        "--ref",
+        "HEAD",
+        "--dry-run",
+        extra_env={"RETRIEVER_LATEST_SOURCE": str(checkout_root / "missing-source")},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert calls() == [(initial_commit, "--dry-run", str(checkout_root / ".venv"))]
+
+
+def test_launcher_selection_uses_exported_secrets_without_config_file(latest_main_fixture, tmp_path: Path) -> None:
     run, calls, _source, _controller, _checkout_root, _initial_commit, latest_commit = latest_main_fixture
 
     result = run(
@@ -172,7 +187,7 @@ def test_scheduled_launcher_uses_exported_secrets_without_config_file(latest_mai
 
 
 @pytest.mark.parametrize("configured, expected", [(None, "skip"), ("full", "full")])
-def test_scheduled_run_has_safe_warmup_default_and_allows_override(
+def test_selected_run_has_safe_warmup_default_and_allows_override(
     latest_main_fixture, configured: str | None, expected: str
 ) -> None:
     run, _calls, *_rest = latest_main_fixture
@@ -185,7 +200,7 @@ def test_scheduled_run_has_safe_warmup_default_and_allows_override(
     assert result.returncode == 0, result.stderr
 
 
-def test_scheduled_launcher_fails_closed_when_access_preflight_fails(latest_main_fixture) -> None:
+def test_launcher_fails_closed_when_access_preflight_fails(latest_main_fixture) -> None:
     run, calls, _source, _controller, _checkout_root, _initial_commit, latest_commit = latest_main_fixture
 
     result = run(extra_env={"FAKE_ACCESS_RC": "3"})
@@ -194,7 +209,7 @@ def test_scheduled_launcher_fails_closed_when_access_preflight_fails(latest_main
     assert calls() == [(latest_commit, "--check-vidore-access", str(_checkout_root / ".venv"))]
 
 
-def test_scheduled_launcher_does_not_run_stale_commit_when_fetch_fails(latest_main_fixture) -> None:
+def test_launcher_does_not_run_stale_commit_when_fetch_fails(latest_main_fixture) -> None:
     run, calls, _source, _controller, _checkout_root, _initial_commit, _latest_commit = latest_main_fixture
 
     result = run(extra_env={"RETRIEVER_LATEST_SOURCE": str(_checkout_root / "missing-source")})
@@ -203,7 +218,7 @@ def test_scheduled_launcher_does_not_run_stale_commit_when_fetch_fails(latest_ma
     assert calls() == []
 
 
-def test_scheduled_launcher_rejects_modified_controller(latest_main_fixture) -> None:
+def test_launcher_rejects_modified_controller(latest_main_fixture) -> None:
     run, calls, _source, controller, _checkout_root, _initial_commit, _latest_commit = latest_main_fixture
     (controller / "version.txt").write_text("modified\n", encoding="utf-8")
 
@@ -213,7 +228,7 @@ def test_scheduled_launcher_rejects_modified_controller(latest_main_fixture) -> 
     assert calls() == []
 
 
-def test_scheduled_launcher_prunes_only_old_managed_worktrees(latest_main_fixture) -> None:
+def test_launcher_prunes_only_old_managed_worktrees(latest_main_fixture) -> None:
     run, _calls, source, _controller, checkout_root, _initial_commit, latest_commit = latest_main_fixture
     assert run(extra_env={"RETRIEVER_LATEST_KEEP_CHECKOUTS": "1"}).returncode == 0
 
@@ -222,5 +237,5 @@ def test_scheduled_launcher_prunes_only_old_managed_worktrees(latest_main_fixtur
     result = run(extra_env={"RETRIEVER_LATEST_KEEP_CHECKOUTS": "1"})
 
     assert result.returncode == 0, result.stderr
-    assert not (checkout_root / f"main-{latest_commit}").exists()
-    assert (checkout_root / f"main-{newer_commit}").is_dir()
+    assert not (checkout_root / f"commit-{latest_commit}").exists()
+    assert (checkout_root / f"commit-{newer_commit}").is_dir()

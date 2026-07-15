@@ -7,6 +7,7 @@ set -uo pipefail
 umask 077
 
 readonly EXIT_CONFIG=64
+readonly EXIT_FETCH=69
 readonly EXIT_INTERNAL=70
 readonly EXIT_CANNOT_CREATE=73
 readonly EXIT_ALREADY_RUNNING=75
@@ -19,10 +20,12 @@ usage() {
     cat <<'EOF'
 Usage: run-nightly.sh [OPTIONS] [--] [RUNFILE ...]
 
-Run the library and ViDoRe v3 harness suite from the current clean checkout.
-With no RUNFILE arguments, all 12 checked-in nightly runfiles are executed.
+Fetch and run the library and ViDoRe v3 harness suite from the latest
+upstream/main commit. With no RUNFILE arguments, all 12 checked-in nightly
+runfiles are executed.
 
 Options:
+  --ref REF             Run an existing local Git ref instead of fetching main.
   --dataset-paths PATH  Machine-local dataset path map.
   --artifact-root PATH  Parent directory for timestamped session artifacts.
   --check-vidore-access Validate authenticated ViDoRe evaluation-data access and exit.
@@ -35,6 +38,171 @@ EOF
 absolute_path() {
     realpath -m -- "$1"
 }
+
+prune_managed_worktrees() {
+    local repository="$1"
+    local checkout_root="$2"
+    local selected_checkout="$3"
+    local keep_count="$4"
+    local retained=0
+    local candidate base
+    local -a candidates=()
+
+    mapfile -t candidates < <(
+        find "$checkout_root" -mindepth 1 -maxdepth 1 -type d -name 'commit-*' -printf '%T@ %p\n' \
+            | sort -nr \
+            | sed -E 's/^[^ ]+ //'
+    )
+    for candidate in "${candidates[@]}"; do
+        base="$(basename -- "$candidate")"
+        if [[ ! "$base" =~ ^commit-[0-9a-f]{40,64}$ ]]; then
+            continue
+        fi
+        if [[ "$candidate" == "$selected_checkout" || $retained -lt $keep_count ]]; then
+            ((retained += 1))
+            continue
+        fi
+        if [[ -n "$(git -C "$candidate" status --porcelain --untracked-files=normal 2>/dev/null)" ]]; then
+            log "retaining modified managed worktree: $candidate"
+            continue
+        fi
+        if ! git -C "$repository" worktree remove --force "$candidate"; then
+            log "could not prune managed worktree: $candidate"
+        fi
+    done
+    git -C "$repository" worktree prune || log "could not prune stale Git worktree metadata"
+}
+
+select_checkout_and_run() {
+    local requested_ref="$1"
+    shift
+
+    local repository source_name source_ref remote_ref fetched_ref checkout_root keep_count uv_environment
+    repository="${RETRIEVER_UPDATE_REPOSITORY:-$(git -C "$script_dir" rev-parse --show-toplevel)}"
+    source_name="${RETRIEVER_LATEST_SOURCE:-upstream}"
+    source_ref="${RETRIEVER_LATEST_REF:-main}"
+    remote_ref="$source_ref"
+    if [[ "$remote_ref" != refs/* ]]; then
+        remote_ref="refs/heads/$remote_ref"
+    fi
+    fetched_ref="refs/retriever-nightly/latest-main"
+    checkout_root="${RETRIEVER_LATEST_CHECKOUT_ROOT:-$nightly_root/retriever-nightly-checkouts}"
+    keep_count="${RETRIEVER_LATEST_KEEP_CHECKOUTS:-7}"
+    uv_environment="${UV_PROJECT_ENVIRONMENT:-$checkout_root/.venv}"
+
+    if [[ ! "$keep_count" =~ ^[1-9][0-9]*$ ]]; then
+        log "RETRIEVER_LATEST_KEEP_CHECKOUTS must be a positive integer"
+        return "$EXIT_CONFIG"
+    fi
+    if [[ ! -d "$repository/.git" && ! -f "$repository/.git" ]]; then
+        log "controller checkout is not a Git worktree: $repository"
+        return "$EXIT_CONFIG"
+    fi
+    if [[ -n "$(git -C "$repository" status --porcelain --untracked-files=normal)" ]]; then
+        log "controller checkout has local changes: $repository"
+        return "$EXIT_CONFIG"
+    fi
+    if ! mkdir -p "$checkout_root"; then
+        log "could not create managed checkout root: $checkout_root"
+        return "$EXIT_CONFIG"
+    fi
+    chmod 700 "$checkout_root"
+
+    exec 8>"$checkout_root/.selection.lock" || return "$EXIT_CONFIG"
+    if ! flock -n 8; then
+        log "another nightly Git selection is already running"
+        return "$EXIT_ALREADY_RUNNING"
+    fi
+
+    local target_commit selection_label
+    if [[ -z "$requested_ref" ]]; then
+        if ! git check-ref-format "$remote_ref"; then
+            log "RETRIEVER_LATEST_REF is not a valid Git ref: $source_ref"
+            return "$EXIT_CONFIG"
+        fi
+        log "fetching $source_name $source_ref"
+        if ! git -C "$repository" fetch --no-tags "$source_name" "+$remote_ref:$fetched_ref"; then
+            log "fetch failed; refusing to run a stale commit"
+            return "$EXIT_FETCH"
+        fi
+        target_commit="$(git -C "$repository" rev-parse --verify "$fetched_ref^{commit}")" || \
+            return "$EXIT_FETCH"
+        selection_label="$source_name/$source_ref"
+    else
+        if [[ "$requested_ref" == -* ]]; then
+            log "--ref must name a Git ref or commit"
+            return "$EXIT_CONFIG"
+        fi
+        target_commit="$(git -C "$repository" rev-parse --verify "$requested_ref^{commit}" 2>/dev/null)" || {
+            log "could not resolve --ref $requested_ref to a local commit"
+            return "$EXIT_CONFIG"
+        }
+        selection_label="$requested_ref"
+    fi
+
+    local selected_checkout selected_head target_launcher preflight_access run_rc
+    selected_checkout="$checkout_root/commit-$target_commit"
+    if [[ -e "$selected_checkout" ]]; then
+        selected_head="$(git -C "$selected_checkout" rev-parse --verify HEAD 2>/dev/null || true)"
+        if [[ "$selected_head" != "$target_commit" ]]; then
+            log "managed checkout has an unexpected commit: $selected_checkout"
+            return "$EXIT_CONFIG"
+        fi
+        if [[ -n "$(git -C "$selected_checkout" status --porcelain --untracked-files=normal)" ]]; then
+            log "managed checkout has local changes: $selected_checkout"
+            return "$EXIT_CONFIG"
+        fi
+    elif ! git -C "$repository" worktree add --detach "$selected_checkout" "$target_commit"; then
+        log "could not create detached worktree for $target_commit"
+        return "$EXIT_CONFIG"
+    fi
+    touch "$selected_checkout"
+
+    target_launcher="$selected_checkout/ops/retriever-nightly/run-nightly.sh"
+    if [[ ! -x "$target_launcher" ]]; then
+        log "selected commit does not contain an executable nightly launcher: $target_launcher"
+        return "$EXIT_CONFIG"
+    fi
+
+    export RETRIEVER_SELECTED_CHECKOUT="$selected_checkout"
+    export UV_PROJECT_ENVIRONMENT="$uv_environment"
+    log "selected $selection_label commit $target_commit in $selected_checkout"
+
+    preflight_access=1
+    local arg
+    for arg in "$@"; do
+        if [[ "$arg" == "--dry-run" || "$arg" == "--check-vidore-access" ]]; then
+            preflight_access=0
+        fi
+    done
+
+    run_rc=0
+    if [[ "$preflight_access" == "1" ]]; then
+        "$target_launcher" --check-vidore-access || run_rc=$?
+    fi
+    if ((run_rc == 0)); then
+        if [[ -n "$slack_webhook_url" ]]; then
+            export SLACK_WEBHOOK_URL="$slack_webhook_url"
+        fi
+        "$target_launcher" "$@" || run_rc=$?
+        unset SLACK_WEBHOOK_URL
+    else
+        log "ViDoRe access preflight failed; skipping GPU work"
+    fi
+
+    prune_managed_worktrees "$repository" "$checkout_root" "$selected_checkout" "$keep_count"
+    return "$run_rc"
+}
+
+for argument in "$@"; do
+    if [[ "$argument" == "--" ]]; then
+        break
+    fi
+    if [[ "$argument" == "--help" ]]; then
+        usage
+        exit 0
+    fi
+done
 
 default_nightly_root="$HOME"
 raid_nightly_root="/raid/$(id -un)"
@@ -57,6 +225,42 @@ slack_webhook_url="${SLACK_WEBHOOK_URL:-}"
 unset SLACK_WEBHOOK_URL
 
 readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${RETRIEVER_SELECTED_CHECKOUT:-}" ]]; then
+    requested_ref=""
+    forwarded_args=()
+    while (($#)); do
+        case "$1" in
+            --ref)
+                if (($# < 2)); then
+                    log "--ref requires a Git ref or commit"
+                    exit "$EXIT_CONFIG"
+                fi
+                if [[ -n "$requested_ref" ]]; then
+                    log "--ref may be specified only once"
+                    exit "$EXIT_CONFIG"
+                fi
+                requested_ref="$2"
+                shift 2
+                ;;
+            --)
+                forwarded_args+=("$@")
+                break
+                ;;
+            *)
+                forwarded_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+    export RETRIEVER_CONFIG_FILE="$config_file"
+    export RETRIEVER_NIGHTLY_ROOT="$nightly_root"
+    if [[ -z "${VLLM_DEEP_GEMM_WARMUP+x}" ]]; then
+        export VLLM_DEEP_GEMM_WARMUP=skip
+    fi
+    select_checkout_and_run "$requested_ref" "${forwarded_args[@]}"
+    exit $?
+fi
+
 checkout="${RETRIEVER_SELECTED_CHECKOUT:-${RETRIEVER_CHECKOUT:-$(git -C "$script_dir" rev-parse --show-toplevel)}}"
 nightly_root="${RETRIEVER_NIGHTLY_ROOT:-$nightly_root}"
 artifact_root="${RETRIEVER_ARTIFACT_ROOT:-$nightly_root/retriever-nightly-artifacts}"

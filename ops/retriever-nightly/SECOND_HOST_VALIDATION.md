@@ -28,8 +28,10 @@ repository as `upstream` for later comparisons:
 git remote add upstream https://github.com/NVIDIA/NeMo-Retriever.git
 ```
 
-The launcher runs exactly the checked-out commit. It does not fetch, pull, or
-switch refs.
+Every validation command below passes `--ref HEAD`, so the launcher runs
+exactly the checked-out review commit from an immutable detached worktree. It
+does not fetch or move the review branch. The no-`--ref` production workflow
+fetches `upstream/main` only after this feature is merged.
 
 ## 2. Prepare the Host
 
@@ -60,7 +62,7 @@ Before starting GPU work, validate the configured token and read one byte from
 one remote parquet object in each of the queries, qrels, and corpus partitions:
 
 ```bash
-./ops/retriever-nightly/run-nightly.sh --check-vidore-access
+./ops/retriever-nightly/run-nightly.sh --ref HEAD --check-vidore-access
 ```
 
 The command should exit zero and report access for all eight ViDoRe v3
@@ -70,7 +72,7 @@ suite if this check reports a Hugging Face or CAS redirect failure.
 ## 4. Preflight All Twelve Benchmarks
 
 ```bash
-./ops/retriever-nightly/run-nightly.sh --dry-run
+./ops/retriever-nightly/run-nightly.sh --ref HEAD --dry-run
 ```
 
 The command should exit zero, report a new timestamped session directory, and
@@ -82,6 +84,7 @@ the dry-run does not materialize batch data.
 
 ```bash
 ./ops/retriever-nightly/run-nightly.sh \
+  --ref HEAD \
   --no-slack \
   nemo_retriever/harness/runfiles/jp20_beir.json
 ```
@@ -109,7 +112,7 @@ review branch commit. These steps do not post to Slack.
 From the clean draft checkout, start all twelve benchmarks with one command:
 
 ```bash
-./ops/retriever-nightly/run-nightly.sh
+./ops/retriever-nightly/run-nightly.sh --ref HEAD
 ```
 
 The launcher runs the four library benchmarks and all eight ViDoRe v3 domains.
@@ -119,3 +122,33 @@ running, and the parent writes one terminal `session_summary.json`. Because
 full `run_commit`, twelve child results, final command exit status, and Slack
 message. The process remains attached to the invoking shell; use the host's
 normal session manager if it must survive a disconnected terminal.
+
+## 8. Start The Post-Merge Daily Workflow
+
+After the launcher is merged to `upstream/main`, keep the one-shot launcher in
+a transparent 24-hour loop inside `tmux`:
+
+```bash
+tmux new -s retriever-nightly
+
+export HF_TOKEN=...
+export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+
+interval=86400
+while true; do
+  started="$(date +%s)"
+  ./ops/retriever-nightly/run-nightly.sh
+  elapsed=$(( $(date +%s) - started ))
+  if (( elapsed < interval )); then
+    sleep "$(( interval - elapsed ))"
+  fi
+done
+```
+
+The default command fetches the newest `upstream/main` on each iteration,
+preflights ViDoRe access, runs the suite, and posts once when
+`SLACK_WEBHOOK_URL` is set. Enter the exports inside the new tmux session,
+detach with `Ctrl-b d`, and inspect it later with `tmux attach -t
+retriever-nightly`. The serial loop does not overlap runs. It survives SSH
+disconnects but must be restarted after a workstation reboot; no service or
+timer is installed.

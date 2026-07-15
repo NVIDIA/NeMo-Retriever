@@ -94,6 +94,7 @@ def nightly_launcher(tmp_path: Path):
         {
             "HOME": str(tmp_path / "home"),
             "RETRIEVER_CHECKOUT": str(checkout),
+            "RETRIEVER_SELECTED_CHECKOUT": str(checkout),
             "RETRIEVER_NIGHTLY_ROOT": str(tmp_path / "nightly-root"),
             "RETRIEVER_UV_BIN": str(fake_uv),
             "FAKE_UV_CALLS": str(calls_path),
