@@ -78,7 +78,7 @@ services:
     <<: [*retriever-image, *host-access]
     command: [python, -m, nemo_retriever.service.vectordb_app, --lancedb-uri, /data/vectordb, --table-name, nemo_retriever, --embed-endpoint, "${NIM_EMBED_URL:-https://integrate.api.nvidia.com/v1/embeddings}", --embed-model, "${NIM_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}", --port, "7671"]
     environment:
-      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-${NGC_API_KEY:-}}
     volumes: [vectordb_data:/data/vectordb]
     depends_on:
       nim-embedding: {condition: service_healthy, required: false}
