@@ -42,7 +42,11 @@ def _configure_logging(config: ServiceConfig) -> None:
     file_handler.setFormatter(fmt)
     root.addHandler(file_handler)
 
-    logger.info("Logging configured: level=%s file=%s", config.logging.level, config.logging.file)
+    logger.info(
+        "Logging configured: level=%s file=%s",
+        config.logging.level,
+        config.logging.file,
+    )
 
 
 def _apply_resource_limits(config: ServiceConfig) -> None:
@@ -51,7 +55,9 @@ def _apply_resource_limits(config: ServiceConfig) -> None:
 
     if res.gpu_devices:
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(res.gpu_devices)
-        logger.info("CUDA_VISIBLE_DEVICES set to %s", os.environ["CUDA_VISIBLE_DEVICES"])
+        logger.info(
+            "CUDA_VISIBLE_DEVICES set to %s", os.environ["CUDA_VISIBLE_DEVICES"]
+        )
 
     if res.max_cpu_cores is not None:
         try:
@@ -95,7 +101,10 @@ def _check_media_dependencies(mode: str) -> None:
     )
 
     if is_media_available():
-        logger.info("Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=%s)", mode)
+        logger.info(
+            "Media dependencies (ffmpeg, ffprobe) detected — audio/video ingestion enabled (mode=%s)",
+            mode,
+        )
         return
 
     missing = ", ".join(missing_media_dependencies()) or "ffmpeg, ffprobe"
@@ -125,10 +134,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     config: ServiceConfig = app.state.config
     mode = config.mode
 
-    from nemo_retriever.service.services.event_bus import init_event_bus, shutdown_event_bus
-    from nemo_retriever.service.services.job_tracker import init_job_tracker, shutdown_job_tracker
+    from nemo_retriever.service.services.event_bus import (
+        init_event_bus,
+        shutdown_event_bus,
+    )
+    from nemo_retriever.service.services.job_tracker import (
+        init_job_tracker,
+        shutdown_job_tracker,
+    )
     from nemo_retriever.service.services.metrics import init_metrics, shutdown_metrics
-    from nemo_retriever.service.services.pipeline_pool import init_pipeline_pool, shutdown_pipeline_pool
+    from nemo_retriever.service.services.pipeline_pool import (
+        init_pipeline_pool,
+        shutdown_pipeline_pool,
+    )
     from nemo_retriever.service.services.proxy import init_proxy, shutdown_proxy
     from nemo_retriever.service.services.sidecar_store import init_sidecar_store, shutdown_sidecar_store
     from nemo_retriever.service.services.worker_result_store import validate_result_store
@@ -156,8 +174,14 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             create_realtime_work_fn,
         )
 
-        rt_fn = create_realtime_work_fn(config) if mode in ("standalone", "realtime") else None
-        bt_fn = create_batch_work_fn(config) if mode in ("standalone", "batch") else None
+        rt_fn = (
+            create_realtime_work_fn(config)
+            if mode in ("standalone", "realtime")
+            else None
+        )
+        bt_fn = (
+            create_batch_work_fn(config) if mode in ("standalone", "batch") else None
+        )
         app.state.proxy = None
         app.state.work_broker = None
         app.state.pipeline_pool = init_pipeline_pool(
@@ -176,7 +200,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         ):
             import asyncio
 
-            from nemo_retriever.service.services.pipeline_executor import warmup_process_pool_workers
+            from nemo_retriever.service.services.pipeline_executor import (
+                warmup_process_pool_workers,
+            )
 
             warmup_status = await asyncio.to_thread(warmup_process_pool_workers)
             logger.info("Local model warmup status: %s", warmup_status)
@@ -192,7 +218,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     yield
 
-    from nemo_retriever.service.services.pipeline_executor import shutdown_process_executors
+    from nemo_retriever.service.services.pipeline_executor import (
+        shutdown_process_executors,
+    )
 
     shutdown_process_executors()
     await shutdown_work_broker()
@@ -208,7 +236,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 class _RequestIdMiddleware(BaseHTTPMiddleware):
     """Attach a unique ``request_id`` to every incoming HTTP request."""
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         request.state.request_id = uuid.uuid4().hex
         response = await call_next(request)
         return response
@@ -225,7 +255,10 @@ def create_app(config: ServiceConfig) -> FastAPI:
         try:
             from fastmcp.utilities.lifespan import combine_lifespans
 
-            from nemo_retriever.service.mcp_server import build_mcp_app, settings_from_service_config
+            from nemo_retriever.service.mcp_server import (
+                build_mcp_app,
+                settings_from_service_config,
+            )
 
             mcp_asgi_app = build_mcp_app(settings_from_service_config(config))
             lifespan = combine_lifespans(_lifespan, mcp_asgi_app.lifespan)
@@ -257,7 +290,11 @@ def create_app(config: ServiceConfig) -> FastAPI:
 
     from nemo_retriever.service.auth import BearerAuthMiddleware
 
-    app.add_middleware(BearerAuthMiddleware, config=config.auth)
+    app.add_middleware(
+        BearerAuthMiddleware,
+        config=config.auth,
+        internal_api_token=config.vectordb.internal_api_token,
+    )
     logger.info(
         "Scope authorization configured (header=%s, secret_file=%s, allow_unscoped_dev=%s)",
         config.auth.header_name,
@@ -305,7 +342,9 @@ def create_app(config: ServiceConfig) -> FastAPI:
             and config.local_models.enabled
             and config.local_models.warmup_on_startup
         ):
-            from nemo_retriever.service.services.pipeline_executor import get_service_warmup_status
+            from nemo_retriever.service.services.pipeline_executor import (
+                get_service_warmup_status,
+            )
 
             warmup = get_service_warmup_status()
             base["models_warm"] = bool(warmup.get("complete"))
@@ -326,8 +365,12 @@ def create_app(config: ServiceConfig) -> FastAPI:
         return base
 
     @app.exception_handler(Exception)
-    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    async def _unhandled_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
+        logger.exception(
+            "Unhandled exception on %s %s", request.method, request.url.path
+        )
         return JSONResponse(
             status_code=500,
             content={

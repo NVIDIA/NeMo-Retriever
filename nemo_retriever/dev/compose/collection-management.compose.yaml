@@ -1,0 +1,66 @@
+services:
+  retriever:
+    image: ${NRL_IMAGE:-nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0}
+    command:
+      - retriever
+      - service
+      - start
+      - --config
+      - /etc/nemo-retriever/collection-management.service.yaml
+    environment:
+      NRL_EMBED_ENDPOINT: ${NRL_EMBED_ENDPOINT:?set NRL_EMBED_ENDPOINT}
+      NRL_SCOPE_TOKEN_FILE: /run/secrets/scope_tokens
+      NRL_INTERNAL_VDB_TOKEN_FILE: /run/secrets/internal_vdb_token
+      NRL_ARTIFACT_STORAGE_OPTIONS_FILE: /run/secrets/artifact_storage_options
+    ports:
+      - "7670:7670"
+    volumes:
+      - ./collection-management.service.yaml:/etc/nemo-retriever/collection-management.service.yaml:ro
+      - collection-artifacts:/data/artifacts
+    secrets:
+      - scope_tokens
+      - internal_vdb_token
+      - artifact_storage_options
+    depends_on:
+      vectordb:
+        condition: service_healthy
+
+  vectordb:
+    image: ${NRL_IMAGE:-nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0}
+    command:
+      - python
+      - -m
+      - nemo_retriever.service.vectordb_app
+      - --lancedb-uri
+      - /data/vectordb
+      - --embed-endpoint
+      - ${NRL_EMBED_ENDPOINT:?set NRL_EMBED_ENDPOINT}
+      - --collection-artifact-root
+      - /data/artifacts
+      - --artifact-storage-options-file
+      - /run/secrets/artifact_storage_options
+    environment:
+      NRL_INTERNAL_VDB_TOKEN_FILE: /run/secrets/internal_vdb_token
+    volumes:
+      - vectordb-data:/data/vectordb
+      - collection-artifacts:/data/artifacts
+    secrets:
+      - internal_vdb_token
+      - artifact_storage_options
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7671/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+secrets:
+  scope_tokens:
+    file: ${NRL_SCOPE_TOKENS_FILE:-./secrets/scope-tokens.json.example}
+  internal_vdb_token:
+    file: ${NRL_INTERNAL_VDB_TOKEN_FILE:-./secrets/internal-vdb-token.example}
+  artifact_storage_options:
+    file: ${NRL_ARTIFACT_STORAGE_OPTIONS_FILE:-./secrets/artifact-storage-options.json.example}
+
+volumes:
+  vectordb-data:
+  collection-artifacts:

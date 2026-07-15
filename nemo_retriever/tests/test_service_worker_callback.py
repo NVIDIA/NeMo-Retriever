@@ -103,8 +103,14 @@ def test_worker_document_result_endpoint_is_idempotent() -> None:
     rows = [{"text": "hello"}]
     store_result_data("doc-x", rows)
     with TestClient(create_app(cfg)) as client:
-        assert client.get("/v1/internal/document-result/doc-x").json()["result_data"] == rows
-        assert client.get("/v1/internal/document-result/doc-x").json()["result_data"] == rows
+        assert (
+            client.get("/v1/internal/document-result/doc-x").json()["result_data"]
+            == rows
+        )
+        assert (
+            client.get("/v1/internal/document-result/doc-x").json()["result_data"]
+            == rows
+        )
 
 
 def test_shared_result_store_is_traversal_safe_and_cross_process_visible(
@@ -118,7 +124,9 @@ def test_shared_result_store_is_traversal_safe_and_cross_process_visible(
 
     assert get_result_data("../unsafe/document-id") == rows
     assert get_result_data("../unsafe/document-id") == rows
-    assert worker_result_store._document_dir(tmp_path, "../unsafe/document-id").is_relative_to(tmp_path)
+    assert worker_result_store._document_dir(
+        tmp_path, "../unsafe/document-id"
+    ).is_relative_to(tmp_path)
 
 
 def test_shared_result_store_supports_concurrent_idempotent_readers(
@@ -129,7 +137,9 @@ def test_shared_result_store_supports_concurrent_idempotent_readers(
     store_result_data("doc-concurrent", rows)
 
     with ThreadPoolExecutor(max_workers=8) as executor:
-        results = list(executor.map(lambda _: get_result_data("doc-concurrent"), range(8)))
+        results = list(
+            executor.map(lambda _: get_result_data("doc-concurrent"), range(8))
+        )
 
     assert results == [rows] * 8
 
@@ -140,7 +150,9 @@ def test_shared_result_store_preserves_generation_after_read_error(
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
     rows = [{"text": "retry read"}]
     store_result_data("doc-read-error", rows)
-    generation = next(worker_result_store._document_dir(tmp_path, "doc-read-error").glob("*.json"))
+    generation = next(
+        worker_result_store._document_dir(tmp_path, "doc-read-error").glob("*.json")
+    )
     original_open = Path.open
     fail_read = True
 
@@ -180,7 +192,9 @@ def test_shared_result_store_chooses_newest_completed_generation(
 ) -> None:
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
     store_result_data("regenerated", [{"version": 1}])
-    first = next(worker_result_store._document_dir(tmp_path, "regenerated").glob("*.json"))
+    first = next(
+        worker_result_store._document_dir(tmp_path, "regenerated").glob("*.json")
+    )
     old = time.time() - 10
     os.utime(first, (old, old))
 
@@ -195,7 +209,9 @@ def test_expiry_sweep_cannot_delete_concurrent_fresh_generation(
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_TTL_SECONDS", "60")
     store_result_data("replaced", [{"version": 1}])
-    old_generation = next(worker_result_store._document_dir(tmp_path, "replaced").glob("*.json"))
+    old_generation = next(
+        worker_result_store._document_dir(tmp_path, "replaced").glob("*.json")
+    )
     old = time.time() - 61
     os.utime(old_generation, (old, old))
     original_unlink = Path.unlink
@@ -214,7 +230,9 @@ def test_expiry_sweep_cannot_delete_concurrent_fresh_generation(
     assert get_result_data("replaced") == [{"version": 2}]
 
 
-def test_shared_result_store_removes_only_expired_owned_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_shared_result_store_removes_only_expired_owned_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_TTL_SECONDS", "60")
     document_dir = worker_result_store._document_dir(tmp_path, "abandoned")
@@ -237,7 +255,9 @@ def test_shared_result_store_removes_only_expired_owned_files(monkeypatch: pytes
     assert get_result_data("fresh") == [{"text": "available"}]
 
 
-def test_sweep_preserves_fresh_empty_document_directory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_sweep_preserves_fresh_empty_document_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
     document_dir = worker_result_store._document_dir(tmp_path, "about-to-publish")
     document_dir.mkdir(parents=True)
@@ -286,10 +306,14 @@ def test_result_store_isolates_stored_and_returned_rows(
 
 
 def test_shared_result_store_default_ttl_covers_full_job_lifecycle() -> None:
-    assert worker_result_store._results_ttl_s() == DEFAULT_STALE_JOB_TTL_S + DEFAULT_TTL_S
+    assert (
+        worker_result_store._results_ttl_s() == DEFAULT_STALE_JOB_TTL_S + DEFAULT_TTL_S
+    )
 
 
-def test_result_store_validation_probes_required_operations(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_result_store_validation_probes_required_operations(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
 
     validate_result_store()
@@ -358,7 +382,9 @@ def test_gateway_fetch_returns_retryable_503_when_shared_store_is_unavailable(
     assert error.value.headers == {"Retry-After": "60"}
 
 
-def test_gateway_fetch_reads_shared_result_off_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gateway_fetch_reads_shared_result_off_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from nemo_retriever.service.routers import ingest
 
     event_loop_thread = threading.get_ident()
@@ -375,7 +401,9 @@ def test_gateway_fetch_reads_shared_result_off_event_loop(monkeypatch: pytest.Mo
     assert read_threads and read_threads[0] != event_loop_thread
 
 
-def test_gateway_fetches_shared_result_before_proxy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_gateway_fetches_shared_result_before_proxy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     from nemo_retriever.service.routers.ingest import _fetch_result_data_from_workers
 
     monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(tmp_path))
@@ -585,7 +613,9 @@ def test_gateway_callback_copies_result_before_completing(
 
         assert response.status_code == 200
         assert (ingest.get_result_data, ("handoff-doc",)) in to_thread_calls
-        assert requested_urls == ["http://10.1.2.3:7670/v1/internal/document-result/handoff-doc"]
+        assert requested_urls == [
+            "http://10.1.2.3:7670/v1/internal/document-result/handoff-doc"
+        ]
         record = tracker.get_document("handoff-doc")
         assert record is not None
         assert record.status == DocumentStatus.COMPLETED
@@ -630,7 +660,9 @@ def test_gateway_callback_does_not_complete_when_result_handoff_fails(
     with TestClient(create_app(ServiceConfig(mode="gateway"))) as client:
         tracker = get_job_tracker()
         assert tracker is not None
-        tracker.register_job("failed-handoff-job", expected_documents=1, retain_results=True)
+        tracker.register_job(
+            "failed-handoff-job", expected_documents=1, retain_results=True
+        )
         tracker.register_document("failed-handoff-doc", job_id="failed-handoff-job")
         tracker.mark_processing("failed-handoff-doc")
 
@@ -726,8 +758,12 @@ def test_internal_auth_headers_support_default_and_custom_header_names() -> None
     from nemo_retriever.service.auth import auth_headers
     from nemo_retriever.service.config import AuthConfig
 
-    assert auth_headers(AuthConfig(api_token="secret")) == {"Authorization": "Bearer secret"}
-    assert auth_headers(AuthConfig(api_token="secret", header_name="X-Service-Token")) == {"X-Service-Token": "secret"}
+    assert auth_headers(AuthConfig(api_token="secret")) == {
+        "Authorization": "Bearer secret"
+    }
+    assert auth_headers(
+        AuthConfig(api_token="secret", header_name="X-Service-Token")
+    ) == {"X-Service-Token": "secret"}
 
 
 def test_fire_gateway_callback_sends_internal_auth_headers() -> None:
@@ -819,7 +855,9 @@ def test_deferred_callback_tasks_are_bounded_and_cancellation_releases_slot(
             else:
                 await asyncio.Event().wait()
 
-        monkeypatch.setattr(_Pool, "_retry_gateway_callback_until_expired", wait_for_release)
+        monkeypatch.setattr(
+            _Pool, "_retry_gateway_callback_until_expired", wait_for_release
+        )
 
         await pool._schedule_gateway_callback_retry(
             callback_url="http://gateway/v1/internal/job-callback",
@@ -867,11 +905,15 @@ def test_deferred_permanent_rejection_releases_slot_and_preserves_result(
         pool._running = True
         pool._handoff_slots = asyncio.BoundedSemaphore(pool.num_workers)
 
-        async def permanently_rejected(*args: Any, **kwargs: Any) -> _CallbackDeliveryOutcome:
+        async def permanently_rejected(
+            *args: Any, **kwargs: Any
+        ) -> _CallbackDeliveryOutcome:
             return _CallbackDeliveryOutcome.PERMANENT_FAILURE
 
         store_result_data("restart-orphaned-doc", [{"text": "retained until TTL"}])
-        monkeypatch.setattr(pipeline_pool, "_fire_gateway_callback", permanently_rejected)
+        monkeypatch.setattr(
+            pipeline_pool, "_fire_gateway_callback", permanently_rejected
+        )
         monkeypatch.setattr(pipeline_pool, "_CALLBACK_DEFERRED_INITIAL_DELAY_S", 0.0)
 
         await pool._schedule_gateway_callback_retry(
@@ -894,7 +936,9 @@ def test_deferred_permanent_rejection_releases_slot_and_preserves_result(
 
     try:
         asyncio.run(run())
-        assert get_result_data("restart-orphaned-doc") == [{"text": "retained until TTL"}]
+        assert get_result_data("restart-orphaned-doc") == [
+            {"text": "retained until TTL"}
+        ]
     finally:
         discard_local_result_data("restart-orphaned-doc")
 
@@ -929,7 +973,9 @@ def test_result_store_validation_rejects_unsupported_directory_fsync(
     def unsupported_directory_fsync(_: Path) -> None:
         raise OSError(errno.EOPNOTSUPP, "Directory fsync is not supported")
 
-    monkeypatch.setattr(worker_result_store, "_fsync_directory", unsupported_directory_fsync)
+    monkeypatch.setattr(
+        worker_result_store, "_fsync_directory", unsupported_directory_fsync
+    )
 
     with pytest.raises(RuntimeError, match="fsync"):
         validate_result_store()
@@ -942,7 +988,7 @@ def test_gateway_result_pull_sends_configured_internal_auth(
 
     from starlette.requests import Request
 
-    from nemo_retriever.service.config import AuthConfig, ServiceConfig
+    from nemo_retriever.service.config import AuthConfig, ServiceConfig, VectorDbConfig
     from nemo_retriever.service.routers import ingest
 
     client_kwargs: dict[str, Any] = {}
@@ -971,6 +1017,7 @@ def test_gateway_result_pull_sends_configured_internal_auth(
             config=ServiceConfig(
                 mode="gateway",
                 auth=AuthConfig(api_token="secret", header_name="X-Service-Token"),
+                vectordb=VectorDbConfig(internal_api_token="internal-secret"),
             )
         )
     )
@@ -989,9 +1036,11 @@ def test_gateway_result_pull_sends_configured_internal_auth(
     )
 
     monkeypatch.setattr(ingest.httpx, "AsyncClient", _Client)
-    asyncio.run(ingest._pull_and_store_worker_result(request, "auth-pull-doc", "10.1.2.3"))
+    asyncio.run(
+        ingest._pull_and_store_worker_result(request, "auth-pull-doc", "10.1.2.3")
+    )
 
-    assert client_kwargs["headers"] == {"X-Service-Token": "secret"}
+    assert client_kwargs["headers"] == {"X-NRL-Internal-Token": "internal-secret"}
     assert get_result_data("auth-pull-doc") == [{"text": "authenticated handoff"}]
 
 

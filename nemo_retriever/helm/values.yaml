@@ -670,12 +670,39 @@ serviceConfig:
     tableName: "nemo_retriever"
     embedModel: "nvidia/llama-nemotron-embed-vl-1b-v2"
     embedModelProviderPrefix: ""
+    # Dedicated service-to-VectorDB credential. Prefer an existing Secret.
+    internalTokenSecret:
+      create: false
+      name: ""
+      key: "token"
+      value: ""
+    # Operator-owned StoreOperator root. Collection artifacts are always
+    # rewritten beneath scope/collection/document/version and deleted with
+    # their owning resource.
+    collectionArtifactRoot: ""
+    artifactStorageOptionsSecret:
+      create: false
+      name: ""
+      key: "storage-options.json"
+      value: "{}"
+    reconciliationIntervalSeconds: 60
+    expirationCleanupEnabled: true
 
-  # Optional bearer-token authentication. When apiToken is set, every
-  # request must carry "Authorization: Bearer <token>".
+  # Scope authorization. Production tokens are mounted from a Secret and are
+  # never rendered into the service ConfigMap.
   auth:
+    # Retained for non-Helm config compatibility; Helm does not render this
+    # value. Use scopeTokenSecret for chart deployments.
     apiToken: null
     headerName: "Authorization"
+    defaultScope: "default"
+    allowUnscopedDev: false
+    scopeTokenSecret:
+      create: false
+      name: ""
+      key: "scope-tokens.json"
+      # Format: {"tokens":[{"token":"...","scopes":["workspace"]}]}
+      value: ""
     bypassPaths:
       - "/v1/health"
       - "/docs"

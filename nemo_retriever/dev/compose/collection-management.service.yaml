@@ -1,0 +1,19 @@
+mode: standalone
+
+server:
+  host: 0.0.0.0
+  port: 7670
+
+nim_endpoints:
+  embed_invoke_url: ${NRL_EMBED_ENDPOINT}
+
+auth:
+  default_scope: default
+  allow_unscoped_dev: false
+
+vectordb:
+  enabled: true
+  vectordb_url: http://vectordb:7671
+  collection_artifact_root: /data/artifacts
+  reconciliation_interval_seconds: 60
+  expiration_cleanup_enabled: true

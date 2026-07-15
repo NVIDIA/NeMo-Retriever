@@ -91,7 +91,9 @@ def app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: list[Wor
 
 
 @pytest.fixture
-def traced_app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: list[WorkItem]):
+def traced_app_with_stub_pool(
+    monkeypatch: pytest.MonkeyPatch, captured_items: list[WorkItem]
+):
     """Build a traced standalone app with in-memory span export."""
     from nemo_retriever.service.tracing import _reset_tracing_for_tests
 
@@ -104,7 +106,9 @@ def traced_app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: l
         "nemo_retriever.service.tracing.OTLPSpanExporter",
         lambda *args, **kwargs: _CollectingExporter(exported),
     )
-    monkeypatch.setattr("nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor)
+    monkeypatch.setattr(
+        "nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor
+    )
 
     async def _stub_work(item: WorkItem) -> tuple[int, list[dict[str, Any]]]:
         captured_items.append(item)
@@ -152,7 +156,9 @@ def traced_gateway_app(monkeypatch: pytest.MonkeyPatch):
         "nemo_retriever.service.tracing.OTLPSpanExporter",
         lambda *args, **kwargs: _CollectingExporter(exported),
     )
-    monkeypatch.setattr("nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor)
+    monkeypatch.setattr(
+        "nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor
+    )
 
     cfg = ServiceConfig(mode="gateway")
     try:
@@ -235,9 +241,13 @@ def test_ingest_with_valid_spec_attaches_to_work_item(
     assert item.pipeline_spec["stage_order"] == ["extract"]
 
 
-def test_ingest_rejects_trust_sensitive_override(app_with_stub_pool: TestClient) -> None:
+def test_ingest_rejects_trust_sensitive_override(
+    app_with_stub_pool: TestClient,
+) -> None:
     job_id = create_test_job(app_with_stub_pool)
-    metadata = {"pipeline": {"extract_params": {"page_elements_invoke_url": "http://attacker/"}}}
+    metadata = {
+        "pipeline": {"extract_params": {"page_elements_invoke_url": "http://attacker/"}}
+    }
     resp = app_with_stub_pool.post(
         f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
@@ -247,7 +257,9 @@ def test_ingest_rejects_trust_sensitive_override(app_with_stub_pool: TestClient)
     assert "trust-sensitive" in resp.json()["detail"]
 
 
-def test_ingest_rejects_caption_when_endpoint_not_configured(app_with_stub_pool: TestClient) -> None:
+def test_ingest_rejects_caption_when_endpoint_not_configured(
+    app_with_stub_pool: TestClient,
+) -> None:
     """Without ``nim_endpoints.caption_invoke_url``, caption overrides are 403."""
     job_id = create_test_job(app_with_stub_pool)
     metadata = {"pipeline": {"caption_params": {"prompt": "Describe"}}}
@@ -260,10 +272,17 @@ def test_ingest_rejects_caption_when_endpoint_not_configured(app_with_stub_pool:
     assert "caption" in resp.json()["detail"].lower()
 
 
-def test_ingest_rejects_webhook_when_sinks_disabled(app_with_stub_pool: TestClient) -> None:
+def test_ingest_rejects_webhook_when_sinks_disabled(
+    app_with_stub_pool: TestClient,
+) -> None:
     """Without ``sinks.webhook_url_prefixes`` set, the ``webhook`` stage is not allowed."""
     job_id = create_test_job(app_with_stub_pool)
-    metadata = {"pipeline": {"webhook_params": {"endpoint_url": "http://x/"}, "stage_order": ["webhook"]}}
+    metadata = {
+        "pipeline": {
+            "webhook_params": {"endpoint_url": "http://x/"},
+            "stage_order": ["webhook"],
+        }
+    }
     resp = app_with_stub_pool.post(
         f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
@@ -290,7 +309,9 @@ def test_ingest_rejects_webhook_params_without_stage_when_sinks_disabled(
     assert "disabled" in resp.json()["detail"].lower()
 
 
-def test_create_job_returns_201_and_aggregate_fields(app_with_stub_pool: TestClient) -> None:
+def test_create_job_returns_201_and_aggregate_fields(
+    app_with_stub_pool: TestClient,
+) -> None:
     """POST /v1/ingest/job opens a fresh aggregate with status=pending."""
     resp = app_with_stub_pool.post(
         "/v1/ingest/job",
@@ -486,7 +507,11 @@ def test_job_upload_routes_emit_accept_spans(
     page_resp = client.post(
         f"/v1/ingest/job/{job_id}/page",
         files={"file": ("page.png", b"page", "image/png")},
-        data={"document_id": "source-doc", "page_number": "1", "filename": "source.pdf"},
+        data={
+            "document_id": "source-doc",
+            "page_number": "1",
+            "filename": "source.pdf",
+        },
     )
     whole_resp = client.post(
         f"/v1/ingest/job/{job_id}/whole",
@@ -507,7 +532,8 @@ def test_job_upload_routes_emit_accept_spans(
     accept_spans = {
         span.name: span
         for span in exported_spans
-        if span.name in {"ingest.document.accept", "ingest.page.accept", "ingest.whole.accept"}
+        if span.name
+        in {"ingest.document.accept", "ingest.page.accept", "ingest.whole.accept"}
     }
     for span in accept_spans.values():
         attrs = dict(span.attributes)
@@ -535,7 +561,9 @@ def test_job_upload_accept_span_uses_job_trace_when_request_has_no_traceparent(
     assert upload_resp.status_code == 202, upload_resp.text
     _wait_for_items(captured_items, 1)
 
-    accept_span = next(span for span in exported_spans if span.name == "ingest.document.accept")
+    accept_span = next(
+        span for span in exported_spans if span.name == "ingest.document.accept"
+    )
     assert f"{accept_span.context.trace_id:032x}" == job_trace_id
     assert captured_items[0].trace_context["traceparent"].split("-")[1] == job_trace_id
 
@@ -566,13 +594,19 @@ def test_job_upload_accept_span_prefers_inbound_traceparent_over_job_trace(
     assert upload_resp.status_code == 202, upload_resp.text
     _wait_for_items(captured_items, 1)
 
-    accept_span = next(span for span in exported_spans if span.name == "ingest.document.accept")
+    accept_span = next(
+        span for span in exported_spans if span.name == "ingest.document.accept"
+    )
     assert f"{accept_span.context.trace_id:032x}" == inbound_trace_id
     assert f"{accept_span.context.trace_id:032x}" != job_trace_id
-    assert captured_items[0].trace_context["traceparent"].split("-")[1] == inbound_trace_id
+    assert (
+        captured_items[0].trace_context["traceparent"].split("-")[1] == inbound_trace_id
+    )
 
 
-def test_dashboard_job_views_include_trace_id(traced_gateway_app: tuple[TestClient, list[Any]]) -> None:
+def test_dashboard_job_views_include_trace_id(
+    traced_gateway_app: tuple[TestClient, list[Any]],
+) -> None:
     client, exported_spans = traced_gateway_app
 
     resp = client.post(
@@ -602,7 +636,9 @@ def test_dashboard_job_views_include_trace_id(traced_gateway_app: tuple[TestClie
     assert exported_spans
 
 
-def test_create_job_retain_results_persisted_on_aggregate(app_with_stub_pool: TestClient) -> None:
+def test_create_job_retain_results_persisted_on_aggregate(
+    app_with_stub_pool: TestClient,
+) -> None:
     from nemo_retriever.service.services.job_tracker import get_job_tracker
 
     resp = app_with_stub_pool.post(
@@ -672,8 +708,63 @@ async def test_gateway_enqueue_unregisters_pending_when_broker_unavailable(monke
     assert exc_info.value.status_code == 503
     assert unregistered == ["work-id"]
 
+def test_collection_page_is_rejected_before_registration(
+    app_with_stub_pool: TestClient,
+    captured_items: list[WorkItem],
+) -> None:
+    from nemo_retriever.service.services.job_tracker import get_job_tracker
 
-def test_upload_beyond_capacity_returns_409(app_with_stub_pool: TestClient, captured_items: list[WorkItem]) -> None:
+    tracker = get_job_tracker()
+    assert tracker is not None
+    tracker.register_job(
+        "collection-page",
+        expected_documents=1,
+        collection_name="research",
+        scope="default",
+    )
+    response = app_with_stub_pool.post(
+        "/v1/ingest/job/collection-page/page",
+        files={"file": ("page.png", b"page", "image/png")},
+        data={"document_id": "source", "page_number": "1", "filename": "source.pdf"},
+    )
+    assert response.status_code == 422
+    assert tracker.job_documents("collection-page") == []
+    assert captured_items == []
+
+
+def test_collection_whole_propagates_server_storage_context(
+    app_with_stub_pool: TestClient,
+    captured_items: list[WorkItem],
+) -> None:
+    from nemo_retriever.service.services.job_tracker import get_job_tracker
+
+    tracker = get_job_tracker()
+    assert tracker is not None
+    tracker.register_job(
+        "collection-whole",
+        expected_documents=1,
+        collection_name="research",
+        scope="workspace",
+        operation="append",
+    )
+    response = app_with_stub_pool.post(
+        "/v1/ingest/job/collection-whole/whole",
+        headers={"X-NRL-Scope": "workspace"},
+        files={"file": ("report.txt", b"finding", "text/plain")},
+        data={"metadata": "{}"},
+    )
+    assert response.status_code == 202, response.text
+    _wait_for_items(captured_items, 1)
+    item = captured_items[0]
+    assert item.scope == "workspace"
+    assert item.collection_name == "research"
+    assert item.storage_document_id == response.json()["document_id"]
+    assert item.id == response.json()["attempt_id"]
+
+
+def test_upload_beyond_capacity_returns_409(
+    app_with_stub_pool: TestClient, captured_items: list[WorkItem]
+) -> None:
     """The (expected_documents + 1)th upload must be rejected with 409."""
     job_id = create_test_job(app_with_stub_pool, expected_documents=1)
     first = app_with_stub_pool.post(
