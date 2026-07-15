@@ -39,17 +39,6 @@ def internal_auth_headers(token: str | None) -> dict[str, str]:
     return {"X-NRL-Internal-Token": token}
 
 
-def auth_headers(config: AuthConfig) -> dict[str, str]:
-    """Build the configured service credential for trusted pod callbacks."""
-    token = (config.api_token or "").strip()
-    if not token:
-        return {}
-    value = (
-        f"Bearer {token}" if config.header_name.lower() == "authorization" else token
-    )
-    return {config.header_name: value}
-
-
 def authorized_scope(request: Request) -> str:
     """Return the middleware-authorized scope; never trust a raw header here."""
     return str(getattr(request.state, "authorized_scope", "default"))

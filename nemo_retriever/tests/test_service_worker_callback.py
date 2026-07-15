@@ -754,16 +754,13 @@ def test_worker_result_url_supports_ipv6_and_rejects_spoofed_peer() -> None:
     assert missing.value.status_code == 503
 
 
-def test_internal_auth_headers_support_default_and_custom_header_names() -> None:
-    from nemo_retriever.service.auth import auth_headers
-    from nemo_retriever.service.config import AuthConfig
+def test_internal_auth_headers_use_only_the_dedicated_internal_credential() -> None:
+    from nemo_retriever.service.auth import internal_auth_headers
 
-    assert auth_headers(AuthConfig(api_token="secret")) == {
-        "Authorization": "Bearer secret"
+    assert internal_auth_headers(None) == {}
+    assert internal_auth_headers("internal-secret") == {
+        "X-NRL-Internal-Token": "internal-secret"
     }
-    assert auth_headers(
-        AuthConfig(api_token="secret", header_name="X-Service-Token")
-    ) == {"X-Service-Token": "secret"}
 
 
 def test_fire_gateway_callback_sends_internal_auth_headers() -> None:

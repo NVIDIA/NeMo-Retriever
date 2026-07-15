@@ -92,7 +92,6 @@ _TRANSIENT_ERRORS: tuple[type[Exception], ...] = (
 class _CreatedJob(NamedTuple):
     job_id: str
     trace_id: str | None = None
-    replayed: bool = False
 
 
 # ------------------------------------------------------------------
@@ -683,7 +682,6 @@ class RetrieverServiceClient:
         return _CreatedJob(
             job_id=job_id,
             trace_id=trace_id if isinstance(trace_id, str) and trace_id else None,
-            replayed=resp.status_code == 200,
         )
 
     async def asubmit_documents(

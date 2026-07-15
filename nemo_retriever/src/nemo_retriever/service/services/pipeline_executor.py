@@ -1190,7 +1190,6 @@ def _make_work_fn(
             document_id=storage_document_id,
             document_version=document_version,
         )
-        item.artifact_prefix = artifact_prefix
 
         try:
             trace_context = _capture_trace_context_for_pipeline()

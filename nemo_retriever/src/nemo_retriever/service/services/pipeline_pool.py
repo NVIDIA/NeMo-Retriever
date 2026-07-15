@@ -111,7 +111,6 @@ class WorkItem(RichModel):
     operation: str = "append"
     content_sha256: str | None = None
     storage_document_id: str | None = None
-    artifact_prefix: str | None = None
     retain_results: bool = False
     # Validated per-request pipeline overrides (PipelineSpec serialised
     # to a dict). ``None`` means: run the legacy startup-baked pipeline.

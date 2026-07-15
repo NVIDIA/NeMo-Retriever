@@ -277,18 +277,6 @@ def _validate_manifest_entry(
         )
 
 
-def _job_storage_context(
-    job, *, stable_document_id: str | None = None
-) -> dict[str, Any]:
-    """Return the single server-owned storage context shared by ingestion routes."""
-    return {
-        "scope": job.scope,
-        "collection_name": job.collection_name,
-        "operation": job.operation,
-        "storage_document_id": stable_document_id or job.target_document_id,
-    }
-
-
 def _validate_collection_pipeline_storage(
     request: Request, job, spec: PipelineSpec | None
 ) -> None:

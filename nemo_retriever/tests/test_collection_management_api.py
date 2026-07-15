@@ -387,9 +387,7 @@ def test_sdk_replays_every_manifest_entry_after_idempotent_job_replay(
 
     monkeypatch.setattr(client_module.httpx, "AsyncClient", FakeAsyncClient)
     sdk = RetrieverServiceClient()
-    sdk._create_job = AsyncMock(
-        return_value=client_module._CreatedJob("job", replayed=True)
-    )
+    sdk._create_job = AsyncMock(return_value=client_module._CreatedJob("job"))
     sdk._upload_one = AsyncMock(return_value={"status": "accepted"})
 
     result = asyncio.run(
