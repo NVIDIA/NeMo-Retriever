@@ -219,6 +219,16 @@ def _agentic_retrieve(
     from nemo_retriever.query.agentic_options import agentic_target_top_k
     from nemo_retriever.query.workflow import build_agentic_config
 
+    if query_request.agentic.trace_enabled:
+        trace_path = query_request.agentic.trace_path or str(writer.path("agentic_trace.jsonl"))
+        query_request = replace(query_request, agentic=replace(query_request.agentic, trace_path=trace_path))
+        writer.event(
+            "query",
+            "agentic_trace_enabled",
+            "Writing agentic trace",
+            {"path": str(Path(trace_path).name)},
+        )
+
     try:
         cfg = build_agentic_config(query_request, top_k=agentic_target_top_k("beir", list(ks)))
     except (ValueError, TypeError) as exc:

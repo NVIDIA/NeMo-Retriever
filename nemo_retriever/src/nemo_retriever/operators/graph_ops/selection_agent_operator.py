@@ -11,7 +11,7 @@ import logging
 import os
 
 import requests
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -21,15 +21,7 @@ from nemo_retriever.models.nim.chat_completions import invoke_chat_completion_st
 
 logger = logging.getLogger(__name__)
 
-_LOG_PREVIEW_CHARS = 300
 _LOG_DOC_ID_LIMIT = 20
-
-
-def _preview_text(value: Any, *, limit: int = _LOG_PREVIEW_CHARS) -> str:
-    text = " ".join(str(value or "").split())
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "..."
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +193,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         base_url: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
         temperature: float = 0.0,
+        trace_event: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> None:
         super().__init__()
         self._reasoning_effort = reasoning_effort
@@ -214,6 +207,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         self._system_prompt_override = system_prompt_override
         self._text_truncation = text_truncation
         self._parallel_tool_calls = parallel_tool_calls
+        self._trace_event = trace_event
 
         if invoke_url is not None:
             self._invoke_url = invoke_url
@@ -228,6 +222,25 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             self._invoke_url = base_url.rstrip("/") + "/v1/chat/completions"
         else:
             self._invoke_url = self._NVIDIA_BUILD_ENDPOINT
+
+    def _emit_trace(self, event: str, **payload: Any) -> None:
+        if self._trace_event is None:
+            return
+        try:
+            self._trace_event({"event": event, "operator": "selection_agent", **payload})
+        except Exception as exc:
+            logger.warning("SelectionAgentOperator: trace event failed: %s", exc, exc_info=True)
+
+    def _trace_documents(self, docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return [
+            {
+                "rank": rank,
+                "doc_id": str(doc.get("id", doc.get("doc_id", ""))),
+                "score": doc.get("score"),
+                "text": str(doc.get("text", "")),
+            }
+            for rank, doc in enumerate(docs, start=1)
+        ]
 
     # ------------------------------------------------------------------
     # AbstractOperator interface
@@ -262,15 +275,21 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 for _, row in ordered_group.iterrows()
             ]
             logger.info(
-                "SelectionAgentOperator: query=%s start candidates=%d unique_candidates=%d query=%r",
+                "SelectionAgentOperator: query=%s start candidates=%d unique_candidates=%d",
                 query_id,
                 len(docs),
                 len({doc["id"] for doc in docs}),
-                _preview_text(query_text),
+            )
+            self._emit_trace(
+                "selection.query_start",
+                query_id=str(query_id),
+                query=query_text,
+                candidate_count=len(docs),
+                unique_candidate_count=len({doc["id"] for doc in docs}),
             )
             preferred_doc_ids, message, result_source = self._preferred_doc_ids(ordered_group)
             if preferred_doc_ids is None:
-                result = self._select_documents(query_text, docs)
+                result = self._select_documents(str(query_id), query_text, docs)
                 message = result.get("message", "")
                 doc_ids = list(result.get("doc_ids", []))
                 result_source = "selection_agent"
@@ -285,24 +304,19 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                         else f"Falling back to top {len(doc_ids)} RRF-ranked candidates."
                     )
                     result_source = "candidate_ranking"
+                    self._emit_trace(
+                        "selection.fallback",
+                        query_id=str(query_id),
+                        reason="empty_selection",
+                        selected_doc_ids=doc_ids,
+                        message=message,
+                    )
                     logger.warning(
                         "SelectionAgentOperator: query=%s selection failed; "
                         "falling back to candidate ranking doc_ids=%s",
                         query_id,
                         doc_ids[:_LOG_DOC_ID_LIMIT],
                     )
-            logger.info(
-                "SelectionAgentOperator: query=%s result_source=%s selected=%s",
-                query_id,
-                result_source,
-                doc_ids[:_LOG_DOC_ID_LIMIT],
-            )
-            # Message can quote document text/PII; keep content at DEBUG.
-            logger.debug(
-                "SelectionAgentOperator: query=%s message=%r",
-                query_id,
-                _preview_text(message),
-            )
             for rank, doc_id in enumerate(doc_ids, 1):
                 rows.append(
                     {
@@ -313,6 +327,19 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                         "result_source": result_source,
                     }
                 )
+            logger.info(
+                "SelectionAgentOperator: query=%s done result_source=%s selected_count=%d",
+                query_id,
+                result_source,
+                len(doc_ids),
+            )
+            self._emit_trace(
+                "selection.query_done",
+                query_id=str(query_id),
+                result_source=result_source,
+                selected_doc_ids=list(doc_ids),
+                message=message,
+            )
 
         if not rows:
             return pd.DataFrame(columns=["query_id", "doc_id", "rank", "message", "result_source"])
@@ -457,23 +484,26 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
 
     def _select_documents(
         self,
+        query_id: str,
         query_text: str,
         docs: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Run the agentic selection loop for a single query."""
         valid_ids = list(dict.fromkeys(d["id"] for d in docs))
         feasible_k = min(self._top_k, len(valid_ids))
-        logger.info(
-            "SelectionAgentOperator: selecting top_k=%d feasible_k=%d valid_doc_ids=%s",
-            self._top_k,
-            feasible_k,
-            valid_ids[:_LOG_DOC_ID_LIMIT],
-        )
-
         system_prompt = self._build_system_prompt(feasible_k)
         tools = self._build_tools(feasible_k, valid_ids)
         valid_id_set = set(valid_ids)
         api_key = self._resolve_api_key()
+        self._emit_trace(
+            "selection.start",
+            query_id=query_id,
+            query=query_text,
+            top_k=self._top_k,
+            feasible_k=feasible_k,
+            valid_doc_ids=valid_ids,
+            documents=self._trace_documents(docs),
+        )
 
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
@@ -487,12 +517,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             extra_body["reasoning_effort"] = self._reasoning_effort
 
         for _step in range(self._max_steps):
-            logger.info(
-                "SelectionAgentOperator: step=%d begin candidates=%d feasible_k=%d",
-                _step,
-                len(valid_ids),
-                feasible_k,
-            )
+            self._emit_trace("selection.step_start", query_id=query_id, step=_step)
             try:
                 response = invoke_chat_completion_step(
                     invoke_url=self._invoke_url,
@@ -506,6 +531,13 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                     extra_body=extra_body or None,
                 )
             except TimeoutError as exc:
+                self._emit_trace(
+                    "selection.llm_error",
+                    query_id=query_id,
+                    step=_step,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
                 logger.warning(
                     "SelectionAgentOperator: LLM call timed out on step %d for query %r: %s",
                     _step,
@@ -515,6 +547,13 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 )
                 break
             except RuntimeError as exc:
+                self._emit_trace(
+                    "selection.llm_error",
+                    query_id=query_id,
+                    step=_step,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
                 logger.warning(
                     "SelectionAgentOperator: LLM retries exhausted on step %d for query %r: %s",
                     _step,
@@ -524,6 +563,13 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 )
                 break
             except requests.RequestException as exc:
+                self._emit_trace(
+                    "selection.llm_error",
+                    query_id=query_id,
+                    step=_step,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
                 logger.warning(
                     "SelectionAgentOperator: LLM HTTP error on step %d for query %r: %s",
                     _step,
@@ -533,6 +579,13 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 )
                 break
             except json.JSONDecodeError as exc:
+                self._emit_trace(
+                    "selection.llm_error",
+                    query_id=query_id,
+                    step=_step,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
                 logger.warning(
                     "SelectionAgentOperator: LLM returned invalid JSON on step %d for query %r: %s",
                     _step,
@@ -543,6 +596,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 break
 
             if not response.get("choices"):
+                self._emit_trace("selection.llm_empty_response", query_id=query_id, step=_step)
                 logger.warning("SelectionAgentOperator: empty choices in API response on step %d", _step)
                 break
             choice = response["choices"][0]
@@ -553,25 +607,22 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             assistant_turn: Dict[str, Any] = {"role": "assistant"}
             if msg.get("content"):
                 assistant_turn["content"] = msg["content"]
-                # Agent reasoning can quote document text/PII; keep content at DEBUG.
-                logger.debug(
-                    "SelectionAgentOperator: step=%d assistant content=%r",
-                    _step,
-                    _preview_text(msg.get("content")),
-                )
             tool_calls = msg.get("tool_calls") or []
-            logger.info(
-                "SelectionAgentOperator: step=%d finish_reason=%s tool_calls=%s",
-                _step,
-                finish_reason,
-                [((tc.get("function") or {}).get("name") or "") for tc in tool_calls],
+            self._emit_trace(
+                "selection.llm_response",
+                query_id=query_id,
+                step=_step,
+                finish_reason=finish_reason,
+                tool_names=[str((tc.get("function") or {}).get("name", "")) for tc in tool_calls],
+                usage=response.get("usage"),
+                assistant_content=msg.get("content"),
             )
             if tool_calls:
                 assistant_turn["tool_calls"] = tool_calls
             messages.append(assistant_turn)
 
             if finish_reason == "stop" or not tool_calls:
-                logger.info("SelectionAgentOperator: step=%d no tool call; asking for final selection", _step)
+                self._emit_trace("selection.no_tool_call", query_id=query_id, step=_step, finish_reason=finish_reason)
                 messages.append(
                     {
                         "role": "user",
@@ -584,30 +635,49 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
             should_end = False
             end_kwargs: Dict[str, Any] = {}
 
-            for tc in tool_calls:
+            for tool_index, tc in enumerate(tool_calls):
                 tc_id = tc.get("id", "")
                 fn = tc.get("function", {})
                 try:
                     fn_args = json.loads(fn.get("arguments", "{}"))
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as exc:
+                    self._emit_trace(
+                        "selection.tool_call_parse_error",
+                        query_id=query_id,
+                        step=_step,
+                        tool_index=tool_index,
+                        tool_name=str(fn.get("name", "")),
+                        raw_arguments=fn.get("arguments", ""),
+                        error_message=str(exc),
+                    )
                     tool_messages.append(
                         {"role": "tool", "tool_call_id": tc_id, "content": "Error: could not parse tool arguments."}
                     )
                     continue
 
-                if fn.get("name") == "think":
-                    # Agent thoughts can quote document text/PII; keep content at DEBUG
-                    # (matches ReActAgentOperator's think logging).
-                    logger.debug(
-                        "SelectionAgentOperator: step=%d think=%r",
-                        _step,
-                        _preview_text(fn_args.get("thought")),
+                fn_name = str(fn.get("name", ""))
+                self._emit_trace(
+                    "selection.tool_call",
+                    query_id=query_id,
+                    step=_step,
+                    tool_index=tool_index,
+                    tool_name=fn_name,
+                    arguments=fn_args,
+                )
+
+                if fn_name == "think":
+                    self._emit_trace(
+                        "selection.think",
+                        query_id=query_id,
+                        step=_step,
+                        tool_index=tool_index,
+                        thought=str(fn_args.get("thought", "")),
                     )
                     tool_messages.append(
                         {"role": "tool", "tool_call_id": tc_id, "content": "Your thought has been logged."}
                     )
 
-                elif fn.get("name") == "log_selected_documents":
+                elif fn_name == "log_selected_documents":
                     raw_doc_ids = fn_args.get("doc_ids", [])
                     if isinstance(raw_doc_ids, str):
                         try:
@@ -615,19 +685,23 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                         except json.JSONDecodeError:
                             raw_doc_ids = []
                     doc_ids = [d for d in raw_doc_ids if d in valid_id_set][:feasible_k]
-                    logger.info(
-                        "SelectionAgentOperator: step=%d log_selected_documents raw=%s accepted=%s",
-                        _step,
-                        raw_doc_ids[:_LOG_DOC_ID_LIMIT] if isinstance(raw_doc_ids, list) else raw_doc_ids,
-                        doc_ids[:_LOG_DOC_ID_LIMIT],
-                    )
-                    # Message can quote document text/PII; keep content at DEBUG.
-                    logger.debug(
-                        "SelectionAgentOperator: step=%d log_selected_documents message=%r",
-                        _step,
-                        _preview_text(fn_args.get("message")),
+                    self._emit_trace(
+                        "selection.log_selected_documents",
+                        query_id=query_id,
+                        step=_step,
+                        tool_index=tool_index,
+                        raw_doc_ids=raw_doc_ids,
+                        accepted_doc_ids=doc_ids,
+                        message=fn_args.get("message", ""),
                     )
                     if not doc_ids and raw_doc_ids:
+                        self._emit_trace(
+                            "selection.hallucinated_doc_ids",
+                            query_id=query_id,
+                            step=_step,
+                            tool_index=tool_index,
+                            raw_doc_ids=raw_doc_ids,
+                        )
                         logger.warning(
                             "SelectionAgentOperator: LLM returned %d doc_id(s) for query %r "
                             "but none matched the candidate set — possible hallucination. "
@@ -640,11 +714,18 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                     should_end = True
 
                 else:
+                    self._emit_trace(
+                        "selection.unknown_tool",
+                        query_id=query_id,
+                        step=_step,
+                        tool_index=tool_index,
+                        tool_name=fn_name,
+                    )
                     tool_messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": tc_id,
-                            "content": f"Error: unknown tool '{fn.get('name')}'.",
+                            "content": f"Error: unknown tool '{fn_name}'.",
                         }
                     )
 
@@ -653,6 +734,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
 
             messages.extend(tool_messages)
 
+        self._emit_trace("selection.max_steps", query_id=query_id, max_steps=self._max_steps)
         return {
             "doc_ids": [],
             "message": "Selection agent reached max steps without completing.",

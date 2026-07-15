@@ -15,7 +15,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 import pandas as pd
 
@@ -42,6 +42,7 @@ from nemo_retriever.tools.recall.core import (
     _recall_at_k,
 )
 from nemo_retriever.graph.retriever import Retriever
+from nemo_retriever.query.agentic_trace import AgenticTraceWriter, make_agentic_trace_path
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,8 @@ class AgenticRetrievalConfig:
     backend_top_k: int = AGENTIC_BACKEND_TOP_K
     # Sampling temperature sent on every agent LLM call (0.0 = greedy).
     temperature: float = AGENTIC_TEMPERATURE
+    trace_enabled: bool = False
+    trace_path: Optional[str] = None
     # Final number of documents the agent targets/selects and the pipeline returns.
     # Drives the ReAct target, the RRF/selection cut, and the per-hop fetch depth
     # (which is raised to at least this). Defaults to 10.
@@ -163,6 +166,12 @@ class AgenticRetrievalConfig:
     def __post_init__(self) -> None:
         if self.llm_model is None or not str(self.llm_model).strip():
             raise ValueError("Agentic retrieval requires a non-empty llm_model.")
+        # The ReAct/selection operators POST to invoke_url verbatim, so a base URL
+        # such as the common OPENAI_BASE_URL value ``https://host/v1`` must be
+        # extended to the ``/chat/completions`` endpoint or the agent's first LLM
+        # step fails with HTTP 404. Frozen dataclass -> object.__setattr__.
+        object.__setattr__(self, "invoke_url", _normalize_chat_completions_url(self.invoke_url))
+
         for field_name, value, min_value in (
             ("react_max_steps", self.react_max_steps, 1),
             ("text_truncation", self.text_truncation, 0),
@@ -235,12 +244,23 @@ class AgenticRetriever:
             },
         )
         self._lock = threading.Lock()
+        self._retrieve_lock = threading.Lock()
+        self._trace_writer: AgenticTraceWriter | None = None
+        self._trace_event: Callable[[dict[str, Any]], None] | None = None
+        if cfg.trace_enabled:
+            trace_path = Path(cfg.trace_path).expanduser() if cfg.trace_path else make_agentic_trace_path()
+            self._trace_writer = AgenticTraceWriter(trace_path)
+            self._trace_event = self._trace_writer.event
         # Full hits keyed by doc_id, captured at the retrieval boundary (before the
         # agent loop reduces them to doc_id/text/score) so the final output can
         # re-hydrate the metadata the agent drops. Reset at the start of retrieve().
         self._hit_cache: dict[str, dict[str, Any]] = {}
 
     def retrieve(self, query_ids: Sequence[str], query_texts: Sequence[str]) -> pd.DataFrame:
+        with self._retrieve_lock:
+            return self._retrieve_locked(query_ids, query_texts)
+
+    def _retrieve_locked(self, query_ids: Sequence[str], query_texts: Sequence[str]) -> pd.DataFrame:
         """Return selected ranked documents for each query.
 
         Columns: ``query_id``, ``doc_id``, ``rank``, ``message``, ``result_source``,
@@ -279,6 +299,7 @@ class AgenticRetriever:
                 reasoning_effort=self._cfg.reasoning_effort,
                 backend_top_k=self._cfg.backend_top_k,
                 temperature=float(self._cfg.temperature),
+                trace_event=self._trace_event,
             )
             >> RRFAggregatorOperator(k=AGENTIC_RRF_K)
             >> SelectionAgentOperator(
@@ -291,6 +312,7 @@ class AgenticRetriever:
                 text_truncation=int(self._cfg.text_truncation),
                 reasoning_effort=self._cfg.reasoning_effort,
                 temperature=float(self._cfg.temperature),
+                trace_event=self._trace_event,
             )
             >> AgenticSelectionOutputOperator()
         )
@@ -321,7 +343,7 @@ class AgenticRetriever:
 
         # candidate_k must be >= the hop's top_k, which grows as the agent paginates,
         # so floor it at top_k when the caller requested a wider pool.
-        candidate_k = max(int(self._cfg.candidate_k), int(top_k)) if self._cfg.candidate_k else None
+        candidate_k = max(int(self._cfg.candidate_k), int(top_k)) if self._cfg.candidate_k is not None else None
         with self._lock:
             hits = self._retriever.query(
                 str(query_text),
@@ -437,6 +459,32 @@ def _hit_score(hit: dict[str, Any]) -> float:
         except (TypeError, ValueError):
             return 0.0
     return 0.0
+
+
+def _normalize_chat_completions_url(invoke_url: Optional[str]) -> Optional[str]:
+    """Ensure ``invoke_url`` targets an OpenAI-compatible chat-completions endpoint.
+
+    The ReAct and selection operators POST to ``invoke_url`` verbatim (no path is
+    appended). A base URL like ``https://host/v1`` (a common ``OPENAI_BASE_URL``
+    value) therefore has ``/chat/completions`` appended; a URL that already ends
+    with ``/chat/completions`` is returned unchanged. Empty/None is passed through
+    so the operator can fall back to its own default endpoint. Supports the
+    comma-separated multi-endpoint form used elsewhere in the NIM client.
+    """
+    if invoke_url is None:
+        return None
+    raw = str(invoke_url).strip()
+    if not raw:
+        return invoke_url
+    normalized: list[str] = []
+    for part in (segment.strip() for segment in raw.split(",")):
+        if not part:
+            continue
+        if part.rstrip("/").endswith("/chat/completions"):
+            normalized.append(part)
+        else:
+            normalized.append(part.rstrip("/") + "/chat/completions")
+    return ",".join(normalized) if normalized else invoke_url
 
 
 def _none_if_empty(value: Optional[str]) -> Optional[str]:

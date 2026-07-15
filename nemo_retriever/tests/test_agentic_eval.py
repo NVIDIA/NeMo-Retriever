@@ -99,7 +99,7 @@ def test_build_beir_run_from_ranked_doc_ids_rejects_length_mismatch():
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
 @patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
-def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mock_selection_step):
+def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mock_selection_step, tmp_path):
     from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
 
     final_ids = ["doc_1"] + [f"extra_{i}" for i in range(9)]
@@ -112,7 +112,13 @@ def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mo
         {"doc_ids": ["doc_1"], "message": "doc_1 is best"},
     )
 
-    cfg = AgenticRetrievalConfig(llm_model="test-model", invoke_url="http://localhost/v1/chat/completions")
+    trace_path = tmp_path / "trace" / "agentic_trace.jsonl"
+    cfg = AgenticRetrievalConfig(
+        llm_model="test-model",
+        invoke_url="http://localhost/v1/chat/completions",
+        trace_enabled=True,
+        trace_path=str(trace_path),
+    )
     result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
 
     assert list(result.columns) == ["query_id", "doc_id", "rank", "message", "result_source", "hit"]
@@ -126,6 +132,13 @@ def test_agentic_retriever_runs_graph_with_wrapped_retriever(mock_react_step, mo
     assert doc1_hit.get("page_number") == 1
     assert doc1_hit.get("metadata") == {"section": "summary"}
     assert "text" in doc1_hit
+    events = [json.loads(line) for line in trace_path.read_text().splitlines()]
+    event_names = [event["event"] for event in events]
+    assert "agentic.query_start" in event_names
+    assert "react.initial_retrieve" in event_names
+    assert "react.final_results" in event_names
+    assert "selection.query_start" in event_names
+    assert "selection.query_done" in event_names
 
 
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
@@ -149,6 +162,21 @@ def test_agentic_retriever_honors_top_k(mock_react_step, mock_selection_step):
     result = AgenticRetriever(cfg, match_mode="pdf_page").retrieve(["0"], ["find doc"])
 
     assert result["rank"].tolist() == list(range(1, 6))  # 5 rows, honoring top_k=5
+
+
+def test_build_agentic_config_normalizes_content_type_sequences():
+    from nemo_retriever.query.options import QueryAgenticOptions, QueryRequest, QueryRetrievalOptions
+    from nemo_retriever.query.workflow import build_agentic_config
+
+    cfg = build_agentic_config(
+        QueryRequest(
+            query="q",
+            retrieval=QueryRetrievalOptions(content_types=["text", "image"]),
+            agentic=QueryAgenticOptions(llm_model="m"),
+        )
+    )
+
+    assert cfg.content_types == "text,image"
 
 
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
@@ -181,6 +209,35 @@ def test_agentic_retriever_forwards_retrieval_knobs(mock_react_step, mock_select
     assert all(c["page_dedup"] is True for c in calls)
     assert all(c["content_types"] == "text" for c in calls)
     assert all(c["candidate_k"] >= c["top_k"] for c in calls)  # floored at the hop's top_k
+
+
+@patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
+@patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
+@patch("nemo_retriever.query.agentic.Retriever", FakeRetriever)
+def test_agentic_retriever_floors_zero_candidate_k_to_hop_top_k(mock_react_step, mock_selection_step):
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig, AgenticRetriever
+
+    mock_react_step.return_value = _make_tool_call_response(
+        "final_results", {"doc_ids": ["doc_1"], "message": "done", "search_successful": "true"}
+    )
+    mock_selection_step.return_value = _make_tool_call_response(
+        "log_selected_documents", {"doc_ids": ["doc_1"], "message": "best"}
+    )
+
+    retriever = AgenticRetriever(
+        AgenticRetrievalConfig(
+            llm_model="m",
+            invoke_url="http://localhost/v1/chat/completions",
+            top_k=1,
+            candidate_k=0,
+        ),
+        match_mode="pdf_page",
+    )
+    retriever.retrieve(["0"], ["find doc"])
+
+    calls = retriever._retriever.query_calls
+    assert calls
+    assert all(c["candidate_k"] == c["top_k"] for c in calls)
 
 
 @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
@@ -325,3 +382,32 @@ def test_agentic_config_rejects_nonfinite_temperature():
 
     with pytest.raises(ValueError, match="temperature must be finite"):
         AgenticRetrievalConfig(llm_model="m", temperature=float("nan"))
+
+
+def test_agentic_config_normalizes_base_invoke_url_to_chat_completions():
+    """A base OPENAI_BASE_URL is extended to /chat/completions; the operators POST
+    to invoke_url verbatim, so a bare base URL would otherwise 404."""
+    from nemo_retriever.query.agentic import AgenticRetrievalConfig
+
+    # Bare base URL -> chat-completions endpoint (with and without trailing slash).
+    assert (
+        AgenticRetrievalConfig(llm_model="m", invoke_url="https://host/v1").invoke_url
+        == "https://host/v1/chat/completions"
+    )
+    assert (
+        AgenticRetrievalConfig(llm_model="m", invoke_url="https://host/v1/").invoke_url
+        == "https://host/v1/chat/completions"
+    )
+    # Already a full chat-completions endpoint -> unchanged.
+    assert (
+        AgenticRetrievalConfig(llm_model="m", invoke_url="https://host/v1/chat/completions").invoke_url
+        == "https://host/v1/chat/completions"
+    )
+    # Comma-separated multi-endpoint form is normalized per URL.
+    assert (
+        AgenticRetrievalConfig(llm_model="m", invoke_url="https://a/v1, https://b/v1/chat/completions").invoke_url
+        == "https://a/v1/chat/completions,https://b/v1/chat/completions"
+    )
+    # None/empty pass through so the operator can use its own default endpoint.
+    assert AgenticRetrievalConfig(llm_model="m", invoke_url=None).invoke_url is None
+    assert AgenticRetrievalConfig(llm_model="m", invoke_url="").invoke_url == ""

@@ -213,6 +213,13 @@ AgenticTemperatureOption = Annotated[
         help="Sampling temperature for agentic LLM calls (0.0 = greedy).",
     ),
 ]
+AgenticTraceOption = Annotated[
+    bool,
+    typer.Option(
+        "--agentic-trace",
+        help="Write a detailed agentic trace JSONL file for the query run.",
+    ),
+]
 ServiceUrlOption = Annotated[
     str,
     typer.Option("--service-url", help="Base URL of the retriever service."),

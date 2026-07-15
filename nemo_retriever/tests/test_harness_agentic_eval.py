@@ -40,6 +40,7 @@ def _resolved(query: dict) -> dict:
 def test_query_override_paths_include_agentic_fields() -> None:
     for key in (
         "query.agentic",
+        "query.agentic_trace",
         "query.agentic_llm_model",
         "query.agentic_invoke_url",
         "query.agentic_reasoning_effort",
@@ -58,6 +59,7 @@ def test_build_query_request_populates_agentic() -> None:
             {
                 "top_k": 10,
                 "agentic": True,
+                "agentic_trace": True,
                 "agentic_llm_model": "test-model",
                 "agentic_invoke_url": "https://example.invalid/v1",
                 "agentic_reasoning_effort": "high",
@@ -72,6 +74,8 @@ def test_build_query_request_populates_agentic() -> None:
     )
     agentic = request.agentic
     assert agentic.enabled is True
+    assert agentic.trace_enabled is True
+    assert agentic.trace_path is None
     assert agentic.llm_model == "test-model"
     assert agentic.invoke_url == "https://example.invalid/v1"
     assert agentic.reasoning_effort == "high"
@@ -123,7 +127,7 @@ def test_run_beir_queries_routes_to_agentic(tmp_path) -> None:
         "query": {},
     }
     request = build_query_request(
-        _resolved({"top_k": 10, "agentic": True, "agentic_llm_model": "test-model"}),
+        _resolved({"top_k": 10, "agentic": True, "agentic_trace": True, "agentic_llm_model": "test-model"}),
         "",
     )
 
@@ -153,7 +157,10 @@ def test_run_beir_queries_routes_to_agentic(tmp_path) -> None:
     # with cfg.top_k overridden to the deepest BEIR k.
     assert mocked_agentic.call_count == 1
     assert mocked_agentic.call_args.kwargs["doc_id_field"] == "pdf_basename"
-    assert mocked_agentic.call_args.args[1].top_k == 10  # cfg, top_k = max(ks)
+    cfg = mocked_agentic.call_args.args[1]
+    assert cfg.top_k == 10  # cfg, top_k = max(ks)
+    assert cfg.trace_enabled is True
+    assert cfg.trace_path == str(tmp_path / "agentic_trace.jsonl")
     # Stage 3: shared real scoring over the agentic run + artifacts.
     assert metrics["recall@10"] == pytest.approx(1.0)
     assert count == 2

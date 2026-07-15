@@ -35,6 +35,12 @@ def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | None) -> list[str]
     return ["semantic"]
 
 
+def _normalize_content_types(content_types: Any) -> str | None:
+    if content_types is None or isinstance(content_types, str):
+        return content_types
+    return ",".join(str(value) for value in content_types)
+
+
 def _build_rerank_kwargs(options: QueryRerankOptions) -> dict[str, str]:
     """Build kwargs for the rerank stage using the existing root query behavior."""
     reranker_url = (options.reranker_invoke_url or "").strip()
@@ -111,9 +117,7 @@ def resolve_query_plan(request: QueryRequest) -> ResolvedQueryPlan:
         embed_model_provider_prefix=request.embed.embed_model_provider_prefix,
     )
     rerank_kwargs = _build_rerank_kwargs(request.rerank) if request.rerank.enabled else {}
-    content_types = request.retrieval.content_types
-    if content_types is not None and not isinstance(content_types, str):
-        content_types = ",".join(str(value) for value in content_types)
+    content_types = _normalize_content_types(request.retrieval.content_types)
     return ResolvedQueryPlan(
         top_k=int(request.retrieval.top_k),
         candidate_k=request.retrieval.candidate_k,
@@ -173,7 +177,7 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "top_k": int(top_k if top_k is not None else request.retrieval.top_k),
         "candidate_k": request.retrieval.candidate_k,
         "page_dedup": bool(request.retrieval.page_dedup),
-        "content_types": request.retrieval.content_types,
+        "content_types": _normalize_content_types(request.retrieval.content_types),
         "embedding_endpoint": request.embed.embed_invoke_url,
         "embedding_api_key": api_key or "",
         "llm_model": request.agentic.llm_model,
@@ -185,6 +189,8 @@ def build_agentic_config(request: QueryRequest, *, top_k: int | None = None) -> 
         "text_truncation": int(request.agentic.text_truncation),
         "num_concurrent": int(request.agentic.num_concurrent),
         "temperature": float(request.agentic.temperature),
+        "trace_enabled": bool(request.agentic.trace_enabled),
+        "trace_path": request.agentic.trace_path,
     }
     if request.embed.embed_model_name:
         cfg_kwargs["query_embedder"] = request.embed.embed_model_name

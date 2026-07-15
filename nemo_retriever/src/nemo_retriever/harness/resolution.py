@@ -56,6 +56,7 @@ from nemo_retriever.ingest.service import (
     ServiceIngestSourceOptions,
 )
 from nemo_retriever.query.options import (
+    DEFAULT_AGENTIC_LLM_MODEL,
     QueryAgenticOptions,
     QueryEmbedOptions,
     QueryRerankOptions,
@@ -127,6 +128,7 @@ QUERY_OVERRIDE_PATHS = {
     "query.lancedb_uri",
     "query.table_name",
     "query.agentic",
+    "query.agentic_trace",
     "query.agentic_llm_model",
     "query.agentic_invoke_url",
     "query.agentic_reasoning_effort",
@@ -436,7 +438,8 @@ def build_query_request(resolved: dict[str, Any], query_text: str) -> QueryReque
         ),
         agentic=QueryAgenticOptions(
             enabled=bool(query.get("agentic", False)),
-            llm_model=query.get("agentic_llm_model"),
+            trace_enabled=bool(query.get("agentic_trace", False)),
+            llm_model=query.get("agentic_llm_model", DEFAULT_AGENTIC_LLM_MODEL),
             invoke_url=query.get("agentic_invoke_url"),
             reasoning_effort=query.get("agentic_reasoning_effort"),
             backend_top_k=int(query.get("agentic_backend_top_k") or 20),
