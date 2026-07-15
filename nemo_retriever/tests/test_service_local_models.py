@@ -68,11 +68,10 @@ def test_build_embed_params_nim_url_wins_over_local() -> None:
     assert ep.embed_invoke_url == "http://embed-nim/v1/embeddings"
 
 
-def test_build_extract_params_local_enables_structure_stages() -> None:
+def test_build_extract_params_local_enables_table_structure() -> None:
     local = LocalModelsConfig(enabled=True)
     ep = build_extract_params(NimEndpointsConfig(), local)
     assert ep.use_table_structure is True
-    assert ep.use_graphic_elements is True
     assert ep.ocr_version == "v2"
     assert ep.page_elements_invoke_url is None
 

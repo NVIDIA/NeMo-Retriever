@@ -290,6 +290,13 @@ pages/sec, query count, recall, nDCG, and environment details when those values
 are available. Use repeated `--metric-key` options to select a different metric
 set. Use `--artifact-paths` when recipients can access the runner's local paths.
 
+ViDoRe v3 results always use a compact suite layout: total ingest time,
+aggregate pages/sec, and a separate Recall@5/nDCG@10 table. A complete
+eight-domain suite also reports macro averages across the seven English
+datasets and across all datasets. Per-domain timing and other metadata remain
+available in the session artifacts. This format also applies when previewing or
+reposting completed artifacts; reporting never reruns ingestion or queries.
+
 ### Preview Report Formatting
 
 Use `--preview` to render the exact Slack payload without reading
