@@ -34,7 +34,6 @@ app.add_typer(query_app, name="query")
 # not standalone workflows.
 _LAZY_SUBAPPS: list[tuple[str, str, str, bool]] = [
     ("harness", "nemo_retriever.harness", "app", False),
-    ("compare", "nemo_retriever.cli.compare", "app", True),
     ("eval", "nemo_retriever.tools.evaluation.cli", "app", True),
     ("benchmark", "nemo_retriever.tools.benchmark", "app", True),
     ("recall", "nemo_retriever.tools.recall", "app", True),
