@@ -7,6 +7,18 @@ gateway/realtime/batch topology use the [Helm chart](../../helm/README.md).
 Run commands from the repository root. Docker Compose 2.23.1 or newer is
 required for optional dependencies and inline configs.
 
+Building the service image pulls its Ubuntu base image from NVCR. If the build
+fails with `403 Forbidden` while pulling `nvcr.io/nvidia/base/ubuntu`,
+authenticate to the registry with an NGC API key:
+
+```bash
+export NGC_API_KEY=nvapi-...
+echo "$NGC_API_KEY" | docker login nvcr.io --username '$oauthtoken' --password-stdin
+```
+
+This registry login is separate from the `NVIDIA_API_KEY` used for hosted
+inference at runtime.
+
 ## Hosted inference (default)
 
 The default starts the retriever and LanceDB only. Document and query content
@@ -29,13 +41,9 @@ variables override preset values, enabling mixed hosted/self-hosted stacks.
 
 ## Self-hosted NIM profiles
 
-Authenticate to NGC before pulling a self-hosted NIM and export the key for
-the containers. The hosted-only stack does not require `NGC_API_KEY`.
-
-```bash
-export NGC_API_KEY=nvapi-...
-echo "$NGC_API_KEY" | docker login nvcr.io --username '$oauthtoken' --password-stdin
-```
+Use the NVCR authentication described above before pulling a self-hosted NIM.
+Keep `NGC_API_KEY` exported so it is also available to the NIM containers. The
+hosted-only stack does not require `NGC_API_KEY` at runtime.
 
 Start the four core extraction/retrieval NIMs with their checked-in internal
 endpoint wiring:
@@ -157,9 +165,29 @@ These checks pull large images/models and require suitable NVIDIA GPUs. Use
 the stack.
 
 1. Core extraction/retrieval: start `nims-core.env`, wait for all six services
-   to report healthy, ingest a representative PDF through `/v1/ingest`, wait
-   for its job, then query `/v1/query` and confirm results include extracted
-   text and embeddings.
+   to report healthy, then ingest a representative PDF with the service CLI:
+
+   ```bash
+   retriever ingest service /path/to/document.pdf \
+     --service-url http://localhost:7670
+   ```
+
+   Query the service directly through `/v1/query`:
+
+   ```bash
+   curl -fsSL -X POST http://localhost:7670/v1/query \
+     -H 'Content-Type: application/json' \
+     --data '{"query":"What is in this document?","top_k":5}'
+   ```
+
+   The equivalent CLI invocation is:
+
+   ```bash
+   retriever query service "What is in this document?" \
+     --service-url http://localhost:7670
+   ```
+
+   Confirm the results include extracted text from the ingested document.
 2. Answer: layer `nim-answer`, ingest/query a small collection, call
    `/v1/answer`, and confirm an answer plus retrieved context is returned.
 3. Caption/audio: layer each preset independently; ingest an image with the
