@@ -1,3 +1,25 @@
+---
+title: "Deployment options"
+content_type: how-to
+audience: intermediate
+journey_stage: try
+product: nemo-retriever-library
+features:
+  - deployment
+technologies:
+  - python
+  - helm-kubernetes
+  - docker
+  - nim-hosted
+  - nim-self-hosted
+prerequisites:
+  - extraction/overview.md
+  - extraction/prerequisites-support-matrix.md
+duration_minutes: 15
+surface: published-docs
+status: published
+---
+
 # Deployment options
 
 Use this page to compare how you run NeMo Retriever — including when to use [NVIDIA-hosted NIMs](https://build.nvidia.com/) versus self-hosting on your own infrastructure.
@@ -19,7 +41,7 @@ Build and run the NeMo Retriever service image with the [Docker service image gu
 
 1. [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 2. **NeMo Retriever Helm chart (supported):** [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) — sources in [`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub
-3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in [About getting started](getting-started-about.md) — use alongside the NeMo Retriever chart README for your release
+3. **Published Library Helm charts (supported):** cluster install and upgrade procedures are covered in [Start here](getting-started-about.md) — use alongside the NeMo Retriever chart README for your release
 4. [Environment variables](environment-config.md) and [Troubleshoot](troubleshoot.md) as needed
 
 **Core NIMs for the default extraction pipeline:** `page_elements`, `table_structure`, `ocr`, and `vlm_embed` (`llama-nemotron-embed-vl-1b-v2:1.12.0`). These four are auto-wired into the retriever service. **Nemotron Parse**, **Nemotron 3 Nano Omni**, the **VL reranker**, and **Parakeet ASR** are optional and not auto-wired. For a minimal GPU footprint, disable optional keys you do not need (refer to [Recommended minimal install](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#recommended-minimal-install-2605)). Refer to [Pre-Requisites & Support Matrix — Default Helm NIMs](prerequisites-support-matrix.md#default-helm-nims).
@@ -80,6 +102,6 @@ For offline image captioning, deploy the in-cluster [Nemotron 3 Nano Omni](prere
 **Related**
 
 - [Deploy (Helm chart)](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md) ([`nemo_retriever/helm`](https://github.com/NVIDIA/NeMo-Retriever/tree/main/nemo_retriever/helm) on GitHub) — [air-gapped deployment](https://github.com/NVIDIA/NeMo-Retriever/blob/main/nemo_retriever/helm/README.md#air-gapped-deployment)
-- [About getting started](getting-started-about.md) (prerequisites through first deployment)
+- [Start here](getting-started-about.md) (prerequisites through first deployment)
 - [Pre-Requisites & Support Matrix](prerequisites-support-matrix.md)
 - [Audio and video](audio-video.md)
