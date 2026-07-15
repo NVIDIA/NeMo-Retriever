@@ -154,56 +154,46 @@ def _table_schema(table: Any) -> pa.Schema:
     return schema() if callable(schema) else schema
 
 
-def _validate_append_schema(table: Any, expected_schema: pa.Schema, *, table_name: str, uri: str) -> None:
+def _validate_append_schema(table: Any, append_schema: pa.Schema, *, table_name: str, uri: str) -> None:
     """Fail before append when an existing table cannot accept this writer's rows."""
-    existing_schema = _table_schema(table)
-    existing_fields = {field.name: field for field in existing_schema}
+    table_schema = _table_schema(table)
+    table_fields = {field.name: field for field in table_schema}
 
-    for expected_field in expected_schema:
-        existing_field = existing_fields.get(expected_field.name)
-        if existing_field is None:
+    for append_field in append_schema:
+        table_field = table_fields.get(append_field.name)
+        if table_field is None:
             raise ValueError(
                 f"LanceDB table {table_name!r} at {uri!r} is missing required field "
-                f"{expected_field.name!r}; use overwrite=True to replace the table."
+                f"{append_field.name!r}; use overwrite=True to replace the table."
             )
-        if existing_field.type != expected_field.type:
+        if table_field.type != append_field.type:
             raise ValueError(
                 f"LanceDB table {table_name!r} at {uri!r} has incompatible field "
-                f"{expected_field.name!r}: got {existing_field.type}, expected {expected_field.type}; "
+                f"{append_field.name!r}: got {table_field.type}, expected {append_field.type}; "
                 "use overwrite=True to replace the table."
             )
 
-    existing_metadata = read_index_metadata(existing_schema)
-    expected_metadata = read_index_metadata(expected_schema)
-    if existing_metadata.index_format_version is None:
+    table_metadata = read_index_metadata(table_schema)
+    append_metadata = read_index_metadata(append_schema)
+    if table_metadata.index_format_version is None:
         logger.warning(
             "Appending to legacy LanceDB table %r at %s without NeMo Retriever index metadata; "
             "index-format and embedding compatibility cannot be verified.",
             table_name,
             uri,
         )
-    elif existing_metadata.index_format_version != INDEX_FORMAT_VERSION:
+    elif table_metadata.index_format_version != INDEX_FORMAT_VERSION:
         raise ValueError(
             f"LanceDB table {table_name!r} at {uri!r} uses unsupported index format "
-            f"{existing_metadata.index_format_version!r}; this writer requires {INDEX_FORMAT_VERSION!r}."
+            f"{table_metadata.index_format_version!r}; this writer requires {INDEX_FORMAT_VERSION!r}."
         )
 
-    existing_model = existing_metadata.embedding_model_name
-    expected_model = expected_metadata.embedding_model_name
-    if existing_model and not expected_model:
+    table_model = table_metadata.embedding_model_name
+    append_model = append_metadata.embedding_model_name
+    if table_model and append_model and table_model != append_model:
         raise ValueError(
             f"LanceDB table {table_name!r} at {uri!r} was created with embedding model "
-            f"{existing_model!r}, but this append did not specify an embedding model."
-        )
-    if existing_model and expected_model and existing_model != expected_model:
-        raise ValueError(
-            f"LanceDB table {table_name!r} at {uri!r} was created with embedding model "
-            f"{existing_model!r}, but this append uses {expected_model!r}."
-        )
-    if expected_model and not existing_model and existing_metadata.index_format_version is not None:
-        raise ValueError(
-            f"LanceDB table {table_name!r} at {uri!r} does not record an embedding model, "
-            f"but this append uses {expected_model!r}."
+            f"{table_model!r}, but this append uses {append_model!r}."
         )
 
 
