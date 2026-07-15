@@ -41,7 +41,11 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from nemo_retriever.common.vdb.lancedb_capabilities import LanceRetrievalMode, inspect_lancedb_table_object
+from nemo_retriever.common.vdb.lancedb_capabilities import (
+    LanceRetrievalMode,
+    LanceTableCapabilities,
+    inspect_lancedb_table_object,
+)
 from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.service.query_schema import (
     EvidenceQueryResponse,
@@ -171,7 +175,9 @@ class VectorDBState:
         table = self._db.open_table(self.table_name)
         return inspect_lancedb_table_object(table)
 
-    def resolve_effective_retrieval_mode(self, caps=None) -> LanceRetrievalMode:
+    def resolve_effective_retrieval_mode(
+        self, caps: LanceTableCapabilities | None = None
+    ) -> LanceRetrievalMode:
         """Resolve retrieval mode from table capabilities (auto).
 
         Optional ``caps`` avoids re-opening the table when the caller already has it.
