@@ -21,10 +21,12 @@ Each work function:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import multiprocessing as mp
 import time
+from datetime import datetime, timezone
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from io import BytesIO
@@ -279,17 +281,32 @@ def shutdown_process_executors() -> None:
     logger.info("All pipeline process executors shut down")
 
 
-def _post_rows_to_vectordb(rows: list[dict[str, Any]], vectordb_url: str, filename: str) -> None:
-    """Fire-and-forget POST of LanceDB rows to the vectordb service."""
+def _post_rows_to_vectordb(
+    rows: list[dict[str, Any]], vectordb_url: str, filename: str, *, scope: str = "default",
+    collection_name: str | None = None, document_id: str | None = None,
+    job_id: str | None = None, content_sha256: str | None = None, operation: str = "append",
+) -> None:
+    """Post rows to VectorDB, preserving legacy best-effort behavior.
+
+    Collection-managed writes are lifecycle-authoritative and therefore fail
+    the job when storage rejects the write. Legacy fixed-table writes retain
+    their historical best-effort behavior.
+    """
     import json
     import urllib.request
     import urllib.error
 
     if not rows:
+        if collection_name:
+            raise ValueError(f"No vector rows were produced for collection document {filename}")
         return
 
     url = vectordb_url.rstrip("/") + "/internal/vectordb/write"
-    body = json.dumps({"rows": rows}).encode()
+    body = json.dumps({
+        "rows": rows, "scope": scope, "collection_name": collection_name,
+        "document_id": document_id, "job_id": job_id, "filename": filename,
+        "content_sha256": content_sha256, "operation": operation,
+    }).encode()
     req = urllib.request.Request(
         url,
         data=body,
@@ -311,6 +328,8 @@ def _post_rows_to_vectordb(rows: list[dict[str, Any]], vectordb_url: str, filena
             filename,
             exc,
         )
+        if collection_name:
+            raise RuntimeError(f"Collection write failed for {filename}: {exc}") from exc
 
 
 _TRUST_OWNED_EXTRACT_KEYS: tuple[str, ...] = (
@@ -655,6 +674,12 @@ def _run_pipeline_in_process(
     trace_context: dict[str, str] | None = None,
     pool_label: str | None = None,
     service_role: str | None = None,
+    scope: str = "default",
+    collection_name: str | None = None,
+    document_id: str | None = None,
+    job_id: str | None = None,
+    content_sha256: str | None = None,
+    operation: str = "append",
 ) -> tuple[int, list[dict[str, Any]], float]:
     """Execute one pipeline run inside a child process.
 
@@ -721,7 +746,22 @@ def _run_pipeline_in_process(
         from nemo_retriever.common.vdb.lancedb_schema import build_lancedb_rows
 
         lancedb_rows = build_lancedb_rows(result_df)
-        _post_rows_to_vectordb(lancedb_rows, vectordb_url, filename)
+        if collection_name and document_id and content_sha256:
+            created_at = datetime.now(timezone.utc).isoformat()
+            version = content_sha256
+            for index, row in enumerate(lancedb_rows):
+                row.update({
+                    "document_id": document_id, "document_version": version,
+                    "content_sha256": content_sha256, "created_at": created_at,
+                    "chunk_id": hashlib.sha256(
+                        f"{document_id}\0{version}\0{index}".encode()
+                    ).hexdigest(),
+                })
+        _post_rows_to_vectordb(
+            lancedb_rows, vectordb_url, filename, scope=scope,
+            collection_name=collection_name, document_id=document_id, job_id=job_id,
+            content_sha256=content_sha256, operation=operation,
+        )
 
     result_options = pipeline_spec or {}
     result_schema = result_options.get("result_schema", "legacy")
@@ -994,6 +1034,12 @@ def _make_work_fn(
                 trace_context,
                 label,
                 config.mode,
+                getattr(item, "scope", "default"),
+                getattr(item, "collection_name", None),
+                getattr(item, "storage_document_id", None) or item.id,
+                getattr(item, "job_id", None),
+                getattr(item, "content_sha256", None),
+                getattr(item, "operation", "append"),
             )
         except BrokenProcessPool:
             logger.error(

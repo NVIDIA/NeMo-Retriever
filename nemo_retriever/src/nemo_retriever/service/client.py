@@ -33,6 +33,7 @@ validates that response with the shared query schema.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
@@ -50,6 +51,21 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 
+from nemo_retriever.common.schemas.collections import (
+    CollectionInfo,
+    CollectionPage,
+    DocumentDeleteResult,
+    DocumentInfo,
+    DocumentPage,
+    QueryHit,
+)
+from nemo_retriever.common.schemas.responses import JobAggregateResponse, JobCreatedResponse, JobDocumentsPage
+from nemo_retriever.service.errors import (
+    RetrieverServiceConflictError,
+    RetrieverServiceError,
+    RetrieverServiceNotFoundError,
+    RetrieverServiceValidationError,
+)
 from nemo_retriever.service.query_schema import QueryResponse
 
 logger = logging.getLogger(__name__)
@@ -72,6 +88,7 @@ _TRANSIENT_ERRORS: tuple[type[Exception], ...] = (
 class _CreatedJob(NamedTuple):
     job_id: str
     trace_id: str | None = None
+    replayed: bool = False
 
 
 # ------------------------------------------------------------------
@@ -203,24 +220,163 @@ class RetrieverServiceClient:
         max_concurrency: int = 8,
         *,
         api_token: str | None = None,
+        scope: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._max_concurrency = max_concurrency
         self._api_token = (api_token or "").strip() or None
+        self._scope = (scope or "").strip() or None
 
     @property
     def _auth_headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self._api_token}"} if self._api_token else {}
+        headers: dict[str, str] = {}
+        if self._scope:
+            headers["X-NRL-Scope"] = self._scope
+        if self._api_token:
+            headers["Authorization"] = f"Bearer {self._api_token}"
+        return headers
+
+    @staticmethod
+    def _raise_for_response(resp: httpx.Response, operation: str) -> None:
+        if resp.status_code < 400:
+            return
+        detail = resp.text[:1000] if resp.text else "(empty)"
+        error_type: type[RetrieverServiceError]
+        if resp.status_code == 404:
+            error_type = RetrieverServiceNotFoundError
+        elif resp.status_code == 409:
+            error_type = RetrieverServiceConflictError
+        elif resp.status_code in (400, 422):
+            error_type = RetrieverServiceValidationError
+        else:
+            error_type = RetrieverServiceError
+        raise error_type(f"{operation} failed: HTTP {resp.status_code}: {detail}", status_code=resp.status_code)
+
+    def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        with httpx.Client(timeout=httpx.Timeout(300.0, connect=30.0), headers=self._auth_headers) as client:
+            resp = client.request(method, f"{self._base_url}{path}", **kwargs)
+        self._raise_for_response(resp, f"{method} {path}")
+        return resp.json() if resp.content else None
+
+    async def _arequest(self, method: str, path: str, **kwargs: Any) -> Any:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=30.0), headers=self._auth_headers) as client:
+            resp = await client.request(method, f"{self._base_url}{path}", **kwargs)
+        self._raise_for_response(resp, f"{method} {path}")
+        return resp.json() if resp.content else None
+
+    # ------------------------------------------------------------------
+    # Collection and document lifecycle
+    # ------------------------------------------------------------------
+
+    def create_collection(
+        self, name: str, *, description: str | None = None,
+        metadata: dict[str, Any] | None = None, expires_at: str | None = None,
+    ) -> CollectionInfo:
+        body = {"name": name, "description": description, "metadata": metadata or {}, "expires_at": expires_at}
+        return CollectionInfo.model_validate(self._request("POST", "/v1/collections", json=body))
+
+    async def acreate_collection(self, name: str, **kwargs: Any) -> CollectionInfo:
+        body = {"name": name, "description": kwargs.get("description"),
+                "metadata": kwargs.get("metadata") or {}, "expires_at": kwargs.get("expires_at")}
+        return CollectionInfo.model_validate(await self._arequest("POST", "/v1/collections", json=body))
+
+    def get_collection(self, name: str) -> CollectionInfo:
+        return CollectionInfo.model_validate(self._request("GET", f"/v1/collections/{name}"))
+
+    async def aget_collection(self, name: str) -> CollectionInfo:
+        return CollectionInfo.model_validate(await self._arequest("GET", f"/v1/collections/{name}"))
+
+    def list_collections(self, *, limit: int = 100, continuation_token: str | None = None) -> CollectionPage:
+        params = {"limit": limit, "continuation_token": continuation_token}
+        return CollectionPage.model_validate(self._request("GET", "/v1/collections", params=params))
+
+    async def alist_collections(self, **kwargs: Any) -> CollectionPage:
+        params = {"limit": kwargs.get("limit", 100), "continuation_token": kwargs.get("continuation_token")}
+        return CollectionPage.model_validate(await self._arequest("GET", "/v1/collections", params=params))
+
+    def update_collection(self, name: str, **changes: Any) -> CollectionInfo:
+        return CollectionInfo.model_validate(self._request("PATCH", f"/v1/collections/{name}", json=changes))
+
+    async def aupdate_collection(self, name: str, **changes: Any) -> CollectionInfo:
+        return CollectionInfo.model_validate(await self._arequest("PATCH", f"/v1/collections/{name}", json=changes))
+
+    def delete_collection(self, name: str, *, if_exists: bool = False) -> CollectionInfo | None:
+        body = self._request("DELETE", f"/v1/collections/{name}", params={"if_exists": if_exists})
+        return CollectionInfo.model_validate(body) if body else None
+
+    async def adelete_collection(self, name: str, *, if_exists: bool = False) -> CollectionInfo | None:
+        body = await self._arequest("DELETE", f"/v1/collections/{name}", params={"if_exists": if_exists})
+        return CollectionInfo.model_validate(body) if body else None
+
+    def list_documents(
+        self, collection_name: str, *, limit: int = 100, continuation_token: str | None = None,
+    ) -> DocumentPage:
+        params = {"limit": limit, "continuation_token": continuation_token}
+        return DocumentPage.model_validate(
+            self._request("GET", f"/v1/collections/{collection_name}/documents", params=params)
+        )
+
+    async def alist_documents(self, collection_name: str, **kwargs: Any) -> DocumentPage:
+        params = {"limit": kwargs.get("limit", 100), "continuation_token": kwargs.get("continuation_token")}
+        return DocumentPage.model_validate(
+            await self._arequest("GET", f"/v1/collections/{collection_name}/documents", params=params)
+        )
+
+    def get_document(self, collection_name: str, document_id: str) -> DocumentInfo:
+        return DocumentInfo.model_validate(
+            self._request("GET", f"/v1/collections/{collection_name}/documents/{document_id}")
+        )
+
+    async def aget_document(self, collection_name: str, document_id: str) -> DocumentInfo:
+        return DocumentInfo.model_validate(
+            await self._arequest("GET", f"/v1/collections/{collection_name}/documents/{document_id}")
+        )
+
+    def delete_document(
+        self, collection_name: str, document_id: str, *, if_exists: bool = False,
+    ) -> DocumentDeleteResult:
+        return DocumentDeleteResult.model_validate(self._request(
+            "DELETE", f"/v1/collections/{collection_name}/documents/{document_id}",
+            params={"if_exists": if_exists},
+        ))
+
+    async def adelete_document(
+        self, collection_name: str, document_id: str, *, if_exists: bool = False,
+    ) -> DocumentDeleteResult:
+        return DocumentDeleteResult.model_validate(await self._arequest(
+            "DELETE", f"/v1/collections/{collection_name}/documents/{document_id}",
+            params={"if_exists": if_exists},
+        ))
+
+    def get_job(self, job_id: str) -> JobAggregateResponse:
+        return JobAggregateResponse.model_validate(self._request("GET", f"/v1/ingest/job/{job_id}"))
+
+    async def aget_job(self, job_id: str) -> JobAggregateResponse:
+        return JobAggregateResponse.model_validate(await self._arequest("GET", f"/v1/ingest/job/{job_id}"))
+
+    def list_job_documents(self, job_id: str, *, offset: int = 0, limit: int = 100) -> JobDocumentsPage:
+        return JobDocumentsPage.model_validate(self._request(
+            "GET", f"/v1/ingest/job/{job_id}/documents", params={"offset": offset, "limit": limit},
+        ))
+
+    async def alist_job_documents(self, job_id: str, *, offset: int = 0, limit: int = 100) -> JobDocumentsPage:
+        return JobDocumentsPage.model_validate(await self._arequest(
+            "GET", f"/v1/ingest/job/{job_id}/documents", params={"offset": offset, "limit": limit},
+        ))
 
     # ------------------------------------------------------------------
     # Query
     # ------------------------------------------------------------------
 
-    def query(self, query: str | list[str], *, top_k: int) -> list[list[dict[str, Any]]]:
+    def query(
+        self, query: str | list[str], *, top_k: int, collection_name: str | None = None,
+    ) -> list[list[dict[str, Any]]] | list[QueryHit]:
         """Search ingested documents through ``POST /v1/query``."""
         url = f"{self._base_url}/v1/query"
         expected_results = len(query) if isinstance(query, list) else 1
         payload: dict[str, Any] = {"query": query, "top_k": int(top_k)}
+        if collection_name:
+            payload["collection_name"] = collection_name
         try:
             with httpx.Client(
                 timeout=httpx.Timeout(300.0, connect=30.0),
@@ -241,9 +397,35 @@ class RetrieverServiceClient:
 
         try:
             query_response = QueryResponse.model_validate(body)
-            return query_response.hits_by_query(expected_results=expected_results)
+            results = query_response.hits_by_query(expected_results=expected_results)
+            if collection_name and isinstance(query, str):
+                return [self._query_hit(hit) for hit in results[0]]
+            return results
         except (ValidationError, ValueError) as exc:
             raise RuntimeError(f"Service query returned invalid response: {exc}") from exc
+
+    @staticmethod
+    def _query_hit(hit: dict[str, Any]) -> QueryHit:
+        return QueryHit.model_validate({
+            **hit,
+            "bbox": hit.get("bbox_xyxy_norm"),
+            "source": hit.get("source"),
+            "metadata": hit.get("metadata") or {},
+        })
+
+    async def aquery(
+        self, query: str | list[str], *, top_k: int = 10, collection_name: str | None = None,
+    ) -> list[list[dict[str, Any]]] | list[QueryHit]:
+        payload: dict[str, Any] = {"query": query, "top_k": int(top_k)}
+        if collection_name:
+            payload["collection_name"] = collection_name
+        body = await self._arequest("POST", "/v1/query", json=payload)
+        parsed = QueryResponse.model_validate(body).hits_by_query(
+            expected_results=len(query) if isinstance(query, list) else 1
+        )
+        if collection_name and isinstance(query, str):
+            return [self._query_hit(hit) for hit in parsed[0]]
+        return parsed
 
     # ------------------------------------------------------------------
     # Job lifecycle
@@ -256,6 +438,11 @@ class RetrieverServiceClient:
         expected_documents: int,
         label: str | None = None,
         retain_results: bool = False,
+        collection_name: str | None = None,
+        operation: str = "append",
+        target_document_id: str | None = None,
+        idempotency_key: str | None = None,
+        document_manifest: list[dict[str, str]] | None = None,
     ) -> _CreatedJob:
         """Open a server-side job aggregate and return its client-visible metadata.
 
@@ -270,6 +457,15 @@ class RetrieverServiceClient:
         }
         if label is not None:
             payload["label"] = label
+        if collection_name is not None:
+            payload["collection_name"] = collection_name
+        payload["operation"] = operation
+        if target_document_id is not None:
+            payload["target_document_id"] = target_document_id
+        if idempotency_key is not None:
+            payload["idempotency_key"] = idempotency_key
+        if document_manifest:
+            payload["document_manifest"] = document_manifest
         resp = await client.post(url, json=payload)
         # A 404/410 here means the deployed service does not advertise
         # the job-scoped ingest API.  Surface a dedicated compatibility
@@ -299,6 +495,84 @@ class RetrieverServiceClient:
         return _CreatedJob(
             job_id=job_id,
             trace_id=trace_id if isinstance(trace_id, str) and trace_id else None,
+            replayed=resp.status_code == 200,
+        )
+
+    async def asubmit_documents(
+        self,
+        collection_name: str,
+        files: list[str | Path],
+        *,
+        idempotency_key: str | None = None,
+        operation: str = "append",
+        target_document_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        pipeline_spec: dict[str, Any] | None = None,
+    ) -> JobAggregateResponse:
+        """Create a job and upload its files, returning after acceptance.
+
+        Processing continues on the service. Poll :meth:`get_job` or
+        :meth:`aget_job` until the aggregate reaches a terminal state.
+        """
+        paths = [Path(file) for file in files]
+        if not paths:
+            raise RetrieverServiceValidationError("At least one file is required")
+        timeout = httpx.Timeout(timeout=None, connect=30.0)
+        limits = httpx.Limits(max_connections=200, max_keepalive_connections=100)
+        manifest = [
+            {"filename": path.name, "content_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            for path in paths
+        ]
+        async with httpx.AsyncClient(timeout=timeout, limits=limits, headers=self._auth_headers) as client:
+            created = await self._create_job(
+                client, expected_documents=len(paths), collection_name=collection_name,
+                operation=operation, target_document_id=target_document_id,
+                idempotency_key=idempotency_key,
+                document_manifest=manifest,
+            )
+            if created.replayed:
+                resp = await client.get(f"{self._base_url}/v1/ingest/job/{created.job_id}")
+                self._raise_for_response(resp, "get idempotent job")
+                return JobAggregateResponse.model_validate(resp.json())
+            sem = asyncio.Semaphore(self._max_concurrency)
+
+            async def upload(path: Path) -> None:
+                async with sem:
+                    await self._upload_one(
+                        client, path, job_id=created.job_id, metadata=metadata, pipeline_spec=pipeline_spec,
+                    )
+
+            await asyncio.gather(*(upload(path) for path in paths))
+            resp = await client.get(f"{self._base_url}/v1/ingest/job/{created.job_id}")
+            self._raise_for_response(resp, "get accepted job")
+            return JobAggregateResponse.model_validate(resp.json())
+
+    def submit_documents(
+        self, collection_name: str, files: list[str | Path], **kwargs: Any,
+    ) -> JobAggregateResponse:
+        """Synchronous accepted-not-completed collection ingestion."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.asubmit_documents(collection_name, files, **kwargs))
+        raise RuntimeError("submit_documents cannot run inside an event loop; use asubmit_documents")
+
+    def replace_document(
+        self, collection_name: str, document_id: str, file: str | Path,
+        *, idempotency_key: str | None = None, **kwargs: Any,
+    ) -> JobAggregateResponse:
+        return self.submit_documents(
+            collection_name, [file], operation="replace", target_document_id=document_id,
+            idempotency_key=idempotency_key, **kwargs,
+        )
+
+    async def areplace_document(
+        self, collection_name: str, document_id: str, file: str | Path,
+        *, idempotency_key: str | None = None, **kwargs: Any,
+    ) -> JobAggregateResponse:
+        return await self.asubmit_documents(
+            collection_name, [file], operation="replace", target_document_id=document_id,
+            idempotency_key=idempotency_key, **kwargs,
         )
 
     # ------------------------------------------------------------------

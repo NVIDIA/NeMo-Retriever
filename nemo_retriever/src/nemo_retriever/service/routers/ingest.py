@@ -86,6 +86,10 @@ _GATEWAY_CALLBACK_HEADER = "X-Gateway-Callback-Url"
 _GATEWAY_PIPELINE_SPEC_HEADER = "X-Gateway-Pipeline-Spec"
 _GATEWAY_JOB_ID_HEADER = "X-Gateway-Job-Id"
 _GATEWAY_RETAIN_RESULTS_HEADER = "X-Gateway-Retain-Results"
+_GATEWAY_SCOPE_HEADER = "X-Gateway-Scope"
+_GATEWAY_COLLECTION_HEADER = "X-Gateway-Collection"
+_GATEWAY_OPERATION_HEADER = "X-Gateway-Operation"
+_GATEWAY_TARGET_DOCUMENT_HEADER = "X-Gateway-Target-Document"
 _PAGE_THRESHOLD_FOR_BATCH = 5
 
 # SSE keepalive cadence; tests monkey-patch this to a short value so
@@ -204,6 +208,7 @@ def _register_document_under_job(
     document_id: str,
     job_id: str,
     filename: str | None = None,
+    content_sha256: str | None = None,
 ) -> None:
     """Register a per-document tracker entry inside an existing job.
 
@@ -222,7 +227,9 @@ def _register_document_under_job(
     if tracker is None:
         return
     try:
-        tracker.register_document(document_id, job_id=job_id, filename=filename)
+        tracker.register_document(
+            document_id, job_id=job_id, filename=filename, content_sha256=content_sha256,
+        )
     except JobNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except JobFullError as exc:
@@ -607,6 +614,8 @@ def _aggregate_to_response(agg, *, documents: list[dict[str, Any]] | None = None
         counts=dict(agg.counts),
         document_ids=list(agg.document_ids),
         documents=documents,
+        collection_name=agg.collection_name,
+        operation=agg.operation,
     )
 
 
@@ -616,7 +625,7 @@ def _aggregate_to_response(agg, *, documents: list[dict[str, Any]] | None = None
     status_code=201,
     summary="Create a new ingestion job aggregate",
 )
-async def create_job(request: Request, response: Response, body: JobCreateRequest) -> JobCreatedResponse:
+async def create_job(request: Request, response: Response, body: JobCreateRequest) -> JobCreatedResponse | Response:
     """Open a job that will receive ``expected_documents`` uploads.
 
     The server returns an opaque ``job_id`` the client uses for every
@@ -632,6 +641,60 @@ async def create_job(request: Request, response: Response, body: JobCreateReques
     tracker = get_job_tracker()
     if tracker is None:
         raise HTTPException(status_code=503, detail="Job tracker not available")
+    scope = request.headers.get("X-NRL-Scope", "default").strip() or "default"
+    if body.collection_name:
+        config = request.app.state.config
+        if not config.vectordb.enabled:
+            raise HTTPException(404, "VectorDB is not enabled in the service configuration")
+        target = f"{config.vectordb.vectordb_url.rstrip('/')}/v1/collections/{body.collection_name}"
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                collection_response = await client.get(target, headers={"X-NRL-Scope": scope})
+        except httpx.HTTPError as exc:
+            raise HTTPException(502, "Failed to validate collection with VectorDB service") from exc
+        if collection_response.status_code != 200:
+            return Response(
+                content=collection_response.content, status_code=collection_response.status_code,
+                media_type=collection_response.headers.get("content-type", "application/json"),
+            )
+        if collection_response.json().get("status") != "active":
+            raise HTTPException(409, "Collection is not active")
+        if body.operation == "replace" and body.target_document_id:
+            document_target = f"{target}/documents/{body.target_document_id}"
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    document_response = await client.get(document_target, headers={"X-NRL-Scope": scope})
+            except httpx.HTTPError as exc:
+                raise HTTPException(502, "Failed to validate replacement document") from exc
+            if document_response.status_code != 200:
+                return Response(
+                    content=document_response.content, status_code=document_response.status_code,
+                    media_type=document_response.headers.get("content-type", "application/json"),
+                )
+    if body.operation == "replace" and (body.expected_documents != 1 or not body.target_document_id):
+        raise HTTPException(422, "replace requires exactly one document and target_document_id")
+    fingerprint = hashlib.sha256(
+        json.dumps(
+            {
+                "expected_documents": body.expected_documents, "collection_name": body.collection_name,
+                "operation": body.operation, "target_document_id": body.target_document_id,
+                "metadata": body.metadata,
+                "document_manifest": body.document_manifest,
+            }, sort_keys=True, separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    if body.idempotency_key:
+        try:
+            existing = tracker.get_idempotent_job(scope, body.idempotency_key, fingerprint)
+        except JobTrackerError as exc:
+            raise HTTPException(status_code=getattr(exc, "status_code", 409), detail=str(exc)) from exc
+        if existing:
+            response.status_code = 200
+            return JobCreatedResponse(
+                job_id=existing.job_id, expected_documents=existing.expected_documents,
+                status=existing.status.value, created_at=existing.created_at, label=existing.label,
+                trace_id=existing.trace_id, collection_name=existing.collection_name, operation=existing.operation,
+            )
     job_id = uuid.uuid4().hex
     trace_id: str | None = None
     inbound_trace_context = _trace_context_from_request_or_job(request, None)
@@ -655,6 +718,13 @@ async def create_job(request: Request, response: Response, body: JobCreateReques
                 retain_results=body.retain_results,
                 trace_id=trace_id,
                 trace_context=trace_context,
+                collection_name=body.collection_name,
+                scope=scope,
+                operation=body.operation,
+                target_document_id=body.target_document_id,
+                idempotency_key=body.idempotency_key,
+                idempotency_fingerprint=fingerprint,
+                document_manifest=body.document_manifest,
             )
     except JobTrackerError as exc:
         raise HTTPException(status_code=getattr(exc, "status_code", 500), detail=str(exc)) from exc
@@ -671,6 +741,8 @@ async def create_job(request: Request, response: Response, body: JobCreateReques
         created_at=agg.created_at,
         label=agg.label,
         trace_id=agg.trace_id,
+        collection_name=agg.collection_name,
+        operation=agg.operation,
     )
 
 
@@ -724,6 +796,8 @@ def _document_to_response(rec, *, result_data=None) -> DocumentStatusResponse:
         result_rows=rec.result_rows,
         result_data=result_data,
         error=rec.error,
+        collection_name=rec.collection_name,
+        content_sha256=rec.content_sha256,
     )
 
 
@@ -873,6 +947,13 @@ async def submit_document_to_job(
         _require_job(job_id)
     _check_upload_size(file, request)
     validated_spec = _resolve_pipeline_spec(request, meta)
+    if not _is_worker(request):
+        job_for_validation = _require_job(job_id)
+        if job_for_validation.collection_name and validated_spec and validated_spec.vdb_upload_params is not None:
+            raise HTTPException(
+                422,
+                "collection-aware ingestion cannot override VectorDB upload configuration",
+            )
 
     with _start_accept_span(request, job_id, "ingest.document.accept"):
         if _is_gateway(request):
@@ -883,11 +964,23 @@ async def submit_document_to_job(
             file_bytes = await file.read()
             route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
 
+            job = _require_job(job_id)
             document_id = uuid.uuid4().hex
             content_sha256 = hashlib.sha256(file_bytes).hexdigest()
+            if job.document_manifest and not any(
+                item.get("filename") == (file.filename or "")
+                and item.get("content_sha256") == content_sha256
+                for item in job.document_manifest
+            ):
+                raise HTTPException(409, "Uploaded document does not match the idempotent job manifest")
             now = datetime.now(timezone.utc).isoformat()
 
-            _register_document_under_job(document_id=document_id, job_id=job_id, filename=file.filename)
+            _register_document_under_job(
+                document_id=document_id,
+                job_id=job_id,
+                filename=file.filename,
+                content_sha256=content_sha256,
+            )
             await _gateway_enqueue(
                 request,
                 route,
@@ -896,6 +989,13 @@ async def submit_document_to_job(
                 payload=file_bytes,
                 filename=file.filename,
                 pipeline_spec=validated_spec,
+                extra={
+                    "scope": job.scope,
+                    "collection_name": job.collection_name,
+                    "operation": job.operation,
+                    "content_sha256": content_sha256,
+                    "storage_document_id": job.target_document_id or document_id,
+                },
             )
 
             _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=file_size)
@@ -931,6 +1031,13 @@ async def submit_document_to_job(
         gw_doc_id = request.headers.get(_GATEWAY_DOC_ID_HEADER)
         gw_callback_url = request.headers.get(_GATEWAY_CALLBACK_HEADER)
         gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
+        local_job = None if gw_doc_id else _require_job(job_id)
+        if local_job and local_job.document_manifest and not any(
+            item.get("filename") == (file.filename or "")
+            and item.get("content_sha256") == content_sha256
+            for item in local_job.document_manifest
+        ):
+            raise HTTPException(409, "Uploaded document does not match the idempotent job manifest")
         document_id = gw_doc_id or uuid.uuid4().hex
 
         worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
@@ -949,6 +1056,15 @@ async def submit_document_to_job(
                 job_id=gw_job_id,
                 pipeline_spec=worker_spec.model_dump(mode="json") if worker_spec is not None else None,
                 retain_results=_work_item_retain_results(request, job_id=gw_job_id),
+                scope=request.headers.get(_GATEWAY_SCOPE_HEADER) or (local_job.scope if local_job else "default"),
+                collection_name=request.headers.get(_GATEWAY_COLLECTION_HEADER)
+                or (local_job.collection_name if local_job else None),
+                operation=request.headers.get(_GATEWAY_OPERATION_HEADER)
+                or (local_job.operation if local_job else "append"),
+                content_sha256=content_sha256,
+                storage_document_id=request.headers.get(_GATEWAY_TARGET_DOCUMENT_HEADER)
+                or (local_job.target_document_id if local_job else None)
+                or document_id,
             ),
         )
 
@@ -1684,7 +1800,10 @@ async def query(request: Request) -> Response:
             resp = await client.post(
                 target,
                 content=body,
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "X-NRL-Scope": request.headers.get("X-NRL-Scope", "default"),
+                },
             )
     except Exception as exc:
         logger.exception("Failed to proxy query to vectordb at %s", target)

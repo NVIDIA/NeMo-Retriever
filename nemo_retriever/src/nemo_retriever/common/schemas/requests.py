@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from nemo_retriever.common.schemas.base import RichModel
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
@@ -55,3 +55,18 @@ class JobCreateRequest(RichModel):
             "``result_data``."
         ),
     )
+    collection_name: str | None = Field(default=None, min_length=1, max_length=128)
+    operation: str = Field(default="append", pattern=r"^(append|replace)$")
+    target_document_id: str | None = None
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=256)
+    document_manifest: list[dict[str, str]] = Field(default_factory=list)
+    table_name: str | None = None
+    lancedb_uri: str | None = None
+
+    @model_validator(mode="after")
+    def _reject_physical_collection_storage(self) -> "JobCreateRequest":
+        if self.collection_name and (self.table_name or self.lancedb_uri):
+            raise ValueError("collection-aware jobs cannot specify a table name or LanceDB URI")
+        if self.document_manifest and len(self.document_manifest) != self.expected_documents:
+            raise ValueError("document_manifest length must match expected_documents")
+        return self

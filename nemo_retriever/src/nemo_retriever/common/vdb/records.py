@@ -37,6 +37,12 @@ class RetrievalHit(TypedDict, total=False):
     bbox_xyxy_norm: list[float]
     _distance: float
     _score: float
+    score: float
+    chunk_id: str
+    document_id: str
+    filename: str
+    document_version: str
+    content_sha256: str
 
 
 def _embedding_from_graph_row(row: dict[str, Any], metadata: dict[str, Any]) -> Any:
@@ -256,11 +262,29 @@ def _normalize_hit(hit: dict[str, Any]) -> RetrievalHit:
         "pdf_basename": pdf_basename,
         "pdf_page": f"{pdf_basename}_{page_number}" if pdf_basename and page_number is not None else "",
     }
+    chunk_id = entity.get("chunk_id") or hit.get("chunk_id")
+    if chunk_id:
+        normalized.update(
+            {
+                "chunk_id": str(chunk_id),
+                "document_id": str(entity.get("document_id") or hit.get("document_id") or ""),
+                "filename": str(entity.get("filename") or hit.get("filename") or (path.name if path else "")),
+                "document_version": str(entity.get("document_version") or hit.get("document_version") or ""),
+                "content_sha256": str(entity.get("content_sha256") or hit.get("content_sha256") or ""),
+            }
+        )
     for key in ("stored_image_uri", "content_type", "bbox_xyxy_norm", "_distance", "_score"):
         if key in hit:
             normalized[key] = hit[key]
         elif key in entity:
             normalized[key] = entity[key]
+    if chunk_id:
+        raw_score = normalized.get("_score")
+        if raw_score is not None:
+            normalized["score"] = max(0.0, min(1.0, float(raw_score)))
+        else:
+            distance = float(normalized.get("_distance", 0.0))
+            normalized["score"] = 1.0 / (1.0 + max(0.0, distance))
     return normalized
 
 

@@ -31,22 +31,30 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import hashlib
+import json
 import logging
 import threading
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Union
 
 import lancedb
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel
 
-from nemo_retriever.common.remote_auth import resolve_remote_api_key
-from nemo_retriever.common.vdb.lancedb_capabilities import (
-    LanceRetrievalMode,
-    LanceTableCapabilities,
-    inspect_lancedb_table_object,
+from nemo_retriever.common.schemas.collections import (
+    CollectionCreateRequest,
+    CollectionInfo,
+    CollectionPage,
+    CollectionUpdateRequest,
+    DocumentDeleteResult,
+    DocumentInfo,
+    DocumentPage,
 )
+
 from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.service.query_schema import (
     EvidenceQueryResponse,
@@ -56,6 +64,9 @@ from nemo_retriever.service.query_schema import (
     QueryResult,
 )
 
+# /v1/query is dense vector search only; report that honestly in coverage.
+_QUERY_STRATEGIES = ["dense"]
+
 logger = logging.getLogger(__name__)
 
 # ── Request / response models ────────────────────────────────────────
@@ -63,11 +74,48 @@ logger = logging.getLogger(__name__)
 
 class WriteRequest(BaseModel):
     rows: list[dict[str, Any]]
+    scope: str | None = None
+    collection_name: str | None = None
+    document_id: str | None = None
+    job_id: str | None = None
+    filename: str | None = None
+    content_sha256: str | None = None
+    operation: str = "append"
 
 
 class WriteResponse(BaseModel):
     written: int
     total_rows: int
+
+
+_COLLECTIONS_TABLE = "_nrl_collections"
+_DOCUMENTS_TABLE = "_nrl_documents"
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _physical_table(scope: str, collection_name: str) -> str:
+    digest = hashlib.sha256(f"{scope}\0{collection_name}".encode()).hexdigest()
+    return f"nrl_{digest[:40]}"
+
+
+def _quoted(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _token(offset: int) -> str:
+    return base64.urlsafe_b64encode(str(offset).encode()).decode().rstrip("=")
+
+
+def _offset(token: str | None) -> int:
+    if not token:
+        return 0
+    try:
+        return int(base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode())
+    except Exception as exc:
+        raise HTTPException(422, "Invalid continuation token") from exc
 
 
 # ── Embedding helpers ────────────────────────────────────────────────
@@ -108,12 +156,6 @@ def _embed_queries_remote(
     )
 
 
-def _strategies_for_retrieval_mode(mode: LanceRetrievalMode | str) -> list[str]:
-    if mode == "hybrid":
-        return ["hybrid"]
-    return ["dense"]
-
-
 # ── VectorDB state ───────────────────────────────────────────────────
 
 
@@ -150,13 +192,177 @@ class VectorDBState:
         self._embed_lock = threading.Lock()
         self._local_embedder: Any | None = None
         self._db = lancedb.connect(uri=lancedb_uri)
+        self._collection_tables: dict[tuple[str, str], str] = {}
+        self._opened_tables: dict[str, Any] = {}
         self._table_exists = False
-        if self.table_name in self._db.list_tables().tables:
+        try:
             self._db.open_table(table_name)
             self._table_exists = True
             logger.info("Opened existing LanceDB table '%s' at %s", table_name, lancedb_uri)
-        else:
+        except Exception:
             logger.info("LanceDB table '%s' does not exist yet at %s", table_name, lancedb_uri)
+        self._ensure_catalogs()
+
+    def _ensure_catalogs(self) -> None:
+        import pyarrow as pa
+
+        collection_schema = pa.schema(
+            [
+                pa.field("scope", pa.string()),
+                pa.field("name", pa.string()),
+                pa.field("physical_table", pa.string()),
+                pa.field("status", pa.string()),
+                pa.field("description", pa.string()),
+                pa.field("metadata_json", pa.string()),
+                pa.field("created_at", pa.string()),
+                pa.field("updated_at", pa.string()),
+                pa.field("expires_at", pa.string()),
+            ]
+        )
+        document_schema = pa.schema(
+            [
+                pa.field("scope", pa.string()),
+                pa.field("collection_name", pa.string()),
+                pa.field("document_id", pa.string()),
+                pa.field("job_id", pa.string()),
+                pa.field("filename", pa.string()),
+                pa.field("content_sha256", pa.string()),
+                pa.field("document_version", pa.string()),
+                pa.field("status", pa.string()),
+                pa.field("chunk_count", pa.int64()),
+                pa.field("created_at", pa.string()),
+                pa.field("updated_at", pa.string()),
+                pa.field("error", pa.string()),
+            ]
+        )
+        for name, schema in ((_COLLECTIONS_TABLE, collection_schema), (_DOCUMENTS_TABLE, document_schema)):
+            try:
+                self._db.open_table(name)
+            except Exception:
+                self._db.create_table(name, schema=schema, mode="create")
+
+    def _rows(self, table_name: str, where: str | None = None) -> list[dict[str, Any]]:
+        query = self._db.open_table(table_name).search()
+        if where:
+            query = query.where(where)
+        return query.to_list()
+
+    def _has_table(self, table_name: str) -> bool:
+        return table_name in self._db.list_tables().tables
+
+    def _open_table(self, table_name: str) -> Any:
+        table = self._opened_tables.get(table_name)
+        if table is None:
+            table = self._db.open_table(table_name)
+            self._opened_tables[table_name] = table
+        return table
+
+    def _collection_row(self, scope: str, name: str, *, active: bool = False) -> dict[str, Any] | None:
+        where = f"scope = {_quoted(scope)} AND name = {_quoted(name)}"
+        rows = self._rows(_COLLECTIONS_TABLE, where)
+        row = rows[0] if rows else None
+        if row and active and row["status"] != "active":
+            raise HTTPException(409, f"Collection {name!r} is {row['status']}")
+        return row
+
+    @staticmethod
+    def _collection_info(row: dict[str, Any]) -> CollectionInfo:
+        return CollectionInfo(
+            name=row["name"], scope=row["scope"], status=row["status"],
+            description=row.get("description") or None,
+            metadata=json.loads(row.get("metadata_json") or "{}"),
+            created_at=row["created_at"], updated_at=row["updated_at"],
+            expires_at=row.get("expires_at") or None,
+        )
+
+    @staticmethod
+    def _document_info(row: dict[str, Any]) -> DocumentInfo:
+        return DocumentInfo(**{k: row.get(k) for k in DocumentInfo.model_fields})
+
+    def create_collection(self, scope: str, req: CollectionCreateRequest) -> CollectionInfo:
+        with self._write_lock:
+            if self._collection_row(scope, req.name):
+                raise HTTPException(409, f"Collection {req.name!r} already exists")
+            now = _now()
+            row = {
+                "scope": scope, "name": req.name, "physical_table": _physical_table(scope, req.name),
+                "status": "active", "description": req.description or "",
+                "metadata_json": json.dumps(req.metadata, sort_keys=True), "created_at": now,
+                "updated_at": now, "expires_at": req.expires_at or "",
+            }
+            self._db.open_table(_COLLECTIONS_TABLE).add([row])
+            self._collection_tables[(scope, req.name)] = row["physical_table"]
+            return self._collection_info(row)
+
+    def get_collection(self, scope: str, name: str) -> CollectionInfo:
+        row = self._collection_row(scope, name)
+        if not row:
+            raise HTTPException(404, "Collection not found")
+        return self._collection_info(row)
+
+    def list_collections(self, scope: str, limit: int, token: str | None) -> CollectionPage:
+        rows = sorted(self._rows(_COLLECTIONS_TABLE, f"scope = {_quoted(scope)}"), key=lambda r: r["name"])
+        start = _offset(token)
+        page = rows[start : start + limit]
+        next_token = _token(start + limit) if start + limit < len(rows) else None
+        return CollectionPage(items=[self._collection_info(r) for r in page], next_token=next_token)
+
+    def update_collection(self, scope: str, name: str, req: CollectionUpdateRequest) -> CollectionInfo:
+        with self._write_lock:
+            old = self._collection_row(scope, name, active=True)
+            if not old:
+                raise HTTPException(404, "Collection not found")
+            update = req.model_dump(exclude_unset=True)
+            old["description"] = update.get("description", old["description"]) or ""
+            if "metadata" in update:
+                old["metadata_json"] = json.dumps(update["metadata"] or {}, sort_keys=True)
+            old["expires_at"] = update.get("expires_at", old["expires_at"]) or ""
+            old["updated_at"] = _now()
+            (
+                self._db.open_table(_COLLECTIONS_TABLE)
+                .merge_insert(["scope", "name"])
+                .when_matched_update_all()
+                .execute([old])
+            )
+            return self._collection_info(old)
+
+    def delete_collection(self, scope: str, name: str, if_exists: bool) -> CollectionInfo | None:
+        with self._write_lock:
+            row = self._collection_row(scope, name)
+            if not row:
+                if if_exists:
+                    return None
+                raise HTTPException(404, "Collection not found")
+            row["status"] = "deleting"
+            row["updated_at"] = _now()
+            (
+                self._db.open_table(_COLLECTIONS_TABLE)
+                .merge_insert(["scope", "name"])
+                .when_matched_update_all()
+                .execute([row])
+            )
+            try:
+                self._db.drop_table(row["physical_table"], ignore_missing=True)
+                self._db.open_table(_DOCUMENTS_TABLE).delete(
+                    f"scope = {_quoted(scope)} AND collection_name = {_quoted(name)}"
+                )
+                self._db.open_table(_COLLECTIONS_TABLE).delete(
+                    f"scope = {_quoted(scope)} AND name = {_quoted(name)}"
+                )
+                self._collection_tables.pop((scope, name), None)
+                self._opened_tables.pop(row["physical_table"], None)
+            except Exception:
+                logger.exception("Collection deletion is incomplete and may be retried")
+                raise
+            return self._collection_info(row)
+
+    def _resolved_table(self, scope: str, name: str) -> str:
+        row = self._collection_row(scope, name, active=True)
+        if not row:
+            raise HTTPException(404, "Collection not found")
+        table = row["physical_table"]
+        self._collection_tables[(scope, name)] = table
+        return table
 
     @property
     def embed_mode(self) -> str:
@@ -170,42 +376,18 @@ class VectorDBState:
     def table_exists(self) -> bool:
         return self._table_exists
 
-    def _table_capabilities(self):
-        if not self._table_exists:
-            return None
-        table = self._db.open_table(self.table_name)
-        return inspect_lancedb_table_object(table)
-
-    def resolve_effective_retrieval_mode(self, caps: LanceTableCapabilities | None = None) -> LanceRetrievalMode:
-        """Resolve retrieval mode from table capabilities (auto).
-
-        Optional ``caps`` avoids re-opening the table when the caller already has it.
-        """
-        if not self._table_exists:
-            return "dense"
-
-        if caps is None:
-            caps = self._table_capabilities()
-            if caps is None:
-                raise ValueError(
-                    f"Unable to inspect LanceDB table {self.table_name!r} at {self.lancedb_uri!r}: "
-                    "capabilities could not be determined."
-                )
-
-        mode: LanceRetrievalMode = caps.retrieval_mode
-        if mode == "unknown":
-            raise ValueError(
-                f"LanceDB table {self.table_name!r} at {self.lancedb_uri!r} is not queryable: "
-                "no vector column or FTS index was detected."
-            )
-        if mode == "sparse":
-            raise ValueError(
-                f"LanceDB table {self.table_name!r} at {self.lancedb_uri!r} has an FTS index but no vector "
-                "column; sparse-only retrieval is not supported by the VectorDB service."
-            )
-        return mode
-
-    def write_rows(self, rows: list[dict[str, Any]]) -> int:
+    def write_rows(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        scope: str | None = None,
+        collection_name: str | None = None,
+        document_id: str | None = None,
+        job_id: str | None = None,
+        filename: str | None = None,
+        content_sha256: str | None = None,
+        operation: str = "append",
+    ) -> int:
         """Append rows to the LanceDB table (creates table on first write)."""
         if not rows:
             return 0
@@ -216,82 +398,143 @@ class VectorDBState:
             lancedb_schema,
         )
 
+        table_name = self.table_name
+        collection_mode = collection_name is not None
+        if collection_mode:
+            table_name = self._resolved_table(scope or "default", collection_name)
+
         with self._write_lock:
-            # Decide create-vs-append on raw on-disk presence via ``list_tables``
-            # rather than interpreting ``open_table`` errors, so a transient I/O
-            # failure cannot be misread as "table absent" and route execution
-            # into the destructive ``overwrite=True`` create path.
-            if not self._table_exists and self.table_name not in self._db.list_tables().tables:
+            table_exists = self._table_exists if not collection_mode else self._has_table(table_name)
+            if not table_exists:
                 dim = infer_vector_dim(rows)
                 if dim == 0:
                     logger.warning("Cannot infer vector dimension from rows; skipping write")
                     return 0
-                schema = lancedb_schema(vector_dim=dim)
-                create_or_append_lancedb_table(
+                schema = lancedb_schema(vector_dim=dim, collection_managed=collection_mode)
+                table = create_or_append_lancedb_table(
                     self._db,
-                    self.table_name,
+                    table_name,
                     rows,
                     schema,
                     overwrite=True,
                 )
-                self._table_exists = True
+                self._opened_tables[table_name] = table
+                if not collection_mode:
+                    self._table_exists = True
                 logger.info(
                     "Created LanceDB table '%s' with %d rows (dim=%d)",
-                    self.table_name,
+                    table_name,
                     len(rows),
                     dim,
                 )
             else:
-                table = self._db.open_table(self.table_name)
-                table.add(rows)
-                self._table_exists = True
-                logger.info("Appended %d rows to table '%s'", len(rows), self.table_name)
+                table = self._open_table(table_name)
+                if operation == "replace":
+                    if not document_id:
+                        raise HTTPException(422, "replace requires document_id")
+                    predicate = f"document_id = {_quoted(document_id)}"
+                    (table.merge_insert("chunk_id").when_matched_update_all().when_not_matched_insert_all()
+                     .when_not_matched_by_source_delete(predicate).execute(rows))
+                else:
+                    table.add(rows)
+                logger.info("Wrote %d rows to table '%s' operation=%s", len(rows), table_name, operation)
+
+            if collection_mode and document_id:
+                now = _now()
+                existing = self._rows(
+                    _DOCUMENTS_TABLE,
+                    f"scope = {_quoted(scope or 'default')} AND collection_name = {_quoted(collection_name)} "
+                    f"AND document_id = {_quoted(document_id)}",
+                )
+                created_at = existing[0]["created_at"] if existing else now
+                version = str(rows[0].get("document_version") or content_sha256 or "1")
+                doc = {
+                    "scope": scope or "default", "collection_name": collection_name,
+                    "document_id": document_id, "job_id": job_id or "", "filename": filename or "",
+                    "content_sha256": content_sha256 or "", "document_version": version,
+                    "status": "completed", "chunk_count": len(rows), "created_at": created_at,
+                    "updated_at": now, "error": "",
+                }
+                (self._db.open_table(_DOCUMENTS_TABLE).merge_insert(["scope", "collection_name", "document_id"])
+                 .when_matched_update_all().when_not_matched_insert_all().execute([doc]))
 
         return len(rows)
 
-    def total_rows(self) -> int:
-        if not self._table_exists:
+    def total_rows(self, *, scope: str | None = None, collection_name: str | None = None) -> int:
+        table_name = self.table_name
+        exists = self._table_exists
+        if collection_name:
+            table_name = self._resolved_table(scope or "default", collection_name)
+            exists = self._has_table(table_name)
+        if not exists:
             return 0
         try:
-            table = self._db.open_table(self.table_name)
+            table = self._open_table(table_name)
             return table.count_rows()
         except Exception:
-            logger.warning(
-                "Failed to count rows in LanceDB table '%s' at %s; reporting 0 to health",
-                self.table_name,
-                self.lancedb_uri,
-                exc_info=True,
-            )
             return 0
 
     def search(
-        self,
-        vectors: list[list[float]],
-        query_texts: list[str],
-        top_k: int,
-    ) -> tuple[list[list[dict[str, Any]]], list[str]]:
+        self, vectors: list[list[float]], top_k: int, *, scope: str | None = None,
+        collection_name: str | None = None,
+    ) -> list[list[dict[str, Any]]]:
         """Search the LanceDB table with precomputed query vectors."""
-        if not self._table_exists:
-            return [[] for _ in vectors], _strategies_for_retrieval_mode("dense")
+        table_name = self.table_name
+        exists = self._table_exists
+        if collection_name:
+            table_name = self._resolved_table(scope or "default", collection_name)
+            exists = self._has_table(table_name)
+        if not exists:
+            return [[] for _ in vectors]
 
-        caps = self._table_capabilities()
-        mode = self.resolve_effective_retrieval_mode(caps)
-        strategies = _strategies_for_retrieval_mode(mode)
-
-        from nemo_retriever.common.vdb.lancedb import LanceDB
         from nemo_retriever.common.vdb.records import normalize_retrieval_results
 
-        hybrid = mode == "hybrid"
-        vdb = LanceDB(uri=self.lancedb_uri, table_name=self.table_name, overwrite=False, hybrid=hybrid)
-        retrieval_kwargs: dict[str, Any] = {"top_k": top_k, "hybrid": hybrid}
-        if hybrid:
-            retrieval_kwargs["query_texts"] = query_texts
+        table = self._open_table(table_name)
+        raw_results = []
+        for vector in vectors:
+            results = table.search(vector).limit(top_k).to_list()
+            raw_results.append(results)
 
-        if caps is not None and caps.vector_column and caps.vector_column != "vector":
-            retrieval_kwargs["vector_column_name"] = caps.vector_column
+        return normalize_retrieval_results(raw_results)
 
-        raw_results = vdb.retrieval(vectors, **retrieval_kwargs)
-        return normalize_retrieval_results(raw_results), strategies
+    def list_documents(self, scope: str, collection: str, limit: int, token: str | None) -> DocumentPage:
+        self._resolved_table(scope, collection)
+        where = f"scope = {_quoted(scope)} AND collection_name = {_quoted(collection)}"
+        rows = sorted(self._rows(_DOCUMENTS_TABLE, where), key=lambda r: (r["created_at"], r["document_id"]))
+        start = _offset(token)
+        page = rows[start : start + limit]
+        return DocumentPage(
+            items=[self._document_info(r) for r in page],
+            next_token=_token(start + limit) if start + limit < len(rows) else None,
+        )
+
+    def get_document(self, scope: str, collection: str, document_id: str) -> DocumentInfo:
+        self._resolved_table(scope, collection)
+        where = (
+            f"scope = {_quoted(scope)} AND collection_name = {_quoted(collection)} "
+            f"AND document_id = {_quoted(document_id)}"
+        )
+        rows = self._rows(_DOCUMENTS_TABLE, where)
+        if not rows:
+            raise HTTPException(404, "Document not found")
+        return self._document_info(rows[0])
+
+    def delete_document(self, scope: str, collection: str, document_id: str, if_exists: bool) -> DocumentDeleteResult:
+        table_name = self._resolved_table(scope, collection)
+        try:
+            self.get_document(scope, collection, document_id)
+        except HTTPException:
+            if if_exists:
+                return DocumentDeleteResult(document_id=document_id, collection_name=collection, deleted=False)
+            raise
+        with self._write_lock:
+            if self._has_table(table_name):
+                self._open_table(table_name).delete(f"document_id = {_quoted(document_id)}")
+            self._db.open_table(_DOCUMENTS_TABLE).delete(
+                f"scope = {_quoted(scope)} AND collection_name = {_quoted(collection)} "
+                f"AND document_id = {_quoted(document_id)}"
+            )
+        return DocumentDeleteResult(document_id=document_id, collection_name=collection, deleted=True)
 
     def _get_local_embedder(self) -> Any:
         if self._local_embedder is None:
@@ -398,39 +641,100 @@ def create_vectordb_app(
     @app.get("/v1/health", tags=["system"])
     async def health() -> dict[str, Any]:
         rows = _state.total_rows() if _state else 0
-        effective_mode: str | None = None
-        if _state is not None and _state.table_exists:
-            try:
-                effective_mode = _state.resolve_effective_retrieval_mode()
-            except Exception:
-                # Health must never 500 (it backs k8s liveness/readiness probes),
-                # so report "unknown" for any failure — misconfiguration
-                # (ValueError) or transient I/O / LanceDB errors on open_table.
-                effective_mode = "unknown"
-                logger.warning(
-                    "Failed to resolve effective retrieval mode for table '%s' at %s; reporting unknown to health",
-                    table_name,
-                    lancedb_uri,
-                    exc_info=True,
-                )
         return {
             "status": "ok",
             "table": table_name,
             "total_rows": rows,
             "table_exists": _state.table_exists if _state else False,
             "embed_mode": _state.embed_mode if _state else "none",
-            "effective_retrieval_mode": effective_mode,
         }
 
     @app.post("/internal/vectordb/write", response_model=WriteResponse, tags=["internal"])
     async def write(req: WriteRequest) -> WriteResponse:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
-        written = await asyncio.to_thread(_state.write_rows, req.rows)
-        return WriteResponse(written=written, total_rows=_state.total_rows())
+        written = await asyncio.to_thread(
+            _state.write_rows, req.rows, scope=req.scope, collection_name=req.collection_name,
+            document_id=req.document_id, job_id=req.job_id, filename=req.filename,
+            content_sha256=req.content_sha256, operation=req.operation,
+        )
+        return WriteResponse(
+            written=written,
+            total_rows=_state.total_rows(scope=req.scope, collection_name=req.collection_name),
+        )
+
+    def _scope(value: str | None) -> str:
+        return (value or "default").strip() or "default"
+
+    @app.post("/v1/collections", response_model=CollectionInfo, status_code=201, tags=["collections"])
+    async def create_collection(req: CollectionCreateRequest, x_nrl_scope: str | None = Header(None)) -> CollectionInfo:
+        if _state is None:
+            raise HTTPException(503, "VectorDB not initialised")
+        return await asyncio.to_thread(_state.create_collection, _scope(x_nrl_scope), req)
+
+    @app.get("/v1/collections", response_model=CollectionPage, tags=["collections"])
+    async def list_collections(
+        limit: int = Query(100, ge=1, le=200), continuation_token: str | None = None,
+        x_nrl_scope: str | None = Header(None),
+    ) -> CollectionPage:
+        if _state is None:
+            raise HTTPException(503, "VectorDB not initialised")
+        return await asyncio.to_thread(_state.list_collections, _scope(x_nrl_scope), limit, continuation_token)
+
+    @app.get("/v1/collections/{name}", response_model=CollectionInfo, tags=["collections"])
+    async def get_collection(name: str, x_nrl_scope: str | None = Header(None)) -> CollectionInfo:
+        if _state is None:
+            raise HTTPException(503, "VectorDB not initialised")
+        return await asyncio.to_thread(_state.get_collection, _scope(x_nrl_scope), name)
+
+    @app.patch("/v1/collections/{name}", response_model=CollectionInfo, tags=["collections"])
+    async def update_collection(
+        name: str, req: CollectionUpdateRequest, x_nrl_scope: str | None = Header(None),
+    ) -> CollectionInfo:
+        if _state is None:
+            raise HTTPException(503, "VectorDB not initialised")
+        return await asyncio.to_thread(_state.update_collection, _scope(x_nrl_scope), name, req)
+
+    @app.delete("/v1/collections/{name}", response_model=CollectionInfo | None, tags=["collections"])
+    async def delete_collection(
+        name: str, if_exists: bool = False, x_nrl_scope: str | None = Header(None),
+    ) -> CollectionInfo | None:
+        if _state is None:
+            raise HTTPException(503, "VectorDB not initialised")
+        return await asyncio.to_thread(_state.delete_collection, _scope(x_nrl_scope), name, if_exists)
+
+    @app.get("/v1/collections/{name}/documents", response_model=DocumentPage, tags=["collections"])
+    async def list_documents(
+        name: str, limit: int = Query(100, ge=1, le=200), continuation_token: str | None = None,
+        x_nrl_scope: str | None = Header(None),
+    ) -> DocumentPage:
+        if _state is None:
+            raise HTTPException(503, "VectorDB not initialised")
+        return await asyncio.to_thread(_state.list_documents, _scope(x_nrl_scope), name, limit, continuation_token)
+
+    @app.get("/v1/collections/{name}/documents/{document_id}", response_model=DocumentInfo, tags=["collections"])
+    async def get_document(name: str, document_id: str, x_nrl_scope: str | None = Header(None)) -> DocumentInfo:
+        if _state is None:
+            raise HTTPException(503, "VectorDB not initialised")
+        return await asyncio.to_thread(_state.get_document, _scope(x_nrl_scope), name, document_id)
+
+    @app.delete(
+        "/v1/collections/{name}/documents/{document_id}", response_model=DocumentDeleteResult,
+        tags=["collections"],
+    )
+    async def delete_document(
+        name: str, document_id: str, if_exists: bool = False, x_nrl_scope: str | None = Header(None),
+    ) -> DocumentDeleteResult:
+        if _state is None:
+            raise HTTPException(503, "VectorDB not initialised")
+        return await asyncio.to_thread(
+            _state.delete_document, _scope(x_nrl_scope), name, document_id, if_exists,
+        )
 
     @app.post("/v1/query", response_model=Union[QueryResponse, EvidenceQueryResponse], tags=["query"])
-    async def query(req: QueryRequest) -> QueryResponse | EvidenceQueryResponse:
+    async def query(
+        req: QueryRequest, x_nrl_scope: str | None = Header(None),
+    ) -> QueryResponse | EvidenceQueryResponse:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
 
@@ -441,7 +745,8 @@ def create_vectordb_app(
                 "NIM or --local-embed for in-pod Hugging Face query embedding.",
             )
 
-        if not _state.table_exists:
+        collection_exists = req.collection_name is not None
+        if not collection_exists and not _state.table_exists:
             raise HTTPException(
                 status_code=422,
                 detail="No data has been ingested yet. Ingest documents first, then query.",
@@ -453,21 +758,16 @@ def create_vectordb_app(
                 return EvidenceQueryResponse(results=[])
             return QueryResponse(results=[])
 
-        try:
-            async with _query_semaphore:
-                vectors = await asyncio.to_thread(_state.embed_queries, queries)
-                hits_per_query, strategies = await asyncio.to_thread(
-                    _state.search,
-                    vectors,
-                    queries,
-                    req.top_k,
-                )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        async with _query_semaphore:
+            vectors = await asyncio.to_thread(_state.embed_queries, queries)
+            hits_per_query = await asyncio.to_thread(
+                _state.search, vectors, req.top_k, scope=_scope(x_nrl_scope),
+                collection_name=req.collection_name,
+            )
 
         if req.format == "evidence":
             return EvidenceQueryResponse(
-                results=[EvidenceResult(**build_evidence_result(hits, strategies)) for hits in hits_per_query]
+                results=[EvidenceResult(**build_evidence_result(hits, _QUERY_STRATEGIES)) for hits in hits_per_query]
             )
 
         return QueryResponse(results=[QueryResult(hits=hits) for hits in hits_per_query])
@@ -485,11 +785,7 @@ def main() -> None:
     parser.add_argument("--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL")
     parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-vl-1b-v2")
     parser.add_argument("--embed-model-provider-prefix", default="", help="Optional LiteLLM provider prefix")
-    parser.add_argument(
-        "--embed-api-key",
-        default="",
-        help="Remote embedding API key (defaults to NVIDIA_API_KEY, then NGC_API_KEY).",
-    )
+    parser.add_argument("--embed-api-key", default="")
     parser.add_argument(
         "--local-embed",
         action="store_true",
@@ -528,7 +824,7 @@ def main() -> None:
         embed_endpoint=args.embed_endpoint,
         embed_model=args.embed_model,
         embed_model_provider_prefix=args.embed_model_provider_prefix or None,
-        embed_api_key=resolve_remote_api_key(args.embed_api_key) or "",
+        embed_api_key=args.embed_api_key,
         local_embed=args.local_embed,
         local_embed_backend=args.local_embed_backend,
         hf_cache_dir=args.hf_cache_dir or None,

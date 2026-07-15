@@ -77,6 +77,8 @@ class JobCreatedResponse(RichModel):
     created_at: str
     label: str | None = None
     trace_id: str | None = None
+    collection_name: str | None = None
+    operation: str = "append"
 
 
 class JobAggregateResponse(RichModel):
@@ -100,6 +102,8 @@ class JobAggregateResponse(RichModel):
     counts: dict[str, int] = Field(default_factory=dict)
     document_ids: list[str] = Field(default_factory=list)
     documents: list[dict[str, Any]] | None = None
+    collection_name: str | None = None
+    operation: str = "append"
 
 
 class DocumentStatusResponse(RichModel):
@@ -122,6 +126,8 @@ class DocumentStatusResponse(RichModel):
     result_rows: int | None = None
     result_data: list[dict[str, Any]] | None = None
     error: str | None = None
+    collection_name: str | None = None
+    content_sha256: str | None = None
 
 
 class JobDocumentsPage(RichModel):

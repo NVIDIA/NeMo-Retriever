@@ -267,10 +267,11 @@ def create_app(config: ServiceConfig) -> FastAPI:
         app.mount(config.mcp.path, mcp_asgi_app)
         logger.info("FastMCP service endpoint mounted at %s", config.mcp.path)
 
-    from nemo_retriever.service.routers import admin, ingest, metrics, work
+    from nemo_retriever.service.routers import admin, collections, ingest, metrics, work
     from nemo_retriever.service.services.prometheus import instrument_app
 
     app.include_router(ingest.router, prefix="/v1")
+    app.include_router(collections.router, prefix="/v1")
     app.include_router(metrics.router, prefix="/v1")
     # Admin/internal endpoints — pool_stats etc. Registered on every
     # role; the handler self-reports an empty pool dict on gateway pods.

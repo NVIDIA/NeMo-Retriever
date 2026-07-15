@@ -424,6 +424,7 @@ class WorkBroker:
             "retain_results": record.retain_results,
             "pipeline_spec": record.pipeline_spec,
             "trace_context": record.trace_context,
+            "extra": record.extra,
         }
 
 
@@ -487,6 +488,7 @@ class GatewayWorkClient:
             retain_results=bool(claim.get("retain_results")),
             pipeline_spec=claim.get("pipeline_spec"),
             trace_context=claim.get("trace_context") or {},
+            **(claim.get("extra") or {}),
             lease_id=claim["lease_id"],
             lease_generation=claim["lease_generation"],
             delivery_attempt=claim["delivery_attempt"],

@@ -231,6 +231,22 @@ class VDB(ABC):
             "in-place stable-key puts are not supported by this VDB backend."
         )
 
+    def create_collection(self, name: str, **kwargs: Any) -> Any:
+        """Optionally create a logical collection without changing legacy backends."""
+        raise NotImplementedError(f"{type(self).__name__} does not implement collection lifecycle operations")
+
+    def delete_collection(self, name: str, **kwargs: Any) -> Any:
+        """Optionally delete a logical collection and its backend-owned data."""
+        raise NotImplementedError(f"{type(self).__name__} does not implement collection lifecycle operations")
+
+    def delete_document(self, document_id: str, **kwargs: Any) -> Any:
+        """Optionally delete every chunk belonging to one stable document."""
+        raise NotImplementedError(f"{type(self).__name__} does not implement document lifecycle operations")
+
+    def replace_document(self, document_id: str, records: list, **kwargs: Any) -> Any:
+        """Optionally replace one document atomically; distinct from strict ``put``."""
+        raise NotImplementedError(f"{type(self).__name__} does not implement document lifecycle operations")
+
     @abstractmethod
     def run(self, records):
         """Pipeline entry point: ensure the index exists, then ingest.

@@ -146,6 +146,8 @@ class DocumentRecord(RichModel):
     result_data: list[dict[str, Any]] | None = None
     error: str | None = None
     filename: str | None = None
+    collection_name: str | None = None
+    content_sha256: str | None = None
     """Original upload filename, surfaced in the dashboard UI."""
 
 
@@ -180,6 +182,13 @@ class JobAggregate(RichModel):
     trace_id: str | None = None
     trace_context: dict[str, str] = Field(default_factory=dict)
     retain_results: bool = False
+    collection_name: str | None = None
+    scope: str = "default"
+    operation: str = "append"
+    target_document_id: str | None = None
+    idempotency_key: str | None = None
+    idempotency_fingerprint: str | None = None
+    document_manifest: list[dict[str, str]] = Field(default_factory=list)
     """When false, :meth:`JobTracker.mark_completed` drops bulky ``result_data``."""
 
 
@@ -257,6 +266,7 @@ class JobTracker:
         # counts) we last published, so we don't emit duplicate progress
         # events on every doc transition.
         self._progress_published: dict[str, int] = {}
+        self._idempotency: dict[tuple[str, str], tuple[str, str]] = {}
         self._progress_step: int = 10
 
     # ── wiring ───────────────────────────────────────────────────────
@@ -283,6 +293,13 @@ class JobTracker:
         retain_results: bool = False,
         trace_id: str | None = None,
         trace_context: dict[str, str] | None = None,
+        collection_name: str | None = None,
+        scope: str = "default",
+        operation: str = "append",
+        target_document_id: str | None = None,
+        idempotency_key: str | None = None,
+        idempotency_fingerprint: str | None = None,
+        document_manifest: list[dict[str, str]] | None = None,
     ) -> JobAggregate:
         """Create a new :class:`JobAggregate` in ``pending`` state."""
         if expected_documents <= 0:
@@ -309,9 +326,18 @@ class JobTracker:
                 trace_id=trace_id,
                 trace_context=dict(trace_context or {}),
                 retain_results=retain_results,
+                collection_name=collection_name,
+                scope=scope,
+                operation=operation,
+                target_document_id=target_document_id,
+                idempotency_key=idempotency_key,
+                idempotency_fingerprint=idempotency_fingerprint,
+                document_manifest=list(document_manifest or []),
             )
             agg.counts[DocumentStatus.PENDING.value] = 0
             self._jobs[job_id] = agg
+            if idempotency_key and idempotency_fingerprint:
+                self._idempotency[(scope, idempotency_key)] = (job_id, idempotency_fingerprint)
         logger.info(
             "Job registered: %s (expected_documents=%d, label=%r)",
             job_id,
@@ -320,6 +346,17 @@ class JobTracker:
         )
         self._publish_job_event("job_created", agg)
         return agg.model_copy(deep=True)
+
+    def get_idempotent_job(self, scope: str, key: str, fingerprint: str) -> JobAggregate | None:
+        with self._lock:
+            entry = self._idempotency.get((scope, key))
+            if not entry:
+                return None
+            job_id, previous = entry
+            if previous != fingerprint:
+                raise JobFullError("Idempotency key was already used with a different request payload")
+            agg = self._get_live_job_locked(job_id)
+            return agg.model_copy(deep=True) if agg else None
 
     def get_job(self, job_id: str) -> JobAggregate | None:
         with self._lock:
@@ -371,6 +408,7 @@ class JobTracker:
         *,
         job_id: str,
         filename: str | None = None,
+        content_sha256: str | None = None,
     ) -> DocumentRecord:
         """Attach a new :class:`DocumentRecord` to *job_id*.
 
@@ -403,6 +441,8 @@ class JobTracker:
                 status=DocumentStatus.PENDING,
                 submitted_at=_utcnow_iso(),
                 filename=filename,
+                collection_name=agg.collection_name,
+                content_sha256=content_sha256,
             )
             self._documents[document_id] = rec
             agg.document_ids.append(document_id)

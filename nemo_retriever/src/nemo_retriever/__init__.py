@@ -30,6 +30,17 @@ __all__ = [
     "ingestor",
     "retriever",
     "RetrieverServiceCompatibilityError",
+    "RetrieverServiceClient",
+    "RetrieverServiceError",
+    "RetrieverServiceNotFoundError",
+    "RetrieverServiceConflictError",
+    "RetrieverServiceValidationError",
+    "CollectionInfo",
+    "CollectionPage",
+    "DocumentInfo",
+    "DocumentPage",
+    "DocumentDeleteResult",
+    "QueryHit",
 ]
 
 retriever = _retriever_cls()
@@ -56,8 +67,46 @@ def __getattr__(name: str):
         from nemo_retriever.ingestor.graph_ingestor import GraphIngestionError
 
         return GraphIngestionError
-    if name == "RetrieverServiceCompatibilityError":
-        from nemo_retriever.service.client import RetrieverServiceCompatibilityError
+    if name in {
+        "RetrieverServiceClient",
+        "RetrieverServiceCompatibilityError",
+    }:
+        from nemo_retriever.service.client import RetrieverServiceClient, RetrieverServiceCompatibilityError
 
-        return RetrieverServiceCompatibilityError
+        return {
+            "RetrieverServiceClient": RetrieverServiceClient,
+            "RetrieverServiceCompatibilityError": RetrieverServiceCompatibilityError,
+        }[name]
+    if name in {
+        "RetrieverServiceError",
+        "RetrieverServiceNotFoundError",
+        "RetrieverServiceConflictError",
+        "RetrieverServiceValidationError",
+    }:
+        from nemo_retriever.service.errors import (
+            RetrieverServiceConflictError,
+            RetrieverServiceError,
+            RetrieverServiceNotFoundError,
+            RetrieverServiceValidationError,
+        )
+
+        return locals()[name]
+    if name in {
+        "CollectionInfo",
+        "CollectionPage",
+        "DocumentInfo",
+        "DocumentPage",
+        "DocumentDeleteResult",
+        "QueryHit",
+    }:
+        from nemo_retriever.common.schemas.collections import (
+            CollectionInfo,
+            CollectionPage,
+            DocumentDeleteResult,
+            DocumentInfo,
+            DocumentPage,
+            QueryHit,
+        )
+
+        return locals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
