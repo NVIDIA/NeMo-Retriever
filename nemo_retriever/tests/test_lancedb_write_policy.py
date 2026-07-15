@@ -136,6 +136,22 @@ def test_append_rejects_missing_embedding_identity_for_model_aware_table(tmp_pat
     assert _count_rows(tmp_path) == 1
 
 
+def test_append_rejects_known_model_for_model_less_versioned_table(tmp_path: Path) -> None:
+    LanceDB(uri=str(tmp_path), table_name="t", vector_dim=2, create_index=False).run(_records())
+
+    with pytest.raises(ValueError, match="does not record an embedding model.*model-a"):
+        LanceDB(
+            uri=str(tmp_path),
+            table_name="t",
+            vector_dim=2,
+            embedding_model_name="model-a",
+            overwrite=False,
+            create_index=False,
+        ).run(_records(text="second"))
+
+    assert _count_rows(tmp_path) == 1
+
+
 def test_create_index_kwarg_disables_index_build_without_shadowing_method(tmp_path: Path) -> None:
     op = LanceDB(uri=str(tmp_path), table_name="t", vector_dim=2, create_index=False)
     assert callable(op.create_index)

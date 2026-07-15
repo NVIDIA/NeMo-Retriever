@@ -201,11 +201,9 @@ def _validate_append_schema(table: Any, expected_schema: pa.Schema, *, table_nam
             f"{existing_model!r}, but this append uses {expected_model!r}."
         )
     if expected_model and not existing_model and existing_metadata.index_format_version is not None:
-        logger.warning(
-            "Appending to LanceDB table %r at %s without embedding-model metadata; "
-            "embedding compatibility cannot be verified.",
-            table_name,
-            uri,
+        raise ValueError(
+            f"LanceDB table {table_name!r} at {uri!r} does not record an embedding model, "
+            f"but this append uses {expected_model!r}."
         )
 
 
