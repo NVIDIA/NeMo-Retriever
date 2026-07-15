@@ -204,8 +204,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apt-get update
-          apt-get install -y --no-install-recommends \
+
+          # GitHub arm runners often cannot reach Ubuntu HTTP mirrors (port 80).
+          # Rewrite apt sources to HTTPS before the first update.
+          for apt_list in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            [ -f "${apt_list}" ] || continue
+            sed -i \
+              -e 's|http://ports.ubuntu.com|https://ports.ubuntu.com|g' \
+              -e 's|http://archive.ubuntu.com|https://archive.ubuntu.com|g' \
+              -e 's|http://security.ubuntu.com|https://security.ubuntu.com|g' \
+              "${apt_list}"
+          done
+
+          apt_retry() {
+            local attempt=1
+            local max_attempts=5
+            until apt-get "$@"; do
+              if (( attempt >= max_attempts )); then
+                return 1
+              fi
+              attempt=$((attempt + 1))
+              echo "apt-get $* failed (attempt ${attempt}/${max_attempts}); retrying..."
+              sleep $((attempt * 5))
+              apt-get update || true
+            done
+          }
+
+          apt_retry update
+          apt_retry install -y --no-install-recommends \
             ca-certificates \
             git \
             git-lfs \

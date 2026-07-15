@@ -282,6 +282,14 @@ def test_huggingface_workflow_verifies_ocr_wheel_license_metadata() -> None:
     assert "Built wheel metadata does not declare expected license" in workflow
 
 
+def test_huggingface_ocr_job_prefers_https_apt_mirrors_on_arm() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "huggingface-nightly.yml").read_text(encoding="utf-8")
+
+    ocr_job = workflow.split("build_ocr_cuda:", 1)[1]
+    assert "http://ports.ubuntu.com|https://ports.ubuntu.com" in ocr_job
+    assert "apt_retry update" in ocr_job
+
+
 def test_huggingface_nightly_builder_defaults_to_public_pypi() -> None:
     script = (REPO_ROOT / "ci" / "scripts" / "nightly_build_publish.py").read_text(encoding="utf-8")
 
