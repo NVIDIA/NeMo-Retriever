@@ -96,6 +96,21 @@ def _venv_python(venv_dir: Path) -> Path:
     return venv_dir / "bin" / "python"
 
 
+def _venv_is_usable(venv_dir: Path) -> bool:
+    py = _venv_python(venv_dir)
+    if not py.is_file() and not py.is_symlink():
+        return False
+    try:
+        subprocess.run(
+            [str(py), "-c", "pass"],
+            check=True,
+            capture_output=True,
+        )
+        return True
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
 def _ensure_venv(venv_dir: Path, *, system_site_packages: bool) -> Path:
     """
     Ensure a local venv exists and return its python path.
@@ -105,12 +120,14 @@ def _ensure_venv(venv_dir: Path, *, system_site_packages: bool) -> Path:
     """
     marker = venv_dir / ".orch-system-site-packages"
     py = _venv_python(venv_dir)
-    if py.exists():
+    if _venv_is_usable(venv_dir):
         # If caller changes system_site_packages setting, recreate the venv to ensure
         # the correct site-packages visibility.
         has_marker = marker.exists()
         if has_marker == system_site_packages:
             return py
+        shutil.rmtree(venv_dir)
+    elif venv_dir.exists():
         shutil.rmtree(venv_dir)
 
     venv_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -387,6 +404,19 @@ def _project_table_bounds(text: str) -> tuple[int, int] | None:
     return m.end(), len(text)
 
 
+def _project_core_bounds(text: str) -> tuple[int, int] | None:
+    """Bounds of inline ``[project]`` keys only (excludes ``[project.*]`` subtables)."""
+    m = re.search(r"(?m)^\[project\]\s*(?:#.*)?$", text)
+    if not m:
+        return None
+
+    for next_table in re.finditer(r"(?m)^\[([^\]]+)\]\s*(?:#.*)?$", text[m.end() :]):
+        table_name = next_table.group(1).strip()
+        if table_name != "project":
+            return m.end(), m.end() + next_table.start()
+    return m.end(), len(text)
+
+
 def _set_requirement_specifier(requirement: str, specifier: str) -> str:
     marker = ""
     base = requirement
@@ -460,6 +490,129 @@ def _patch_pyproject_runtime_dependency_pins(project_dir: Path, pins: dict[str, 
     for package in sorted(found):
         print(f"Patched pyproject.toml runtime dependency: {package}{normalized_specifiers[package]}")
     return True
+
+
+_DEFAULT_LICENSE_TEXT = "NVIDIA Open Model License"
+_DEFAULT_LICENSE_CLASSIFIER = "License :: Other/Proprietary License"
+_LICENSE_FILE_NAMES = ("LICENSE", "LICENSE.txt", "LICENSE.md")
+
+
+def _patch_pyproject_license(
+    project_dir: Path,
+    *,
+    license_text: str,
+    license_classifier: str | None,
+) -> bool:
+    """
+    Ensure PyPI-visible license metadata is present in ``[project]``.
+
+    Upstream HF repos (e.g. Nemotron OCR) may omit ``license`` and Trove
+    classifiers even though the model is governed by the NVIDIA Open Model
+    License. Hatch/setuptools only emit wheel/sdist METADATA from these fields.
+    """
+    pyproject = project_dir / "pyproject.toml"
+    if not pyproject.exists():
+        return False
+
+    text = _read_text(pyproject)
+    core_bounds = _project_core_bounds(text)
+    if core_bounds is None:
+        return False
+
+    core_start, core_end = core_bounds
+    project_text = text[core_start:core_end]
+    changed = False
+
+    if not re.search(r"(?m)^\s*license\s*=", project_text):
+        line = f'license = {{text = "{license_text}"}}\n'
+        version_m = re.search(r"(?m)^(\s*version\s*=\s*[^\n]+\n)", project_text)
+        if version_m:
+            insert_at = version_m.end()
+            project_text = project_text[:insert_at] + line + project_text[insert_at:]
+        else:
+            project_text = "\n" + line + project_text
+        changed = True
+        print(f"Added pyproject.toml license: {license_text!r}")
+
+    if license_classifier and f'"{license_classifier}"' not in project_text:
+        classifiers_m = re.search(r"(?ms)^(\s*classifiers\s*=\s*\[)(.*?)(^\s*\])", project_text)
+        if classifiers_m:
+            patched_body = classifiers_m.group(2) + f'    "{license_classifier}",\n'
+            project_text = project_text[: classifiers_m.start(2)] + patched_body + project_text[classifiers_m.end(2) :]
+            changed = True
+            print(f"Added pyproject.toml classifier: {license_classifier!r}")
+        else:
+            project_text += "\nclassifiers = [\n" f'    "{license_classifier}",\n' "]\n"
+            changed = True
+            print(f"Added pyproject.toml classifiers with: {license_classifier!r}")
+
+    if not changed:
+        return False
+
+    _write_text(pyproject, text[:core_start] + project_text + text[core_end:])
+    return True
+
+
+def _patch_setup_cfg_license(
+    project_dir: Path,
+    *,
+    license_text: str,
+    license_classifier: str | None,
+) -> bool:
+    setup_cfg = project_dir / "setup.cfg"
+    if not setup_cfg.exists():
+        return False
+
+    text = _read_text(setup_cfg)
+    changed = False
+
+    if not re.search(r"(?ms)^\[metadata\]\s.*?^\s*license\s*=", text):
+        metadata_m = re.search(r"(?ms)^(\[metadata\]\s*(?:#.*)?\n)", text)
+        if not metadata_m:
+            return False
+        insert_at = metadata_m.end()
+        text = text[:insert_at] + f"license = {license_text}\n" + text[insert_at:]
+        changed = True
+        print(f"Added setup.cfg license: {license_text!r}")
+
+    if license_classifier and license_classifier not in text:
+        classifiers_m = re.search(r"(?ms)^(\s*classifiers\s*=\s*\n)(.*?)(^\S|\Z)", text)
+        if classifiers_m:
+            text = text[: classifiers_m.end(2)] + f"    {license_classifier}\n" + text[classifiers_m.end(2) :]
+        else:
+            metadata_m = re.search(r"(?ms)^(\[metadata\]\s*(?:#.*)?\n)", text)
+            if not metadata_m:
+                return changed
+            insert_at = metadata_m.end()
+            block = f"classifiers =\n    {license_classifier}\n"
+            text = text[:insert_at] + block + text[insert_at:]
+        changed = True
+        print(f"Added setup.cfg classifier: {license_classifier!r}")
+
+    if not changed:
+        return False
+
+    _write_text(setup_cfg, text)
+    return True
+
+
+def _ensure_license_file(project_dir: Path, *, search_roots: list[Path]) -> bool:
+    """Copy a LICENSE file into the Python project dir when upstream keeps it elsewhere."""
+    for candidate_name in _LICENSE_FILE_NAMES:
+        if (project_dir / candidate_name).is_file():
+            return False
+
+    for root in search_roots:
+        for candidate_name in _LICENSE_FILE_NAMES:
+            source = root / candidate_name
+            if source.is_file():
+                dest = project_dir / "LICENSE"
+                shutil.copy2(source, dest)
+                print(f"Copied license file into project dir: {source} -> {dest}")
+                return True
+
+    print("No LICENSE file found in upstream tree; continuing without a bundled license file.")
+    return False
 
 
 def _patch_pyproject_requires_python(repo_dir: Path, requires_python: str) -> bool:
@@ -816,6 +969,16 @@ def main() -> int:
         "(e.g. '>=3.11,<3.14') so wheels built on a Python matrix stay pip-installable.",
     )
     ap.add_argument(
+        "--license-text",
+        default=_DEFAULT_LICENSE_TEXT,
+        help="Ensure [project].license metadata is set to this text when missing (PyPI display).",
+    )
+    ap.add_argument(
+        "--license-classifier",
+        default=_DEFAULT_LICENSE_CLASSIFIER,
+        help="Ensure this Trove classifier is present when missing.",
+    )
+    ap.add_argument(
         "--rename-python-package",
         action="append",
         default=[],
@@ -928,6 +1091,23 @@ def main() -> int:
     if args.set_requires_python:
         if not _patch_pyproject_requires_python(project_dir, args.set_requires_python):
             print(f"requires-python already set to {args.set_requires_python!r} or no [project] table found.")
+
+    if args.license_text:
+        print("=== Ensuring PyPI license metadata ===")
+        if not _patch_pyproject_license(
+            project_dir,
+            license_text=args.license_text,
+            license_classifier=args.license_classifier or None,
+        ):
+            _patch_setup_cfg_license(
+                project_dir,
+                license_text=args.license_text,
+                license_classifier=args.license_classifier or None,
+            )
+        _ensure_license_file(
+            project_dir,
+            search_roots=[project_dir, project_dir.parent, repo_dir],
+        )
 
     if args.project_name:
         patched_name = _patch_pyproject_project_name(

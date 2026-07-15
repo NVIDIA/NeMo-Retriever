@@ -199,6 +199,89 @@ def test_huggingface_ocr_builds_and_publishes_wheels_for_all_supported_pythons()
     assert "dist-${{ matrix.ocr.id }}-${{ matrix.platform.arch }}-${{ matrix.python.tag }}" in ocr_job
 
 
+def test_nightly_builder_adds_license_metadata_for_ocr_like_pyproject(tmp_path: Path) -> None:
+    project_dir = tmp_path / "nemotron-ocr"
+    project_dir.mkdir()
+    pyproject = project_dir / "pyproject.toml"
+    pyproject.write_text(
+        """
+[project]
+name = "nemotron-ocr"
+version = "1.0.0"
+description = "Nemoton OCR"
+authors = [{ name = "NVIDIA Nemotron" }]
+requires-python = ">=3.12,<3.13"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    nightly_build_publish = _load_nightly_build_publish_module()
+
+    assert nightly_build_publish._patch_pyproject_license(
+        project_dir,
+        license_text=nightly_build_publish._DEFAULT_LICENSE_TEXT,
+        license_classifier=nightly_build_publish._DEFAULT_LICENSE_CLASSIFIER,
+    )
+
+    text = pyproject.read_text(encoding="utf-8")
+    assert 'license = {text = "NVIDIA Open Model License"}' in text
+    assert '"License :: Other/Proprietary License",' in text
+    assert not nightly_build_publish._patch_pyproject_license(
+        project_dir,
+        license_text=nightly_build_publish._DEFAULT_LICENSE_TEXT,
+        license_classifier=nightly_build_publish._DEFAULT_LICENSE_CLASSIFIER,
+    )
+
+
+def test_nightly_builder_copies_parent_license_into_project_subdir(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "nemotron-ocr-v2"
+    project_dir = repo_dir / "nemotron-ocr"
+    project_dir.mkdir(parents=True)
+    (repo_dir / "LICENSE").write_text("NVIDIA Open Model License Agreement\n", encoding="utf-8")
+    nightly_build_publish = _load_nightly_build_publish_module()
+
+    assert nightly_build_publish._ensure_license_file(
+        project_dir,
+        search_roots=[project_dir, project_dir.parent, repo_dir],
+    )
+    assert (project_dir / "LICENSE").read_text(encoding="utf-8").startswith("NVIDIA Open Model License Agreement")
+    assert not nightly_build_publish._ensure_license_file(
+        project_dir,
+        search_roots=[project_dir, project_dir.parent, repo_dir],
+    )
+
+
+def test_nightly_builder_leaves_existing_license_metadata_unchanged(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    pyproject = project_dir / "pyproject.toml"
+    original = """
+[project]
+name = "nemotron-page-elements-v3"
+version = "3.0.1"
+license = {text = "NVIDIA Open Model License"}
+classifiers = [
+    "License :: Other/Proprietary License",
+]
+""".lstrip()
+    pyproject.write_text(original, encoding="utf-8")
+    nightly_build_publish = _load_nightly_build_publish_module()
+
+    assert not nightly_build_publish._patch_pyproject_license(
+        project_dir,
+        license_text=nightly_build_publish._DEFAULT_LICENSE_TEXT,
+        license_classifier=nightly_build_publish._DEFAULT_LICENSE_CLASSIFIER,
+    )
+    assert pyproject.read_text(encoding="utf-8") == original
+
+
+def test_huggingface_workflow_verifies_ocr_wheel_license_metadata() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "huggingface-nightly.yml").read_text(encoding="utf-8")
+
+    assert 'expected_license = "NVIDIA Open Model License"' in workflow
+    assert 'expected_license_classifier = "License :: Other/Proprietary License"' in workflow
+    assert "Built wheel metadata does not declare expected license" in workflow
+
+
 def test_huggingface_nightly_builder_defaults_to_public_pypi() -> None:
     script = (REPO_ROOT / "ci" / "scripts" / "nightly_build_publish.py").read_text(encoding="utf-8")
 
