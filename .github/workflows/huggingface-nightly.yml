@@ -168,8 +168,11 @@ jobs:
     needs: nightly_coordinate
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.package == 'all' || inputs.package == 'nemotron-ocr-v2' }}
     # Nemotron OCR packages need nvcc/CUDA headers to build their extension.
-    # Build with Python 3.12 to match upstream package constraints and
-    # avoid producing an extension for the wrong Python ABI.
+    # Build a per-interpreter extension for each supported Python (3.11, 3.12,
+    # 3.13): torch cpp_extension compiles against the active interpreter's ABI,
+    # so setup-python selects both the build interpreter and the wheel ABI tag.
+    # We relax the upstream requires-python (see --set-requires-python) so the
+    # resulting wheels stay pip-installable on every targeted interpreter.
     # Matrix across x86_64 and aarch64 so the wheel works on ARM hosts
     # (e.g. DGX Spark) as well as conventional x86 machines.
     runs-on: ${{ matrix.platform.runner }}
@@ -183,6 +186,13 @@ jobs:
           - runner: ubuntu-24.04-arm
             cuda_image: nvidia/cuda:13.0.0-devel-ubuntu24.04
             arch: aarch64
+        python:
+          - version: "3.11"
+            tag: cp311
+          - version: "3.12"
+            tag: cp312
+          - version: "3.13"
+            tag: cp313
         ocr:
           - id: nemotron-ocr-v2
             url: https://huggingface.co/nvidia/nemotron-ocr-v2
@@ -213,7 +223,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "${{ matrix.python.version }}"
 
       - name: Decide upload target
         id: target
@@ -230,7 +240,7 @@ jobs:
           echo "upload_to=${upload_to}" >> "$GITHUB_OUTPUT"
           echo "skip_existing=${skip_existing}" >> "$GITHUB_OUTPUT"
 
-      - name: Build ${{ matrix.ocr.id }} (and maybe upload)
+      - name: Build ${{ matrix.ocr.id }} (and maybe upload) for Python ${{ matrix.python.version }}
         env:
           NIGHTLY_DATE_SUFFIX: ${{ needs.nightly_coordinate.outputs.nightly_date_suffix }}
           PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
@@ -267,6 +277,14 @@ jobs:
             arch_env_arg="--build-env ARCH=arm64"
           fi
 
+          # The sdist is interpreter-agnostic and identical across every leg of
+          # the platform/Python matrix, so build (and upload) it exactly once
+          # (x86_64 + 3.12); every other leg produces only its ABI-tagged wheel.
+          sdist_arg="--skip-sdist"
+          if [[ "${{ matrix.platform.arch }}" == "x86_64" && "${{ matrix.python.version }}" == "3.12" ]]; then
+            sdist_arg=""
+          fi
+
           release_type="nightly"
           expected_version="${{ matrix.ocr.nightly_base_version }}.dev"
           version_args=(--nightly-base-version "${{ matrix.ocr.nightly_base_version }}")
@@ -285,6 +303,8 @@ jobs:
             --dist-dir "dist-out" \
             --project-subdir "nemotron-ocr" \
             "${version_args[@]}" \
+            --set-requires-python ">=3.11,<3.14" \
+            ${sdist_arg} \
             --hatch-force-platform-wheel \
             --auditwheel-repair \
             --auditwheel-exclude libtorch_cpu.so \
@@ -425,5 +445,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.ocr.id }}-${{ matrix.platform.arch }}
+          name: dist-${{ matrix.ocr.id }}-${{ matrix.platform.arch }}-${{ matrix.python.tag }}
           path: dist-out/${{ matrix.ocr.id }}/*

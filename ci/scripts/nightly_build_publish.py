@@ -6,7 +6,10 @@ Behavior:
 - Clones a HF git repo with Git LFS smudge disabled (so large weights are not downloaded).
 - Patches a PEP 440 dev version into pyproject.toml or setup.cfg (default suffix: UTC
   YYYYMMDD; override with NIGHTLY_DATE_SUFFIX or NIGHTLY_DATE_YYYYMMDD, e.g. from CI).
-- Builds sdist + wheel via `python -m build`.
+- Builds sdist + wheel via `python -m build` (``--skip-sdist`` builds the wheel only,
+  so a platform/Python matrix can emit the identical sdist exactly once).
+- Optional ``--set-requires-python`` relaxes ``[project].requires-python`` so wheels
+  built on a Python matrix stay pip-installable on every targeted interpreter.
 - Optional ``--auditwheel-repair`` rewrites ``linux_*`` wheels to ``manylinux_*`` for PyPI.
 - Optionally uploads to (Test)PyPI via twine.
 
@@ -459,6 +462,46 @@ def _patch_pyproject_runtime_dependency_pins(project_dir: Path, pins: dict[str, 
     return True
 
 
+def _patch_pyproject_requires_python(repo_dir: Path, requires_python: str) -> bool:
+    """
+    Set or relax the ``[project].requires-python`` constraint before building.
+
+    Upstream packages (e.g. Nemotron OCR) may pin ``requires-python`` to a single
+    interpreter (``>=3.12,<3.13``), which makes pip refuse the wheel on other
+    interpreters even though the compiled extension is ABI-tagged per interpreter.
+    Widening the metadata to the full supported range lets a matrix build publish
+    installable wheels for every targeted Python version.
+    """
+    pyproject = repo_dir / "pyproject.toml"
+    if not pyproject.exists():
+        return False
+
+    text = _read_text(pyproject)
+    bounds = _project_table_bounds(text)
+    if bounds is None:
+        return False
+
+    project_start, project_end = bounds
+    project_text = text[project_start:project_end]
+    m = re.search(r'(?m)^(\s*requires-python\s*=\s*")([^"]*)(")\s*$', project_text)
+    if m:
+        old_value = m.group(2)
+        if old_value == requires_python:
+            return False
+        patched_project_text = project_text[: m.start(2)] + requires_python + project_text[m.end(2) :]
+        patched_text = text[:project_start] + patched_project_text + text[project_end:]
+        _write_text(pyproject, patched_text)
+        print(f"Patched pyproject.toml requires-python: {old_value} -> {requires_python}")
+        return True
+
+    # No requires-python field yet: insert one at the top of the [project] table body.
+    insertion = f'\nrequires-python = "{requires_python}"'
+    patched_text = text[:project_start] + insertion + text[project_start:]
+    _write_text(pyproject, patched_text)
+    print(f"Added pyproject.toml requires-python: {requires_python}")
+    return True
+
+
 def _patch_setup_cfg_version(
     repo_dir: Path,
     *,
@@ -606,6 +649,7 @@ def _build(
     venv_system_site_packages: bool,
     venv_pip_install: list[str],
     pin_runtime_dependencies: list[str],
+    build_sdist: bool = True,
 ) -> None:
     venv_dir = Path(os.environ.get("ORCH_VENV_DIR", ".venv-build"))
     py = _ensure_venv(venv_dir, system_site_packages=venv_system_site_packages)
@@ -635,7 +679,9 @@ def _build(
         }
         _patch_pyproject_runtime_dependency_pins(project_dir, pins)
 
-    cmd = [str(py), "-m", "build", "--sdist", "--wheel"]
+    cmd = [str(py), "-m", "build", "--wheel"]
+    if build_sdist:
+        cmd.insert(3, "--sdist")
     if no_isolation:
         cmd.append("--no-isolation")
     _run(cmd, cwd=project_dir, env=env)
@@ -764,6 +810,12 @@ def main() -> int:
         "(e.g. publish a source tree under an alternate distribution name).",
     )
     ap.add_argument(
+        "--set-requires-python",
+        default=None,
+        help="Set or relax the [project].requires-python constraint before building "
+        "(e.g. '>=3.11,<3.14') so wheels built on a Python matrix stay pip-installable.",
+    )
+    ap.add_argument(
         "--rename-python-package",
         action="append",
         default=[],
@@ -779,6 +831,12 @@ def main() -> int:
         "--build-no-isolation",
         action="store_true",
         help="Pass --no-isolation to `python -m build` (useful to reuse preinstalled deps in CI images)",
+    )
+    ap.add_argument(
+        "--skip-sdist",
+        action="store_true",
+        help="Only build the wheel, not the sdist. Use on all but one leg of a platform/Python "
+        "matrix so the identical sdist is produced (and uploaded) exactly once.",
     )
     ap.add_argument(
         "--venv-dir",
@@ -867,6 +925,10 @@ def main() -> int:
     if not patched:
         print("No static version field found to patch (continuing).")
 
+    if args.set_requires_python:
+        if not _patch_pyproject_requires_python(project_dir, args.set_requires_python):
+            print(f"requires-python already set to {args.set_requires_python!r} or no [project] table found.")
+
     if args.project_name:
         patched_name = _patch_pyproject_project_name(
             project_dir,
@@ -897,6 +959,7 @@ def main() -> int:
         venv_system_site_packages=args.venv_system_site_packages,
         venv_pip_install=args.venv_pip_install,
         pin_runtime_dependencies=args.pin_runtime_dependency,
+        build_sdist=not args.skip_sdist,
     )
     print(f"Artifacts in: {out_dir}")
 

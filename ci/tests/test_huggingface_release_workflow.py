@@ -66,6 +66,57 @@ version = 2.0.0.dev20260520010101
     assert "version = 2.0.0" in setup_cfg.read_text(encoding="utf-8")
 
 
+def test_nightly_builder_relaxes_existing_requires_python(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    pyproject = project_dir / "pyproject.toml"
+    pyproject.write_text(
+        """
+[build-system]
+requires = ["hatchling"]
+
+[project]
+name = "example"
+version = "2.0.0"
+requires-python = ">=3.12,<3.13"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    nightly_build_publish = _load_nightly_build_publish_module()
+
+    assert nightly_build_publish._patch_pyproject_requires_python(project_dir, ">=3.11,<3.14")
+
+    text = pyproject.read_text(encoding="utf-8")
+    assert 'requires-python = ">=3.11,<3.14"' in text
+    assert ">=3.12,<3.13" not in text
+
+
+def test_nightly_builder_adds_requires_python_when_missing(tmp_path: Path) -> None:
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    pyproject = project_dir / "pyproject.toml"
+    pyproject.write_text(
+        """
+[build-system]
+requires = ["hatchling"]
+
+[project]
+name = "example"
+version = "2.0.0"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    nightly_build_publish = _load_nightly_build_publish_module()
+
+    assert nightly_build_publish._patch_pyproject_requires_python(project_dir, ">=3.11,<3.14")
+
+    text = pyproject.read_text(encoding="utf-8")
+    assert 'requires-python = ">=3.11,<3.14"' in text
+    # A no-op re-run must not duplicate the field.
+    assert not nightly_build_publish._patch_pyproject_requires_python(project_dir, ">=3.11,<3.14")
+    assert text.count("requires-python") == 1
+
+
 @pytest.mark.parametrize(
     "version",
     ["", "2.0.0a1", "2.0.0rc1", "2.0.0+local", "2.0.0.dev1"],
@@ -123,6 +174,29 @@ def test_huggingface_non_ocr_nightlies_are_versioned_after_current_stable() -> N
     assert 'nightly_base_version: "3.0.2"' in workflow
     assert "id: nemotron-table-structure-v1" in workflow
     assert workflow.count('nightly_base_version: "1.0.1"') == 1
+
+
+def test_huggingface_ocr_builds_and_publishes_wheels_for_all_supported_pythons() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "huggingface-nightly.yml").read_text(encoding="utf-8")
+
+    ocr_job = workflow.split("build_ocr_cuda:", 1)[1]
+
+    # Python matrix drives setup-python so each leg builds an ABI-specific wheel.
+    for version, tag in (("3.11", "cp311"), ("3.12", "cp312"), ("3.13", "cp313")):
+        assert f'version: "{version}"' in ocr_job
+        assert f"tag: {tag}" in ocr_job
+    assert 'python-version: "${{ matrix.python.version }}"' in ocr_job
+
+    # Published wheels stay pip-installable on every targeted interpreter.
+    assert '--set-requires-python ">=3.11,<3.14"' in ocr_job
+
+    # The identical sdist is emitted (and uploaded) exactly once across the matrix.
+    assert "sdist_arg=" in ocr_job
+    assert '"${{ matrix.platform.arch }}" == "x86_64" && "${{ matrix.python.version }}" == "3.12"' in ocr_job
+    assert "${sdist_arg}" in ocr_job
+
+    # Artifact names stay unique per architecture and Python version.
+    assert "dist-${{ matrix.ocr.id }}-${{ matrix.platform.arch }}-${{ matrix.python.tag }}" in ocr_job
 
 
 def test_huggingface_nightly_builder_defaults_to_public_pypi() -> None:
