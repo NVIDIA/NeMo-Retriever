@@ -1685,7 +1685,7 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
 
 @router.post(
     "/query",
-    summary="Search ingested documents by semantic similarity",
+    summary="Search ingested documents by semantic similarity or hybrid retrieval",
 )
 async def query(request: Request) -> Response:
     """Proxy a query request to the VectorDB service.
