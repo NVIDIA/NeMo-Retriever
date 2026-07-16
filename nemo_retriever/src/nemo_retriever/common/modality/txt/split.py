@@ -17,22 +17,21 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 from nemo_retriever.common.params import TextChunkParams
 
-DEFAULT_TOKENIZER_MODEL_ID = "nvidia/llama-nemotron-embed-1b-v2"
+from .tokenizer_provider import ChunkTokenizer, load_chunk_tokenizer
+
+DEFAULT_TOKENIZER_MODEL_ID = "nvidia/llama-nemotron-embed-vl-1b-v2"
 DEFAULT_MAX_TOKENS = 1024
 DEFAULT_OVERLAP_TOKENS = 0
 
 
-def _get_tokenizer(model_id: str, cache_dir: Optional[str] = None):  # noqa: ANN201
-    """Lazy-load HuggingFace tokenizer."""
-    from transformers import AutoTokenizer
-
-    from nemo_retriever.models.hf_model_registry import get_hf_revision
-
-    return AutoTokenizer.from_pretrained(
+def _get_tokenizer(
+    model_id: str,
+    cache_dir: Optional[str] = None,
+) -> ChunkTokenizer:
+    """Load the exact lightweight tokenizer configured for chunking."""
+    return load_chunk_tokenizer(
         model_id,
-        revision=get_hf_revision(model_id),
         cache_dir=cache_dir,
-        trust_remote_code=True,
     )
 
 

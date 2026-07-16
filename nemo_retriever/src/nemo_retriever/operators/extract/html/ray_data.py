@@ -57,13 +57,10 @@ class HtmlSplitCPUActor(AbstractOperator, CPUOperator):
             if (raw is None and text is None) or path is None:
                 continue
             path_str = str(path) if path is not None else ""
-            try:
-                payload = raw or text.encode("utf-8")
-                chunk_df = html_bytes_to_chunks_df(payload, path_str, params=params)
-                if not chunk_df.empty:
-                    out_dfs.append(chunk_df)
-            except Exception:
-                continue
+            payload = raw if raw is not None else text.encode("utf-8")
+            chunk_df = html_bytes_to_chunks_df(payload, path_str, params=params)
+            if not chunk_df.empty:
+                out_dfs.append(chunk_df)
         if not out_dfs:
             return pd.DataFrame(columns=["text", "path", "page_number", "metadata"])
         return pd.concat(out_dfs, ignore_index=True)
