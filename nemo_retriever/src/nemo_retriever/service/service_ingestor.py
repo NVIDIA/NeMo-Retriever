@@ -539,6 +539,7 @@ class ServiceIngestor(ingestor):
                     "webhook_params",
                     "split_config",
                     "pdf_split",
+                    "endpoint_overrides",
                 )
             )
             and spec.get("result_schema", "legacy") == "legacy"
@@ -1020,6 +1021,68 @@ class ServiceIngestor(ingestor):
         scrubbed = {k: v for k, v in params_dict.items() if k not in trust_sensitive | local_only}
         self._pipeline_spec["caption_params"] = scrubbed
         self._record_stage("caption")
+        return self
+
+    def endpoints(
+        self,
+        *,
+        embed_invoke_url: Optional[str] = None,
+        embed_model_name: Optional[str] = None,
+        embed_model_provider_prefix: Optional[str] = None,
+        caption_invoke_url: Optional[str] = None,
+        caption_model_name: Optional[str] = None,
+        api_key: Optional[str] = None,
+    ) -> "ServiceIngestor":
+        """Override the model endpoints the server uses for this job.
+
+        Endpoint URLs, model names, and API keys are normally server-owned:
+        the cluster bakes them in from ``retriever-service.yaml`` and the
+        service rejects any attempt to change them through the ordinary
+        ``.embed(...)`` / ``.caption(...)`` params. This method is the
+        explicit channel for pointing a submitted job at a *different* model
+        deployment — for example a purpose-built VLM for captioning or an
+        alternative embedding NIM.
+
+        Overrides are honored only when the operator opts in via
+        ``pipeline_overrides.endpoint_overrides`` in ``retriever-service.yaml``.
+        Otherwise the server responds with HTTP 403. Values left ``None`` fall
+        back to the cluster default for that stage.
+
+        Parameters
+        ----------
+        embed_invoke_url, embed_model_name, embed_model_provider_prefix
+            Retarget the embedding NIM used by the ``embed`` stage.
+        caption_invoke_url, caption_model_name
+            Retarget the VLM used by the ``caption`` stage. Supplying
+            ``caption_invoke_url`` also unlocks the caption stage even when
+            the cluster has no caption NIM configured (subject to operator
+            opt-in).
+        api_key
+            Optional credential applied to the client-overridden endpoints
+            only. It never replaces the server key for stages left at their
+            defaults.
+        """
+        overrides: dict[str, Any] = {}
+        if embed_invoke_url is not None:
+            overrides["embed_invoke_url"] = embed_invoke_url
+        if embed_model_name is not None:
+            overrides["embed_model_name"] = embed_model_name
+        if embed_model_provider_prefix is not None:
+            overrides["embed_model_provider_prefix"] = embed_model_provider_prefix
+        if caption_invoke_url is not None:
+            overrides["caption_invoke_url"] = caption_invoke_url
+        if caption_model_name is not None:
+            overrides["caption_model_name"] = caption_model_name
+        if api_key is not None:
+            overrides["api_key"] = api_key
+        if not overrides:
+            raise ValueError(
+                "ServiceIngestor.endpoints(): supply at least one endpoint or "
+                "model override (embed_invoke_url, caption_invoke_url, …)."
+            )
+        existing = dict(self._pipeline_spec.get("endpoint_overrides") or {})
+        existing.update(overrides)
+        self._pipeline_spec["endpoint_overrides"] = existing
         return self
 
     def webhook(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":

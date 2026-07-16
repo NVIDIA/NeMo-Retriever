@@ -189,3 +189,15 @@ pipeline_overrides:
     storage_uri_schemes: []      # e.g. ["s3://", "gs://", "azure://"]
     webhook_url_prefixes: []     # e.g. ["https://hooks.example.com/"]
     vdb_uri_schemes: []          # e.g. ["s3://", "gs://"]
+  # Per-request model-endpoint overrides. Endpoint URLs, model names, and API
+  # keys are server-owned by default; a client submitting a job can only point
+  # a stage at a different model deployment (a custom VLM, an alternative embed
+  # NIM, or a different answer LLM) when the operator opts in below. Each flag
+  # defaults to false — the secure baseline. allowed_url_prefixes optionally
+  # pins client-supplied URLs to trusted destinations (empty = no URL
+  # restriction once the corresponding flag is enabled).
+  endpoint_overrides:
+    embed: false                 # allow overriding embed_invoke_url / embed_model_name
+    caption: false               # allow overriding the caption (VLM) endpoint / model
+    llm: false                   # allow overriding the /v1/answer LLM api_base / model
+    allowed_url_prefixes: []     # e.g. ["https://", "http://nim.internal."]

@@ -360,6 +360,67 @@ def _merge_server_owned(
     return merged
 
 
+def _apply_embed_endpoint_override(
+    base_embed: dict[str, Any] | None,
+    endpoint_overrides: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Fold a validated per-request embed endpoint override onto the base dict.
+
+    The override is applied to the *base* (server-owned) params so it survives
+    the belt-and-suspenders :func:`_merge_server_owned` pass — the policy layer
+    has already authorized it. Returns the (possibly new) base dict, or the
+    original when no embed override was supplied.
+    """
+    embed_url = endpoint_overrides.get("embed_invoke_url")
+    embed_model = endpoint_overrides.get("embed_model_name")
+    embed_prefix = endpoint_overrides.get("embed_model_provider_prefix")
+    if not (embed_url or embed_model or embed_prefix):
+        return base_embed
+
+    effective = dict(base_embed or {})
+    if embed_url:
+        effective["embed_invoke_url"] = embed_url
+        # Keep the two URL fields consistent; the operator normalizes
+        # embed_invoke_url → embedding_endpoint downstream.
+        effective["embedding_endpoint"] = embed_url
+    if embed_model:
+        # Remote HTTP embedding reads model_name; local/GPU paths read embed_model_name.
+        effective["model_name"] = embed_model
+        effective["embed_model_name"] = embed_model
+    if embed_prefix:
+        effective["embed_model_provider_prefix"] = embed_prefix
+    api_key = endpoint_overrides.get("api_key")
+    if api_key:
+        effective["api_key"] = api_key
+    return effective
+
+
+def _apply_caption_endpoint_override(
+    base_caption: dict[str, Any] | None,
+    endpoint_overrides: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Fold a validated per-request caption (VLM) endpoint override onto the base.
+
+    When the cluster has no caption endpoint configured, a client-supplied URL
+    still produces a usable base dict so the caption stage can run against the
+    client's own VLM (the policy layer gates whether this is permitted).
+    """
+    caption_url = endpoint_overrides.get("caption_invoke_url")
+    caption_model = endpoint_overrides.get("caption_model_name")
+    if not (caption_url or caption_model):
+        return base_caption
+
+    effective = dict(base_caption or {})
+    if caption_url:
+        effective["endpoint_url"] = caption_url
+    if caption_model:
+        effective["model_name"] = caption_model
+    api_key = endpoint_overrides.get("api_key")
+    if api_key:
+        effective["api_key"] = api_key
+    return effective
+
+
 def _resolve_sidecar_in_spec(spec: dict[str, Any] | None) -> dict[str, Any] | None:
     """Resolve ``vdb_upload_params.meta_dataframe_id`` to in-band bytes.
 
@@ -527,25 +588,35 @@ def _build_graph_ingestor_from_spec(
     extraction_mode = _resolve_service_extraction_mode(spec.get("extraction_mode", "auto"), filename)
     split_config = spec.get("split_config")
 
+    # Per-request model-endpoint overrides (validated by the policy layer)
+    # are folded onto the server-owned base dicts so they survive the
+    # _merge_server_owned belt-and-suspenders pass below.
+    endpoint_overrides = spec.get("endpoint_overrides") or {}
+    effective_base_embed = _apply_embed_endpoint_override(base_embed, endpoint_overrides)
+    effective_base_caption = _apply_caption_endpoint_override(base_caption, endpoint_overrides)
+
     extract_kwargs = _merge_server_owned(base_extract, spec.get("extract_params"), _TRUST_OWNED_EXTRACT_KEYS)
     extract_params = ExtractParams(**extract_kwargs)
 
     embed_override = spec.get("embed_params")
-    embed_params = _resolve_embed_params(base_embed, embed_override)
+    embed_params = _resolve_embed_params(effective_base_embed, embed_override)
 
     # Caption baseline + per-request overrides. The base dict carries
-    # the server-owned endpoint/API key/model name; the override carries
-    # behavioural knobs (prompt, system_prompt, batch_size, …).
+    # the server-owned (or client-overridden) endpoint/API key/model name;
+    # the override carries behavioural knobs (prompt, system_prompt,
+    # batch_size, …).
     caption_override = spec.get("caption_params")
-    if base_caption is None and caption_override is None:
+    if effective_base_caption is None and caption_override is None:
         caption_params = None
-    elif base_caption is None and caption_override is not None:
+    elif effective_base_caption is None and caption_override is not None:
         raise RuntimeError(
             "caption_params provided but no caption endpoint is configured on "
             "this worker. The policy layer should have rejected this earlier."
         )
     else:
-        caption_kwargs = _merge_server_owned(base_caption or {}, caption_override, _TRUST_OWNED_CAPTION_KEYS)
+        caption_kwargs = _merge_server_owned(
+            effective_base_caption or {}, caption_override, _TRUST_OWNED_CAPTION_KEYS
+        )
         caption_params = CaptionParams(**caption_kwargs) if caption_kwargs.get("endpoint_url") else None
 
     asr_params = ASRParams(**base_asr) if base_asr else None

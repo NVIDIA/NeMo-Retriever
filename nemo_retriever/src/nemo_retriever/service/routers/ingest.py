@@ -104,12 +104,29 @@ class ServiceAnswerRequest(BaseModel):
     reasoning_enabled: bool | None = None
     reference: str | None = None
     judge: bool = False
+    # Per-request LLM endpoint override. Honored only when the operator sets
+    # pipeline_overrides.endpoint_overrides.llm: true; otherwise HTTP 403.
+    llm_api_base: str | None = Field(
+        default=None,
+        description="Override the answer LLM api_base (requires operator opt-in).",
+    )
+    llm_model: str | None = Field(
+        default=None,
+        description="Override the answer LLM model identifier (requires operator opt-in).",
+    )
+    llm_api_key: str | None = Field(
+        default=None,
+        description="Override the answer LLM API key for the per-request endpoint.",
+    )
 
     @model_validator(mode="after")
     def _validate_judge_reference(self) -> "ServiceAnswerRequest":
         if self.judge and self.reference is None:
             raise ValueError("judge requires reference")
         return self
+
+    def has_llm_override(self) -> bool:
+        return bool(self.llm_api_base or self.llm_model or self.llm_api_key)
 
 
 logger = logging.getLogger(__name__)
@@ -1613,12 +1630,34 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
     from nemo_retriever.models.llm.clients import LLMJudge, LiteLLMClient
 
     llm_cfg = config.llm
-    llm = getattr(request.app.state, "answer_llm_client", None)
-    if llm is None:
+
+    # Per-request LLM endpoint override — gated by the operator opt-in. When a
+    # client supplies a different model / api_base, build a one-off client
+    # instead of reusing (or poisoning) the cached server-default client.
+    if req.has_llm_override():
+        endpoint_policy = config.pipeline_overrides.endpoint_overrides
+        if not endpoint_policy.llm:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Per-request LLM endpoint overrides are disabled on this service. "
+                    "Ask the operator to set pipeline_overrides.endpoint_overrides.llm: "
+                    "true in retriever-service.yaml."
+                ),
+            )
+        prefixes = endpoint_policy.allowed_url_prefixes
+        if req.llm_api_base and prefixes and not any(req.llm_api_base.startswith(p) for p in prefixes):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"llm_api_base {req.llm_api_base!r} does not match any allowed "
+                    f"prefix in {list(prefixes)!r}."
+                ),
+            )
         llm = LiteLLMClient.from_kwargs(
-            model=llm_cfg.model,
-            api_base=llm_cfg.api_base,
-            api_key=llm_cfg.api_key,
+            model=req.llm_model or llm_cfg.model,
+            api_base=req.llm_api_base or llm_cfg.api_base,
+            api_key=req.llm_api_key or llm_cfg.api_key,
             temperature=llm_cfg.temperature,
             top_p=llm_cfg.top_p,
             max_tokens=llm_cfg.max_tokens,
@@ -1629,7 +1668,24 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
             rag_system_prompt_prefix=llm_cfg.rag_system_prompt_prefix,
             reasoning_enabled=llm_cfg.reasoning_enabled,
         )
-        request.app.state.answer_llm_client = llm
+    else:
+        llm = getattr(request.app.state, "answer_llm_client", None)
+        if llm is None:
+            llm = LiteLLMClient.from_kwargs(
+                model=llm_cfg.model,
+                api_base=llm_cfg.api_base,
+                api_key=llm_cfg.api_key,
+                temperature=llm_cfg.temperature,
+                top_p=llm_cfg.top_p,
+                max_tokens=llm_cfg.max_tokens,
+                extra_params=dict(llm_cfg.extra_params),
+                num_retries=llm_cfg.num_retries,
+                timeout=llm_cfg.timeout,
+                rag_system_prompt=llm_cfg.rag_system_prompt,
+                rag_system_prompt_prefix=llm_cfg.rag_system_prompt_prefix,
+                reasoning_enabled=llm_cfg.reasoning_enabled,
+            )
+            request.app.state.answer_llm_client = llm
 
     generate_kwargs: dict[str, Any] = {}
     if answer_req.reasoning_enabled is not None:
