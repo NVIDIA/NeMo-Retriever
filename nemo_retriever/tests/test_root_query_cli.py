@@ -551,6 +551,7 @@ def test_root_query_help_defaults_to_local_command(monkeypatch: pytest.MonkeyPat
         cli_main.app,
         ["query", "--help"],
         prog_name="retriever",
+        terminal_width=200,
     )
 
     assert result.exit_code == 0

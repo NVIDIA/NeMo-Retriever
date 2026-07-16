@@ -16,10 +16,11 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from nemo_retriever.common.params import TextChunkParams
+from nemo_retriever.models import VL_EMBED_MODEL
 
 from .tokenizer_provider import ChunkTokenizer, load_chunk_tokenizer
 
-DEFAULT_TOKENIZER_MODEL_ID = "nvidia/llama-nemotron-embed-vl-1b-v2"
+DEFAULT_TOKENIZER_MODEL_ID = VL_EMBED_MODEL
 DEFAULT_MAX_TOKENS = 1024
 DEFAULT_OVERLAP_TOKENS = 0
 
@@ -54,7 +55,7 @@ def split_text_by_tokens(
     text : str
         Input text to split.
     tokenizer
-        HuggingFace tokenizer (e.g. AutoTokenizer) with encode/decode.
+        Lightweight :class:`ChunkTokenizer` instance with encode/decode.
     max_tokens : int
         Maximum tokens per chunk.
     overlap_tokens : int

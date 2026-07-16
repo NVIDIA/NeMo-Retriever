@@ -19,7 +19,8 @@ import nemo_retriever.common.modality.txt.tokenizer_provider as provider
 import nemo_retriever.operators.extract.html.ray_data as html_actor_module
 import nemo_retriever.operators.extract.txt.ray_data as txt_actor_module
 from nemo_retriever.common.modality.html.convert import html_bytes_to_chunks_df
-from nemo_retriever.common.modality.txt.split import txt_bytes_to_chunks_df
+from nemo_retriever.common.modality.txt.split import DEFAULT_TOKENIZER_MODEL_ID, txt_bytes_to_chunks_df
+from nemo_retriever.models import resolve_embed_model
 
 
 def _write_tokenizer(path: Path) -> None:
@@ -44,6 +45,10 @@ def test_service_image_declares_and_caches_lightweight_tokenizer() -> None:
     dockerfile = (repo_root / "Dockerfile").read_text(encoding="utf-8")
     assert "load_chunk_tokenizer('nvidia/llama-nemotron-embed-vl-1b-v2')" in dockerfile
     assert "ENV HF_HUB_OFFLINE=1" in dockerfile
+
+
+def test_default_chunk_tokenizer_matches_default_embedding_model() -> None:
+    assert DEFAULT_TOKENIZER_MODEL_ID == resolve_embed_model(None)
 
 
 def test_load_chunk_tokenizer_uses_pinned_artifact(
@@ -109,6 +114,18 @@ def test_load_chunk_tokenizer_surfaces_actionable_error(
         provider.load_chunk_tokenizer("nvidia/llama-nemotron-embed-vl-1b-v2")
 
 
+def test_load_chunk_tokenizer_wraps_unregistered_model_error() -> None:
+    provider.load_chunk_tokenizer.cache_clear()
+
+    with pytest.raises(
+        provider.TokenizerUnavailableError,
+        match="unregistered/model",
+    ) as exc_info:
+        provider.load_chunk_tokenizer("unregistered/model")
+
+    assert isinstance(exc_info.value.__cause__, ValueError)
+
+
 @pytest.mark.parametrize(
     ("module", "actor_type", "splitter_name"),
     [
@@ -135,3 +152,39 @@ def test_text_actors_propagate_tokenizer_failures(
 
     with pytest.raises(provider.TokenizerUnavailableError, match="unavailable"):
         actor.process(batch)
+
+
+@pytest.mark.parametrize(
+    ("module", "actor_type", "splitter_name"),
+    [
+        (txt_actor_module, txt_actor_module.TxtSplitCPUActor, "txt_bytes_to_chunks_df"),
+        (
+            html_actor_module,
+            html_actor_module.HtmlSplitCPUActor,
+            "html_bytes_to_chunks_df",
+        ),
+    ],
+)
+def test_text_actors_isolate_non_tokenizer_document_failures(
+    module: object,
+    actor_type: type,
+    splitter_name: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def split_document(_payload: object, path: str, **_kwargs: object) -> pd.DataFrame:
+        if path == "bad.txt":
+            raise ValueError("malformed document")
+        return pd.DataFrame([{"text": "good", "path": path, "page_number": 1, "metadata": {}}])
+
+    monkeypatch.setattr(module, splitter_name, split_document)
+    actor = actor_type()
+    batch = pd.DataFrame(
+        [
+            {"bytes": b"bad", "path": "bad.txt"},
+            {"bytes": b"good", "path": "good.txt"},
+        ]
+    )
+
+    result = actor.process(batch)
+
+    assert result["path"].tolist() == ["good.txt"]

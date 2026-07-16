@@ -13,6 +13,7 @@ from typing import Any, List
 import pandas as pd
 
 from nemo_retriever.common.params import HtmlChunkParams
+from nemo_retriever.common.modality.txt.tokenizer_provider import TokenizerUnavailableError
 from nemo_retriever.operators.abstract_operator import AbstractOperator
 from nemo_retriever.operators.cpu_operator import CPUOperator
 from nemo_retriever.graph.designer import designer_component
@@ -57,10 +58,15 @@ class HtmlSplitCPUActor(AbstractOperator, CPUOperator):
             if (raw is None and text is None) or path is None:
                 continue
             path_str = str(path) if path is not None else ""
-            payload = raw if raw is not None else text.encode("utf-8")
-            chunk_df = html_bytes_to_chunks_df(payload, path_str, params=params)
-            if not chunk_df.empty:
-                out_dfs.append(chunk_df)
+            try:
+                payload = raw if raw is not None else text.encode("utf-8")
+                chunk_df = html_bytes_to_chunks_df(payload, path_str, params=params)
+                if not chunk_df.empty:
+                    out_dfs.append(chunk_df)
+            except TokenizerUnavailableError:
+                raise
+            except Exception:
+                continue
         if not out_dfs:
             return pd.DataFrame(columns=["text", "path", "page_number", "metadata"])
         return pd.concat(out_dfs, ignore_index=True)

@@ -1047,6 +1047,7 @@ def test_root_ingest_help_defaults_to_local_workflow(monkeypatch: pytest.MonkeyP
         cli_main.app,
         ["ingest", "--help"],
         prog_name="retriever",
+        terminal_width=200,
     )
 
     assert result.exit_code == 0
@@ -1094,7 +1095,7 @@ def test_root_ingest_errors_reference_only_the_public_help_path() -> None:
 def test_root_ingest_batch_help_remains_mode_specific(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(typer_rich_utils, "MAX_WIDTH", 200)
     monkeypatch.setattr(typer_rich_utils, "FORCE_TERMINAL", False)
-    result = RUNNER.invoke(cli_main.app, ["ingest", "batch", "--help"])
+    result = RUNNER.invoke(cli_main.app, ["ingest", "batch", "--help"], terminal_width=200)
 
     assert result.exit_code == 0
     assert "Usage: root ingest batch [OPTIONS] DOCUMENTS..." in result.output
@@ -1106,7 +1107,12 @@ def test_root_ingest_batch_help_remains_mode_specific(monkeypatch: pytest.Monkey
 
 
 def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
-    result = RUNNER.invoke(cli_main.app, ["ingest", "local", "--help"], prog_name="retriever")
+    result = RUNNER.invoke(
+        cli_main.app,
+        ["ingest", "local", "--help"],
+        prog_name="retriever",
+        terminal_width=200,
+    )
 
     assert result.exit_code == 0
     assert "Usage: retriever ingest [OPTIONS] DOCUMENTS..." in result.output
@@ -1167,7 +1173,7 @@ def test_root_ingest_default_local_rejects_batch_only_options(tmp_path) -> None:
 
 
 def test_root_ingest_service_help_hides_local_only_options() -> None:
-    result = RUNNER.invoke(cli_main.app, ["ingest", "service", "--help"], env={"COLUMNS": "200"})
+    result = RUNNER.invoke(cli_main.app, ["ingest", "service", "--help"], terminal_width=200)
 
     assert result.exit_code == 0
     assert "Usage: root ingest service [OPTIONS] DOCUMENTS..." in result.output

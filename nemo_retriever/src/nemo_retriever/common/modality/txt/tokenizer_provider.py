@@ -62,8 +62,9 @@ def load_chunk_tokenizer(
     Raises:
         TokenizerUnavailableError: If the pinned tokenizer cannot be resolved.
     """
-    revision = get_hf_revision(model_id)
+    revision: str | None = None
     try:
+        revision = get_hf_revision(model_id)
         tokenizer_path = hf_hub_download_with_pinned_revision(
             repo_id=model_id,
             filename="tokenizer.json",
