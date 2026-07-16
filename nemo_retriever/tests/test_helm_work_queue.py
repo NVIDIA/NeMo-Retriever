@@ -62,7 +62,7 @@ def test_hpa_uses_central_gateway_backlog_average_value() -> None:
     assert "sum by (pool)" in rules["data"]["rules.yaml"]
 
 
-def test_split_gateway_uses_single_writer_pvc_and_recreate_strategy() -> None:
+def test_split_gateway_keeps_general_pvc_and_uses_ephemeral_scheduler_spool() -> None:
     documents = _render("--set", "topology.mode=split")
     deployments = _service_deployments(documents)
     gateway = next(
@@ -76,9 +76,17 @@ def test_split_gateway_uses_single_writer_pvc_and_recreate_strategy() -> None:
         next(mount for mount in container["volumeMounts"] if mount["name"] == "data")["mountPath"]
         == "/var/lib/nemo-retriever"
     )
+    config = next(
+        item["data"]["retriever-service.yaml"]
+        for item in documents
+        if item.get("kind") == "ConfigMap"
+        and item["metadata"]["labels"].get("app.kubernetes.io/component") == "gateway"
+    )
+    assert 'spool_directory: "/tmp/nemo-retriever-work"' in config
+    assert "persistence_enabled" not in config
 
 
-def test_persistence_disabled_uses_ephemeral_spool() -> None:
+def test_persistence_disabled_preserves_ephemeral_scheduler_spool() -> None:
     documents = _render("--set", "topology.mode=split", "--set", "persistence.enabled=false")
     gateway = next(
         item
@@ -92,7 +100,7 @@ def test_persistence_disabled_uses_ephemeral_spool() -> None:
         if item.get("kind") == "ConfigMap" and "retriever-service.yaml" in item.get("data", {})
     ]
     assert all('spool_directory: "/tmp/nemo-retriever-work"' in config for config in configs)
-    assert all("persistence_enabled: false" in config for config in configs)
+    assert all("persistence_enabled" not in config for config in configs)
 
 
 def test_legacy_queue_keys_override_defaults_and_annotate_fractional_substitution() -> None:
@@ -120,11 +128,19 @@ def test_legacy_queue_keys_override_defaults_and_annotate_fractional_substitutio
     assert metric["external"]["target"]["averageValue"] == "24"
 
 
-def test_durable_split_rejects_multiple_gateway_replicas() -> None:
+@pytest.mark.parametrize("persistence_enabled", [True, False])
+def test_split_rejects_multiple_gateway_replicas(persistence_enabled: bool) -> None:
     with pytest.raises(subprocess.CalledProcessError):
         _render(
             "--set",
             "topology.mode=split",
             "--set",
             "topology.gateway.replicas=2",
+            "--set",
+            f"persistence.enabled={str(persistence_enabled).lower()}",
         )
+
+
+def test_split_service_monitor_is_disabled_by_default() -> None:
+    documents = _render("--set", "topology.mode=split")
+    assert all(document.get("kind") != "ServiceMonitor" for document in documents)

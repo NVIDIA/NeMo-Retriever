@@ -4,11 +4,8 @@ Release name : {{ .Release.Name }}
 Namespace    : {{ .Release.Namespace }}
 Topology     : {{ .Values.topology.mode }}
 
-{{- if not .Values.persistence.enabled }}
-Durability   : EPHEMERAL — gateway pod replacement cannot recover accepted work.
-{{- else }}
-Durability   : SQLite + payload spool on {{ .Values.persistence.mountPath }} (single gateway writer).
-{{- end }}
+Scheduler    : EPHEMERAL — gateway replacement loses accepted work and status history.
+Action       : Drain the gateway before rollout; clients must create and submit a new job after replacement.
 {{- range $role := list "realtime" "batch" }}
 {{- $metrics := (index $.Values.topology $role).hpa.metrics | default dict }}
 {{- if hasKey $metrics "queueDepthRatio" }}

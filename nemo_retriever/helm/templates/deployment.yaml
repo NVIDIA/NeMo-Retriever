@@ -18,8 +18,8 @@
 {{- end -}}
 {{- end -}}
 {{- $svc := .Values.service -}}
-{{- if and (eq .Values.topology.mode "split") .Values.persistence.enabled (ne (int .Values.topology.gateway.replicas) 1) -}}
-{{- fail "durable split mode requires topology.gateway.replicas=1 (single-writer SQLite)" -}}
+{{- if and (eq .Values.topology.mode "split") (ne (int .Values.topology.gateway.replicas) 1) -}}
+{{- fail "split mode requires topology.gateway.replicas=1 (process-local scheduler)" -}}
 {{- end -}}
 {{- if and $svc.installFfmpeg $svc.env -}}
 {{- range $env := $svc.env }}
@@ -217,7 +217,7 @@ spec:
   replicas: {{ $roleCfg.replicas }}
   {{- end }}
   strategy:
-    type: {{ if and (eq $role "gateway") $.Values.persistence.enabled }}Recreate{{ else }}RollingUpdate{{ end }}
+    type: {{ if eq $role "gateway" }}Recreate{{ else }}RollingUpdate{{ end }}
   selector:
     matchLabels:
       {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" $role) | nindent 6 }}

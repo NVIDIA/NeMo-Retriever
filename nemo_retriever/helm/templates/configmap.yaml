@@ -126,8 +126,7 @@ pipeline:
 
 work_queue:
   gateway_url: "http://{{ .gatewaySvc }}:{{ .Values.serviceConfig.server.port }}"
-  spool_directory: {{ if .Values.persistence.enabled }}{{ printf "%s/work-queue" .Values.persistence.mountPath | quote }}{{ else }}{{ .Values.serviceConfig.workQueue.spoolDirectory | quote }}{{ end }}
-  persistence_enabled: {{ .Values.persistence.enabled }}
+  spool_directory: {{ .Values.serviceConfig.workQueue.spoolDirectory | quote }}
   spool_limit_bytes: {{ .Values.serviceConfig.workQueue.spoolLimitBytes }}
   claim_timeout_s: {{ .Values.serviceConfig.workQueue.claimTimeoutS }}
   lease_ttl_s: {{ .Values.serviceConfig.workQueue.leaseTtlS }}

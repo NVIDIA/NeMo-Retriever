@@ -21,7 +21,6 @@ from nemo_retriever.service.config import (
     WorkQueueConfig,
 )
 from nemo_retriever.service.services.job_tracker import (
-    DocumentStatus,
     init_job_tracker,
     shutdown_job_tracker,
 )
@@ -30,6 +29,7 @@ from nemo_retriever.service.services.work_queue import (
     StaleLease,
     WorkBroker,
     WorkQueueFull,
+    get_work_broker,
 )
 
 
@@ -287,88 +287,103 @@ def test_internal_work_endpoints_require_configured_service_auth(tmp_path):
         )
 
 
+def test_gateway_restart_is_explicit_loss_boundary(tmp_path, monkeypatch):
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(results_dir))
+    spool = tmp_path / "spool"
+    config = ServiceConfig(
+        mode="gateway",
+        logging=LoggingConfig(file=str(tmp_path / "service.log")),
+        mcp=MCPConfig(enabled=False),
+        pipeline=PipelinePoolConfig(realtime_queue_size=2, batch_queue_size=2),
+        work_queue=_config(spool, gateway_url="http://testserver"),
+    )
+
+    with TestClient(create_app(config)) as client:
+        created = client.post("/v1/ingest/job", json={"expected_documents": 1})
+        job_id = created.json()["job_id"]
+        accepted = client.post(
+            f"/v1/ingest/job/{job_id}/whole",
+            files={"file": ("document.txt", b"accepted work", "text/plain")},
+            data={"metadata": "{}"},
+        )
+        document_id = accepted.json()["document_id"]
+        claim = client.post(
+            "/v1/internal/work/claim",
+            json={"pool": "batch", "worker_uid": "old-worker"},
+        ).json()
+        assert (spool / f"{document_id}.payload").exists()
+
+    assert not list(spool.glob("*.payload"))
+
+    with TestClient(create_app(config)) as replacement:
+        broker = get_work_broker()
+        assert broker is not None
+        assert not broker.has_record(document_id)
+        assert all(not queue for queue in broker._queues.values())
+        assert replacement.get(f"/v1/ingest/job/{job_id}").status_code == 404
+        assert (
+            replacement.post(
+                f"/v1/internal/work/{document_id}/heartbeat",
+                json={
+                    "lease_id": claim["lease_id"],
+                    "lease_generation": claim["lease_generation"],
+                },
+            ).status_code
+            == 409
+        )
+        assert (
+            replacement.post(
+                "/v1/internal/job-callback",
+                json={
+                    "id": document_id,
+                    "status": "completed",
+                    "lease_id": claim["lease_id"],
+                    "lease_generation": claim["lease_generation"],
+                },
+            ).status_code
+            == 409
+        )
+
+
 @pytest.mark.anyio
-async def test_durable_restart_hydrates_tracker_and_invalidates_old_lease(tmp_path):
-    tracker = init_job_tracker()
-    config = _config(tmp_path)
-    first_broker = WorkBroker(config, PipelinePoolConfig(batch_queue_size=4))
-    await first_broker.start()
-    try:
-        tracker.register_job("job", expected_documents=1)
-        tracker.register_document("work", job_id="job", filename="work.pdf")
-        await _enqueue(first_broker, "work")
-        claimed = await first_broker.claim(PoolType.BATCH, worker_uid="old-worker", worker_ip="10.0.0.1")
-        assert claimed is not None and claimed.lease is not None
-        old_lease_id = claimed.lease.lease_id
-        old_generation = claimed.lease.generation
-    finally:
-        await first_broker.shutdown()
-    shutdown_job_tracker()
-    tracker = init_job_tracker()
-
-    second_broker = WorkBroker(config, PipelinePoolConfig(batch_queue_size=4))
-    await second_broker.start()
-    try:
-        with pytest.raises(StaleLease):
-            second_broker.validate_callback("work", old_lease_id, old_generation)
-        recovered = await second_broker.claim(PoolType.BATCH, worker_uid="new-worker", worker_ip="10.0.0.2")
-        assert recovered is not None and recovered.lease is not None
-        assert recovered.delivery_attempt == 2
-        assert recovered.lease.generation == old_generation + 1
-        tracker.mark_completed("work")
-        await second_broker.acknowledge("work", recovered.lease.lease_id, recovered.lease.generation)
-        assert tracker.get_document("work").status is DocumentStatus.COMPLETED
-    finally:
-        await second_broker.shutdown()
-        shutdown_job_tracker()
-
-
-@pytest.mark.anyio
-async def test_metadata_commit_failure_rolls_back_tracker_and_payload(tmp_path, monkeypatch):
-    tracker = init_job_tracker()
+async def test_shutdown_removes_queued_and_leased_payloads_and_records(tmp_path):
     broker = WorkBroker(_config(tmp_path), PipelinePoolConfig(batch_queue_size=2))
     await broker.start()
-    try:
-        tracker.register_job("job", expected_documents=1)
-        tracker.register_document("work", job_id="job")
-        assert broker._state is not None
+    leased = await _enqueue(broker, "leased")
+    claim = await broker.claim(PoolType.BATCH, worker_uid="worker", worker_ip="10.0.0.1")
+    queued = await _enqueue(broker, "queued")
+    assert claim is not None and claim.lease is not None
+    assert leased.spool_path.exists() and queued.spool_path.exists()
 
-        def fail_save(*_args, **_kwargs):
-            raise OSError("injected metadata commit failure")
+    await broker.shutdown()
 
-        monkeypatch.setattr(broker._state, "save_work", fail_save)
-        with pytest.raises(OSError, match="injected"):
-            await _enqueue(broker, "work")
-        assert tracker.get_document("work") is None
-        assert not (tmp_path / "work.payload").exists()
-    finally:
-        await broker.shutdown()
-        shutdown_job_tracker()
+    assert not list(tmp_path.glob("*.payload"))
+    assert not broker._records
+    assert all(not queue for queue in broker._queues.values())
+    assert broker._spool_bytes == 0
+    with pytest.raises(StaleLease):
+        broker.validate_callback("leased", claim.lease.lease_id, claim.lease.generation)
 
 
 @pytest.mark.anyio
-async def test_corrupt_restored_payload_fails_document_and_cleans_state(tmp_path):
-    tracker = init_job_tracker()
-    config = _config(tmp_path)
-    broker = WorkBroker(config, PipelinePoolConfig(batch_queue_size=2))
-    await broker.start()
-    tracker.register_job("job", expected_documents=1)
-    tracker.register_document("work", job_id="job")
-    record = await _enqueue(broker, "work", b"valid")
-    await broker.shutdown()
-    record.spool_path.write_bytes(b"corrupt")
+async def test_startup_removes_orphan_payload_but_leaves_legacy_database(tmp_path):
+    orphan = tmp_path / "orphan.payload"
+    orphan.write_bytes(b"orphan")
+    interrupted_write = tmp_path / ".work.payload.deadbeef.tmp"
+    interrupted_write.write_bytes(b"partial")
+    legacy_database = tmp_path / "gateway-state.sqlite3"
+    legacy_database.write_bytes(b"legacy")
+    broker = WorkBroker(_config(tmp_path), PipelinePoolConfig(batch_queue_size=2))
 
-    recovered = WorkBroker(config, PipelinePoolConfig(batch_queue_size=2))
-    await recovered.start()
+    await broker.start()
     try:
-        document = tracker.get_document("work")
-        assert document is not None
-        assert document.status is DocumentStatus.FAILED
-        assert not recovered.has_record("work")
-        assert not record.spool_path.exists()
+        assert not orphan.exists()
+        assert not interrupted_write.exists()
+        assert legacy_database.read_bytes() == b"legacy"
     finally:
-        await recovered.shutdown()
-        shutdown_job_tracker()
+        await broker.shutdown()
 
 
 @pytest.mark.anyio
@@ -376,7 +391,6 @@ async def test_active_lease_cap_blocks_and_wakes_claimers(tmp_path):
     broker = WorkBroker(
         _config(
             tmp_path,
-            persistence_enabled=False,
             max_active_leases_batch=1,
             claim_timeout_s=0.5,
         ),
@@ -402,7 +416,7 @@ async def test_active_lease_cap_blocks_and_wakes_claimers(tmp_path):
 @pytest.mark.anyio
 async def test_explicit_release_exhausts_total_delivery_attempts(tmp_path):
     broker = WorkBroker(
-        _config(tmp_path, persistence_enabled=False),
+        _config(tmp_path),
         PipelinePoolConfig(batch_queue_size=2),
     )
     await broker.start()

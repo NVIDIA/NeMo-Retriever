@@ -85,9 +85,8 @@ service:
     tag: ""
     pullPolicy: ""
 
-  # Number of pod replicas. Must stay at 1 while persistence is SQLite-backed
-  # (RWO PVC + single writer). Bumping this requires switching to a shared
-  # database (Postgres support is on the roadmap).
+  # Number of standalone pod replicas. Keep at 1 because job and scheduler
+  # state are process-local.
   replicas: 1
 
   # Pod-level scheduling controls.
@@ -688,7 +687,7 @@ serviceConfig:
 # =============================================================================
 # A PVC mounted at `mountPath` for storing per-job page results as JSON files.
 # The gateway writes worker handoffs here and serves retained rows from this
-# directory instead of SQLite.
+# directory instead of retaining bulky rows in process memory.
 # In split mode, only the gateway mounts this claim. Workers hand retained
 # rows back to the gateway after processing, so realtime and batch replicas
 # remain independently schedulable across nodes with ReadWriteOnce storage.
@@ -712,16 +711,11 @@ retrieverResults:
   annotations: {}
 
 # =============================================================================
-# Persistence (SQLite database + log file)
+# General persistence (logs and other non-scheduler files)
 # =============================================================================
-# A single ReadWriteOnce PVC mounted at `mountPath`. SQLite's WAL mode is
-# enabled in-process, but cross-pod replication is NOT possible — keep
-# `service.replicas` at 1 until a shared DB lands.
-#
-# IMPORTANT: SQLite WAL + spool fsync are latency-sensitive. Use local/
-# host-path backed storage to avoid network I/O penalties (NFS, CephFS, or
-# cloud block storage can add 5-50ms per fsync, severely throttling
-# throughput).
+# A pre-existing ReadWriteOnce PVC mounted at `mountPath`. The gateway scheduler
+# never stores job state or payloads here; its spool is always under the
+# size-limited /tmp emptyDir.
 persistence:
   enabled: true
   # When `existingClaim` is set the chart will skip PVC creation and mount
@@ -756,10 +750,9 @@ ingress:
 # =============================================================================
 # HorizontalPodAutoscaler — standalone mode
 # =============================================================================
-# WARNING: While persistence is SQLite, scaling beyond 1 replica is unsafe
-# (PVC is RWO + single writer). Keep maxReplicas=1 until the shared DB
-# backend is in place. The template is included now so the scaffolding is
-# ready when that day comes.
+# Standalone job and scheduler state are process-local. Keep maxReplicas=1
+# unless an external coordination design is introduced. The template remains
+# available for future coordinated deployments.
 #
 # For split mode (`topology.mode: split`), HPA configuration lives under
 # `topology.realtime.hpa` and `topology.batch.hpa` instead — those pods
@@ -831,21 +824,20 @@ autoscaling:
         latencyWindow: "2m"
 
 # =============================================================================
-# Prometheus integration (off by default in standalone, on by default
-# in split mode — see autoEnableInSplitMode below)
+# Prometheus integration (off by default; enable only when the cluster has
+# the ServiceMonitor CRD and Prometheus Operator)
 # =============================================================================
 # When `topology.mode: split` is active, queue-depth-driven autoscaling
 # needs the worker pods' `/metrics` endpoint to be scraped by Prometheus.
-# The `autoEnableInSplitMode: true` default below ensures the
-# ServiceMonitor is rendered automatically in that case, even when the
-# top-level `enabled` flag is left at its (legacy) `false`.
+# Stock `retriever-dev` clusters do not install the ServiceMonitor CRD, so
+# split mode does not render one unless an operator explicitly opts in.
 #
 # Operators on standalone (or operators who scrape via another route —
 # Prometheus Pushgateway, an external agent, OpenTelemetry, etc.) can
 # leave both flags false and no ServiceMonitor will be produced.
 serviceMonitor:
   enabled: false
-  autoEnableInSplitMode: true
+  autoEnableInSplitMode: false
   namespace: ""
   interval: 15s
   scrapeTimeout: 10s

@@ -107,7 +107,6 @@ pipeline:
 work_queue:
   gateway_url: "http://nemo-retriever-gateway:7670"
   spool_directory: "/tmp/nemo-retriever-work"
-  persistence_enabled: true
   spool_limit_bytes: 21474836480
   claim_timeout_s: 30.0
   lease_ttl_s: 60.0

@@ -300,7 +300,6 @@ class WorkQueueConfig(RichModel):
     )
     spool_directory: str = "/tmp/nemo-retriever-work"
     spool_limit_bytes: int = Field(default=20 * 1024**3, ge=1)
-    persistence_enabled: bool = True
     claim_timeout_s: float = Field(default=30.0, gt=0)
     lease_ttl_s: float = Field(default=60.0, gt=0)
     heartbeat_interval_s: float = Field(default=20.0, gt=0)

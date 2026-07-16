@@ -258,38 +258,12 @@ class JobTracker:
         # events on every doc transition.
         self._progress_published: dict[str, int] = {}
         self._progress_step: int = 10
-        self._state_store: Any = None
 
     # ── wiring ───────────────────────────────────────────────────────
 
     def set_event_bus(self, bus: Any) -> None:
         """Attach an :class:`EventBus` so state transitions publish SSE events."""
         self._event_bus = bus
-
-    def set_state_store(self, store: Any) -> None:
-        """Hydrate durable state and persist all subsequent mutations."""
-        with self._lock:
-            self._state_store = store
-            jobs, documents = store.load_tracker()
-            self._jobs = {raw["job_id"]: JobAggregate.model_validate(raw) for raw in jobs}
-            self._documents = {raw["id"]: DocumentRecord.model_validate(raw) for raw in documents}
-            self._started_mono.clear()
-            self._job_started_mono.clear()
-            self._progress_published.clear()
-
-    def _persist_locked(
-        self,
-        *,
-        jobs: tuple[JobAggregate, ...] = (),
-        documents: tuple[DocumentRecord, ...] = (),
-        delete_document_ids: tuple[str, ...] = (),
-    ) -> None:
-        if self._state_store is not None:
-            self._state_store.persist_tracker_records(
-                jobs=jobs,
-                documents=documents,
-                delete_document_ids=delete_document_ids,
-            )
 
     def set_progress_step(self, step: int) -> None:
         """Override the progress-event cadence (default: every 10 docs)."""
@@ -338,7 +312,6 @@ class JobTracker:
             )
             agg.counts[DocumentStatus.PENDING.value] = 0
             self._jobs[job_id] = agg
-            self._persist_locked(jobs=(agg,))
         logger.info(
             "Job registered: %s (expected_documents=%d, label=%r)",
             job_id,
@@ -437,7 +410,6 @@ class JobTracker:
             self._reg_count += 1
             if self._reg_count % _EVICTION_INTERVAL == 0:
                 self._evict_locked(now=now)
-            self._persist_locked(jobs=(agg,), documents=(rec,))
         return rec.model_copy(deep=True)
 
     def mark_processing(self, document_id: str) -> None:
@@ -465,7 +437,6 @@ class JobTracker:
                 bus_agg = agg.model_copy(deep=True)
             else:
                 bus_agg = None
-            self._persist_locked(jobs=(agg,) if agg is not None else (), documents=(rec,))
         if bus_agg is not None:
             self._publish_job_event("job_started", bus_agg)
 
@@ -483,10 +454,6 @@ class JobTracker:
                 except ValueError:
                     pass
                 agg.counts[DocumentStatus.PENDING.value] = max(0, agg.counts.get(DocumentStatus.PENDING.value, 0) - 1)
-            self._persist_locked(
-                jobs=(agg,) if agg is not None else (),
-                delete_document_ids=(document_id,),
-            )
             return True
 
     def mark_completed(
@@ -597,9 +564,6 @@ class JobTracker:
                     if terminal_count - last_published >= self._progress_step:
                         self._progress_published[rec.job_id] = terminal_count
                         progress_snapshot = agg.model_copy(deep=True)
-
-            # Commit before publishing document/job SSE events below.
-            self._persist_locked(jobs=(agg,) if agg is not None else (), documents=(rec,))
 
         # Phase 2: publish events with the lock released.
         self._publish_document_event(doc_snapshot)
@@ -729,8 +693,6 @@ class JobTracker:
         agg = self._jobs.pop(job_id, None)
         if agg is None:
             return
-        if self._state_store is not None:
-            self._state_store.delete_job(job_id)
         for did in agg.document_ids:
             self._documents.pop(did, None)
             self._started_mono.pop(did, None)

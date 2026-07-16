@@ -1,4 +1,4 @@
-# Reusable retriever-dev split-mode durability and scheduler validation overlay.
+# Reusable retriever-dev split-mode scheduler validation overlay.
 topology:
   mode: split
   gateway:
@@ -8,9 +8,6 @@ topology:
   batch:
     replicas: 2
 
-persistence:
-  enabled: true
-
 serviceConfig:
   workQueue:
     maxActiveLeases:
@@ -18,8 +15,8 @@ serviceConfig:
       batch: 48
 
 serviceMonitor:
-  enabled: true
-  autoEnableInSplitMode: true
+  enabled: false
+  autoEnableInSplitMode: false
 
 autoscaling:
   queueDepth:

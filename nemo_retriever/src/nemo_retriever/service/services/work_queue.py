@@ -2,7 +2,7 @@
 # All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Durable gateway-owned FIFO work broker and split-worker pull client."""
+"""Ephemeral gateway-owned FIFO work broker and split-worker pull client."""
 
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ from typing import Any, Mapping
 from urllib.parse import quote
 
 from nemo_retriever.service.config import PipelinePoolConfig, WorkQueueConfig
-from nemo_retriever.service.services.durable_state import DurableStateStore
 from nemo_retriever.service.services.pipeline_pool import PoolType, WorkItem
 from nemo_retriever.service.services.prometheus import (
     POOL_CLAIM_LATENCY,
@@ -74,11 +73,10 @@ class WorkRecord:
     generation: int = 0
     lease: WorkLease | None = None
     extra: dict[str, Any] = field(default_factory=dict)
-    fifo_sequence: int = 0
 
 
 class WorkBroker:
-    """FIFO broker with durable metadata and atomically spooled payloads."""
+    """Process-local FIFO broker with atomically spooled payloads."""
 
     def __init__(self, config: WorkQueueConfig, pools: PipelinePoolConfig) -> None:
         self.config = config
@@ -98,26 +96,14 @@ class WorkBroker:
         self._conditions = {pool: asyncio.Condition() for pool in PoolType}
         self._admission_lock = asyncio.Lock()
         self._spool_bytes = 0
-        self._next_sequence = 1
         self._expiry_task: asyncio.Task[None] | None = None
         self._running = False
         self._spool = Path(config.spool_directory)
-        self._state = DurableStateStore(self._spool) if config.persistence_enabled else None
 
     async def start(self) -> None:
         self._spool.mkdir(parents=True, exist_ok=True)
-        if self._state is not None:
-            self._state.open()
-            from nemo_retriever.service.services.job_tracker import get_job_tracker
-
-            tracker = get_job_tracker()
-            if tracker is not None:
-                tracker.set_state_store(self._state)
-                await self._restore()
-            elif self._state.load_work():
-                raise RuntimeError("Durable work exists but the job tracker is unavailable")
-        else:
-            for orphan in self._spool.glob("*.payload"):
+        for pattern in ("*.payload", ".*.payload.*.tmp"):
+            for orphan in self._spool.glob(pattern):
                 try:
                     await asyncio.to_thread(orphan.unlink)
                 except FileNotFoundError:
@@ -127,7 +113,7 @@ class WorkBroker:
         self._publish_metrics()
 
     async def shutdown(self) -> None:
-        """Stop claims and checkpoint state without discarding accepted work."""
+        """Stop claims and discard all process-owned work and payloads."""
         self._running = False
         for condition in self._conditions.values():
             async with condition:
@@ -136,9 +122,21 @@ class WorkBroker:
             self._expiry_task.cancel()
             await asyncio.gather(self._expiry_task, return_exceptions=True)
             self._expiry_task = None
-        if self._state is not None:
-            await asyncio.to_thread(self._state.close)
+
+        records = list(self._records.values())
+        await asyncio.gather(*(asyncio.to_thread(self._unlink_payload, record.spool_path) for record in records))
+        self._records.clear()
+        for queue in self._queues.values():
+            queue.clear()
+        self._spool_bytes = 0
         self._publish_metrics()
+
+    @staticmethod
+    def _unlink_payload(path: Path) -> None:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
 
     def _active(self, pool: PoolType) -> int:
         return sum(record.lease is not None for record in self._records.values() if record.pool is pool)
@@ -179,154 +177,6 @@ class WorkBroker:
             except FileNotFoundError:
                 pass
 
-    def _record_data(self, record: WorkRecord) -> dict[str, Any]:
-        lease = record.lease
-        return {
-            "work_id": record.work_id,
-            "job_id": record.job_id,
-            "pool": record.pool.value,
-            "filename": record.filename,
-            "spool_path": str(record.spool_path),
-            "payload_size": record.payload_size,
-            "payload_sha256": record.payload_sha256,
-            "retain_results": record.retain_results,
-            "pipeline_spec": record.pipeline_spec,
-            "trace_context": record.trace_context,
-            "enqueued_at": record.enqueued_at,
-            "delivery_attempt": record.delivery_attempt,
-            "generation": record.generation,
-            "extra": record.extra,
-            "fifo_sequence": record.fifo_sequence,
-            "lease": (
-                None
-                if lease is None
-                else {
-                    "lease_id": lease.lease_id,
-                    "generation": lease.generation,
-                    "worker_uid": lease.worker_uid,
-                    "worker_ip": lease.worker_ip,
-                    "expires_at": time.time() + max(0.0, lease.expires_at - time.monotonic()),
-                }
-            ),
-        }
-
-    def _save(self, record: WorkRecord) -> None:
-        if self._state is not None:
-            self._state.save_work(
-                record.work_id,
-                record.pool.value,
-                record.fifo_sequence,
-                self._record_data(record),
-            )
-
-    def _delete_state(self, work_id: str) -> None:
-        if self._state is not None:
-            self._state.delete_work(work_id)
-
-    def _decode_record(self, raw: dict[str, Any], sequence: int) -> WorkRecord:
-        lease_raw = raw.get("lease")
-        lease = None
-        if lease_raw is not None:
-            lease = WorkLease(
-                lease_id=lease_raw["lease_id"],
-                generation=int(lease_raw["generation"]),
-                worker_uid=lease_raw["worker_uid"],
-                worker_ip=lease_raw["worker_ip"],
-                expires_at=time.monotonic(),
-            )
-        return WorkRecord(
-            work_id=raw["work_id"],
-            job_id=raw["job_id"],
-            pool=PoolType(raw["pool"]),
-            filename=raw.get("filename"),
-            spool_path=Path(raw["spool_path"]),
-            payload_size=int(raw["payload_size"]),
-            payload_sha256=raw["payload_sha256"],
-            retain_results=bool(raw.get("retain_results")),
-            pipeline_spec=raw.get("pipeline_spec"),
-            trace_context=dict(raw.get("trace_context") or {}),
-            enqueued_at=float(raw.get("enqueued_at", time.time())),
-            delivery_attempt=int(raw.get("delivery_attempt", 0)),
-            generation=int(raw.get("generation", 0)),
-            lease=lease,
-            extra=dict(raw.get("extra") or {}),
-            fifo_sequence=sequence,
-        )
-
-    @staticmethod
-    def _payload_valid(record: WorkRecord) -> bool:
-        try:
-            if record.spool_path.stat().st_size != record.payload_size:
-                return False
-            digest = hashlib.sha256()
-            with record.spool_path.open("rb") as stream:
-                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                    digest.update(chunk)
-            return digest.hexdigest() == record.payload_sha256
-        except OSError:
-            return False
-
-    async def _restore(self) -> None:
-        assert self._state is not None
-        from nemo_retriever.service.services.job_tracker import (
-            DocumentStatus,
-            get_job_tracker,
-        )
-
-        tracker = get_job_tracker()
-        assert tracker is not None
-        referenced: set[Path] = set()
-        restored_ids: set[str] = set()
-        for sequence, raw in self._state.load_work():
-            record = self._decode_record(raw, sequence)
-            self._next_sequence = max(self._next_sequence, sequence + 1)
-            document = tracker.get_document(record.work_id)
-            if document is None or document.status in (
-                DocumentStatus.COMPLETED,
-                DocumentStatus.FAILED,
-            ):
-                self._delete_state(record.work_id)
-                try:
-                    record.spool_path.unlink()
-                except FileNotFoundError:
-                    pass
-                continue
-            if not await asyncio.to_thread(self._payload_valid, record):
-                tracker.mark_failed(record.work_id, "Restored work payload is missing or corrupt")
-                self._delete_state(record.work_id)
-                try:
-                    record.spool_path.unlink()
-                except FileNotFoundError:
-                    pass
-                continue
-            self._records[record.work_id] = record
-            self._spool_bytes += record.payload_size
-            restored_ids.add(record.work_id)
-            referenced.add(record.spool_path.resolve())
-            if record.lease is not None:
-                record.lease = None
-                if self._requeue_or_exhaust_locked(record, "recovery", front=False):
-                    continue
-            elif record.delivery_attempt >= self.config.max_delivery_attempts:
-                self._exhaust_locked(record)
-                continue
-            else:
-                self._queues[record.pool].append(record.work_id)
-                self._save(record)
-
-        for document in tracker.all_documents():
-            if document.status is DocumentStatus.PENDING and document.id not in restored_ids:
-                tracker.unregister_pending(document.id)
-            elif document.status is DocumentStatus.PROCESSING and document.id not in restored_ids:
-                tracker.mark_failed(document.id, "Accepted work metadata is missing")
-
-        for payload in self._spool.glob("*.payload"):
-            if payload.resolve() not in referenced:
-                try:
-                    await asyncio.to_thread(payload.unlink)
-                except FileNotFoundError:
-                    pass
-
     async def enqueue(
         self,
         pool: PoolType,
@@ -340,7 +190,7 @@ class WorkBroker:
         trace_context: Mapping[str, str] | None,
         extra: Mapping[str, Any] | None = None,
     ) -> WorkRecord:
-        """Fsync payload and commit metadata before reporting admission."""
+        """Atomically spool the payload before reporting admission."""
         condition = self._conditions[pool]
         async with condition:
             async with self._admission_lock:
@@ -369,9 +219,7 @@ class WorkBroker:
                         trace_context=dict(trace_context or {}),
                         enqueued_at=time.time(),
                         extra=dict(extra or {}),
-                        fifo_sequence=self._next_sequence,
                     )
-                    self._save(record)
                 except Exception:
                     try:
                         await asyncio.to_thread(spool_path.unlink)
@@ -383,7 +231,6 @@ class WorkBroker:
                     if tracker is not None:
                         tracker.unregister_pending(work_id)
                     raise
-                self._next_sequence += 1
                 self._records[work_id] = record
                 self._queues[pool].append(work_id)
                 self._spool_bytes += len(payload)
@@ -412,7 +259,6 @@ class WorkBroker:
                             worker_ip=worker_ip,
                             expires_at=time.monotonic() + self.config.lease_ttl_s,
                         )
-                        self._save(record)
                         WORK_QUEUE_CLAIMS.labels(pool=pool.value, worker_uid=worker_uid).inc()
                         WORK_QUEUE_WAIT.labels(pool=pool.value).observe(max(0.0, time.time() - record.enqueued_at))
                         from nemo_retriever.service.services.job_tracker import get_job_tracker
@@ -442,7 +288,6 @@ class WorkBroker:
         record = self._current(work_id, lease_id, generation)
         assert record.lease is not None
         record.lease.expires_at = time.monotonic() + self.config.lease_ttl_s
-        self._save(record)
 
     async def payload_path(self, work_id: str, lease_id: str, generation: int) -> Path:
         record = self._current(work_id, lease_id, generation)
@@ -477,7 +322,6 @@ class WorkBroker:
         record = self._current(work_id, lease_id, generation)
         condition = self._conditions[record.pool]
         async with condition:
-            self._delete_state(work_id)
             self._records.pop(work_id, None)
             self._spool_bytes -= record.payload_size
             try:
@@ -493,7 +337,6 @@ class WorkBroker:
         tracker = get_job_tracker()
         if tracker is not None:
             tracker.mark_failed(record.work_id, "Work delivery attempts exhausted")
-        self._delete_state(record.work_id)
         self._records.pop(record.work_id, None)
         self._spool_bytes -= record.payload_size
         try:
@@ -511,7 +354,6 @@ class WorkBroker:
             self._queues[record.pool].appendleft(record.work_id)
         else:
             self._queues[record.pool].append(record.work_id)
-        self._save(record)
         WORK_QUEUE_REQUEUES.labels(pool=record.pool.value, reason=reason).inc()
         return False
 
