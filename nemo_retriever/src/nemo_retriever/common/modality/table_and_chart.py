@@ -5,10 +5,8 @@
 """
 Table and infographic content reconstruction utilities.
 
-Ports bbox-matching and content-reconstruction algorithms from
-``nemo_retriever.api.util.image_processing.table_and_chart`` and adds adapter
-functions that convert the retriever's detection/OCR formats into the
-pixel-coordinate representations expected by the core joining routines.
+The adapter functions convert detection and OCR formats into the
+pixel-coordinate representations expected by the joining routines.
 """
 
 from __future__ import annotations
@@ -22,7 +20,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Core algorithms ported from `nemo_retriever.api`
+# Core reconstruction algorithms
 # ---------------------------------------------------------------------------
 
 

@@ -101,7 +101,7 @@ def test_pipeline_compatibility_command_is_hidden_but_callable() -> None:
 
 @pytest.mark.parametrize(
     "removed_command",
-    ("txt", "html", "local", "audio", "image", "pdf", "chart"),
+    ("txt", "html", "local", "audio", "image", "pdf", "chart", "compare"),
 )
 def test_removed_root_commands_are_not_callable(removed_command: str) -> None:
     result = RUNNER.invoke(cli_main.app, [removed_command, "--help"])

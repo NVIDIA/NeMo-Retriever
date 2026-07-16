@@ -1,0 +1,344 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: nemo-retriever-service-dev
+
+# Development-only service-mode stack. Production deployments use Helm.
+x-retriever-image: &retriever-image
+  image: ${NEMO_RETRIEVER_IMAGE:-nemo-retriever-service:dev}
+  build: {context: ../../.., dockerfile: Dockerfile, target: service}
+x-host-access: &host-access
+  extra_hosts: ["host.docker.internal:host-gateway"]
+x-nim-environment: &nim-environment
+  NGC_API_KEY: ${NGC_API_KEY:-}
+  NIM_ENABLE_OTEL: ${NIM_OTEL_ENABLED:-false}
+  NIM_OTEL_TRACES_EXPORTER: otlp
+  NIM_OTEL_METRICS_EXPORTER: console
+  NIM_OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  TRITON_OTEL_URL: http://otel-collector:4318/v1/traces
+  TRITON_OTEL_RATE: "1"
+x-nim-service: &nim-service
+  runtime: nvidia
+  shm_size: ${NIM_SHM_SIZE:-16gb}
+  expose: ["8001"]
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD-SHELL", "curl --fail --silent http://localhost:$${NIM_HTTP_API_PORT}/v1/health/ready >/dev/null"]
+    interval: 15s
+    timeout: 10s
+    retries: 40
+    start_period: 120s
+x-nim-gpu: &nim-gpu
+  driver: nvidia
+  capabilities: [gpu]
+
+services:
+  retriever:
+    <<: [*retriever-image, *host-access]
+    ports: ["${RETRIEVER_HTTP_PORT:-7670}:7670"]
+    environment:
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NEMO_RETRIEVER_LLM_API_KEY: ${ANSWER_LLM_API_KEY:-${NGC_API_KEY:-}}
+      AUDIO_GRPC_ENDPOINT: ${NIM_AUDIO_GRPC_ENDPOINT:-}
+      INSTALL_FFMPEG: ${INSTALL_FFMPEG:-false}
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-nemo-retriever-service}
+      OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-otlp}
+      OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-otlp}
+      OTEL_LOGS_EXPORTER: ${OTEL_LOGS_EXPORTER:-none}
+      OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-service.namespace=nemo-retriever,service.role=standalone}
+      OTEL_PYTHON_EXCLUDED_URLS: ${OTEL_PYTHON_EXCLUDED_URLS:-health}
+    configs:
+      - {source: retriever_service_config, target: /etc/nemo-retriever/retriever-service.yaml, mode: 0444}
+    volumes: [retriever_data:/var/lib/nemo-retriever]
+    depends_on:
+      vectordb: {condition: service_healthy}
+      nim-page-elements: {condition: service_healthy, required: false}
+      nim-table-structure: {condition: service_healthy, required: false}
+      nim-ocr: {condition: service_healthy, required: false}
+      nim-embedding: {condition: service_healthy, required: false}
+      nim-reranker: {condition: service_healthy, required: false}
+      nim-nemotron-parse: {condition: service_healthy, required: false}
+      nim-caption: {condition: service_healthy, required: false}
+      nim-answer: {condition: service_healthy, required: false}
+      nim-audio: {condition: service_healthy, required: false}
+      otel-collector: {condition: service_started, required: false}
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://localhost:7670/v1/health]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  vectordb:
+    <<: [*retriever-image, *host-access]
+    command: [python, -m, nemo_retriever.service.vectordb_app, --lancedb-uri, /data/vectordb, --table-name, nemo_retriever, --embed-endpoint, "${NIM_EMBED_URL:-https://integrate.api.nvidia.com/v1/embeddings}", --embed-model, "${NIM_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}", --port, "7671"]
+    environment:
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-${NGC_API_KEY:-}}
+    volumes: [vectordb_data:/data/vectordb]
+    depends_on:
+      nim-embedding: {condition: service_healthy, required: false}
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://localhost:7671/v1/health]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  nim-page-elements:
+    <<: *nim-service
+    profiles: [nims-core]
+    image: ${NIM_PAGE_ELEMENTS_IMAGE:-nvcr.io/nim/nvidia/nemotron-page-elements-v3}:${NIM_PAGE_ELEMENTS_TAG:-1.8.0}
+    ports: ["${NIM_PAGE_ELEMENTS_HOST_PORT:-8001}:8000"]
+    environment:
+      <<: *nim-environment
+      NIM_HTTP_API_PORT: "8000"
+      NIM_OTEL_SERVICE_NAME: nemotron-page-elements-v3
+      NIM_TRITON_LOG_VERBOSE: "1"
+      NIM_TRITON_MAX_BATCH_SIZE: "32"
+      NIM_TRITON_CPU_THREADS_PRE_PROCESSOR: "2"
+      NIM_TRITON_CPU_THREADS_POST_PROCESSOR: "1"
+      OMP_NUM_THREADS: "2"
+    volumes: ["nim_page_elements_cache:${NIM_PAGE_ELEMENTS_CACHE_PATH:-/opt/nim/.cache}"]
+    deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_PAGE_ELEMENTS_GPU_ID:-0}"]}]}}}
+
+  nim-table-structure:
+    <<: *nim-service
+    profiles: [nims-core]
+    image: ${NIM_TABLE_STRUCTURE_IMAGE:-nvcr.io/nim/nvidia/nemotron-table-structure-v1}:${NIM_TABLE_STRUCTURE_TAG:-1.8.0}
+    ports: ["${NIM_TABLE_STRUCTURE_HOST_PORT:-8002}:8000"]
+    environment:
+      <<: *nim-environment
+      NIM_HTTP_API_PORT: "8000"
+      NIM_OTEL_SERVICE_NAME: nemotron-table-structure-v1
+      NIM_TRITON_LOG_VERBOSE: "1"
+      NIM_TRITON_RATE_LIMIT: "3"
+      NIM_TRITON_MAX_BATCH_SIZE: "32"
+      NIM_TRITON_CUDA_MEMORY_POOL_MB: "2048"
+      OMP_NUM_THREADS: "1"
+    volumes: ["nim_table_structure_cache:${NIM_TABLE_STRUCTURE_CACHE_PATH:-/opt/nim/.cache}"]
+    deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_TABLE_STRUCTURE_GPU_ID:-1}"]}]}}}
+
+  nim-ocr:
+    <<: *nim-service
+    profiles: [nims-core]
+    image: ${NIM_OCR_IMAGE:-nvcr.io/nim/nvidia/nemotron-ocr-v2}:${NIM_OCR_TAG:-1.4.0}
+    ports: ["${NIM_OCR_HOST_PORT:-8003}:8000"]
+    environment:
+      <<: *nim-environment
+      NIM_HTTP_API_PORT: "8000"
+      NIM_OTEL_SERVICE_NAME: nemotron-ocr-v2
+      NIM_TRITON_LOG_VERBOSE: "1"
+      NIM_TRITON_MAX_BATCH_SIZE: "32"
+      OMP_NUM_THREADS: "8"
+    volumes: ["nim_ocr_cache:${NIM_OCR_CACHE_PATH:-/opt/nim/.cache}"]
+    deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_OCR_GPU_ID:-2}"]}]}}}
+
+  nim-embedding:
+    <<: *nim-service
+    profiles: [nims-core]
+    image: ${NIM_EMBED_IMAGE:-nvcr.io/nim/nvidia/llama-nemotron-embed-vl-1b-v2}:${NIM_EMBED_TAG:-1.12.0}
+    ports: ["${NIM_EMBED_HOST_PORT:-8004}:8000"]
+    environment:
+      <<: *nim-environment
+      NIM_HTTP_API_PORT: "8000"
+      NIM_OTEL_SERVICE_NAME: llama-nemotron-embed-vl-1b-v2
+      NIM_TRITON_LOG_VERBOSE: "1"
+      OMP_NUM_THREADS: "1"
+    volumes: ["nim_embedding_cache:${NIM_EMBED_CACHE_PATH:-/opt/nim/.cache}"]
+    deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_EMBED_GPU_ID:-3}"]}]}}}
+
+  nim-reranker:
+    <<: *nim-service
+    profiles: [nim-reranker]
+    image: ${NIM_RERANK_IMAGE:-nvcr.io/nim/nvidia/llama-nemotron-rerank-vl-1b-v2}:${NIM_RERANK_TAG:-1.11.0}
+    ports: ["${NIM_RERANK_HOST_PORT:-8005}:8000"]
+    environment: {<<: *nim-environment, NIM_HTTP_API_PORT: "8000", NIM_OTEL_SERVICE_NAME: llama-nemotron-rerank-vl-1b-v2, NIM_TRITON_LOG_VERBOSE: "1"}
+    volumes: ["nim_reranker_cache:${NIM_RERANK_CACHE_PATH:-/opt/nim/.cache}"]
+    deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_RERANK_GPU_ID:-4}"]}]}}}
+
+  nim-nemotron-parse:
+    <<: *nim-service
+    profiles: [nim-parse]
+    image: ${NIM_PARSE_IMAGE:-nvcr.io/nim/nvidia/nemotron-parse-v1.2}:${NIM_PARSE_TAG:-1.7.0-variant}
+    ports: ["${NIM_PARSE_HOST_PORT:-8006}:8000"]
+    environment: {<<: *nim-environment, NIM_HTTP_API_PORT: "8000", NIM_OTEL_SERVICE_NAME: nemotron-parse-v1.2, NIM_TRITON_LOG_VERBOSE: "1"}
+    volumes: ["nim_parse_cache:${NIM_PARSE_CACHE_PATH:-/opt/nim/.cache}"]
+    deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_PARSE_GPU_ID:-5}"]}]}}}
+
+  nim-caption:
+    <<: *nim-service
+    profiles: [nim-caption]
+    image: ${NIM_CAPTION_IMAGE:-nvcr.io/nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning}:${NIM_CAPTION_TAG:-1.7.0-variant}
+    ports: ["${NIM_CAPTION_HOST_PORT:-8007}:8000"]
+    environment: {<<: *nim-environment, NIM_HTTP_API_PORT: "8000", NIM_OTEL_SERVICE_NAME: nemotron-3-nano-omni-30b-a3b-reasoning, NIM_TRITON_LOG_VERBOSE: "1"}
+    volumes: ["nim_caption_cache:${NIM_CAPTION_CACHE_PATH:-/opt/nim/.cache}"]
+    deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_CAPTION_GPU_ID:-6}"]}]}}}
+
+  nim-answer:
+    <<: *nim-service
+    profiles: [nim-answer]
+    image: ${NIM_ANSWER_IMAGE:-nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1.5}:${NIM_ANSWER_TAG:-2.0.5}
+    ports: ["${NIM_ANSWER_HOST_PORT:-8008}:8000"]
+    environment:
+      <<: *nim-environment
+      NIM_HTTP_API_PORT: "8000"
+      NIM_OTEL_SERVICE_NAME: answer-llm
+      NIM_TENSOR_PARALLEL_SIZE: ${NIM_ANSWER_TENSOR_PARALLEL_SIZE:-2}
+      NIM_PASSTHROUGH_ARGS: ${NIM_ANSWER_PASSTHROUGH_ARGS:---disable-custom-all-reduce}
+      NCCL_IB_DISABLE: "1"
+      NCCL_P2P_DISABLE: "1"
+    volumes: ["nim_answer_cache:${NIM_ANSWER_CACHE_PATH:-/opt/nim/.cache}"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - <<: *nim-gpu
+              device_ids: ["${NIM_ANSWER_GPU_ID_0:-7}", "${NIM_ANSWER_GPU_ID_1:-8}"]
+
+  nim-audio:
+    <<: *nim-service
+    profiles: [nim-audio]
+    image: ${NIM_AUDIO_IMAGE:-nvcr.io/nim/nvidia/parakeet-1-1b-ctc-en-us}:${NIM_AUDIO_TAG:-1.5.0}
+    ports: ["${NIM_AUDIO_HTTP_HOST_PORT:-9000}:9000", "${NIM_AUDIO_GRPC_HOST_PORT:-50051}:50051"]
+    expose: ["50051"]
+    environment:
+      <<: *nim-environment
+      NIM_HTTP_API_PORT: "9000"
+      NIM_OTEL_SERVICE_NAME: parakeet-1-1b-ctc-en-us
+      NIM_TAGS_SELECTOR: ${NIM_AUDIO_TAGS_SELECTOR:-name=parakeet-1-1b-ctc-en-us,mode=ofl,vad=default,diarizer=disabled}
+      NIM_TRITON_LOG_VERBOSE: "1"
+    volumes: ["nim_audio_cache:${NIM_AUDIO_CACHE_PATH:-/opt/nim/.cache}"]
+    deploy: {resources: {reservations: {devices: [{<<: *nim-gpu, device_ids: ["${NIM_AUDIO_GPU_ID:-9}"]}]}}}
+
+  otel-collector:
+    profiles: [observability]
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.127.0}
+    command: ["--config=/etc/otelcol/config.yaml"]
+    configs:
+      - {source: otel_collector_config, target: /etc/otelcol/config.yaml, mode: 0444}
+    ports: ["${OTEL_GRPC_HOST_PORT:-4317}:4317", "${OTEL_HTTP_HOST_PORT:-4318}:4318", "${OTEL_PROMETHEUS_HOST_PORT:-8889}:8889"]
+    depends_on:
+      zipkin: {condition: service_healthy}
+    restart: unless-stopped
+
+  zipkin:
+    profiles: [observability]
+    image: ${ZIPKIN_IMAGE:-openzipkin/zipkin:3.5.0}
+    environment: {JAVA_OPTS: "${ZIPKIN_JAVA_OPTS:--Xms128m -Xmx512m -XX:+ExitOnOutOfMemoryError}"}
+    ports: ["${ZIPKIN_HOST_PORT:-9411}:9411"]
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O /dev/null http://localhost:9411/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+configs:
+  retriever_service_config:
+    content: |
+      mode: standalone
+      server:
+        host: "0.0.0.0"
+        port: 7670
+      logging:
+        level: "${LOG_LEVEL:-INFO}"
+        file: "/var/lib/nemo-retriever/retriever-service.log"
+        format: "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+      nim_endpoints:
+        page_elements_invoke_url: "${NIM_PAGE_ELEMENTS_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-page-elements-v3}"
+        table_structure_invoke_url: "${NIM_TABLE_STRUCTURE_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-table-structure-v1}"
+        ocr_invoke_url: "${NIM_OCR_URL-https://ai.api.nvidia.com/v1/cv/nvidia/nemotron-ocr-v1}"
+        embed_invoke_url: "${NIM_EMBED_URL-https://integrate.api.nvidia.com/v1/embeddings}"
+        embed_model_name: "${NIM_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}"
+        caption_invoke_url: ${NIM_CAPTION_URL:-null}
+        caption_model_name: ${NIM_CAPTION_MODEL_YAML:-null}
+        audio_grpc_endpoint: ${NIM_AUDIO_GRPC_ENDPOINT_YAML:-null}
+        api_key: null
+      local_models:
+        enabled: ${LOCAL_MODELS_ENABLED:-false}
+        hf_cache_dir: ${LOCAL_MODELS_HF_CACHE_DIR_YAML:-null}
+        device: ${LOCAL_MODELS_DEVICE_YAML:-null}
+        warmup_on_startup: ${LOCAL_MODELS_WARMUP_ON_STARTUP:-false}
+        max_tasks_per_child: ${LOCAL_MODELS_MAX_TASKS_PER_CHILD:-null}
+        max_process_pool_workers: ${LOCAL_MODELS_MAX_PROCESS_POOL_WORKERS:-1}
+        extract:
+          enabled: ${LOCAL_EXTRACT_ENABLED:-true}
+          use_table_structure: ${LOCAL_EXTRACT_USE_TABLE_STRUCTURE:-true}
+          use_graphic_elements: ${LOCAL_EXTRACT_USE_GRAPHIC_ELEMENTS:-true}
+          ocr_version: "${LOCAL_EXTRACT_OCR_VERSION:-v2}"
+          ocr_lang: ${LOCAL_EXTRACT_OCR_LANG_YAML:-null}
+        embed:
+          enabled: ${LOCAL_EMBED_ENABLED:-true}
+          model_name: "${LOCAL_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}"
+          local_ingest_embed_backend: "${LOCAL_EMBED_BACKEND:-hf}"
+          gpu_memory_utilization: ${LOCAL_EMBED_GPU_MEMORY_UTILIZATION:-0.45}
+        asr:
+          enabled: ${LOCAL_ASR_ENABLED:-true}
+      llm:
+        enabled: ${ANSWER_LLM_ENABLED:-false}
+        model: "${ANSWER_LLM_MODEL:-openai/nvidia/llama-3.3-nemotron-super-49b-v1.5}"
+        api_base: ${ANSWER_LLM_API_BASE_YAML:-null}
+        api_key: null
+        temperature: ${ANSWER_LLM_TEMPERATURE:-0.0}
+        top_p: ${ANSWER_LLM_TOP_P:-null}
+        max_tokens: ${ANSWER_LLM_MAX_TOKENS:-512}
+        extra_params: ${ANSWER_LLM_EXTRA_PARAMS:-{}}
+        num_retries: ${ANSWER_LLM_NUM_RETRIES:-3}
+        timeout: ${ANSWER_LLM_TIMEOUT:-180.0}
+        rag_system_prompt: ${ANSWER_LLM_RAG_SYSTEM_PROMPT_YAML:-null}
+        rag_system_prompt_prefix: ${ANSWER_LLM_RAG_SYSTEM_PROMPT_PREFIX_YAML:-null}
+        reasoning_enabled: ${ANSWER_LLM_REASONING_ENABLED:-true}
+      pipeline:
+        realtime_workers: ${PIPELINE_REALTIME_WORKERS:-24}
+        realtime_queue_size: ${PIPELINE_REALTIME_QUEUE_SIZE:-2048}
+        batch_workers: ${PIPELINE_BATCH_WORKERS:-48}
+        batch_queue_size: ${PIPELINE_BATCH_QUEUE_SIZE:-8192}
+      mcp:
+        enabled: false
+      vectordb:
+        enabled: true
+        lancedb_uri: "/data/vectordb"
+        table_name: "nemo_retriever"
+        embed_model: "${NIM_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}"
+        vectordb_url: "http://vectordb:7671"
+  otel_collector_config:
+    content: |
+      extensions:
+        health_check: {endpoint: "0.0.0.0:13133"}
+      receivers:
+        otlp:
+          protocols:
+            grpc: {endpoint: "0.0.0.0:4317"}
+            http: {endpoint: "0.0.0.0:4318"}
+      processors:
+        batch: {timeout: 5s, send_batch_size: 1024}
+      exporters:
+        debug: {verbosity: basic}
+        prometheus: {endpoint: "0.0.0.0:8889"}
+        zipkin: {endpoint: "http://zipkin:9411/api/v2/spans"}
+      service:
+        extensions: [health_check]
+        pipelines:
+          traces: {receivers: [otlp], processors: [batch], exporters: [zipkin, debug]}
+          metrics: {receivers: [otlp], processors: [batch], exporters: [prometheus, debug]}
+          logs: {receivers: [otlp], processors: [batch], exporters: [debug]}
+
+volumes:
+  retriever_data:
+  vectordb_data:
+  nim_page_elements_cache: {name: "${NIM_PAGE_ELEMENTS_CACHE_VOLUME:-nemo-retriever-nim-page-elements-cache}"}
+  nim_table_structure_cache: {name: "${NIM_TABLE_STRUCTURE_CACHE_VOLUME:-nemo-retriever-nim-table-structure-cache}"}
+  nim_ocr_cache: {name: "${NIM_OCR_CACHE_VOLUME:-nemo-retriever-nim-ocr-cache}"}
+  nim_embedding_cache: {name: "${NIM_EMBED_CACHE_VOLUME:-nemo-retriever-nim-embedding-cache}"}
+  nim_reranker_cache: {name: "${NIM_RERANK_CACHE_VOLUME:-nemo-retriever-nim-reranker-cache}"}
+  nim_parse_cache: {name: "${NIM_PARSE_CACHE_VOLUME:-nemo-retriever-nim-parse-cache}"}
+  nim_caption_cache: {name: "${NIM_CAPTION_CACHE_VOLUME:-nemo-retriever-nim-caption-cache}"}
+  nim_answer_cache: {name: "${NIM_ANSWER_CACHE_VOLUME:-nemo-retriever-nim-answer-cache}"}
+  nim_audio_cache: {name: "${NIM_AUDIO_CACHE_VOLUME:-nemo-retriever-nim-audio-cache}"}
