@@ -133,8 +133,6 @@ Also refer to [What is NeMo Retriever Library?](overview.md) and [Pre-Requisites
 Currently, extraction with Nemotron parse doesn't support image files, only scanned PDFs.
 To work around this issue, convert image files to PDFs before you use `extract_method="nemotron_parse"`.
 
-
-
 ## Hosted Page Elements NIM image size limits { #hosted-page-elements-nim-image-size-limits }
 
 [NVIDIA-hosted Page Elements NIM](https://build.nvidia.com/nvidia/nemotron-page-elements-v3) endpoints on `ai.api.nvidia.com` (and the matching build.nvidia.com model experience) enforce a strict limit on **inline** image payloads. The same limit applies to hosted **Table Structure** and **Graphic Elements** object-detection NIMs because they share the same `/v1/infer` request shape.
