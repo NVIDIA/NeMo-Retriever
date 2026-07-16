@@ -34,17 +34,13 @@ def _write_tokenizer(path: Path) -> None:
     tokenizer.save(str(path))
 
 
-def test_service_image_declares_and_caches_lightweight_tokenizer() -> None:
+def test_service_extra_declares_lightweight_tokenizer_dependencies() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     pyproject = tomllib.loads((repo_root / "nemo_retriever" / "pyproject.toml").read_text(encoding="utf-8"))
     service_dependencies = pyproject["project"]["optional-dependencies"]["service"]
     assert any(item.startswith("tokenizers") for item in service_dependencies)
     assert any(item.startswith("huggingface-hub") for item in service_dependencies)
     assert not any(item.startswith("transformers") for item in service_dependencies)
-
-    dockerfile = (repo_root / "Dockerfile").read_text(encoding="utf-8")
-    assert "load_chunk_tokenizer('nvidia/llama-nemotron-embed-vl-1b-v2')" in dockerfile
-    assert "ENV HF_HUB_OFFLINE=1" in dockerfile
 
 
 def test_default_chunk_tokenizer_matches_default_embedding_model() -> None:

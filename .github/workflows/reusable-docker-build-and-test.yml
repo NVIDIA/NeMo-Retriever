@@ -204,6 +204,39 @@ jobs:
             exit 1
           fi
 
+          # Verify the production service image before test-only dependencies
+          # are installed. This proves that TXT/HTML chunking works from the
+          # bundled tokenizer cache without transformers or Hub access.
+          docker run --rm -i --platform "$PLATFORM" --entrypoint bash "$IMAGE" \
+            -lc 'source /opt/retriever_runtime/bin/activate && python -' <<'PY'
+          import importlib.util
+          import os
+
+          assert importlib.util.find_spec("transformers") is None
+          assert importlib.util.find_spec("tokenizers") is not None
+          assert importlib.util.find_spec("huggingface_hub") is not None
+          assert os.environ.get("HF_HUB_OFFLINE") == "1"
+
+          from nemo_retriever.common.modality.html.convert import html_bytes_to_chunks_df
+          from nemo_retriever.common.modality.txt.split import (
+              DEFAULT_TOKENIZER_MODEL_ID,
+              txt_bytes_to_chunks_df,
+          )
+          from nemo_retriever.common.modality.txt.tokenizer_provider import load_chunk_tokenizer
+
+          tokenizer = load_chunk_tokenizer(DEFAULT_TOKENIZER_MODEL_ID)
+          assert tokenizer.encode("offline tokenizer smoke test")
+
+          txt = txt_bytes_to_chunks_df(b"offline tokenizer smoke test", "smoke.txt")
+          html = html_bytes_to_chunks_df(
+              b"<html><body><p>offline tokenizer smoke test</p></body></html>",
+              "smoke.html",
+          )
+          assert not txt.empty
+          assert not html.empty
+          print("Service image offline TXT/HTML chunking smoke test passed")
+          PY
+
           if [ "${{ inputs.test-selection }}" != "full" ] && [ "${{ inputs.test-selection }}" != "random" ]; then
             echo "Error: test-selection must be 'full' or 'random'"
             exit 1
