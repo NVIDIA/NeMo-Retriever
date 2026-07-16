@@ -9,7 +9,7 @@ Split mode renders one HPA per stateless role (`realtime`, `batch`).
 Each HPA mixes up to three signals, gated by per-metric `enabled` flags
 on `topology.<role>.hpa.metrics`:
 
-  • queueBacklog          — gateway backlog External metric
+  • queueBacklog          — gateway queued-plus-active demand External metric
   • processingLatencyP95  — External metric via prometheus-adapter
   • cpu                   — Resource metric (built-in)
 
@@ -70,6 +70,9 @@ spec:
 {{- $promAdapter := and (eq $backend "prometheus-adapter") (hasKey .Values.autoscaling "queueDepth") }}
 {{- $adapterCfg := .Values.autoscaling.queueDepth.prometheusAdapter | default dict }}
 {{- $queueBacklogMetric := $adapterCfg.queueBacklogMetric | default "nemo_retriever_gateway_work_queue_backlog" }}
+{{- if $adapterCfg.queueDepthRatioMetric }}
+{{- $queueBacklogMetric = $adapterCfg.queueDepthRatioMetric }}
+{{- end }}
 {{- $latencyMetric := $adapterCfg.processingLatencyP95Metric | default "nemo_retriever_pool_processing_duration_p95_seconds" }}
 {{- range $role := list "realtime" "batch" }}
 {{- $roleCfg := index $.Values.topology $role }}
@@ -82,6 +85,28 @@ spec:
 {{- $metrics := $roleCfg.hpa.metrics | default dict }}
 {{- $cpuMetric := $metrics.cpu | default dict }}
 {{- $queueMetric := $metrics.queueBacklog | default dict }}
+{{- $queueEnabled := $queueMetric.enabled }}
+{{- $queueTarget := $queueMetric.target | default "1" }}
+{{- $legacyQueueUsed := false }}
+{{- $legacyFractional := false }}
+{{- if hasKey $metrics "queueDepthRatio" }}
+{{- $legacyQueueUsed = true }}
+{{- $legacyQueue := index $metrics "queueDepthRatio" }}
+{{- if kindIs "map" $legacyQueue }}
+{{- if hasKey $legacyQueue "enabled" }}{{- $queueEnabled = $legacyQueue.enabled }}{{- end }}
+{{- if hasKey $legacyQueue "target" }}
+{{- $legacyTarget := printf "%v" $legacyQueue.target }}
+{{- if regexMatch "^0?\\." $legacyTarget }}
+{{- $legacyFractional = true }}
+{{- $queueTarget = ($queueMetric.target | default "1") }}
+{{- else }}
+{{- $queueTarget = $legacyTarget }}
+{{- end }}
+{{- end }}
+{{- else }}
+{{- $queueEnabled = $legacyQueue }}
+{{- end }}
+{{- end }}
 {{- $latencyMetricCfg := $metrics.processingLatencyP95 | default dict }}
 {{- /*
   Back-compat: when the legacy alias is set AND the new cpu block
@@ -99,7 +124,7 @@ spec:
   whatever default cpu.targetUtilizationPercentage the role block
   declared. This guarantees the HPA spec is never empty.
 */ -}}
-{{- $anyPromEnabled := and $promAdapter (or $queueMetric.enabled $latencyMetricCfg.enabled) }}
+{{- $anyPromEnabled := and $promAdapter (or $queueEnabled $latencyMetricCfg.enabled) }}
 {{- if and (not $cpuEnabled) (not $anyPromEnabled) }}
 {{- $cpuEnabled = true }}
 {{- $cpuTarget = ($cpuMetric.targetUtilizationPercentage | default 70) }}
@@ -116,9 +141,12 @@ metadata:
     # HPA can tell at a glance what's driving scaling decisions.
     nemo-retriever.nvidia.com/hpa-backend: {{ $backend | quote }}
     nemo-retriever.nvidia.com/hpa-signals: {{ printf "queueRatio=%v latencyP95=%v cpu=%v"
-      (and $promAdapter $queueMetric.enabled)
+      (and $promAdapter $queueEnabled)
       (and $promAdapter $latencyMetricCfg.enabled)
       $cpuEnabled | quote }}
+    {{- if $legacyQueueUsed }}
+    nemo-retriever.nvidia.com/legacy-queue-depth-ratio: {{ if $legacyFractional }}"fractional target substituted with backlog-count default"{{ else }}"legacy alias active"{{ end }}
+    {{- end }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -127,10 +155,10 @@ spec:
   minReplicas: {{ $roleCfg.hpa.minReplicas }}
   maxReplicas: {{ $roleCfg.hpa.maxReplicas }}
   metrics:
-    {{- if and $promAdapter $queueMetric.enabled }}
-    # Queue fill ratio (0..1) — primary scaling signal.
+    {{- if and $promAdapter $queueEnabled }}
+    # Outstanding demand (queued plus active leases) — primary scaling signal.
     # AverageValue divides the metric by current replica count,
-    # so the target is the per-replica fill, not the cluster total.
+    # so the target is the per-replica demand, not the cluster total.
     - type: External
       external:
         metric:
@@ -140,7 +168,7 @@ spec:
               pool: {{ $role }}
         target:
           type: AverageValue
-          averageValue: {{ $queueMetric.target | default "1" | quote }}
+          averageValue: {{ $queueTarget | quote }}
     {{- end }}
     {{- if and $promAdapter $latencyMetricCfg.enabled }}
     # 95th-percentile processing latency — catches GPU stalls and

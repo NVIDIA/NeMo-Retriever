@@ -81,17 +81,33 @@ GATEWAY_FORWARD_DURATION = Histogram(
 
 WORK_QUEUE_ITEMS = Gauge("nemo_retriever_work_queue_items", "Gateway work items waiting to be claimed.", ["pool"])
 WORK_QUEUE_BYTES = Gauge("nemo_retriever_work_queue_bytes", "Bytes waiting in the gateway work queue.", ["pool"])
-WORK_QUEUE_ACTIVE_LEASES = Gauge("nemo_retriever_work_queue_active_leases", "Current active gateway work leases.", ["pool"])
-WORK_QUEUE_WAIT = Histogram("nemo_retriever_work_queue_wait_seconds", "Time from gateway admission until claim.", ["pool"])
+WORK_QUEUE_ACTIVE_LEASES = Gauge(
+    "nemo_retriever_work_queue_active_leases", "Current active gateway work leases.", ["pool"]
+)
+WORK_QUEUE_DEMAND = Gauge("nemo_retriever_work_queue_demand", "Queued work plus active gateway leases.", ["pool"])
+WORK_QUEUE_MAX_ACTIVE_LEASES = Gauge(
+    "nemo_retriever_work_queue_max_active_leases", "Configured gateway active-lease capacity.", ["pool"]
+)
+WORK_QUEUE_WAIT = Histogram(
+    "nemo_retriever_work_queue_wait_seconds", "Time from gateway admission until claim.", ["pool"]
+)
 WORK_QUEUE_CLAIMS = Counter(
     "nemo_retriever_work_queue_claims_total",
     "Work claims issued by pool and worker pod.",
     ["pool", "worker_uid"],
 )
 WORK_QUEUE_EXPIRATIONS = Counter("nemo_retriever_work_queue_expirations_total", "Expired work leases.", ["pool"])
-WORK_QUEUE_REQUEUES = Counter("nemo_retriever_work_queue_requeues_total", "Work leases requeued after expiry or release.", ["pool", "reason"])
-WORK_QUEUE_EXHAUSTED = Counter("nemo_retriever_work_queue_exhausted_total", "Work items failed after exhausting delivery attempts.", ["pool"])
-WORK_QUEUE_STALE_CALLBACKS = Counter("nemo_retriever_work_queue_stale_callbacks_total", "Callbacks rejected because their lease was superseded.", ["pool"])
+WORK_QUEUE_REQUEUES = Counter(
+    "nemo_retriever_work_queue_requeues_total", "Work leases requeued after expiry or release.", ["pool", "reason"]
+)
+WORK_QUEUE_EXHAUSTED = Counter(
+    "nemo_retriever_work_queue_exhausted_total", "Work items failed after exhausting delivery attempts.", ["pool"]
+)
+WORK_QUEUE_STALE_CALLBACKS = Counter(
+    "nemo_retriever_work_queue_stale_callbacks_total",
+    "Callbacks rejected because their lease was superseded.",
+    ["pool"],
+)
 
 # ── Worker-specific ──────────────────────────────────────────────────
 
@@ -148,10 +164,18 @@ POOL_CALLBACK_BACKPRESSURE_TOTAL = Counter(
     ["pool"],
 )
 
-POOL_ACTIVE_SLOTS = Gauge("nemo_retriever_pool_active_execution_slots", "Execution slots currently holding a claimed item.", ["pool"])
-POOL_CLAIM_LATENCY = Histogram("nemo_retriever_pool_claim_latency_seconds", "Worker long-poll claim request latency.", ["pool"])
-POOL_HEARTBEAT_FAILURES = Counter("nemo_retriever_pool_heartbeat_failures_total", "Failed worker lease heartbeat requests.", ["pool"])
-POOL_COMPLETED_CLAIMS = Counter("nemo_retriever_pool_completed_claims_total", "Claims whose callbacks were acknowledged.", ["pool"])
+POOL_ACTIVE_SLOTS = Gauge(
+    "nemo_retriever_pool_active_execution_slots", "Execution slots currently holding a claimed item.", ["pool"]
+)
+POOL_CLAIM_LATENCY = Histogram(
+    "nemo_retriever_pool_claim_latency_seconds", "Worker long-poll claim request latency.", ["pool"]
+)
+POOL_HEARTBEAT_FAILURES = Counter(
+    "nemo_retriever_pool_heartbeat_failures_total", "Failed worker lease heartbeat requests.", ["pool"]
+)
+POOL_COMPLETED_CLAIMS = Counter(
+    "nemo_retriever_pool_completed_claims_total", "Claims whose callbacks were acknowledged.", ["pool"]
+)
 
 
 def instrument_app(app: "FastAPI", *, role: str) -> None:

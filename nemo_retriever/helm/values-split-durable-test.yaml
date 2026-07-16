@@ -1,0 +1,29 @@
+# Reusable retriever-dev split-mode durability and scheduler validation overlay.
+topology:
+  mode: split
+  gateway:
+    replicas: 1
+  realtime:
+    replicas: 1
+  batch:
+    replicas: 2
+
+persistence:
+  enabled: true
+
+serviceConfig:
+  workQueue:
+    maxActiveLeases:
+      realtime: 8
+      batch: 48
+
+serviceMonitor:
+  enabled: true
+  autoEnableInSplitMode: true
+
+autoscaling:
+  queueDepth:
+    backend: prometheus-adapter
+    prometheusAdapter:
+      rules:
+        create: true

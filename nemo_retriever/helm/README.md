@@ -30,9 +30,10 @@ The chart ships two deployable layers behind feature flags:
 > NIMService template short-circuits and the service falls back to
 > external NIM URLs supplied via `serviceConfig.nimEndpoints.*`.
 
-> **Persistence today is SQLite on a single ReadWriteOnce PVC**, which caps
-> the service at one replica. The chart already exposes the HPA scaffolding
-> so it's a one-line change once the planned PostgreSQL backend lands.
+> **Gateway persistence is SQLite on a single ReadWriteOnce PVC.** Split mode
+> enforces one gateway replica and uses a `Recreate` rollout so only one writer
+> can own the durable job, document, queue, attempt, generation, and lease state.
+> Drain accepted work before rolling back to an image that predates this schema.
 
 > For behavioral consistency between local HuggingFace deployments and Helm service deployments: 
 > `results = ingestor.ingest(...return_results=True)
@@ -692,11 +693,16 @@ when the OCR service runs outside the operator sub-stack.
 
 | Path                       | Default                       | Notes |
 |----------------------------|-------------------------------|-------|
-| `persistence.enabled`      | `true`                        |       |
+| `persistence.enabled`      | `true`                        | Persists gateway tracker metadata and payload spool. When false, an `emptyDir` spool is used and gateway-pod replacement cannot recover accepted work. |
 | `persistence.size`         | `50Gi`                        |       |
 | `persistence.accessModes`  | `[ReadWriteOnce]`             | Required by SQLite. |
 | `persistence.storageClass` | `""`                          | Use cluster default unless set. Use `"-"` to disable a `storageClassName`. |
-| `persistence.mountPath`    | `/var/lib/nemo-retriever`     | Both DB and log file are written here. |
+| `persistence.mountPath`    | `/var/lib/nemo-retriever`     | Gateway SQLite state and payloads are stored under `work-queue/`; logs and other state may also use this mount. |
+
+The gateway enforces active-lease budgets independently of worker replicas.
+`serviceConfig.workQueue.maxActiveLeases.realtime` defaults to `8` and
+`.batch` defaults to `48`; treat these as explicit downstream-capacity budgets,
+not values inferred from pod or NIM counts.
 
 ### Secrets
 
@@ -847,10 +853,10 @@ while workers are still processing; see the commented example on
 ## Queue-depth autoscaling (split mode)
 
 In `topology.mode: split` deployments the realtime and batch worker
-pods scale horizontally based on the gateway's **central work backlog** and
-**95th-percentile processing latency**. Backlog comes from the gateway while
+pods scale horizontally based on the gateway's **central outstanding demand** and
+**95th-percentile processing latency**. Demand is queued records plus active leases from the gateway while
 latency comes from workers; both publishers are always on (see
-`nemo_retriever_work_queue_items` in
+`nemo_retriever_work_queue_demand` in
 [`prometheus.py`](../src/nemo_retriever/service/services/prometheus.py)).
 The only choice you have to make is **how the metrics get from
 Prometheus into the Kubernetes HPA**.
@@ -900,7 +906,7 @@ Then verify both metrics show up in the External Metrics API:
 
 ```bash
 kubectl get --raw \
-  "/apis/external.metrics.k8s.io/v1beta1/namespaces/$NS/nemo_retriever_pool_queue_depth_ratio_avg?labelSelector=pool%3Drealtime" \
+  "/apis/external.metrics.k8s.io/v1beta1/namespaces/$NS/nemo_retriever_gateway_work_queue_backlog?labelSelector=pool%3Drealtime" \
   | jq .
 ```
 
@@ -922,13 +928,13 @@ topology:
   realtime:
     hpa:
       metrics:
-        queueDepthRatio: { enabled: false }
+        queueBacklog: { enabled: false }
         processingLatencyP95: { enabled: false }
         cpu: { enabled: true, targetUtilizationPercentage: 60 }
   batch:
     hpa:
       metrics:
-        queueDepthRatio: { enabled: false }
+        queueBacklog: { enabled: false }
         processingLatencyP95: { enabled: false }
         cpu: { enabled: true, targetUtilizationPercentage: 80 }
 ```
@@ -1013,11 +1019,15 @@ topology:
         processingLatencyP95: { enabled: true, targetSeconds: "120" }
 ```
 
-The backlog `target` is documents per replica because the HPA uses
+The demand `target` is outstanding documents per replica because the HPA uses
 `type: AverageValue`. When migrating an existing values file, rename
 `metrics.queueDepthRatio` to `metrics.queueBacklog`, choose a document-count
 target near the role's execution-slot count, and rename
-`prometheusAdapter.queueDepthRatioMetric` to `queueBacklogMetric`.
+`prometheusAdapter.queueDepthRatioMetric` to `queueBacklogMetric`. Both legacy
+keys remain aliases for this release: legacy enable/disable values win, legacy
+metric names name the new demand metric, and fractional ratio targets are
+replaced by the role's backlog-count default with an HPA annotation and NOTES
+warning. The aliases are scheduled for removal in the following release.
 
 ### Verifying it scales
 

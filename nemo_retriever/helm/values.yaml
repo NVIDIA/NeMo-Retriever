@@ -343,7 +343,7 @@ topology:
     # Batch HPA tuning differs from realtime: a deeper queue is normal
     # (we *want* batching), and replicas usually carry expensive GPUs
     # that we'd rather not churn. So:
-    #   • Higher queueDepthRatio target (allow steady-state fill)
+    #   • Higher queueBacklog target (allow steady-state fill)
     #   • Higher p95 latency target (batch jobs can legitimately take
     #     minutes per item)
     #   • Longer scaleDown stabilization window (no GPU thrash)
@@ -651,6 +651,10 @@ serviceConfig:
     leaseTtlS: 60.0
     heartbeatIntervalS: 20.0
     maxDeliveryAttempts: 3
+    # Cluster-wide budgets; do not infer these from worker replica counts.
+    maxActiveLeases:
+      realtime: 8
+      batch: 48
 
   resources:
     maxMemoryMb: null
@@ -809,6 +813,8 @@ autoscaling:
       # PromQL queries. These are what the HPA `metric.name` field
       # references; the adapter ConfigMap's `name.as` field has to match.
       queueBacklogMetric: "nemo_retriever_gateway_work_queue_backlog"
+      # Deprecated for one release; when set, overrides queueBacklogMetric.
+      queueDepthRatioMetric: ""
       processingLatencyP95Metric: "nemo_retriever_pool_processing_duration_p95_seconds"
       # When `rules.create` is true the chart renders a ConfigMap with
       # the PromQL rules below; the operator wires their existing

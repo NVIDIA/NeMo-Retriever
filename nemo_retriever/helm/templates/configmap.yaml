@@ -126,12 +126,15 @@ pipeline:
 
 work_queue:
   gateway_url: "http://{{ .gatewaySvc }}:{{ .Values.serviceConfig.server.port }}"
-  spool_directory: {{ .Values.serviceConfig.workQueue.spoolDirectory | quote }}
+  spool_directory: {{ if .Values.persistence.enabled }}{{ printf "%s/work-queue" .Values.persistence.mountPath | quote }}{{ else }}{{ .Values.serviceConfig.workQueue.spoolDirectory | quote }}{{ end }}
+  persistence_enabled: {{ .Values.persistence.enabled }}
   spool_limit_bytes: {{ .Values.serviceConfig.workQueue.spoolLimitBytes }}
   claim_timeout_s: {{ .Values.serviceConfig.workQueue.claimTimeoutS }}
   lease_ttl_s: {{ .Values.serviceConfig.workQueue.leaseTtlS }}
   heartbeat_interval_s: {{ .Values.serviceConfig.workQueue.heartbeatIntervalS }}
   max_delivery_attempts: {{ .Values.serviceConfig.workQueue.maxDeliveryAttempts }}
+  max_active_leases_realtime: {{ .Values.serviceConfig.workQueue.maxActiveLeases.realtime }}
+  max_active_leases_batch: {{ .Values.serviceConfig.workQueue.maxActiveLeases.batch }}
 
 resources:
   max_memory_mb: {{ .Values.serviceConfig.resources.maxMemoryMb | default "null" }}

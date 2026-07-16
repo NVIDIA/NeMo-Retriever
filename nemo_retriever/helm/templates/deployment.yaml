@@ -18,6 +18,9 @@
 {{- end -}}
 {{- end -}}
 {{- $svc := .Values.service -}}
+{{- if and (eq .Values.topology.mode "split") .Values.persistence.enabled (ne (int .Values.topology.gateway.replicas) 1) -}}
+{{- fail "durable split mode requires topology.gateway.replicas=1 (single-writer SQLite)" -}}
+{{- end -}}
 {{- if and $svc.installFfmpeg $svc.env -}}
 {{- range $env := $svc.env }}
 {{- if and (hasKey $env "name") (eq $env.name "INSTALL_FFMPEG") }}
@@ -214,7 +217,7 @@ spec:
   replicas: {{ $roleCfg.replicas }}
   {{- end }}
   strategy:
-    type: RollingUpdate
+    type: {{ if and (eq $role "gateway") $.Values.persistence.enabled }}Recreate{{ else }}RollingUpdate{{ end }}
   selector:
     matchLabels:
       {{- include "nemo-retriever.role.selectorLabels" (dict "context" $ "role" $role) | nindent 6 }}
@@ -334,6 +337,10 @@ spec:
             - name: config
               mountPath: /etc/nemo-retriever
               readOnly: true
+            {{- if and $.Values.persistence.enabled (eq $role "gateway") }}
+            - name: data
+              mountPath: {{ $.Values.persistence.mountPath }}
+            {{- end }}
             {{- if and $.Values.retrieverResults.enabled (eq $role "gateway") }}
             - name: retriever-results
               mountPath: {{ $.Values.retrieverResults.mountPath }}
@@ -361,6 +368,11 @@ spec:
             {{- if eq $role "gateway" }}
             sizeLimit: {{ div $.Values.serviceConfig.workQueue.spoolLimitBytes 1073741824 }}Gi
             {{- end }}
+        {{- if and $.Values.persistence.enabled (eq $role "gateway") }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "nemo-retriever.pvcName" $ }}
+        {{- end }}
         {{- if and $.Values.retrieverResults.enabled (eq $role "gateway") }}
         - name: retriever-results
           persistentVolumeClaim:

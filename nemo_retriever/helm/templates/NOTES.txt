@@ -4,6 +4,22 @@ Release name : {{ .Release.Name }}
 Namespace    : {{ .Release.Namespace }}
 Topology     : {{ .Values.topology.mode }}
 
+{{- if not .Values.persistence.enabled }}
+Durability   : EPHEMERAL — gateway pod replacement cannot recover accepted work.
+{{- else }}
+Durability   : SQLite + payload spool on {{ .Values.persistence.mountPath }} (single gateway writer).
+{{- end }}
+{{- range $role := list "realtime" "batch" }}
+{{- $metrics := (index $.Values.topology $role).hpa.metrics | default dict }}
+{{- if hasKey $metrics "queueDepthRatio" }}
+Compatibility: {{ $role }} metrics.queueDepthRatio is deprecated. Fractional ratio targets
+               are replaced with that role's queueBacklog count default.
+{{- end }}
+{{- end }}
+{{- if .Values.autoscaling.queueDepth.prometheusAdapter.queueDepthRatioMetric }}
+Compatibility: queueDepthRatioMetric is deprecated and currently names the demand metric.
+{{- end }}
+
 {{- if eq .Values.topology.mode "standalone" }}
 Service name : {{ include "nemo-retriever.fullname" . }}
 {{- else }}

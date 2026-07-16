@@ -300,10 +300,13 @@ class WorkQueueConfig(RichModel):
     )
     spool_directory: str = "/tmp/nemo-retriever-work"
     spool_limit_bytes: int = Field(default=20 * 1024**3, ge=1)
+    persistence_enabled: bool = True
     claim_timeout_s: float = Field(default=30.0, gt=0)
     lease_ttl_s: float = Field(default=60.0, gt=0)
     heartbeat_interval_s: float = Field(default=20.0, gt=0)
     max_delivery_attempts: int = Field(default=3, ge=1)
+    max_active_leases_realtime: int = Field(default=8, ge=1)
+    max_active_leases_batch: int = Field(default=48, ge=1)
 
     @model_validator(mode="after")
     def _validate_heartbeat(self) -> "WorkQueueConfig":

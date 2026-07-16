@@ -21,7 +21,7 @@ adapter at this ConfigMap one of two ways:
 
 The PromQL is intentionally simple:
 
-  • queueBacklogMetric — gateway-owned queued items, summed by ``pool``.
+  • queueBacklogMetric — gateway-owned queued items plus active leases, summed by ``pool``.
 
   • processingLatencyP95Metric — standard histogram_quantile() over
     a configurable window (autoscaling.queueDepth.prometheusAdapter.rules.latencyWindow,
@@ -33,6 +33,9 @@ The PromQL is intentionally simple:
 {{- $rulesCfg := $adapterCfg.rules | default dict }}
 {{- if $rulesCfg.create | default true -}}
 {{- $queueBacklogMetric := $adapterCfg.queueBacklogMetric | default "nemo_retriever_gateway_work_queue_backlog" }}
+{{- if $adapterCfg.queueDepthRatioMetric }}
+{{- $queueBacklogMetric = $adapterCfg.queueDepthRatioMetric }}
+{{- end }}
 {{- $latencyMetric := $adapterCfg.processingLatencyP95Metric | default "nemo_retriever_pool_processing_duration_p95_seconds" }}
 {{- $latencyWindow := $rulesCfg.latencyWindow | default "2m" }}
 apiVersion: v1
@@ -63,17 +66,17 @@ data:
     # ----------------------------------------------------------------
     externalRules:
       # ---------------------------------------------------------------
-      # Gateway backlog per pool. There is one authoritative publisher,
+      # Gateway outstanding demand per pool (queued plus active leases). There is one authoritative publisher,
       # independent of worker replica churn.
       # ---------------------------------------------------------------
-      - seriesQuery: 'nemo_retriever_work_queue_items{pool!=""}'
+      - seriesQuery: 'nemo_retriever_work_queue_demand{pool!=""}'
         resources:
           template: <<.Resource>>
         name:
-          matches: "^nemo_retriever_work_queue_items$"
+          matches: "^nemo_retriever_work_queue_demand$"
           as: "{{ $queueBacklogMetric }}"
         metricsQuery: |
-          sum by (pool) (nemo_retriever_work_queue_items{<<.LabelMatchers>>})
+          sum by (pool) (nemo_retriever_work_queue_demand{<<.LabelMatchers>>})
 
       # ---------------------------------------------------------------
       # 95th-percentile processing latency per pool.
