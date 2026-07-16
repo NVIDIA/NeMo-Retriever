@@ -17,7 +17,8 @@ every layer:
 * client — ``ServiceIngestor.embed(...)`` / ``.caption(...)`` route model
   endpoints into the spec's ``endpoint_overrides`` channel; and
 * answer — ``POST /v1/answer`` honors a per-request LLM override only when
-  enabled.
+  enabled, and reranks retrieval hits (server default or per-request
+  rerank endpoint override) before answer generation.
 """
 
 from __future__ import annotations
@@ -39,8 +40,10 @@ from nemo_retriever.service.config import (
     EndpointOverridesConfig,
     LLMConfig,
     LoggingConfig,
+    NimEndpointsConfig,
     PipelineOverridesConfig,
     PipelinePoolConfig,
+    RerankConfig,
     ServiceConfig,
     VectorDbConfig,
 )
@@ -83,22 +86,41 @@ def test_pipeline_spec_with_endpoint_overrides_is_not_empty() -> None:
 
 def test_config_defaults_disable_all_endpoint_overrides() -> None:
     cfg = EndpointOverridesConfig()
-    assert (cfg.embed, cfg.caption, cfg.llm) == (False, False, False)
+    assert (cfg.embed, cfg.caption, cfg.llm, cfg.rerank) == (False, False, False, False)
     assert cfg.allowed_url_prefixes == []
 
 
 def test_to_policy_carries_endpoint_override_flags() -> None:
     cfg = PipelineOverridesConfig(
-        endpoint_overrides=EndpointOverridesConfig(embed=True, caption=True, allowed_url_prefixes=["https://"])
+        endpoint_overrides=EndpointOverridesConfig(
+            embed=True, caption=True, rerank=True, allowed_url_prefixes=["https://"]
+        )
     )
     policy = cfg.to_policy()
     assert policy.endpoint_overrides.embed is True
     assert policy.endpoint_overrides.caption is True
     assert policy.endpoint_overrides.llm is False
+    assert policy.endpoint_overrides.rerank is True
     assert policy.endpoint_overrides.allowed_url_prefixes == ["https://"]
     described = policy.describe()["endpoint_overrides"]
     assert described["embed"] is True
+    assert described["rerank"] is True
     assert described["allowed_url_prefixes"] == ["https://"]
+
+
+def test_check_rerank_policy_accept_and_reject() -> None:
+    from nemo_retriever.common.policy import EndpointOverridePolicy
+
+    disabled = EndpointOverridePolicy()
+    with pytest.raises(PolicyError) as exc:
+        disabled.check_rerank(url="http://x/rerank")
+    assert exc.value.status_code == 403
+
+    enabled = EndpointOverridePolicy(rerank=True, allowed_url_prefixes=["https://"])
+    enabled.check_rerank(url="https://ok/rerank")  # no raise
+    with pytest.raises(PolicyError):
+        enabled.check_rerank(url="http://blocked/rerank")
+    assert enabled.any_enabled() is True
 
 
 # ----------------------------------------------------------------------
@@ -447,3 +469,205 @@ def test_answer_llm_override_prefix_allowlist_enforced(monkeypatch: pytest.Monke
         )
     assert resp.status_code == 403
     assert "does not match any allowed prefix" in resp.json()["detail"]
+
+
+# ----------------------------------------------------------------------
+# Answer path: reranking (server default + per-request endpoint override)
+# ----------------------------------------------------------------------
+
+
+class _MultiHitResponse:
+    status_code = 200
+    content = json.dumps({"results": [{"hits": [{"text": f"c{i}"} for i in range(8)]}]}).encode()
+
+    def json(self) -> dict[str, Any]:
+        return json.loads(self.content.decode())
+
+
+class _CapturingAsyncClient:
+    """Records the JSON body posted to the vectordb so tests can assert over-fetch."""
+
+    last_json: dict[str, Any] | None = None
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    async def post(self, url: str, **kwargs) -> _MultiHitResponse:
+        _CapturingAsyncClient.last_json = kwargs.get("json")
+        return _MultiHitResponse()
+
+
+def _make_rerank_app(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    *,
+    rerank_override: bool = False,
+    rerank_enabled: bool = False,
+    server_rerank_url: str | None = None,
+    server_rerank_model: str | None = None,
+    refine_factor: int = 4,
+    prefixes=None,
+):
+    async def _stub_work(_item):
+        return 0, []
+
+    monkeypatch.setattr(
+        "nemo_retriever.service.services.pipeline_executor.create_realtime_work_fn",
+        lambda _config: _stub_work,
+    )
+    monkeypatch.setattr(
+        "nemo_retriever.service.services.pipeline_executor.create_batch_work_fn",
+        lambda _config: _stub_work,
+    )
+    cfg = ServiceConfig(
+        mode="standalone",
+        logging=LoggingConfig(file=str(tmp_path / "service.log")),
+        pipeline=PipelinePoolConfig(realtime_workers=1, batch_workers=1),
+        vectordb=VectorDbConfig(enabled=True, vectordb_url="http://vectordb:7671"),
+        llm=LLMConfig(enabled=True, model="server/model", api_base="http://server-llm:8000/v1", api_key="server-key"),
+        nim_endpoints=NimEndpointsConfig(
+            rerank_invoke_url=server_rerank_url,
+            rerank_model_name=server_rerank_model,
+            api_key="server-key",
+        ),
+        rerank=RerankConfig(enabled=rerank_enabled, refine_factor=refine_factor),
+        pipeline_overrides=PipelineOverridesConfig(
+            endpoint_overrides=EndpointOverridesConfig(rerank=rerank_override, allowed_url_prefixes=prefixes or [])
+        ),
+    )
+    return create_app(cfg)
+
+
+def _stub_llm(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    """Patch the answer LLM; return a list that captures the chunks it receives."""
+    captured: list[list[str]] = []
+
+    def _generate(query, chunks, *, reasoning_enabled=None):
+        captured.append(list(chunks))
+        return GenerationResult(answer="ok", latency_s=0.1, model="server/model")
+
+    fake_llm = SimpleNamespace(generate=_generate)
+    monkeypatch.setattr(
+        "nemo_retriever.models.llm.clients.LiteLLMClient.from_kwargs",
+        lambda **kwargs: fake_llm,
+    )
+    return captured
+
+
+def test_answer_reranks_with_server_endpoint_by_default(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    app = _make_rerank_app(
+        monkeypatch,
+        tmp_path,
+        rerank_enabled=True,
+        server_rerank_url="http://rerank.svc/v1",
+        server_rerank_model="server/rerank",
+        refine_factor=3,
+    )
+    monkeypatch.setattr("httpx.AsyncClient", _CapturingAsyncClient)
+    _stub_llm(monkeypatch)
+
+    calls: dict[str, Any] = {}
+
+    def _fake_rerank_hits(query, hits, **kwargs):
+        calls["query"] = query
+        calls["kwargs"] = kwargs
+        calls["n_hits"] = len(hits)
+        return list(reversed(hits))[: kwargs.get("top_n")]
+
+    monkeypatch.setattr("nemo_retriever.operators.rerank.rerank_hits", _fake_rerank_hits)
+
+    with TestClient(app) as client:
+        resp = client.post("/v1/answer", json={"query": "q", "top_k": 2})
+    assert resp.status_code == 200, resp.text
+    # Over-fetch: top_k(2) * refine_factor(3) candidates requested from vectordb.
+    assert _CapturingAsyncClient.last_json == {"query": "q", "top_k": 6}
+    assert calls["kwargs"]["rerank_invoke_url"] == "http://rerank.svc/v1"
+    assert calls["kwargs"]["model_name"] == "server/rerank"
+    assert calls["kwargs"]["api_key"] == "server-key"
+    assert calls["kwargs"]["top_n"] == 2
+
+
+def test_answer_no_rerank_when_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    app = _make_rerank_app(monkeypatch, tmp_path, rerank_enabled=False, server_rerank_url="http://rerank.svc/v1")
+    monkeypatch.setattr("httpx.AsyncClient", _CapturingAsyncClient)
+    _stub_llm(monkeypatch)
+
+    def _boom(*a, **k):
+        raise AssertionError("rerank_hits should not be called when disabled")
+
+    monkeypatch.setattr("nemo_retriever.operators.rerank.rerank_hits", _boom)
+
+    with TestClient(app) as client:
+        resp = client.post("/v1/answer", json={"query": "q", "top_k": 5})
+    assert resp.status_code == 200, resp.text
+    # No over-fetch when not reranking.
+    assert _CapturingAsyncClient.last_json == {"query": "q", "top_k": 5}
+
+
+def test_answer_rerank_override_rejected_when_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    app = _make_rerank_app(monkeypatch, tmp_path, rerank_override=False)
+    monkeypatch.setattr("httpx.AsyncClient", _CapturingAsyncClient)
+    with TestClient(app) as client:
+        resp = client.post("/v1/answer", json={"query": "q", "rerank_invoke_url": "http://client/rerank"})
+    assert resp.status_code == 403
+    assert "rerank endpoint overrides are disabled" in resp.json()["detail"]
+
+
+def test_answer_rerank_override_applied_when_enabled(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    app = _make_rerank_app(
+        monkeypatch,
+        tmp_path,
+        rerank_override=True,
+        server_rerank_url="http://rerank.svc/v1",
+    )
+    monkeypatch.setattr("httpx.AsyncClient", _CapturingAsyncClient)
+    _stub_llm(monkeypatch)
+
+    calls: dict[str, Any] = {}
+
+    def _fake_rerank_hits(query, hits, **kwargs):
+        calls["kwargs"] = kwargs
+        return hits[: kwargs.get("top_n")]
+
+    monkeypatch.setattr("nemo_retriever.operators.rerank.rerank_hits", _fake_rerank_hits)
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/v1/answer",
+            json={
+                "query": "q",
+                "top_k": 3,
+                "rerank_invoke_url": "http://client/rerank",
+                "rerank_model_name": "client/rerank",
+                "rerank_api_key": "client-key",
+            },
+        )
+    assert resp.status_code == 200, resp.text
+    assert calls["kwargs"]["rerank_invoke_url"] == "http://client/rerank"
+    assert calls["kwargs"]["model_name"] == "client/rerank"
+    assert calls["kwargs"]["api_key"] == "client-key"
+
+
+def test_answer_rerank_override_prefix_allowlist_enforced(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    app = _make_rerank_app(monkeypatch, tmp_path, rerank_override=True, prefixes=["https://"])
+    monkeypatch.setattr("httpx.AsyncClient", _CapturingAsyncClient)
+    with TestClient(app) as client:
+        resp = client.post("/v1/answer", json={"query": "q", "rerank_invoke_url": "http://client/rerank"})
+    assert resp.status_code == 403
+    assert "does not match any allowed prefix" in resp.json()["detail"]
+
+
+def test_answer_rerank_requested_without_endpoint_returns_400(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    app = _make_rerank_app(monkeypatch, tmp_path, rerank_enabled=False, server_rerank_url=None)
+    monkeypatch.setattr("httpx.AsyncClient", _CapturingAsyncClient)
+    _stub_llm(monkeypatch)
+    with TestClient(app) as client:
+        resp = client.post("/v1/answer", json={"query": "q", "rerank": True})
+    assert resp.status_code == 400
+    assert "no rerank endpoint" in resp.json()["detail"]

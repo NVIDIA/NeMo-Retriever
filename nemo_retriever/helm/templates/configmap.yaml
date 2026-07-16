@@ -35,6 +35,20 @@ inherits the NIMService resource name, so the mapping is fixed:
 {{- $captionModelName = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning" -}}
 {{- end -}}
 {{- $audioGrpcEndpoint := $ctx.Values.serviceConfig.nimEndpoints.audioGrpcEndpoint | default "" -}}
+{{- $rerankURL := include "nemo-retriever.nim.endpointURL" (dict "context" $ctx "key" "rerankqa" "serviceName" "llama-nemotron-rerank-vl-1b-v2" "configKey" "rerankInvokeUrl" "invokePath" "/v1/ranking") -}}
+{{- /*
+  Model name resolution for the remote rerank endpoint:
+    1. Explicit `serviceConfig.nimEndpoints.rerankModelName` always wins.
+    2. Else, when a rerank URL was resolved (explicit or operator), fall back
+       to the canonical VL rerank model id (matches
+       `nemo_retriever.models.__init__.VL_RERANK_MODEL`).
+    3. Else, empty string — leaves `rerank_model_name: null`.
+*/}}
+{{- $rerankModelName := $ctx.Values.serviceConfig.nimEndpoints.rerankModelName | default "" -}}
+{{- if and (not $rerankModelName) $rerankURL -}}
+{{- $rerankModelName = "nvidia/llama-nemotron-rerank-vl-1b-v2" -}}
+{{- end -}}
+{{- $rerankEnabled := or $ctx.Values.serviceConfig.rerank.enabled $rerankURL -}}
 {{- $llmAPIBase := $ctx.Values.serviceConfig.llm.apiBase | default "" -}}
 {{- $llmOperatorAPIBase := "" -}}
 {{- if not $llmAPIBase -}}
@@ -76,6 +90,8 @@ nim_endpoints:
   embed_invoke_url: {{ .embedURL | quote }}
   embed_model_name: {{ .Values.serviceConfig.vectordb.embedModel | quote }}
   embed_model_provider_prefix: {{ if .Values.serviceConfig.vectordb.embedModelProviderPrefix }}{{ .Values.serviceConfig.vectordb.embedModelProviderPrefix | quote }}{{ else }}null{{ end }}
+  rerank_invoke_url: {{ if .rerankURL }}{{ .rerankURL | quote }}{{ else }}null{{ end }}
+  rerank_model_name: {{ if .rerankModelName }}{{ .rerankModelName | quote }}{{ else }}null{{ end }}
   caption_invoke_url: {{ if .captionURL }}{{ .captionURL | quote }}{{ else }}null{{ end }}
   caption_model_name: {{ if .captionModelName }}{{ .captionModelName | quote }}{{ else }}null{{ end }}
   audio_grpc_endpoint: {{ if .audioGrpcEndpoint }}{{ .audioGrpcEndpoint | quote }}{{ else }}null{{ end }}
@@ -126,6 +142,11 @@ llm:
   rag_system_prompt_prefix: {{ if .llmRagSystemPromptPrefix }}{{ .llmRagSystemPromptPrefix | quote }}{{ else }}null{{ end }}
   reasoning_enabled: {{ .Values.serviceConfig.llm.reasoningEnabled }}
 
+rerank:
+  enabled: {{ if .rerankEnabled }}true{{ else }}false{{ end }}
+  refine_factor: {{ .Values.serviceConfig.rerank.refineFactor }}
+  max_length: {{ .Values.serviceConfig.rerank.maxLength }}
+
 pipeline:
   realtime_workers: {{ .Values.serviceConfig.pipeline.realtimeWorkers }}
   realtime_queue_size: {{ .Values.serviceConfig.pipeline.realtimeQueueSize }}
@@ -172,7 +193,7 @@ metadata:
 data:
   retriever-service.yaml: |
     mode: standalone
-{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" .Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "rerankURL" $rerankURL "rerankModelName" $rerankModelName "rerankEnabled" $rerankEnabled "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- else }}
 # =========================================================================
 # Split mode — one ConfigMap per role with the appropriate mode + gateway
@@ -200,6 +221,6 @@ data:
       timeout_s: 300.0
       max_connections: 100
     {{- end }}
-{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
+{{ include "nemo-retriever.configBody" (dict "Values" $.Values "pageElementsURL" $pageElementsURL "tableStructureURL" $tableStructureURL "ocrURL" $ocrURL "embedURL" $embedURL "captionURL" $captionURL "captionModelName" $captionModelName "audioGrpcEndpoint" $audioGrpcEndpoint "rerankURL" $rerankURL "rerankModelName" $rerankModelName "rerankEnabled" $rerankEnabled "llmEnabled" $llmEnabled "llmModel" $llmModel "llmAPIBase" $llmAPIBase "llmRagSystemPromptPrefix" $llmRagSystemPromptPrefix "vectordbSvc" $vectordbSvc "vectordbPort" $vectordbPort) | indent 4 }}
 {{- end }}
 {{- end }}

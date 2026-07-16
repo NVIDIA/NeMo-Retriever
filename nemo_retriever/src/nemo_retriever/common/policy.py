@@ -366,11 +366,13 @@ class EndpointOverridePolicy:
         embed: bool = False,
         caption: bool = False,
         llm: bool = False,
+        rerank: bool = False,
         allowed_url_prefixes: list[str] | None = None,
     ) -> None:
         self.embed = embed
         self.caption = caption
         self.llm = llm
+        self.rerank = rerank
         self.allowed_url_prefixes = list(allowed_url_prefixes or [])
 
     def _check_url_allowed(self, url: str | None, *, field: str) -> None:
@@ -415,16 +417,27 @@ class EndpointOverridePolicy:
             )
         self._check_url_allowed(url, field="llm_api_base")
 
+    def check_rerank(self, *, url: str | None) -> None:
+        if not self.rerank:
+            raise PolicyError(
+                "endpoint_overrides: per-request rerank endpoint overrides are disabled "
+                "on this service. Ask the operator to set "
+                "pipeline_overrides.endpoint_overrides.rerank: true in retriever-service.yaml.",
+                status_code=403,
+            )
+        self._check_url_allowed(url, field="rerank_invoke_url")
+
     def describe(self) -> dict[str, Any]:
         return {
             "embed": self.embed,
             "caption": self.caption,
             "llm": self.llm,
+            "rerank": self.rerank,
             "allowed_url_prefixes": self.allowed_url_prefixes,
         }
 
     def any_enabled(self) -> bool:
-        return self.embed or self.caption or self.llm
+        return self.embed or self.caption or self.llm or self.rerank
 
 
 class PolicyError(ValueError):
