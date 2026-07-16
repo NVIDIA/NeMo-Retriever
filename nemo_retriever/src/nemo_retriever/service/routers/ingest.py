@@ -1650,8 +1650,7 @@ async def answer(req: ServiceAnswerRequest, request: Request) -> Response | Answ
             raise HTTPException(
                 status_code=403,
                 detail=(
-                    f"llm_api_base {req.llm_api_base!r} does not match any allowed "
-                    f"prefix in {list(prefixes)!r}."
+                    f"llm_api_base {req.llm_api_base!r} does not match any allowed " f"prefix in {list(prefixes)!r}."
                 ),
             )
         llm = LiteLLMClient.from_kwargs(

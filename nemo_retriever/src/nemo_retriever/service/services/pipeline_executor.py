@@ -614,9 +614,7 @@ def _build_graph_ingestor_from_spec(
             "this worker. The policy layer should have rejected this earlier."
         )
     else:
-        caption_kwargs = _merge_server_owned(
-            effective_base_caption or {}, caption_override, _TRUST_OWNED_CAPTION_KEYS
-        )
+        caption_kwargs = _merge_server_owned(effective_base_caption or {}, caption_override, _TRUST_OWNED_CAPTION_KEYS)
         caption_params = CaptionParams(**caption_kwargs) if caption_kwargs.get("endpoint_url") else None
 
     asr_params = ASRParams(**base_asr) if base_asr else None

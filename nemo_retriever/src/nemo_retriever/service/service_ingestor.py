@@ -54,6 +54,11 @@ Fluent methods that *do* take effect by writing to the spec:
 * ``.caption(...)`` — remote VLM captioning when the operator has wired
   ``nim_endpoints.caption_invoke_url``; trust-sensitive fields like
   endpoint_url / api_key / model_name stay server-owned
+* ``.endpoints(...)`` — point this job at a *different* model deployment
+  (embed NIM, caption/VLM NIM) than the cluster default. Honored only
+  when the operator opted in via
+  ``pipeline_overrides.endpoint_overrides``; otherwise the server
+  responds with HTTP 403.
 * ``.save_to_disk(output_directory="...")`` — client-side persistence:
   fetches ``result_data`` from ``/v1/ingest/status/{id}`` for each
   completed document and writes JSON or gzipped JSON locally

@@ -704,8 +704,7 @@ def _validate_endpoint_overrides(
     # client gets a clear error instead of a silently ignored credential.
     if overrides.api_key and not (embed_requested or caption_requested):
         raise PolicyError(
-            "endpoint_overrides.api_key was set without any endpoint or model "
-            "override to apply it to.",
+            "endpoint_overrides.api_key was set without any endpoint or model " "override to apply it to.",
             status_code=400,
         )
 
