@@ -157,14 +157,14 @@ For Helm, configure `serviceConfig.auth.scopeTokenSecret`,
 fsspec credentials render only into Kubernetes Secrets. Keep
 `topology.vectordb.replicas: 1` while reconciliation is enabled.
 
-## Future AIQ adapter
+## Application integration and query-result contract
 
-An AIQ knowledge-layer `adapter.py` should construct one client from its service
-URL, token, and workspace scope, then call this SDK directly. The expected
-structural contract is `nemo_retriever.service.aiq_contract.AIQCompatibleClient`.
-The adapter should orchestrate calls and translate configuration only; NeMo
+External applications should construct a `RetrieverServiceClient` from the
+service URL, token, and workspace scope, then call the SDK directly. Applications
+should orchestrate calls and translate their own configuration only; NeMo
 Retriever owns processing status, stable chunk/document identity, normalized
-scores, citation provenance, retries, idempotency, and lifecycle truth.
+scores, citation provenance, retries, idempotency, and lifecycle truth. Clients
+must not open LanceDB directly or reproduce the ingestion pipeline.
 
 Collection query hits provide stable `chunk_id` and `document_id`, non-null
 `text`, normalized `score` in `[0, 1]`, filename, one-based page number when
