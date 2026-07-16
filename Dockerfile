@@ -103,6 +103,7 @@ COPY nemo_retriever nemo_retriever
 FROM base AS install
 
 WORKDIR /workspace
+ENV HF_HOME=/opt/nemo-retriever/huggingface
 
 # Unbuffered stdout/stderr so CLI output appears when run without a TTY (e.g. docker run without -it)
 ENV PYTHONUNBUFFERED=1
@@ -116,7 +117,8 @@ SHELL ["/bin/bash", "-c"]
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/uv \
     . /opt/retriever_runtime/bin/activate \
-    && uv pip install -e "./nemo_retriever[service]"
+    && uv pip install -e "./nemo_retriever[service]" \
+    && python -c "from nemo_retriever.common.modality.txt.tokenizer_provider import load_chunk_tokenizer; load_chunk_tokenizer('nvidia/llama-nemotron-embed-vl-1b-v2')"
 
 # GPU service install: in-pod Hugging Face models + multimedia (ASR, SVG).
 # Build target: service-gpu
@@ -158,6 +160,7 @@ CMD ["/bin/bash"]
 FROM install AS service
 
 ENV NEMO_RETRIEVER_SERVICE_CONFIG=/etc/nemo-retriever/retriever-service.yaml
+ENV HF_HUB_OFFLINE=1
 
 ENV PATH=/opt/retriever_runtime/bin:$PATH
 
@@ -176,7 +179,7 @@ RUN chmod a+rx /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/retriever-ser
     && mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb \
     && cp /workspace/nemo_retriever/src/nemo_retriever/service/retriever-service.yaml \
             "${NEMO_RETRIEVER_SERVICE_CONFIG}" \
-    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb /opt/retriever_runtime
+    && chown -R nemo:nemo /workspace /etc/nemo-retriever /var/lib/nemo-retriever /data/vectordb /opt/nemo-retriever /opt/retriever_runtime
 
 EXPOSE 7670
 

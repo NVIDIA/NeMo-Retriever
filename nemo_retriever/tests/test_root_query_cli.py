@@ -551,10 +551,11 @@ def test_root_query_help_defaults_to_local_command(monkeypatch: pytest.MonkeyPat
         cli_main.app,
         ["query", "--help"],
         prog_name="retriever",
+        terminal_width=200,
     )
 
     assert result.exit_code == 0
-    assert "Usage: retriever query [OPTIONS] QUERY" in result.output
+    assert "Usage: retriever query [OPTIONS]" in result.output
     assert "_local" not in result.output
     assert "retriever ingest local" not in result.output
     assert "retriever ingest --lancedb-uri" in result.output

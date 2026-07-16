@@ -93,6 +93,9 @@ dependencies = [
 service = [
   # HTTP retry decorator used by NIM model interfaces
   "backoff",
+  # Exact tokenizer-only TXT/HTML chunking; no transformers, torch, or weights.
+  "tokenizers>=0.21.1",
+  "huggingface-hub>=0.34.0",
   # Remote answer generation client used by serviceConfig.llm and /v1/answer
   "litellm>=1.86.0,<2",
   # Lightweight utilities used by pipeline operators
