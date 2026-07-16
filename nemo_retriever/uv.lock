@@ -2633,7 +2633,7 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.66.0" },
     { name = "transformers", marker = "extra == 'local'", specifier = ">=4.57.6,<5" },
     { name = "tritonclient", marker = "extra == 'local'" },
-    { name = "typer", specifier = ">=0.12.0" },
+    { name = "typer", specifier = ">=0.12.0,<0.27" },
     { name = "universal-pathlib", specifier = ">=0.2.0" },
     { name = "urllib3", specifier = "==2.7.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
