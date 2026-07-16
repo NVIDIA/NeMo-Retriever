@@ -2,6 +2,10 @@
 
 Before you begin using [NeMo Retriever Library](overview.md), confirm your software stack, deployment hardware, and—if you use them—advanced features (audio and video, Nemotron Parse, VLM image captioning, reranking) against the guidance in this page.
 
+!!! note "NVIDIA AI Enterprise (NVAIE) support"
+
+    The NeMo Retriever Library, including its container image and Helm chart artifacts, is not supported under NVIDIA AI Enterprise (NVAIE), even though some NIM microservices and models it uses may be individually covered by NVAIE. For more information, refer to [NVIDIA AI Enterprise (NVAIE) support](overview.md#nvidia-ai-enterprise-nvaie-support).
+
 ## Software Requirements { #software-requirements }
 
 - Linux operating systems (Ubuntu 22.04 or later recommended)

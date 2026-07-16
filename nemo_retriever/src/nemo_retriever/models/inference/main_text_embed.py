@@ -5,16 +5,11 @@
 """
 Text embedding helper for NeMo Retriever pandas DataFrames.
 
-Goal:
-- Mirror (as closely as practical) the batching/runner logic from
-  `nemo_retriever.api.internal.transform.embed_text.transform_create_text_embeddings_internal`,
-  but adapt it to the DataFrame structure used by the graph pipeline.
-
-Key differences vs the API transform:
-- This module operates on a simple pandas.DataFrame that typically contains:
+This module owns the batching and runner logic used by the graph pipeline. It
+operates on a pandas.DataFrame that typically contains:
   - `text`: the text to embed (or other common text columns)
   - `metadata`: optional dict; if present, embeddings are written to `metadata["embedding"]`
-- Uses ``nemo_retriever.api`` for shared HTTP embedding URL normalization (with pandas/httpx).
+It uses the shared HTTP embedding URL normalization helpers with pandas/httpx.
 
 Usage:
 
@@ -57,7 +52,7 @@ from nemo_retriever.common.params.models import IMAGE_MODALITIES
 
 logger = logging.getLogger(__name__)
 
-# Keep HTTP client logging quiet by default (parity with API transform).
+# Keep HTTP client logging quiet by default.
 logging.getLogger("httpx").setLevel(logging.ERROR)
 logging.getLogger("httpcore").setLevel(logging.ERROR)
 
@@ -67,7 +62,7 @@ EmbeddingCallable = Callable[[Sequence[str]], Sequence[Sequence[float]]]
 @dataclass(slots=True)
 class TextEmbeddingConfig:
     """
-    Minimal config surface mirroring the API's TextEmbeddingSchema fields used by the transform.
+    Configuration for DataFrame text embedding.
     """
 
     # Remote / NIM-like settings
@@ -94,7 +89,7 @@ class TextEmbeddingConfig:
 
 
 # ------------------------------------------------------------------------------
-# Batch Processing Utilities (copied from API transform with minimal edits)
+# Batch processing utilities
 # ------------------------------------------------------------------------------
 
 
@@ -102,8 +97,7 @@ def _batch_generator(iterable: Iterable[Any], batch_size: int = 10) -> Iterable[
     """
     Yield list batches from any iterable.
 
-    The API transform assumes sized/sliceable inputs; for robustness we also accept
-    generators/iterators by materializing them once.
+    Accept generators and iterators by materializing them once.
     """
     if batch_size <= 0:
         raise ValueError("batch_size must be > 0")
@@ -368,7 +362,7 @@ def _make_async_request(
     timeout_s: float = 600.0,
 ) -> dict:
     """
-    Mirrors the API transform's request wrapper, but uses HTTP OpenAI-compatible embeddings.
+    Send an HTTP OpenAI-compatible embedding request.
 
     Notes:
     - `input_type` and `truncate` are sent as top-level JSON fields, matching the effective
@@ -544,7 +538,7 @@ def _add_embeddings_retriever_df(
 
 
 # ------------------------------------------------------------------------------
-# Public API (mirrors the API transform's surface, but for retriever-local df schema)
+# Public API
 # ------------------------------------------------------------------------------
 
 
@@ -565,7 +559,7 @@ def create_text_embeddings_for_df(
         - `text` (or provide `transform_config.text_column`)
         - `metadata` (optional dict; created if missing when writing embeddings)
     task_config:
-        Controls runtime behavior. Keys (compatible with the API transform):
+        Controls runtime behavior. Supported keys:
         - **api_key**: optional str
         - **endpoint_url**: optional str; if set, remote HTTP embeddings are used
         - **model_name**: optional str
@@ -585,7 +579,7 @@ def create_text_embeddings_for_df(
     if transform_config is None:
         transform_config = TextEmbeddingConfig()
 
-    # Allow task_config to explicitly override values with None by checking key presence (API parity).
+    # Allow task_config to explicitly override values with None by checking key presence.
     api_key = task_config["api_key"] if "api_key" in task_config else transform_config.api_key
     endpoint_url = (
         task_config["endpoint_url"] if "endpoint_url" in task_config else transform_config.embedding_nim_endpoint
