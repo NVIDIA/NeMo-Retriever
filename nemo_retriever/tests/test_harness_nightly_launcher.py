@@ -15,6 +15,10 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LAUNCHER = REPO_ROOT / "ops" / "retriever-nightly" / "run-nightly.sh"
+pytestmark = pytest.mark.skipif(
+    not (REPO_ROOT / ".git").exists(),
+    reason="nightly launcher tests require a full source checkout",
+)
 DEFAULT_RUNFILES = (
     "nemo_retriever/harness/runfiles/jp20_beir.json",
     "nemo_retriever/harness/runfiles/bo767_beir.json",

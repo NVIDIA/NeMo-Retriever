@@ -12,6 +12,10 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 NIGHTLY_LAUNCHER = REPO_ROOT / "ops" / "retriever-nightly" / "run-nightly.sh"
+pytestmark = pytest.mark.skipif(
+    not (REPO_ROOT / ".git").exists(),
+    reason="nightly launcher tests require a full source checkout",
+)
 SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/test/webhook/value"
 
 
