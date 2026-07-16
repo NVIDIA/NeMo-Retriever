@@ -203,7 +203,7 @@ For the request schema, refer to the [Object Detection NIM API reference](https:
                 "Content-Type": "image/png",
                 "x-amz-meta-nvcf-asset-description": "page-elements-large-input",
             },
-            data=image_file.read(),
+            data=image_file,
             timeout=120,
         )
     upload.raise_for_status()
