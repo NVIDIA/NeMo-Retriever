@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Structural override for in-container Hugging Face inference. Use together
+# with presets/local-models.env; do not combine with the nims-core profile.
+services:
+  retriever:
+    image: ${NEMO_RETRIEVER_GPU_IMAGE:-nemo-retriever-service-gpu:dev}
+    build: {target: service-gpu}
+    environment:
+      HF_HOME: /var/cache/huggingface
+      CUDA_VISIBLE_DEVICES: ${LOCAL_MODELS_GPU_ID:-0}
+    volumes: [huggingface_cache:/var/cache/huggingface]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - {driver: nvidia, device_ids: ["${LOCAL_MODELS_GPU_ID:-0}"], capabilities: [gpu]}
+  vectordb:
+    image: ${NEMO_RETRIEVER_GPU_IMAGE:-nemo-retriever-service-gpu:dev}
+    build: {target: service-gpu}
+    command: [python, -m, nemo_retriever.service.vectordb_app, --lancedb-uri, /data/vectordb, --table-name, nemo_retriever, --local-embed, --local-embed-backend, "${LOCAL_EMBED_BACKEND:-hf}", --hf-cache-dir, /var/cache/huggingface, --device, cuda, --gpu-memory-utilization, "${LOCAL_EMBED_GPU_MEMORY_UTILIZATION:-0.45}", --embed-model, "${LOCAL_EMBED_MODEL:-nvidia/llama-nemotron-embed-vl-1b-v2}", --port, "7671"]
+    environment:
+      HF_HOME: /var/cache/huggingface
+      CUDA_VISIBLE_DEVICES: ${LOCAL_VECTORDB_GPU_ID:-1}
+    volumes: [huggingface_cache:/var/cache/huggingface]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - {driver: nvidia, device_ids: ["${LOCAL_VECTORDB_GPU_ID:-1}"], capabilities: [gpu]}
+volumes:
+  huggingface_cache: {name: "${HF_CACHE_VOLUME:-nemo-retriever-huggingface-cache}"}

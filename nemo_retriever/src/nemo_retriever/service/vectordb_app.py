@@ -41,6 +41,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from nemo_retriever.common.remote_auth import resolve_remote_api_key
 from nemo_retriever.query.evidence import build_evidence_result
 from nemo_retriever.service.query_schema import (
     EvidenceQueryResponse,
@@ -392,7 +393,11 @@ def main() -> None:
     parser.add_argument("--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL")
     parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-vl-1b-v2")
     parser.add_argument("--embed-model-provider-prefix", default="", help="Optional LiteLLM provider prefix")
-    parser.add_argument("--embed-api-key", default="")
+    parser.add_argument(
+        "--embed-api-key",
+        default="",
+        help="Remote embedding API key (defaults to NVIDIA_API_KEY, then NGC_API_KEY).",
+    )
     parser.add_argument(
         "--local-embed",
         action="store_true",
@@ -431,7 +436,7 @@ def main() -> None:
         embed_endpoint=args.embed_endpoint,
         embed_model=args.embed_model,
         embed_model_provider_prefix=args.embed_model_provider_prefix or None,
-        embed_api_key=args.embed_api_key,
+        embed_api_key=resolve_remote_api_key(args.embed_api_key) or "",
         local_embed=args.local_embed,
         local_embed_backend=args.local_embed_backend,
         hf_cache_dir=args.hf_cache_dir or None,

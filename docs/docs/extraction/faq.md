@@ -2,6 +2,12 @@
 
 This documentation contains the Frequently Asked Questions (FAQ) for [NeMo Retriever Library](overview.md).
 
+## Is the NeMo Retriever Library supported under NVIDIA AI Enterprise (NVAIE)?
+
+No. The NeMo Retriever Library, including its container image and Helm chart artifacts, is not supported under NVIDIA AI Enterprise (NVAIE).
+
+Some NIM microservices and models that the library calls may be individually covered by NVAIE. That coverage does not extend to the NeMo Retriever Library or its end-to-end extraction workflow. For more information, refer to [NVIDIA AI Enterprise (NVAIE) support](overview.md#nvidia-ai-enterprise-nvaie-support).
+
 ## What if I already have a retrieval pipeline? Can I just use NeMo Retriever Library? 
 
 You can use the CLI or Python APIs to perform extraction only, and then consume the results.
