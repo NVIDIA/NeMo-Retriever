@@ -20,12 +20,11 @@ usage() {
     cat <<'EOF'
 Usage: run-nightly.sh [OPTIONS] [--] [RUNFILE ...]
 
-Fetch and run the library and ViDoRe v3 harness suite from the latest
-upstream/main commit. With no RUNFILE arguments, all 12 checked-in nightly
-runfiles are executed.
+Run the library and ViDoRe v3 harness suite from the current checkout. With no
+RUNFILE arguments, all 12 checked-in nightly runfiles are executed.
 
 Options:
-  --ref REF             Run an existing local Git ref instead of fetching main.
+  --ref REF             Run a clean checkout of a Git ref. Remote refs are fetched.
   --dataset-paths PATH  Machine-local dataset path map.
   --artifact-root PATH  Parent directory for timestamped session artifacts.
   --check-vidore-access Validate authenticated ViDoRe evaluation-data access and exit.
@@ -33,6 +32,56 @@ Options:
   --no-slack            Do not post, even when SLACK_WEBHOOK_URL is configured.
   --help                Show this help text.
 EOF
+}
+
+run_checkout() {
+    local selected_checkout="$1"
+    local selection_label="$2"
+    local uv_environment="$3"
+    local allow_dirty="$4"
+    shift 4
+
+    local target_commit target_launcher preflight_access run_rc arg
+    target_commit="$(git -C "$selected_checkout" rev-parse --verify HEAD^{commit})" || \
+        return "$EXIT_CONFIG"
+    target_launcher="$selected_checkout/ops/retriever-nightly/run-nightly.sh"
+    if [[ ! -x "$target_launcher" ]]; then
+        log "selected checkout does not contain an executable nightly launcher: $target_launcher"
+        return "$EXIT_CONFIG"
+    fi
+
+    export RETRIEVER_SELECTED_CHECKOUT="$selected_checkout"
+    if [[ -n "$uv_environment" ]]; then
+        export UV_PROJECT_ENVIRONMENT="$uv_environment"
+    fi
+    if [[ "$allow_dirty" == "1" ]]; then
+        export RETRIEVER_ALLOW_DIRTY_CHECKOUT=1
+    else
+        unset RETRIEVER_ALLOW_DIRTY_CHECKOUT
+    fi
+    log "selected $selection_label commit $target_commit in $selected_checkout"
+
+    preflight_access=1
+    for arg in "$@"; do
+        if [[ "$arg" == "--dry-run" || "$arg" == "--check-vidore-access" ]]; then
+            preflight_access=0
+        fi
+    done
+
+    run_rc=0
+    if [[ "$preflight_access" == "1" ]]; then
+        "$target_launcher" --check-vidore-access || run_rc=$?
+    fi
+    if ((run_rc == 0)); then
+        if [[ -n "$slack_webhook_url" ]]; then
+            export SLACK_WEBHOOK_URL="$slack_webhook_url"
+        fi
+        "$target_launcher" "$@" || run_rc=$?
+        unset SLACK_WEBHOOK_URL
+    else
+        log "ViDoRe access preflight failed; skipping GPU work"
+    fi
+    return "$run_rc"
 }
 
 absolute_path() {
@@ -77,15 +126,8 @@ select_checkout_and_run() {
     local requested_ref="$1"
     shift
 
-    local repository source_name source_ref remote_ref fetched_ref checkout_root keep_count uv_environment
+    local repository checkout_root keep_count uv_environment
     repository="${RETRIEVER_UPDATE_REPOSITORY:-$(git -C "$script_dir" rev-parse --show-toplevel)}"
-    source_name="${RETRIEVER_LATEST_SOURCE:-upstream}"
-    source_ref="${RETRIEVER_LATEST_REF:-main}"
-    remote_ref="$source_ref"
-    if [[ "$remote_ref" != refs/* ]]; then
-        remote_ref="refs/heads/$remote_ref"
-    fi
-    fetched_ref="refs/retriever-nightly/latest-main"
     checkout_root="${RETRIEVER_LATEST_CHECKOUT_ROOT:-$nightly_root/retriever-nightly-checkouts}"
     keep_count="${RETRIEVER_LATEST_KEEP_CHECKOUTS:-7}"
     uv_environment="${UV_PROJECT_ENVIRONMENT:-$checkout_root/.venv}"
@@ -98,10 +140,12 @@ select_checkout_and_run() {
         log "controller checkout is not a Git worktree: $repository"
         return "$EXIT_CONFIG"
     fi
-    if [[ -n "$(git -C "$repository" status --porcelain --untracked-files=normal)" ]]; then
-        log "controller checkout has local changes: $repository"
-        return "$EXIT_CONFIG"
+
+    if [[ -z "$requested_ref" ]]; then
+        run_checkout "$repository" "current checkout" "${UV_PROJECT_ENVIRONMENT:-}" 1 "$@"
+        return $?
     fi
+
     if ! mkdir -p "$checkout_root"; then
         log "could not create managed checkout root: $checkout_root"
         return "$EXIT_CONFIG"
@@ -114,20 +158,23 @@ select_checkout_and_run() {
         return "$EXIT_ALREADY_RUNNING"
     fi
 
-    local target_commit selection_label
-    if [[ -z "$requested_ref" ]]; then
+    local target_commit selection_label remote_name remote_branch remote_ref fetched_ref
+    remote_name="${requested_ref%%/*}"
+    remote_branch="${requested_ref#*/}"
+    if [[ "$requested_ref" == */* ]] && git -C "$repository" remote get-url "$remote_name" >/dev/null 2>&1; then
+        remote_ref="refs/heads/$remote_branch"
+        fetched_ref="refs/retriever-nightly/selected-remote"
         if ! git check-ref-format "$remote_ref"; then
-            log "RETRIEVER_LATEST_REF is not a valid Git ref: $source_ref"
+            log "--ref is not a valid remote branch: $requested_ref"
             return "$EXIT_CONFIG"
         fi
-        log "fetching $source_name $source_ref"
-        if ! git -C "$repository" fetch --no-tags "$source_name" "+$remote_ref:$fetched_ref"; then
+        log "fetching $remote_name $remote_branch"
+        if ! git -C "$repository" fetch --no-tags "$remote_name" "+$remote_ref:$fetched_ref"; then
             log "fetch failed; refusing to run a stale commit"
             return "$EXIT_FETCH"
         fi
         target_commit="$(git -C "$repository" rev-parse --verify "$fetched_ref^{commit}")" || \
             return "$EXIT_FETCH"
-        selection_label="$source_name/$source_ref"
     else
         if [[ "$requested_ref" == -* ]]; then
             log "--ref must name a Git ref or commit"
@@ -137,10 +184,10 @@ select_checkout_and_run() {
             log "could not resolve --ref $requested_ref to a local commit"
             return "$EXIT_CONFIG"
         }
-        selection_label="$requested_ref"
     fi
+    selection_label="$requested_ref"
 
-    local selected_checkout selected_head target_launcher preflight_access run_rc
+    local selected_checkout selected_head run_rc
     selected_checkout="$checkout_root/commit-$target_commit"
     if [[ -e "$selected_checkout" ]]; then
         selected_head="$(git -C "$selected_checkout" rev-parse --verify HEAD 2>/dev/null || true)"
@@ -158,37 +205,8 @@ select_checkout_and_run() {
     fi
     touch "$selected_checkout"
 
-    target_launcher="$selected_checkout/ops/retriever-nightly/run-nightly.sh"
-    if [[ ! -x "$target_launcher" ]]; then
-        log "selected commit does not contain an executable nightly launcher: $target_launcher"
-        return "$EXIT_CONFIG"
-    fi
-
-    export RETRIEVER_SELECTED_CHECKOUT="$selected_checkout"
-    export UV_PROJECT_ENVIRONMENT="$uv_environment"
-    log "selected $selection_label commit $target_commit in $selected_checkout"
-
-    preflight_access=1
-    local arg
-    for arg in "$@"; do
-        if [[ "$arg" == "--dry-run" || "$arg" == "--check-vidore-access" ]]; then
-            preflight_access=0
-        fi
-    done
-
     run_rc=0
-    if [[ "$preflight_access" == "1" ]]; then
-        "$target_launcher" --check-vidore-access || run_rc=$?
-    fi
-    if ((run_rc == 0)); then
-        if [[ -n "$slack_webhook_url" ]]; then
-            export SLACK_WEBHOOK_URL="$slack_webhook_url"
-        fi
-        "$target_launcher" "$@" || run_rc=$?
-        unset SLACK_WEBHOOK_URL
-    else
-        log "ViDoRe access preflight failed; skipping GPU work"
-    fi
+    run_checkout "$selected_checkout" "$selection_label" "$uv_environment" 0 "$@" || run_rc=$?
 
     prune_managed_worktrees "$repository" "$checkout_root" "$selected_checkout" "$keep_count"
     return "$run_rc"
@@ -355,9 +373,16 @@ if [[ ! -d "$checkout/.git" && ! -f "$checkout/.git" ]]; then
     log "deployment checkout is not a Git worktree: $checkout"
     exit "$EXIT_CONFIG"
 fi
-if [[ -n "$(git -C "$checkout" status --porcelain --untracked-files=normal --ignore-submodules)" ]]; then
-    log "deployment checkout has tracked, staged, or untracked changes; refusing to run"
-    exit "$EXIT_CONFIG"
+checkout_status="$(git -C "$checkout" status --porcelain --untracked-files=normal --ignore-submodules)"
+checkout_dirty=0
+if [[ -n "$checkout_status" ]]; then
+    checkout_dirty=1
+    if [[ "${RETRIEVER_ALLOW_DIRTY_CHECKOUT:-}" != "1" ]]; then
+        log "deployment checkout has tracked, staged, or untracked changes; refusing to run"
+        exit "$EXIT_CONFIG"
+    fi
+    log "WARNING: running the current checkout with local changes"
+    slack_title="[LOCAL CHANGES] $slack_title"
 fi
 if ((check_vidore_access)); then
     cd "$checkout" || exit "$EXIT_CONFIG"
@@ -424,6 +449,21 @@ readonly slack_attempt_marker="$session_dir/.slack_post_attempted"
 if [[ -e "$session_dir" ]]; then
     log "refusing to reuse an existing session directory: $session_dir"
     exit "$EXIT_CANNOT_CREATE"
+fi
+
+if ((checkout_dirty)); then
+    if ! mkdir -p "$session_dir"; then
+        log "could not create session directory for source provenance: $session_dir"
+        exit "$EXIT_CANNOT_CREATE"
+    fi
+    {
+        printf 'run_commit=%s\n' "$(git -C "$checkout" rev-parse --verify HEAD^{commit})"
+        printf 'working_tree_dirty=true\n'
+        git -C "$checkout" status --short --branch --untracked-files=normal --ignore-submodules
+    } >"$session_dir/source_worktree_status.txt" || {
+        log "could not record dirty-worktree provenance: $session_dir/source_worktree_status.txt"
+        exit "$EXIT_CANNOT_CREATE"
+    }
 fi
 
 cd "$checkout" || exit "$EXIT_CONFIG"

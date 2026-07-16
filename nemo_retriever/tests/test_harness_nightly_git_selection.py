@@ -80,6 +80,7 @@ def latest_main_fixture(tmp_path: Path):
 
     controller = tmp_path / "controller"
     subprocess.run(["git", "clone", "-q", str(source), str(controller)], check=True)
+    _git(controller, "remote", "add", "upstream", str(source))
 
     (source / "version.txt").write_text("latest\n", encoding="utf-8")
     latest_commit = _commit(source, "latest")
@@ -98,8 +99,6 @@ def latest_main_fixture(tmp_path: Path):
             "HOME": str(tmp_path / "home"),
             "RETRIEVER_CONFIG_FILE": str(config_file),
             "RETRIEVER_UPDATE_REPOSITORY": str(controller),
-            "RETRIEVER_LATEST_SOURCE": str(source),
-            "RETRIEVER_LATEST_REF": "main",
             "RETRIEVER_LATEST_CHECKOUT_ROOT": str(checkout_root),
             "RETRIEVER_LATEST_KEEP_CHECKOUTS": "2",
             "FAKE_LATEST_CALLS": str(calls_path),
@@ -124,10 +123,23 @@ def latest_main_fixture(tmp_path: Path):
     return run, calls, source, controller, checkout_root, initial_commit, latest_commit
 
 
-def test_launcher_fetches_latest_main_into_immutable_worktree(latest_main_fixture) -> None:
-    run, calls, _source, controller, checkout_root, initial_commit, latest_commit = latest_main_fixture
+def test_launcher_runs_current_checkout_without_fetching(latest_main_fixture) -> None:
+    run, calls, _source, controller, _checkout_root, initial_commit, _latest_commit = latest_main_fixture
 
     result = run()
+
+    assert result.returncode == 0, result.stderr
+    assert _git(controller, "rev-parse", "HEAD").stdout.strip() == initial_commit
+    assert calls() == [
+        (initial_commit, "--check-vidore-access", ""),
+        (initial_commit, "", ""),
+    ]
+
+
+def test_remote_ref_fetches_latest_commit_into_immutable_worktree(latest_main_fixture) -> None:
+    run, calls, _source, controller, checkout_root, initial_commit, latest_commit = latest_main_fixture
+
+    result = run("--ref", "upstream/main")
 
     assert result.returncode == 0, result.stderr
     assert _git(controller, "rev-parse", "HEAD").stdout.strip() == initial_commit
@@ -154,7 +166,7 @@ def test_help_does_not_require_configuration_or_fetch(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert "latest" in result.stdout
+    assert "current checkout" in result.stdout
     assert "--ref REF" in result.stdout
 
 
@@ -173,7 +185,7 @@ def test_explicit_ref_runs_local_commit_without_fetching(latest_main_fixture) ->
 
 
 def test_launcher_selection_uses_exported_secrets_without_config_file(latest_main_fixture, tmp_path: Path) -> None:
-    run, calls, _source, _controller, _checkout_root, _initial_commit, latest_commit = latest_main_fixture
+    run, calls, _source, _controller, _checkout_root, initial_commit, _latest_commit = latest_main_fixture
 
     result = run(
         "--dry-run",
@@ -187,7 +199,7 @@ def test_launcher_selection_uses_exported_secrets_without_config_file(latest_mai
     )
 
     assert result.returncode == 0, result.stderr
-    assert calls() == [(latest_commit, "--dry-run", str(_checkout_root / ".venv"))]
+    assert calls() == [(initial_commit, "--dry-run", "")]
 
 
 @pytest.mark.parametrize("configured, expected", [(None, "skip"), ("full", "full")])
@@ -205,40 +217,44 @@ def test_selected_run_has_safe_warmup_default_and_allows_override(
 
 
 def test_launcher_fails_closed_when_access_preflight_fails(latest_main_fixture) -> None:
-    run, calls, _source, _controller, _checkout_root, _initial_commit, latest_commit = latest_main_fixture
+    run, calls, _source, _controller, _checkout_root, initial_commit, _latest_commit = latest_main_fixture
 
     result = run(extra_env={"FAKE_ACCESS_RC": "3"})
 
     assert result.returncode == 3
-    assert calls() == [(latest_commit, "--check-vidore-access", str(_checkout_root / ".venv"))]
+    assert calls() == [(initial_commit, "--check-vidore-access", "")]
 
 
 def test_launcher_does_not_run_stale_commit_when_fetch_fails(latest_main_fixture) -> None:
-    run, calls, _source, _controller, _checkout_root, _initial_commit, _latest_commit = latest_main_fixture
+    run, calls, _source, controller, checkout_root, _initial_commit, _latest_commit = latest_main_fixture
+    _git(controller, "remote", "set-url", "upstream", str(checkout_root / "missing-source"))
 
-    result = run(extra_env={"RETRIEVER_LATEST_SOURCE": str(_checkout_root / "missing-source")})
+    result = run("--ref", "upstream/main")
 
     assert result.returncode != 0
     assert calls() == []
 
 
-def test_launcher_rejects_modified_controller(latest_main_fixture) -> None:
-    run, calls, _source, controller, _checkout_root, _initial_commit, _latest_commit = latest_main_fixture
+def test_launcher_runs_modified_current_checkout(latest_main_fixture) -> None:
+    run, calls, _source, controller, _checkout_root, initial_commit, _latest_commit = latest_main_fixture
     (controller / "version.txt").write_text("modified\n", encoding="utf-8")
 
     result = run()
 
-    assert result.returncode == 64
-    assert calls() == []
+    assert result.returncode == 0, result.stderr
+    assert calls() == [
+        (initial_commit, "--check-vidore-access", ""),
+        (initial_commit, "", ""),
+    ]
 
 
 def test_launcher_prunes_only_old_managed_worktrees(latest_main_fixture) -> None:
     run, _calls, source, _controller, checkout_root, _initial_commit, latest_commit = latest_main_fixture
-    assert run(extra_env={"RETRIEVER_LATEST_KEEP_CHECKOUTS": "1"}).returncode == 0
+    assert run("--ref", "upstream/main", extra_env={"RETRIEVER_LATEST_KEEP_CHECKOUTS": "1"}).returncode == 0
 
     (source / "version.txt").write_text("newer\n", encoding="utf-8")
     newer_commit = _commit(source, "newer")
-    result = run(extra_env={"RETRIEVER_LATEST_KEEP_CHECKOUTS": "1"})
+    result = run("--ref", "upstream/main", extra_env={"RETRIEVER_LATEST_KEEP_CHECKOUTS": "1"})
 
     assert result.returncode == 0, result.stderr
     assert not (checkout_root / f"commit-{latest_commit}").exists()

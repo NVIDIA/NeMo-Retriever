@@ -152,6 +152,27 @@ def test_launcher_rejects_untracked_checkout_files(nightly_launcher, tmp_path: P
     assert "untracked changes" in result.stderr
 
 
+def test_current_checkout_allows_and_labels_local_changes(nightly_launcher, tmp_path: Path) -> None:
+    run, calls = nightly_launcher
+    (tmp_path / "checkout" / "untracked.py").write_text("print('changed')\n", encoding="utf-8")
+
+    result = run(
+        extra_env={
+            "RETRIEVER_ALLOW_DIRTY_CHECKOUT": "1",
+            "SLACK_WEBHOOK_URL": SLACK_WEBHOOK_URL,
+        }
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "WARNING: running the current checkout with local changes" in result.stderr
+    run_invocation, post_invocation = calls()
+    session_dir = Path(run_invocation[run_invocation.index("--output-dir") + 1])
+    provenance = (session_dir / "source_worktree_status.txt").read_text(encoding="utf-8")
+    assert "working_tree_dirty=true" in provenance
+    assert "?? untracked.py" in provenance
+    assert post_invocation[post_invocation.index("--title") + 1].startswith("[LOCAL CHANGES]")
+
+
 @pytest.mark.parametrize("configured, expected", [(None, "skip"), ("full", "full")])
 def test_deep_gemm_warmup_has_safe_default_and_allows_override(
     nightly_launcher, configured: str | None, expected: str

@@ -12,7 +12,7 @@ import re
 from typing import Any, Mapping, Sequence
 
 from nemo_retriever.harness.artifact_writer import redact
-from nemo_retriever.harness.artifacts import get_artifacts_root, last_commit, now_timestr
+from nemo_retriever.harness.artifacts import get_artifacts_root, last_commit, now_timestr, working_tree_dirty
 from nemo_retriever.harness.benchmark_registry import get_benchmark, get_runset, runset_names
 from nemo_retriever.harness.contracts import (
     EXIT_ARTIFACT_WRITE_FAILURE,
@@ -436,7 +436,7 @@ def run_runset(
         expanded_payload={"runset": spec.to_dict(), "runs": expanded_runs},
         run_commit=last_commit(),
         dry_run=dry_run,
-        summary_extra={"runset": spec.name},
+        summary_extra={"runset": spec.name, "working_tree_dirty": working_tree_dirty()},
     )
 
 
@@ -458,6 +458,7 @@ def run_runfiles(
 
     session_name = _validate_session_label(session_name, field="--session-name")
     run_commit = last_commit()
+    source_worktree_dirty = working_tree_dirty()
     local_dataset_paths = load_dataset_paths(dataset_paths_file)
     requests = [load_runfile(path) for path in runfiles]
     runs: list[PreparedRun] = []
@@ -520,6 +521,7 @@ def run_runfiles(
         expanded_payload={
             "session_name": session_name,
             "run_commit": run_commit,
+            "working_tree_dirty": source_worktree_dirty,
             "dataset_paths_file": dataset_paths_value,
             "isolate_runs": bool(isolate_runs),
             "runfiles": expanded_runs,
@@ -530,6 +532,7 @@ def run_runfiles(
             "session_name": session_name,
             "dataset_paths_file": dataset_paths_value,
             "isolate_runs": bool(isolate_runs),
+            "working_tree_dirty": source_worktree_dirty,
         },
         isolate_runs=isolate_runs,
     )

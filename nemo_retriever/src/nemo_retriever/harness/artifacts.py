@@ -118,6 +118,25 @@ def last_commit() -> str:
     return "unknown"
 
 
+def working_tree_dirty() -> bool | None:
+    """Return whether the source checkout is modified, or ``None`` outside Git."""
+
+    repo_root = NEMO_RETRIEVER_ROOT.parent
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=normal", "--ignore-submodules"],
+            cwd=str(repo_root),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    return bool(result.stdout.strip())
+
+
 def get_artifacts_root(base_dir: str | None = None) -> Path:
     if base_dir:
         return Path(base_dir).expanduser().resolve()

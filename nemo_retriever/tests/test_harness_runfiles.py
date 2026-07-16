@@ -74,6 +74,7 @@ def test_run_files_applies_machine_paths_then_cli_overrides(monkeypatch, tmp_pat
         return _successful_outcome(prepared.benchmark, kwargs["output_dir"])
 
     monkeypatch.setattr("nemo_retriever.harness.runsets.run_prepared_benchmark", fake_run_benchmark)
+    monkeypatch.setattr("nemo_retriever.harness.runsets.working_tree_dirty", lambda: True)
 
     outcome = run_runfiles(
         [runfile],
@@ -96,12 +97,14 @@ def test_run_files_applies_machine_paths_then_cli_overrides(monkeypatch, tmp_pat
         "query.top_k=20",
     )
     assert outcome.results["session_name"] == "library_beir"
+    assert outcome.results["working_tree_dirty"] is True
     assert outcome.results["runs"][0]["dataset"] == "jp20"
     assert outcome.results["runs"][0]["artifact_dir"] == "001_jp20_beir"
     assert outcome.results["runs"][0]["results_path"] == "001_jp20_beir/results.json"
     assert "results" not in outcome.results
 
     expanded = json.loads((outcome.artifact_dir / "expanded_runs.json").read_text(encoding="utf-8"))
+    assert expanded["working_tree_dirty"] is True
     assert expanded["runfiles"][0]["dataset_paths"] == {
         "path": str(documents),
         "query_file": str(query_file),

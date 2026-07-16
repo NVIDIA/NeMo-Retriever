@@ -8,22 +8,23 @@ benchmark suite:
 
 | Workflow | Command | Code that runs |
 | --- | --- | --- |
-| Regular nightly | `run-nightly.sh` | Freshly fetched `upstream/main`. |
-| Review the checked-out PR | `run-nightly.sh --ref HEAD` | The current checkout's committed `HEAD`. |
-| Reproduce an exact revision | `run-nightly.sh --ref <SHA>` | An already available local Git commit. |
+| Test the current checkout | `run-nightly.sh` | The current branch, including local changes. |
+| Regular latest-main nightly | `run-nightly.sh --ref upstream/main` | Freshly fetched `upstream/main` in a clean worktree. |
+| Reproduce an exact revision | `run-nightly.sh --ref <SHA>` | A clean worktree at an available local commit. |
 
-The launcher resolves one commit, creates or reuses an immutable detached
-worktree, and exits after one terminal session summary. Recurrence is
-deliberately kept outside its interface; the [daily `tmux`
-workflow](#daily-runs-with-tmux) is a small shell loop rather than an installed
-scheduler. The launcher never merges into or moves the controller checkout,
-and it does not distribute datasets.
+With no `--ref`, the launcher runs the checkout that contains the script and
+does not fetch, switch branches, or reject local changes. With `--ref`, it
+resolves one commit and creates or reuses an immutable detached worktree. It
+exits after one terminal session summary. Recurrence is deliberately kept
+outside its interface; the [daily `tmux` workflow](#daily-runs-with-tmux) is a
+small shell loop rather than an installed scheduler. The launcher never merges
+into or moves the invoking checkout, and it does not distribute datasets.
 
 ## Quick Start On A Standard Host
 
-After this launcher is present on `upstream/main`, a workstation with
-`/datasets/nv-ingest` and writable `/raid/$USER` needs only a Hugging Face token
-and, optionally, a Slack webhook:
+A workstation with `/datasets/nv-ingest` and writable `/raid/$USER` needs only
+a Hugging Face token and, optionally, a Slack webhook to run its current
+checkout:
 
 ```bash
 export HF_TOKEN=...
@@ -31,20 +32,19 @@ export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 ./ops/retriever-nightly/run-nightly.sh
 ```
 
-That foreground command runs all twelve benchmarks and posts one terminal
-Slack summary. `SLACK_WEBHOOK_URL` is optional; omit it to run without posting.
-Before GPU work, it fetches `upstream/main`, selects its exact commit, and
-checks ViDoRe access. It then uses the checked-in `/datasets/nv-ingest` map,
-writes artifacts under `/raid/$USER/retriever-nightly-artifacts`, and prints the
-terminal session directory. No model-provider API key, `nightly.env`, `sudo`,
-systemd service, or timer is required.
+That foreground command runs the current branch exactly as it exists, all
+twelve benchmarks, and one terminal Slack summary. `SLACK_WEBHOOK_URL` is
+optional; omit it to run without posting. Before GPU work, it checks ViDoRe
+access. It then uses the checked-in `/datasets/nv-ingest` map, writes artifacts
+under `/raid/$USER/retriever-nightly-artifacts`, and prints the terminal session
+directory. No model-provider API key, `nightly.env`, `sudo`, systemd service,
+or timer is required.
 
 The only required operator input on that host is `HF_TOKEN`. Set
 `SLACK_WEBHOOK_URL` when the terminal summary should post to Slack. A custom
 dataset map or artifact root is needed only when the host does not have the
-standard paths. While reviewing this unmerged PR, add `--ref HEAD` to every
-launcher command so the review commit runs instead of the current upstream
-`main`.
+standard paths. Use `--ref upstream/main` only when the operator deliberately
+wants the newest clean upstream commit instead of the checked-out code.
 
 ## Validate The Current PR Checkout
 
@@ -52,7 +52,7 @@ launcher command so the review commit runs instead of the current upstream
 
 The supported v1 host is a Linux NVIDIA workstation with:
 
-- a clean NeMo Retriever Git checkout;
+- a NeMo Retriever Git checkout;
 - `git`, Bash, `uv`, `flock`, `realpath`, and NVIDIA drivers available;
 - access to the twelve benchmark datasets through `/datasets` or other local
   paths;
@@ -113,7 +113,7 @@ Verify the token and read one byte from one remote parquet object in every
 ViDoRe evaluation partition before starting GPU work:
 
 ```bash
-./ops/retriever-nightly/run-nightly.sh --ref HEAD --check-vidore-access
+./ops/retriever-nightly/run-nightly.sh --check-vidore-access
 ```
 
 The access check does not download full parquet objects. A redirect failure
@@ -124,7 +124,7 @@ Then preflight the complete twelve-benchmark suite without starting ingest or
 query:
 
 ```bash
-./ops/retriever-nightly/run-nightly.sh --ref HEAD --dry-run
+./ops/retriever-nightly/run-nightly.sh --dry-run
 ```
 
 Inspect the resulting `session_summary.json` and child plans. Dry-runs never
@@ -136,15 +136,14 @@ Use one positional runfile for a smaller real canary before the full run:
 
 ```bash
 ./ops/retriever-nightly/run-nightly.sh \
-  --ref HEAD \
   --no-slack \
   nemo_retriever/harness/runfiles/jp20_beir.json
 ```
 
-Run the complete suite from the review commit with no positional runfiles:
+Run the complete suite from the current checkout with no positional runfiles:
 
 ```bash
-./ops/retriever-nightly/run-nightly.sh --ref HEAD
+./ops/retriever-nightly/run-nightly.sh
 ```
 
 If `SLACK_WEBHOOK_URL` is configured, that real run posts its terminal summary.
@@ -155,18 +154,24 @@ not post.
 
 With no `--ref`, `run-nightly.sh`:
 
-1. fetches `main` from the `upstream` remote;
-2. resolves the fetched commit before doing any GPU work;
-3. creates or reuses an immutable detached worktree named `commit-<full SHA>`;
-4. runs the ViDoRe access check from that selected commit; and
-5. invokes that commit's nightly execution path only when fetch and access
-   preflight both succeed.
+1. selects the Git checkout that contains the launcher;
+2. runs its current branch and working tree without fetching or switching;
+3. permits tracked, staged, and untracked changes; and
+4. runs the ViDoRe access check before real GPU work.
 
-A fetch failure is fail-closed: the controller does not fall back to yesterday's
-commit. It never runs `git pull`, merges into the controller checkout, or moves
-the reviewed controller branch. Session artifacts still record the exact
-selected SHA in `run_commit`. The fetched source is also recorded locally at
-`refs/retriever-nightly/latest-main` for inspection.
+Every session records the checkout's HEAD in `run_commit` and whether it had
+local changes in `working_tree_dirty`. Dirty runs also write
+`source_worktree_status.txt` in the session directory and prefix the Slack
+title with `[LOCAL CHANGES]`. The status artifact records paths and Git state,
+not file contents, so a dirty run is intentionally identifiable but not fully
+reproducible.
+
+`--ref REF` requests a clean committed run. A local branch, tag, or SHA is
+resolved without fetching. A remote branch such as `upstream/main` is fetched
+first, then resolved fail-closed; a fetch failure never falls back to a stale
+remote-tracking commit. The selected commit runs from an immutable detached
+worktree named `commit-<full SHA>`. The launcher never runs `git pull`, merges
+into the invoking checkout, or moves its current branch.
 
 Immutable worktrees and one shared `uv` project environment live under the
 detected nightly root at `retriever-nightly-checkouts`; on `/raid` hosts this is
@@ -174,32 +179,28 @@ detected nightly root at `retriever-nightly-checkouts`; on `/raid` hosts this is
 worktrees are retained. Modified managed worktrees are never deleted
 automatically.
 
-The one-time controller checkout setup must provide an `upstream` remote.
-Operators do not choose a branch or commit for normal nightlies after that:
+The one-time latest-main setup must provide an `upstream` remote. Request a
+clean latest-main preflight explicitly:
 
 ```bash
 git remote get-url upstream >/dev/null 2>&1 || \
   git remote add upstream https://github.com/NVIDIA/NeMo-Retriever.git
-./ops/retriever-nightly/run-nightly.sh --dry-run
+./ops/retriever-nightly/run-nightly.sh --ref upstream/main --dry-run
 ```
 
 The dry-run fetches and selects the latest commit but skips remote access and
-GPU execution. Use `run-nightly.sh --check-vidore-access` to validate the
-selected latest-main commit and its machine credentials without starting a
-session. Once that selected main commit contains this launcher, the complete
-latest-main suite remains the same one command:
+GPU execution. Use `run-nightly.sh --ref upstream/main --check-vidore-access`
+to validate that commit and the machine credentials without starting a
+session. The complete latest-main suite is:
 
 ```bash
-./ops/retriever-nightly/run-nightly.sh
+./ops/retriever-nightly/run-nightly.sh --ref upstream/main
 ```
 
-`--ref REF` skips the fetch and resolves an existing local Git ref or commit.
-The selected commit still runs from a managed detached worktree, so current
-branch state is never moved. Use `--ref HEAD` for this draft PR and `--ref
-<full-SHA>` to reproduce an earlier run. The controller checkout must be clean;
-tracked, staged, and untracked changes are rejected so every result is
-attributable to its recorded commit. Ignored cache files do not make the
-checkout dirty.
+Use `--ref HEAD` when local changes should be ignored and only the current
+commit should run, or `--ref <full-SHA>` to reproduce an earlier run. The
+invoking checkout may itself be dirty because the selected ref always runs in
+a separate clean worktree. Ignored cache files do not mark a run dirty.
 
 ## Daily Runs With `tmux`
 
@@ -216,7 +217,7 @@ export SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 interval=86400
 while true; do
   started="$(date +%s)"
-  ./ops/retriever-nightly/run-nightly.sh
+  ./ops/retriever-nightly/run-nightly.sh --ref upstream/main
   elapsed=$(( $(date +%s) - started ))
   if (( elapsed < interval )); then
     sleep "$(( interval - elapsed ))"
@@ -234,9 +235,9 @@ interval; if one run exceeds 24 hours, the next begins only after it finishes.
 The loop survives an SSH disconnect but not a workstation reboot. This is an
 operator-owned development workflow, not an installed service or timer.
 
-While the launcher PR is unmerged, use `run-nightly.sh --ref HEAD` in the loop
-to exercise the review commit. After merge, remove `--ref HEAD`; the default
-fetches and runs the latest `upstream/main` on every iteration.
+While testing an unmerged branch, omit `--ref upstream/main` to run that
+checkout on every iteration. Keep `--ref upstream/main` for the production
+loop so every iteration fetches and runs the newest clean upstream commit.
 
 ## Slack Report
 

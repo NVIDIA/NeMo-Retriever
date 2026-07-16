@@ -45,6 +45,22 @@ def test_last_commit_preserves_the_full_git_sha(monkeypatch):
     assert artifacts.last_commit() == full_sha
 
 
+@pytest.mark.parametrize(
+    ("returncode", "stdout", "expected"),
+    [(0, "", False), (0, " M local.py\n", True), (128, "", None)],
+)
+def test_working_tree_dirty_reports_git_state(monkeypatch, returncode, stdout, expected):
+    import nemo_retriever.harness.artifacts as artifacts
+
+    monkeypatch.setattr(
+        artifacts.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], returncode, stdout=stdout, stderr=""),
+    )
+
+    assert artifacts.working_tree_dirty() is expected
+
+
 def test_artifact_manifest_uses_relative_paths_and_includes_lancedb(tmp_path):
     writer = ArtifactWriter(artifact_dir=tmp_path, run_id="run-1", benchmark="jp20_beir")
     writer.status(status="running", phase="ingest")
