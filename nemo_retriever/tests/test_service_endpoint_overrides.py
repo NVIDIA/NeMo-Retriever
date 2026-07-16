@@ -14,7 +14,8 @@ every layer:
   caption stage;
 * worker — the base embed / caption dicts are retargeted and win the
   server-owned merge;
-* client — ``ServiceIngestor.endpoints(...)`` builds the right spec; and
+* client — ``ServiceIngestor.embed(...)`` / ``.caption(...)`` route model
+  endpoints into the spec's ``endpoint_overrides`` channel; and
 * answer — ``POST /v1/answer`` honors a per-request LLM override only when
   enabled.
 """
@@ -29,6 +30,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from nemo_retriever.common.params import EmbedParams
 from nemo_retriever.common.policy import PolicyError, validate_pipeline_spec
 from nemo_retriever.common.schemas.pipeline_spec import EndpointOverrides, PipelineSpec
 from nemo_retriever.models.llm.types import GenerationResult
@@ -265,35 +267,74 @@ def test_build_graph_ingestor_client_cannot_override_via_embed_params() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_service_ingestor_endpoints_populates_spec() -> None:
+def test_embed_routes_endpoint_fields_to_overrides() -> None:
     ing = ServiceIngestor(base_url="http://example:7670")
-    ing.endpoints(
+    ing.embed(
         embed_invoke_url="http://client/embed",
         embed_model_name="client-embed",
-        caption_invoke_url="http://client/vlm",
-        api_key="k",
+        embed_model_provider_prefix="openai",
+        inference_batch_size=64,
     )
     payload = ing._pipeline_payload()
     assert payload is not None
     ov = payload["endpoint_overrides"]
     assert ov["embed_invoke_url"] == "http://client/embed"
     assert ov["embed_model_name"] == "client-embed"
-    assert ov["caption_invoke_url"] == "http://client/vlm"
-    assert ov["api_key"] == "k"
+    assert ov["embed_model_provider_prefix"] == "openai"
+    # Shape knobs stay in embed_params; the endpoint fields never leak there.
+    assert payload["embed_params"]["inference_batch_size"] == 64
+    assert "embed_invoke_url" not in payload["embed_params"]
+    assert "embed" in payload["stage_order"]
     # Round-trips through the wire schema.
     assert PipelineSpec.model_validate(payload).endpoint_overrides.embed_invoke_url == "http://client/embed"
 
 
-def test_service_ingestor_endpoints_requires_a_value() -> None:
+def test_embed_via_embed_params_model_routes_endpoint() -> None:
     ing = ServiceIngestor(base_url="http://example:7670")
-    with pytest.raises(ValueError, match="at least one endpoint"):
-        ing.endpoints()
+    ing.embed(EmbedParams(embed_invoke_url="http://client/embed", inference_batch_size=8))
+    payload = ing._pipeline_payload()
+    assert payload["endpoint_overrides"]["embed_invoke_url"] == "http://client/embed"
+    assert payload["embed_params"]["inference_batch_size"] == 8
 
 
-def test_service_ingestor_endpoints_merges_repeated_calls() -> None:
+def test_embed_without_endpoint_sets_no_overrides() -> None:
     ing = ServiceIngestor(base_url="http://example:7670")
-    ing.endpoints(embed_invoke_url="http://client/embed")
-    ing.endpoints(caption_invoke_url="http://client/vlm")
+    ing.embed(inference_batch_size=32)
+    payload = ing._pipeline_payload()
+    assert "endpoint_overrides" not in payload
+    assert payload["embed_params"]["inference_batch_size"] == 32
+
+
+def test_caption_routes_endpoint_fields_to_overrides() -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing.caption(endpoint_url="http://client/vlm", model_name="vlm-x", prompt="Describe")
+    payload = ing._pipeline_payload()
+    ov = payload["endpoint_overrides"]
+    assert ov["caption_invoke_url"] == "http://client/vlm"
+    assert ov["caption_model_name"] == "vlm-x"
+    # Behavioural knobs stay in caption_params; endpoint/model do not leak.
+    assert payload["caption_params"]["prompt"] == "Describe"
+    assert "endpoint_url" not in payload["caption_params"]
+    assert "model_name" not in payload["caption_params"]
+
+
+def test_caption_without_endpoint_sets_no_overrides() -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing.caption(prompt="Describe")
+    payload = ing._pipeline_payload()
+    assert "endpoint_overrides" not in payload
+    assert payload["caption_params"]["prompt"] == "Describe"
+
+
+def test_caption_rejects_local_execution_keys() -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    with pytest.raises(ValueError, match="local"):
+        ing.caption(device="cuda:0")
+
+
+def test_embed_and_caption_endpoint_overrides_merge() -> None:
+    ing = ServiceIngestor(base_url="http://example:7670")
+    ing.embed(embed_invoke_url="http://client/embed").caption(endpoint_url="http://client/vlm")
     ov = ing._pipeline_payload()["endpoint_overrides"]
     assert ov["embed_invoke_url"] == "http://client/embed"
     assert ov["caption_invoke_url"] == "http://client/vlm"
