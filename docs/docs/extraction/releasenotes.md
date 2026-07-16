@@ -77,18 +77,10 @@ Highlights for the 26.05 release include:
 
 ## Release Notes for Previous Versions
 
+- [26.05](https://docs.nvidia.com/nemo/retriever/26.5.0/extraction/releasenotes-nv-ingest/)
 - [26.03](https://docs.nvidia.com/nemo/retriever/26.3.0/extraction/releasenotes-nv-ingest/)
-- 26.1.2
-- 26.1.1
-- 25.9.0
-- 25.6.3
-- 25.6.2
-- 25.4.2
-- 25.3.0
-- 24.12.1
-- 24.12.0
 
-Release notes before 26.03 are being archived. Links will be restored when the archive pages are available.
+Release notes for earlier versions (26.1.2, 26.1.1, 25.9.0, 25.6.3, 25.6.2, 25.4.2, 25.3.0, 24.12.1, and 24.12.0) — *These links have been archived.*
 
 ## Related Topics
 
