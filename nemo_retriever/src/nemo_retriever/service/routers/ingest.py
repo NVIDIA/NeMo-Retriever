@@ -372,6 +372,9 @@ async def _gateway_enqueue(
 
     broker = get_work_broker()
     if broker is None:
+        tracker = get_job_tracker()
+        if tracker is not None:
+            tracker.unregister_pending(work_id)
         raise HTTPException(status_code=503, detail="Gateway work broker not initialised")
     try:
         await broker.enqueue(
