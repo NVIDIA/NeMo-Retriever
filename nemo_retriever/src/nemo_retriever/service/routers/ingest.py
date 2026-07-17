@@ -1807,8 +1807,10 @@ async def job_callback(request: Request) -> JSONResponse:
                     headers={"Retry-After": "1"},
                 ) from exc
             if retained_rows is None:
-                owner_ip = lease_record.lease.worker_ip if lease_record is not None and lease_record.lease else body.get(
-                    "result_worker_ip"
+                owner_ip = (
+                    lease_record.lease.worker_ip
+                    if lease_record is not None and lease_record.lease
+                    else body.get("result_worker_ip")
                 )
                 await _pull_and_store_worker_result(
                     request,
