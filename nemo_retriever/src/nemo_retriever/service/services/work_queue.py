@@ -328,6 +328,7 @@ class WorkBroker:
         record = self._current(work_id, lease_id, generation)
         condition = self._conditions[record.pool]
         async with condition:
+            record = self._current(work_id, lease_id, generation)
             self._records.pop(work_id, None)
             self._spool_bytes -= record.payload_size
             try:

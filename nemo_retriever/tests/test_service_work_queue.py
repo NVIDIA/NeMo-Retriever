@@ -84,6 +84,32 @@ async def test_fifo_spool_integrity_and_ack_cleanup(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_acknowledge_revalidates_lease_after_acquiring_condition(tmp_path):
+    broker = WorkBroker(_config(tmp_path), PipelinePoolConfig(batch_queue_size=1))
+    await broker.start()
+    try:
+        record = await _enqueue(broker, "raced")
+        claim = await broker.claim(PoolType.BATCH, worker_uid="pod-a", worker_ip="10.0.0.1")
+        assert claim is not None and claim.lease is not None
+        condition = broker._conditions[PoolType.BATCH]
+        async with condition:
+            acknowledge = asyncio.create_task(
+                broker.acknowledge(
+                    record.work_id,
+                    claim.lease.lease_id,
+                    claim.lease.generation,
+                )
+            )
+            await asyncio.sleep(0)
+            broker._exhaust_locked(record)
+        with pytest.raises(StaleLease):
+            await acknowledge
+        assert broker._spool_bytes == 0
+    finally:
+        await broker.shutdown()
+
+
+@pytest.mark.anyio
 async def test_claim_payload_rejects_unleased_record(tmp_path):
     broker = WorkBroker(_config(tmp_path), PipelinePoolConfig(batch_queue_size=1))
     await broker.start()
