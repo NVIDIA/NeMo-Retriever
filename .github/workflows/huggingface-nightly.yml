@@ -293,6 +293,8 @@ jobs:
             --auditwheel-exclude libc10.so \
             --auditwheel-exclude libc10_cuda.so \
             --auditwheel-exclude libtorch_python.so \
+            --require-wheel-member "nemotron_ocr/inference/pipeline.py" \
+            --require-wheel-member "nemotron_ocr/inference/pipeline_v2.py" \
             --build-no-isolation \
             --venv-pip-install "hatchling" \
             --venv-pip-install "setuptools>=68" \

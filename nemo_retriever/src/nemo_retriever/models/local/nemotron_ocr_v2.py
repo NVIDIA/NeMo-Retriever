@@ -53,6 +53,7 @@ class NemotronOCRV2(BaseModel):
         super().__init__()
         configure_global_hf_cache_base()
         try:
+            from nemotron_ocr.inference import pipeline as _nemotron_ocr_pipeline  # local-only import
             from nemotron_ocr.inference import pipeline_v2 as _nemotron_ocr_pipeline_v2  # local-only import
         except ImportError as exc:
             raise ImportError(
@@ -64,7 +65,9 @@ class NemotronOCRV2(BaseModel):
                 "--ocr-version v1 still uses this package and selects its legacy mode."
             ) from exc
 
-        install_pinned_hf_hub_download(_nemotron_ocr_pipeline_v2)
+        # NemotronOCRV2 inherits checkpoint loading from NemotronOCR, whose
+        # module owns the hf_hub_download global used by _download_checkpoints.
+        install_pinned_hf_hub_download(_nemotron_ocr_pipeline)
         _NemotronOCRV2 = _nemotron_ocr_pipeline_v2.NemotronOCRV2
 
         if model_dir:

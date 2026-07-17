@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import zipfile
 from pathlib import Path
 
 
@@ -700,6 +701,31 @@ def _auditwheel_repair_dist_dir(dist_dir: Path, *, exclude_libs: list[str] | Non
     shutil.rmtree(repair_out)
 
 
+def _validate_required_wheel_members(dist_dir: Path, required_members: list[str]) -> None:
+    """Require exact archive members in every wheel before publication."""
+    if not required_members:
+        return
+
+    wheels = sorted(dist_dir.glob("*.whl"))
+    if not wheels:
+        raise RuntimeError(f"No wheels found in {dist_dir} to validate required members")
+
+    invalid_members = [member for member in required_members if not member or member.startswith("/")]
+    if invalid_members:
+        raise ValueError(f"Required wheel members must be non-empty relative paths: {invalid_members!r}")
+
+    failures: list[str] = []
+    for wheel in wheels:
+        with zipfile.ZipFile(wheel) as zf:
+            wheel_members = set(zf.namelist())
+        missing = [member for member in required_members if member not in wheel_members]
+        if missing:
+            failures.append(f"{wheel.name}: missing {', '.join(missing)}")
+
+    if failures:
+        raise RuntimeError("Required wheel member validation failed:\n" + "\n".join(failures))
+
+
 def _twine_upload(
     dist_dir: Path,
     repository_url: str,
@@ -830,6 +856,12 @@ def main() -> int:
         help="Shared library to exclude from auditwheel bundling (repeatable). "
         "Use for runtime deps like libtorch_cpu.so that should not be vendored.",
     )
+    ap.add_argument(
+        "--require-wheel-member",
+        action="append",
+        default=[],
+        help="Exact archive member required in every built wheel before upload (repeatable).",
+    )
     args = ap.parse_args()
     if args.release_version is not None and args.nightly_base_version:
         ap.error("--release-version cannot be used with --nightly-base-version")
@@ -903,6 +935,8 @@ def main() -> int:
     if args.auditwheel_repair:
         print("=== auditwheel repair ===")
         _auditwheel_repair_dist_dir(out_dir, exclude_libs=args.auditwheel_exclude)
+
+    _validate_required_wheel_members(out_dir, args.require_wheel_member)
 
     if args.upload:
         token = os.environ.get(args.token_env)

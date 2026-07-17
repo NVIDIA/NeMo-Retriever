@@ -284,7 +284,7 @@ class TestTableStructureNimEmptyBboxEndToEnd:
                 df,
                 table_structure_invoke_url="http://nemotron-table-structure-v1:8000/v1/infer",
                 page_elements_invoke_url="http://nemotron-page-elements-v3:8000/v1/infer",
-                ocr_invoke_url="http://nemotron-ocr-v1:8000/v1/infer",
+                ocr_invoke_url="http://nemotron-ocr-v2:8000/v1/infer",
             )
 
         # Stage finished successfully, no row-level error recorded.
@@ -320,7 +320,7 @@ class TestTableStructureNimEmptyBboxEndToEnd:
                 df,
                 table_structure_invoke_url="http://nemotron-table-structure-v1:8000/v1/infer",
                 page_elements_invoke_url="http://nemotron-page-elements-v3:8000/v1/infer",
-                ocr_invoke_url="http://nemotron-ocr-v1:8000/v1/infer",
+                ocr_invoke_url="http://nemotron-ocr-v2:8000/v1/infer",
             )
 
     def test_non_bbox_response_still_falls_through_to_legacy_parser(self) -> None:
@@ -348,7 +348,7 @@ class TestTableStructureNimEmptyBboxEndToEnd:
                 df,
                 table_structure_invoke_url="http://nemotron-table-structure-v1:8000/v1/infer",
                 page_elements_invoke_url="http://nemotron-page-elements-v3:8000/v1/infer",
-                ocr_invoke_url="http://nemotron-ocr-v1:8000/v1/infer",
+                ocr_invoke_url="http://nemotron-ocr-v2:8000/v1/infer",
             )
 
         # The non-bbox legacy response triggers the fallback exactly once.

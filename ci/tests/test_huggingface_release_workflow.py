@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import zipfile
 from pathlib import Path
 from types import ModuleType
 
@@ -130,3 +131,52 @@ def test_huggingface_nightly_builder_defaults_to_public_pypi() -> None:
 
     assert 'default="https://upload.pypi.org/legacy/"' in script
     assert 'default="PYPI_API_TOKEN"' in script
+
+
+def _write_wheel(path: Path, members: list[str]) -> None:
+    with zipfile.ZipFile(path, "w") as zf:
+        for member in members:
+            zf.writestr(member, "")
+
+
+def test_nightly_builder_validates_required_members_in_every_wheel(tmp_path: Path) -> None:
+    nightly_build_publish = _load_nightly_build_publish_module()
+    required_members = [
+        "nemotron_ocr/inference/pipeline.py",
+        "nemotron_ocr/inference/pipeline_v2.py",
+    ]
+    _write_wheel(tmp_path / "x86.whl", required_members)
+    _write_wheel(tmp_path / "arm.whl", required_members + ["nemotron_ocr_cpp/extension.so"])
+
+    nightly_build_publish._validate_required_wheel_members(tmp_path, required_members)
+
+
+def test_nightly_builder_reports_wheel_and_missing_required_member(tmp_path: Path) -> None:
+    nightly_build_publish = _load_nightly_build_publish_module()
+    _write_wheel(tmp_path / "nemotron_ocr.whl", ["nemotron_ocr/inference/pipeline_v2.py"])
+
+    with pytest.raises(RuntimeError, match=r"nemotron_ocr\.whl: missing nemotron_ocr/inference/pipeline\.py"):
+        nightly_build_publish._validate_required_wheel_members(
+            tmp_path,
+            ["nemotron_ocr/inference/pipeline.py", "nemotron_ocr/inference/pipeline_v2.py"],
+        )
+
+
+def test_nightly_builder_skips_wheel_validation_without_requirements(tmp_path: Path) -> None:
+    nightly_build_publish = _load_nightly_build_publish_module()
+
+    nightly_build_publish._validate_required_wheel_members(tmp_path, [])
+
+
+def test_nightly_builder_validates_wheels_before_upload() -> None:
+    script = (REPO_ROOT / "ci" / "scripts" / "nightly_build_publish.py").read_text(encoding="utf-8")
+    main_source = script.split("def main() -> int:", 1)[1]
+
+    assert main_source.index("_validate_required_wheel_members(") < main_source.index("if args.upload:")
+
+
+def test_huggingface_ocr_wheels_require_base_and_v2_pipeline_modules() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "huggingface-nightly.yml").read_text(encoding="utf-8")
+
+    assert '--require-wheel-member "nemotron_ocr/inference/pipeline.py"' in workflow
+    assert '--require-wheel-member "nemotron_ocr/inference/pipeline_v2.py"' in workflow
