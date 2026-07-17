@@ -61,8 +61,7 @@ _CHART_DIR = _REPO_ROOT / "nemo_retriever/helm"
 # opts into GPU/profile filtering. answer_llm is tracked separately because
 # its Super-49B default ships with a pinned profile for the bundled two-GPU NIM.
 _EMPTY_MODEL_PROFILE_NIM_KEYS: tuple[str, ...] = (
-    "page_elements",
-    "table_structure",
+    "object_detection",
     "ocr",
     "vlm_embed",
     "rerankqa",
@@ -265,7 +264,7 @@ class NimCacheModelProfileTests(TestCase):
         )
         self.assertEqual(
             ocr_cache["spec"]["source"]["ngc"]["modelPuller"],
-            "nvcr.io/nim/nvidia/nemotron-ocr-v2:1.4.0",
+            "nvcr.io/nim/nvidia/nemotron-ocr-v2:2.0.0",
         )
 
         ocr_service = next(
@@ -277,7 +276,7 @@ class NimCacheModelProfileTests(TestCase):
             ocr_service["spec"]["image"]["repository"],
             "nvcr.io/nim/nvidia/nemotron-ocr-v2",
         )
-        self.assertEqual(ocr_service["spec"]["image"]["tag"], "1.4.0")
+        self.assertEqual(ocr_service["spec"]["image"]["tag"], "2.0.0")
 
         configmaps = [doc for doc in docs if doc.get("kind") == "ConfigMap"]
         self.assertTrue(
@@ -336,7 +335,7 @@ class NimCacheModelProfileTests(TestCase):
                 "--set",
                 "nimOperator.modelProfile.gpus[0].product=NVIDIA-H100-80GB-HBM3",
                 "--set",
-                f"nimOperator.page_elements.modelProfile.profiles[0]={profile_uuid}",
+                f"nimOperator.object_detection.modelProfile.profiles[0]={profile_uuid}",
             ),
         )
         _assert_helm_ok(self, proc)
@@ -347,10 +346,10 @@ class NimCacheModelProfileTests(TestCase):
         # The targeted override must carry ONLY profiles (no gpus
         # inherited from the global).
         self.assertEqual(
-            docs["nemotron-page-elements-v3"],
+            docs["nemotron-object-detection"],
             {"profiles": [profile_uuid]},
             "Per-NIM override must REPLACE the chart-wide default — the "
-            "page-elements NIMCache must NOT carry the inherited gpus list.",
+            "object-detection NIMCache must NOT carry the inherited gpus list.",
         )
         # Every other rendered NIMCache should still carry the chart-wide gpus
         # filter.  Spot-check one — the others are covered by the

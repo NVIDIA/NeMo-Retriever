@@ -28,10 +28,9 @@ NIMSERVICE_NAMES = {
     "llama-nemotron-embed-vl-1b-v2",
     "llama-nemotron-rerank-vl-1b-v2",
     "nemotron-3-nano-omni-30b-a3b-reasoning",
+    "nemotron-object-detection",
     "nemotron-ocr-v2",
-    "nemotron-page-elements-v3",
     "nemotron-parse",
-    "nemotron-table-structure-v1",
 }
 
 
@@ -223,7 +222,7 @@ def test_null_otel_env_maps_render_as_empty_maps() -> None:
             "--set-json",
             "service.otel.env=null",
             "--set-json",
-            "nimOperator.page_elements.otel=null",
+            "nimOperator.object_detection.otel=null",
             "--set-json",
             "nimOperator.otel.env=null",
             "--set-json",
@@ -234,9 +233,9 @@ def test_null_otel_env_maps_render_as_empty_maps() -> None:
     service_env = _env_values(_deployment_env(_find(docs, "Deployment", FULLNAME)))
     assert service_env["OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4317"
 
-    page_env = _env_values(_nim_env(_find(docs, "NIMService", "nemotron-page-elements-v3")))
-    assert page_env["NIM_ENABLE_OTEL"] == "true"
-    assert page_env["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
+    object_detection_env = _env_values(_nim_env(_find(docs, "NIMService", "nemotron-object-detection")))
+    assert object_detection_env["NIM_ENABLE_OTEL"] == "true"
+    assert object_detection_env["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == f"http://{OTEL_NAME}:4318"
 
     rerank_env = _env_values(_nim_env(_find(docs, "NIMService", "llama-nemotron-rerank-vl-1b-v2")))
     assert rerank_env["NIM_ENABLE_OTEL"] == "true"
@@ -709,8 +708,8 @@ def test_chart_wide_nim_otel_disable_omits_managed_env() -> None:
         _assert_unique_env_names(env)
         assert chart_managed_names.isdisjoint(values)
 
-    table_values = _env_values(_nim_env(_find(docs, "NIMService", "nemotron-table-structure-v1")))
-    assert table_values["NIM_TRITON_CUDA_MEMORY_POOL_MB"] == "2048"
+    object_detection_values = _env_values(_nim_env(_find(docs, "NIMService", "nemotron-object-detection")))
+    assert object_detection_values["NIM_TRITON_MAX_BATCH_SIZE"] == "32"
 
 
 def test_per_nim_otel_endpoint_overrides_chart_endpoint() -> None:
@@ -722,10 +721,10 @@ def test_per_nim_otel_endpoint_overrides_chart_endpoint() -> None:
         ]
     )
 
-    page_elements = _find(docs, "NIMService", "nemotron-page-elements-v3")
-    page_values = _env_values(_nim_env(page_elements))
-    assert page_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://chart-otel:4318"
-    assert page_values["TRITON_OTEL_URL"] == "http://chart-otel:4318/v1/traces"
+    object_detection = _find(docs, "NIMService", "nemotron-object-detection")
+    object_detection_values = _env_values(_nim_env(object_detection))
+    assert object_detection_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://chart-otel:4318"
+    assert object_detection_values["TRITON_OTEL_URL"] == "http://chart-otel:4318/v1/traces"
 
     rerank = _find(docs, "NIMService", "llama-nemotron-rerank-vl-1b-v2")
     rerank_values = _env_values(_nim_env(rerank))
@@ -738,11 +737,11 @@ def test_chart_nim_otel_env_endpoint_drives_triton_url() -> None:
         NIM_OTEL_ENABLED + ["nimOperator.otel.env.NIM_OTEL_EXPORTER_OTLP_ENDPOINT=http://env-otel:4318"]
     )
 
-    page_elements = _find(docs, "NIMService", "nemotron-page-elements-v3")
-    page_values = _env_values(_nim_env(page_elements))
+    object_detection = _find(docs, "NIMService", "nemotron-object-detection")
+    object_detection_values = _env_values(_nim_env(object_detection))
 
-    assert page_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://env-otel:4318"
-    assert page_values["TRITON_OTEL_URL"] == "http://env-otel:4318/v1/traces"
+    assert object_detection_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://env-otel:4318"
+    assert object_detection_values["TRITON_OTEL_URL"] == "http://env-otel:4318/v1/traces"
 
 
 def test_per_nim_otel_env_endpoint_drives_triton_url() -> None:
@@ -766,11 +765,11 @@ def test_nim_otel_env_triton_url_override_is_preserved() -> None:
         ]
     )
 
-    page_elements = _find(docs, "NIMService", "nemotron-page-elements-v3")
-    page_values = _env_values(_nim_env(page_elements))
+    object_detection = _find(docs, "NIMService", "nemotron-object-detection")
+    object_detection_values = _env_values(_nim_env(object_detection))
 
-    assert page_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://env-otel:4318"
-    assert page_values["TRITON_OTEL_URL"] == "http://explicit-triton/v1/traces"
+    assert object_detection_values["NIM_OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://env-otel:4318"
+    assert object_detection_values["TRITON_OTEL_URL"] == "http://explicit-triton/v1/traces"
 
 
 def test_existing_nim_env_endpoint_drives_triton_url_without_duplicate_endpoint() -> None:
@@ -795,14 +794,14 @@ def test_existing_nim_env_endpoint_value_from_omits_chart_managed_triton_url() -
     docs = _helm_template(
         NIM_OTEL_ENABLED
         + [
-            "nimOperator.page_elements.env[0].name=NIM_OTEL_EXPORTER_OTLP_ENDPOINT",
-            "nimOperator.page_elements.env[0].valueFrom.secretKeyRef.name=otel-endpoint",
-            "nimOperator.page_elements.env[0].valueFrom.secretKeyRef.key=endpoint",
+            "nimOperator.object_detection.env[0].name=NIM_OTEL_EXPORTER_OTLP_ENDPOINT",
+            "nimOperator.object_detection.env[0].valueFrom.secretKeyRef.name=otel-endpoint",
+            "nimOperator.object_detection.env[0].valueFrom.secretKeyRef.key=endpoint",
         ]
     )
 
-    page_elements = _find(docs, "NIMService", "nemotron-page-elements-v3")
-    env = _nim_env(page_elements)
+    object_detection = _find(docs, "NIMService", "nemotron-object-detection")
+    env = _nim_env(object_detection)
     values = _env_values(env)
 
     _assert_unique_env_names(env)
@@ -837,7 +836,7 @@ def test_per_nim_otel_opt_out_and_override() -> None:
     docs = _helm_template(
         NIM_OTEL_ENABLED
         + [
-            "nimOperator.page_elements.otel.enabled=false",
+            "nimOperator.object_detection.otel.enabled=false",
             "nimOperator.otel.endpoint=http://custom-otel:4318",
             "nimOperator.rerankqa.otel.serviceName=custom-rerank",
             "nimOperator.rerankqa.otel.env.NIM_OTEL_METRICS_EXPORTER=none",
@@ -846,8 +845,8 @@ def test_per_nim_otel_opt_out_and_override() -> None:
         ]
     )
 
-    page_elements = _find(docs, "NIMService", "nemotron-page-elements-v3")
-    assert "NIM_ENABLE_OTEL" not in _env_values(_nim_env(page_elements))
+    object_detection = _find(docs, "NIMService", "nemotron-object-detection")
+    assert "NIM_ENABLE_OTEL" not in _env_values(_nim_env(object_detection))
 
     rerank = _find(docs, "NIMService", "llama-nemotron-rerank-vl-1b-v2")
     env = _nim_env(rerank)

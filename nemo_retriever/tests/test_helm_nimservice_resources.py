@@ -27,10 +27,9 @@ _NIMSERVICE_TEMPLATES: tuple[tuple[str, str], ...] = (
     ("llama-nemotron-embed-vl-1b-v2.yaml", "vlm_embed"),
     ("llama-nemotron-rerank-vl-1b-v2.yaml", "rerankqa"),
     ("nemotron-3-nano-omni-30b-a3b-reasoning.yaml", "nemotron_3_nano_omni_30b_a3b_reasoning"),
+    ("nemotron-object-detection.yaml", "object_detection"),
     ("nemotron-ocr-v2.yaml", "ocr"),
-    ("nemotron-page-elements-v3.yaml", "page_elements"),
     ("nemotron-parse.yaml", "nemotron_parse"),
-    ("nemotron-table-structure-v1.yaml", "table_structure"),
 )
 
 
@@ -142,9 +141,9 @@ class HelmNimServiceResourcesTests(TestCase):
         self.assertNotIn("nvidia.com/gpu", rendered)
 
     def test_per_nim_resources_override_replaces_default(self) -> None:
-        rendered = _helm_template(["nimOperator.page_elements.resources.limits.nvidia\\.com/gpu=2"])
+        rendered = _helm_template(["nimOperator.object_detection.resources.limits.nvidia\\.com/gpu=2"])
         match = re.search(
-            r"name: nemotron-page-elements-v3\nspec:.*?resources:\n(.*?)(?=\n  [a-z])",
+            r"name: nemotron-object-detection\nspec:.*?resources:\n(.*?)(?=\n  [a-z])",
             rendered,
             re.DOTALL,
         )
