@@ -612,16 +612,11 @@ def _baseline_comparison_blocks(
                     )
                 )
 
-            context = [
-                f"*{baseline.name} comparison — {run.dataset}*",
-                f"Comparability: {baseline.comparability.replace('_', ' ')}",
-            ]
-            if baseline.notes:
-                context.append(baseline.notes)
+            heading = f"*{baseline.name} comparison — {run.dataset}*"
             blocks.extend(
                 [
                     {"type": "divider"},
-                    {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(context)}},
+                    {"type": "section", "text": {"type": "mrkdwn", "text": heading}},
                     {"type": "table", "rows": rows[:MAX_SLACK_TABLE_ROWS]},
                 ]
             )

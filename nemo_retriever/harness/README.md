@@ -299,8 +299,10 @@ dataset. When baseline `environment` includes `workload_gpu_count`, comparison
 tables are limited to current runs with the same workload GPU count. Keep
 confidential references outside the repository: the harness reads
 the file only while rendering the report and does not copy it into artifacts.
-The selected reference values and notes do appear in the resulting Slack
-payload, so post only to an approved destination.
+The reference name, environment, and selected metric values appear in the
+resulting Slack payload, so post only to an approved destination. Detailed
+`comparability`, `notes`, and `source` metadata stay in the local reference
+file so recurring posts remain concise.
 
 For a recurring nightly, set `RETRIEVER_HARNESS_REFERENCE_FILE` in the
 permissions-restricted nightly environment. `post-slack` automatically reads

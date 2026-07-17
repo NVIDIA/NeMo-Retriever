@@ -251,11 +251,9 @@ def test_slack_payload_names_reference_comparison_from_reference_file(tmp_path):
         baselines=[baseline],
     )
 
-    assert payload["blocks"][-2]["text"]["text"] == (
-        "*RC26.05 Perflab comparison — jp20*\n"
-        "Comparability: directional only\n"
-        "Different GPU SKU and harness profile."
-    )
+    assert payload["blocks"][-2]["text"]["text"] == "*RC26.05 Perflab comparison — jp20*"
+    assert "directional" not in json.dumps(payload)
+    assert "Different GPU SKU" not in json.dumps(payload)
     assert _table_rows(payload["blocks"][-1]) == [
         ["METRIC", "CURRENT", "RC26.05 PERFLAB", "DELTA"],
         ["physical GPU SKU", "NVIDIA H100 NVL", "H100 80GB HBM3", "N/A"],
@@ -317,7 +315,7 @@ def test_slack_baseline_workload_count_selects_matching_run(tmp_path):
         for block in payload["blocks"]
         if block["type"] == "section" and block["text"]["text"].startswith("*RC26.05 Perflab comparison")
     ]
-    assert reference_sections == ["*RC26.05 Perflab comparison — bo767*\nComparability: comparable"]
+    assert reference_sections == ["*RC26.05 Perflab comparison — bo767*"]
     assert _table_rows(payload["blocks"][-1])[-1] == [
         "ingest_s",
         "100.00s (01m : 40.00s)",
