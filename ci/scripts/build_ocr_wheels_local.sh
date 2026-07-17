@@ -31,7 +31,7 @@ for PY_VER in 3.11 3.13; do
     --dist-dir "${STAGING}" \
     --venv-dir "${VENV_DIR}" \
     --project-subdir nemotron-ocr \
-    --nightly-base-version 2.0.1 \
+    --nightly-base-version 2.0.2 \
     --set-requires-python ">=3.11,<3.14" \
     --skip-sdist \
     --hatch-force-platform-wheel \

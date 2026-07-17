@@ -132,8 +132,10 @@ def test_local_extra_is_stable_and_uv_dev_group_uses_nightly_nemotron_specs() ->
 
     nightly_ocr_requirement = _requirement(dev_nemotron_deps, "nemotron-ocr")
     assert nightly_ocr_requirement.specifier.contains("2.0.1.dev1", prereleases=True)
+    assert nightly_ocr_requirement.specifier.contains("2.0.2.dev1", prereleases=True)
     assert not nightly_ocr_requirement.specifier.contains("2.0.0", prereleases=True)
     assert not nightly_ocr_requirement.specifier.contains("2.0.1", prereleases=True)
+    assert not nightly_ocr_requirement.specifier.contains("2.0.2", prereleases=True)
     assert str(nightly_ocr_requirement.marker) == str(stable_ocr_requirement.marker)
 
     assert not any(dep.startswith("nemotron-ocr-v2") for dep in local_deps + dev_nemotron_deps)
@@ -223,7 +225,7 @@ def test_huggingface_ocr_nightly_does_not_carry_namespace_patch_knobs() -> None:
     v2_stanza = workflow.split("- id: nemotron-ocr-v2", 1)[1].split("container:", 1)[0]
 
     assert "nemotron-ocr-v1" not in workflow
-    assert 'nightly_base_version: "2.0.1"' in v2_stanza
+    assert 'nightly_base_version: "2.0.2"' in v2_stanza
     assert "project_name:" not in workflow
     assert "package_rename:" not in workflow
     assert "expected_project_name:" not in workflow

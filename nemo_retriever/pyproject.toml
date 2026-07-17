@@ -213,7 +213,7 @@ dev = [
   "nemo_retriever[dev]",
   "nemotron-page-elements-v3>=3.0.1.dev0,!=3.0.1,!=3.0.2,<4",
   "nemotron-table-structure-v1>=1.0.1.dev0,!=1.0.1,<2",
-  "nemotron-ocr>=2.0.1.dev0,!=2.0.1,<3; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
+  "nemotron-ocr>=2.0.1.dev0,!=2.0.1,!=2.0.2,<3; sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
 ]
 
 [tool.setuptools.dynamic]
