@@ -6,8 +6,8 @@ topology:
 
 serviceConfig:
   nimEndpoints:
-    pageElementsInvokeUrl: "http://page-elements-nim.example.invalid:8000/v1/infer"
-    tableStructureInvokeUrl: "http://table-structure-nim.example.invalid:8000/v1/infer"
+    pageElementsInvokeUrl: "http://object-detection-nim.example.invalid:8000/v1/infer"
+    tableStructureInvokeUrl: "http://object-detection-nim.example.invalid:8000/v1/infer"
     ocrInvokeUrl: "http://ocr-nim.example.invalid:8000/v1/infer"
     embedInvokeUrl: "http://embed-nim.example.invalid:8000/v1/embeddings"
     audioGrpcEndpoint: "audio-nim.example.invalid:50051"
@@ -18,9 +18,7 @@ nims:
   enabled: false
 
 nimOperator:
-  page_elements:
-    enabled: false
-  table_structure:
+  object_detection:
     enabled: false
   ocr:
     enabled: false
