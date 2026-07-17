@@ -93,8 +93,8 @@ WORK_QUEUE_WAIT = Histogram(
 )
 WORK_QUEUE_CLAIMS = Counter(
     "nemo_retriever_work_queue_claims_total",
-    "Work claims issued by pool and worker pod.",
-    ["pool", "worker_uid"],
+    "Work claims issued by pool.",
+    ["pool"],
 )
 WORK_QUEUE_EXPIRATIONS = Counter("nemo_retriever_work_queue_expirations_total", "Expired work leases.", ["pool"])
 WORK_QUEUE_REQUEUES = Counter(

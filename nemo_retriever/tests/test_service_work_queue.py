@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from types import SimpleNamespace
 
@@ -27,6 +28,7 @@ from nemo_retriever.service.services.job_tracker import (
     shutdown_job_tracker,
 )
 from nemo_retriever.service.services.pipeline_pool import PoolType, WorkItem, _Pool
+from nemo_retriever.service.services.prometheus import WORK_QUEUE_CLAIMS
 from nemo_retriever.service.services.work_queue import (
     GatewayWorkClient,
     StaleLease,
@@ -187,6 +189,7 @@ async def test_three_expired_deliveries_exhaust_and_delete(tmp_path):
             assert claimed is not None and claimed.lease is not None
             claimed.lease.expires_at = time.monotonic() - 1
             broker._expire_locked(PoolType.BATCH)
+        await asyncio.gather(*tuple(broker._unlink_tasks))
         assert not broker.has_record("work")
         assert not record.spool_path.exists()
     finally:
@@ -542,10 +545,39 @@ async def test_explicit_release_exhausts_total_delivery_attempts(tmp_path):
                 claimed.lease.generation,
                 reason="hash_mismatch",
             )
+        await asyncio.gather(*tuple(broker._unlink_tasks))
         assert not broker.has_record("work")
         assert not record.spool_path.exists()
     finally:
         await broker.shutdown()
+
+
+@pytest.mark.anyio
+async def test_exhaustion_unlink_does_not_block_event_loop(tmp_path, monkeypatch):
+    broker = WorkBroker(_config(tmp_path), PipelinePoolConfig(batch_queue_size=1))
+    await broker.start()
+    release_unlink = threading.Event()
+    unlink_started = threading.Event()
+    original_unlink = broker._unlink_payload
+
+    def blocking_unlink(path):
+        unlink_started.set()
+        release_unlink.wait(timeout=1)
+        original_unlink(path)
+
+    monkeypatch.setattr(broker, "_unlink_payload", blocking_unlink)
+    try:
+        record = await _enqueue(broker, "work")
+        broker._exhaust_locked(record)
+        await asyncio.wait_for(asyncio.to_thread(unlink_started.wait), timeout=0.2)
+        await asyncio.wait_for(asyncio.sleep(0), timeout=0.1)
+    finally:
+        release_unlink.set()
+        await broker.shutdown()
+
+
+def test_work_queue_claim_metric_has_bounded_labels():
+    assert WORK_QUEUE_CLAIMS._labelnames == ("pool",)
 
 
 @pytest.mark.anyio

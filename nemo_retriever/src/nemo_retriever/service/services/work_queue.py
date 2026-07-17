@@ -97,6 +97,7 @@ class WorkBroker:
         self._admission_lock = asyncio.Lock()
         self._spool_bytes = 0
         self._expiry_task: asyncio.Task[None] | None = None
+        self._unlink_tasks: set[asyncio.Task[None]] = set()
         self._running = False
         self._spool = Path(config.spool_directory)
 
@@ -122,6 +123,8 @@ class WorkBroker:
             self._expiry_task.cancel()
             await asyncio.gather(self._expiry_task, return_exceptions=True)
             self._expiry_task = None
+        if self._unlink_tasks:
+            await asyncio.gather(*tuple(self._unlink_tasks))
 
         records = list(self._records.values())
         await asyncio.gather(*(asyncio.to_thread(self._unlink_payload, record.spool_path) for record in records))
@@ -137,6 +140,20 @@ class WorkBroker:
             path.unlink()
         except FileNotFoundError:
             pass
+
+    def _schedule_unlink(self, path: Path) -> None:
+        task = asyncio.create_task(asyncio.to_thread(self._unlink_payload, path), name=f"unlink-{path.name}")
+        self._unlink_tasks.add(task)
+        task.add_done_callback(self._unlink_done)
+
+    def _unlink_done(self, task: asyncio.Task[None]) -> None:
+        self._unlink_tasks.discard(task)
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.exception("Failed to delete retired work payload in %s", task.get_name())
 
     def _active(self, pool: PoolType) -> int:
         return sum(record.lease is not None for record in self._records.values() if record.pool is pool)
@@ -264,7 +281,7 @@ class WorkBroker:
                             worker_ip=worker_ip,
                             expires_at=time.monotonic() + self.config.lease_ttl_s,
                         )
-                        WORK_QUEUE_CLAIMS.labels(pool=pool.value, worker_uid=worker_uid).inc()
+                        WORK_QUEUE_CLAIMS.labels(pool=pool.value).inc()
                         WORK_QUEUE_WAIT.labels(pool=pool.value).observe(max(0.0, time.time() - record.enqueued_at))
                         from nemo_retriever.service.services.job_tracker import get_job_tracker
 
@@ -346,10 +363,7 @@ class WorkBroker:
             tracker.mark_failed(record.work_id, "Work delivery attempts exhausted")
         self._records.pop(record.work_id, None)
         self._spool_bytes -= record.payload_size
-        try:
-            record.spool_path.unlink()
-        except FileNotFoundError:
-            pass
+        self._schedule_unlink(record.spool_path)
         WORK_QUEUE_EXHAUSTED.labels(pool=record.pool.value).inc()
 
     def _requeue_or_exhaust_locked(self, record: WorkRecord, reason: str, *, front: bool = True) -> bool:
