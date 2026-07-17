@@ -221,6 +221,11 @@ class WorkBroker:
                         extra=dict(extra or {}),
                     )
                 except Exception:
+                    logger.exception(
+                        "Failed to spool payload for work %r (job %r); rolling back admission",
+                        work_id,
+                        job_id,
+                    )
                     try:
                         await asyncio.to_thread(spool_path.unlink)
                     except FileNotFoundError:
@@ -286,7 +291,8 @@ class WorkBroker:
 
     async def heartbeat(self, work_id: str, lease_id: str, generation: int) -> None:
         record = self._current(work_id, lease_id, generation)
-        assert record.lease is not None
+        if record.lease is None:
+            raise StaleLease(f"Lease for work {work_id!r} has no active lease to heartbeat")
         record.lease.expires_at = time.monotonic() + self.config.lease_ttl_s
 
     async def payload_path(self, work_id: str, lease_id: str, generation: int) -> Path:
@@ -470,11 +476,18 @@ class GatewayWorkClient:
         )
 
     async def heartbeat(self, item: WorkItem) -> bool:
+        import httpx
+
         client = await self._http()
-        response = await client.post(
-            f"/v1/internal/work/{quote(item.id, safe='')}/heartbeat",
-            json={"lease_id": item.lease_id, "lease_generation": item.lease_generation},
-        )
+        try:
+            response = await client.post(
+                f"/v1/internal/work/{quote(item.id, safe='')}/heartbeat",
+                json={"lease_id": item.lease_id, "lease_generation": item.lease_generation},
+            )
+        except httpx.HTTPError:
+            logger.warning("Heartbeat request failed for work %s", item.id, exc_info=True)
+            POOL_HEARTBEAT_FAILURES.labels(pool=self.pool.value).inc()
+            return False
         if response.status_code != 200:
             POOL_HEARTBEAT_FAILURES.labels(pool=self.pool.value).inc()
             return False

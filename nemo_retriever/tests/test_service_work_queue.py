@@ -5,9 +5,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -26,6 +28,7 @@ from nemo_retriever.service.services.job_tracker import (
 )
 from nemo_retriever.service.services.pipeline_pool import PoolType, WorkItem, _Pool
 from nemo_retriever.service.services.work_queue import (
+    GatewayWorkClient,
     StaleLease,
     WorkBroker,
     WorkQueueFull,
@@ -166,6 +169,23 @@ class _BlockingPullClient:
 
     async def close(self):
         return None
+
+
+class _FailingHeartbeatClient:
+    async def post(self, *_args, **_kwargs):
+        raise httpx.ConnectError("injected heartbeat failure")
+
+
+@pytest.mark.anyio
+async def test_gateway_work_client_heartbeat_reports_network_failure(tmp_path, caplog):
+    client = GatewayWorkClient(_config(tmp_path), pool=PoolType.BATCH, headers={})
+    client._client = _FailingHeartbeatClient()
+    item = WorkItem(id="work", payload=b"x", lease_id="lease", lease_generation=1)
+
+    with caplog.at_level(logging.WARNING, logger="nemo_retriever.service.services.work_queue"):
+        assert not await client.heartbeat(item)
+
+    assert "Heartbeat request failed for work work" in caplog.text
 
 
 @pytest.mark.anyio
@@ -439,7 +459,7 @@ async def test_explicit_release_exhausts_total_delivery_attempts(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_payload_write_failure_rolls_back_pending_tracker_entry(tmp_path, monkeypatch):
+async def test_payload_write_failure_rolls_back_pending_tracker_entry(tmp_path, monkeypatch, caplog):
     tracker = init_job_tracker()
     broker = WorkBroker(_config(tmp_path), PipelinePoolConfig(batch_queue_size=2))
     await broker.start()
@@ -451,10 +471,12 @@ async def test_payload_write_failure_rolls_back_pending_tracker_entry(tmp_path, 
             raise OSError("injected payload fsync failure")
 
         monkeypatch.setattr(broker, "_write_spool", fail_write)
-        with pytest.raises(OSError, match="injected"):
-            await _enqueue(broker, "work")
+        with caplog.at_level(logging.ERROR, logger="nemo_retriever.service.services.work_queue"):
+            with pytest.raises(OSError, match="injected"):
+                await _enqueue(broker, "work")
         assert tracker.get_document("work") is None
         assert not list(tmp_path.glob("*.payload"))
+        assert "Failed to spool payload for work 'work' (job 'job')" in caplog.text
     finally:
         await broker.shutdown()
         shutdown_job_tracker()
