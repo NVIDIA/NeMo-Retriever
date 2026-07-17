@@ -47,11 +47,10 @@ Services:
 4. The NVIDIA NIM Operator CRDs were detected and nims.enabled=true —
    the following NIMServices were submitted for reconciliation (each
    lands as a Deployment + Service owned by the operator):
-{{- if .Values.nimOperator.page_elements.enabled }}
-   - nemotron-page-elements-v3   → http://nemotron-page-elements-v3:{{ .Values.nimOperator.page_elements.expose.service.port }}/v1/infer
-{{- end }}
-{{- if .Values.nimOperator.table_structure.enabled }}
-   - nemotron-table-structure-v1 → http://nemotron-table-structure-v1:{{ .Values.nimOperator.table_structure.expose.service.port }}/v1/infer
+{{- if .Values.nimOperator.object_detection.enabled }}
+   - {{ .Values.nimOperator.object_detection.nimServiceName }} → http://{{ .Values.nimOperator.object_detection.nimServiceName }}:{{ .Values.nimOperator.object_detection.expose.service.port }}/v1/infer
+     (combined page-elements + table-structure detector; auto-wired into
+      both nim_endpoints.page_elements_invoke_url and table_structure_invoke_url)
 {{- end }}
 {{- if .Values.nimOperator.ocr.enabled }}
    - {{ .Values.nimOperator.ocr.nimServiceName }} → http://{{ .Values.nimOperator.ocr.nimServiceName }}:{{ .Values.nimOperator.ocr.expose.service.port }}/v1/infer

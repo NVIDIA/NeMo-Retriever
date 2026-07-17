@@ -872,7 +872,7 @@ nims:
 #
 # When auto-resolution is in effect, the chart populates
 # `serviceConfig.nimEndpoints.*` with the NIMService's in-cluster URL
-# (e.g. http://nemotron-page-elements-v3:8000/v1/infer). An explicit value
+# (e.g. http://nemotron-object-detection:8000/v1/infer). An explicit value
 # in `serviceConfig.nimEndpoints.*` always wins.
 #
 # NIMCache resources may carry `helm.sh/resource-policy: keep` so model
@@ -890,8 +890,12 @@ nimOperator:
     keepOnUninstall: true
     # NIMCache/NIMService names retired from the chart. deploy.sh deletes these
     # after each successful helm reconcile so they do not linger with keep-on-uninstall.
+    # nemotron-page-elements-v3 and nemotron-table-structure-v1 were superseded by
+    # the combined nemotron-object-detection NIM (see nimOperator.object_detection).
     pruneRetiredNimResources:
       - nemotron-ocr-v1
+      - nemotron-page-elements-v3
+      - nemotron-table-structure-v1
     pvc:
       create: true
       # If set, applies to every per-NIM PVC that doesn't override
@@ -964,8 +968,7 @@ nimOperator:
   # extraction pipeline (26.05)"):
   #
   #   Core (enabled: true by default, auto-wired into the service config):
-  #     - page_elements
-  #     - table_structure
+  #     - object_detection  (combined page-elements + table-structure detector)
   #     - ocr
   #     - vlm_embed
   #
@@ -994,13 +997,19 @@ nimOperator:
   # ``1.7.0-variant`` Parse / Omni tags mean.
   # ---------------------------------------------------------------------------
 
-  # Page-elements detector (YOLOX-style). Used by the page-element extraction
-  # stage of the ingest pipeline.
-  page_elements:
+  # Combined object-detection NIM (Nemotron Object Detection). Supersedes the
+  # separate page-elements and table-structure NIMs, which were merged into a
+  # single SKU. Both the page-element extraction stage and the table extraction
+  # stage of the ingest pipeline call this one NIM; the chart auto-wires both
+  # `serviceConfig.nimEndpoints.pageElementsInvokeUrl` and
+  # `serviceConfig.nimEndpoints.tableStructureInvokeUrl` to its in-cluster URL.
+  object_detection:
     enabled: true
+    # NIMService / NIMCache resource name and in-cluster Service DNS label.
+    nimServiceName: nemotron-object-detection
     image:
-      repository: nvcr.io/nim/nvidia/nemotron-page-elements-v3
-      tag: "1.8.0"
+      repository: nvcr.io/nim/nvidia/nemotron-object-detection
+      tag: "2.0.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
@@ -1044,55 +1053,6 @@ nimOperator:
       - name: OMP_NUM_THREADS
         value: "2"
 
-  # Table structure detector. Used by the table extraction stage.
-  table_structure:
-    enabled: true
-    image:
-      repository: nvcr.io/nim/nvidia/nemotron-table-structure-v1
-      tag: "1.8.0"
-      pullPolicy: IfNotPresent
-      pullSecrets:
-        - ngc-secret
-    authSecret: ngc-api
-    # Per-NIM NIMCache GPU/profile filter. See `nimOperator.modelProfile`
-    # above for the shape; non-empty REPLACES the chart-wide default.
-    modelProfile: {}
-    storage:
-      pvc:
-        create: true
-        storageClass: ""
-        size: "25Gi"
-        volumeAccessMode: ReadWriteOnce
-    replicas: 1
-    # Empty (`{}`) uses `nimOperator.nimServiceGpuLimit` (default 1 GPU).
-    # Set a non-empty map to replace the whole resources block.
-    resources: {}
-    nodeSelector: {}
-    tolerations: []
-    expose:
-      service:
-        type: ClusterIP
-        port: 8000
-        grpcPort: 8001
-    otel:
-      enabled: null
-      serviceName: ""
-      endpoint: ""
-      env: {}
-    env:
-      - name: NIM_HTTP_API_PORT
-        value: "8000"
-      - name: NIM_TRITON_LOG_VERBOSE
-        value: "1"
-      - name: NIM_TRITON_RATE_LIMIT
-        value: "3"
-      - name: NIM_TRITON_MAX_BATCH_SIZE
-        value: "32"
-      - name: NIM_TRITON_CUDA_MEMORY_POOL_MB
-        value: "2048"
-      - name: OMP_NUM_THREADS
-        value: "1"
-
   # Nemotron OCR v2. Used by the OCR stage of the pipeline.
   ocr:
     enabled: true
@@ -1100,7 +1060,7 @@ nimOperator:
     nimServiceName: nemotron-ocr-v2
     image:
       repository: nvcr.io/nim/nvidia/nemotron-ocr-v2
-      tag: "1.4.0"
+      tag: "2.0.0"
       pullPolicy: IfNotPresent
       pullSecrets:
         - ngc-secret
