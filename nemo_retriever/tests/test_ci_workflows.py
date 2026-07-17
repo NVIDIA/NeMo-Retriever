@@ -264,6 +264,17 @@ def test_dev_compose_helpers_are_feature_scoped():
     assert "nemo_retriever/dev/compose/neo4j.compose.yaml" in neo4j_setup
 
 
+def test_service_images_own_collection_artifact_root():
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    mkdir_command = "mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/artifacts"
+    chown_command = (
+        "chown -R nemo:nemo /workspace /etc/nemo-retriever "
+        "/var/lib/nemo-retriever /data/artifacts /opt/retriever_runtime"
+    )
+    assert dockerfile.count(mkdir_command) == 2
+    assert dockerfile.count(chown_command) == 2
+
+
 def test_legacy_tools_harness_is_removed():
     assert not (REPO_ROOT / "tools" / "harness").exists()
 

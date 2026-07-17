@@ -191,9 +191,7 @@ class DocumentTracker:
         self.completed += 1
         self.results.append(event)
 
-    def mark_failed(
-        self, doc_id: str, error: str | None, event: dict[str, Any]
-    ) -> None:
+    def mark_failed(self, doc_id: str, error: str | None, event: dict[str, Any]) -> None:
         self.pending.discard(doc_id)
         self.failed += 1
         if error:
@@ -262,21 +260,15 @@ class RetrieverServiceClient:
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         try:
-            with httpx.Client(
-                timeout=httpx.Timeout(300.0, connect=30.0), headers=self._auth_headers
-            ) as client:
+            with httpx.Client(timeout=httpx.Timeout(300.0, connect=30.0), headers=self._auth_headers) as client:
                 resp = client.request(method, f"{self._base_url}{path}", **kwargs)
         except httpx.HTTPError as exc:
-            raise RetrieverServiceError(
-                f"{method} {path} transport failure: {exc}"
-            ) from exc
+            raise RetrieverServiceError(f"{method} {path} transport failure: {exc}") from exc
         self._raise_for_response(resp, f"{method} {path}")
         try:
             return resp.json() if resp.content else None
         except ValueError as exc:
-            raise RetrieverServiceError(
-                f"{method} {path} returned malformed JSON"
-            ) from exc
+            raise RetrieverServiceError(f"{method} {path} returned malformed JSON") from exc
 
     async def _arequest(self, method: str, path: str, **kwargs: Any) -> Any:
         try:
@@ -285,25 +277,19 @@ class RetrieverServiceClient:
             ) as client:
                 resp = await client.request(method, f"{self._base_url}{path}", **kwargs)
         except httpx.HTTPError as exc:
-            raise RetrieverServiceError(
-                f"{method} {path} transport failure: {exc}"
-            ) from exc
+            raise RetrieverServiceError(f"{method} {path} transport failure: {exc}") from exc
         self._raise_for_response(resp, f"{method} {path}")
         try:
             return resp.json() if resp.content else None
         except ValueError as exc:
-            raise RetrieverServiceError(
-                f"{method} {path} returned malformed JSON"
-            ) from exc
+            raise RetrieverServiceError(f"{method} {path} returned malformed JSON") from exc
 
     @staticmethod
     def _model(model: Any, payload: Any, operation: str) -> Any:
         try:
             return model.model_validate(payload)
         except (ValidationError, ValueError) as exc:
-            raise RetrieverServiceError(
-                f"{operation} returned an invalid response: {exc}"
-            ) from exc
+            raise RetrieverServiceError(f"{operation} returned an invalid response: {exc}") from exc
 
     # ------------------------------------------------------------------
     # Collection and document lifecycle
@@ -356,9 +342,7 @@ class RetrieverServiceClient:
             "get collection",
         )
 
-    def list_collections(
-        self, *, limit: int = 100, continuation_token: str | None = None
-    ) -> CollectionPage:
+    def list_collections(self, *, limit: int = 100, continuation_token: str | None = None) -> CollectionPage:
         params = {"limit": limit, "continuation_token": continuation_token}
         return self._model(
             CollectionPage,
@@ -391,20 +375,12 @@ class RetrieverServiceClient:
             "update collection",
         )
 
-    def delete_collection(
-        self, name: str, *, if_exists: bool = False
-    ) -> CollectionDeleteResult:
-        body = self._request(
-            "DELETE", f"/v1/collections/{name}", params={"if_exists": if_exists}
-        )
+    def delete_collection(self, name: str, *, if_exists: bool = False) -> CollectionDeleteResult:
+        body = self._request("DELETE", f"/v1/collections/{name}", params={"if_exists": if_exists})
         return self._model(CollectionDeleteResult, body, "delete collection")
 
-    async def adelete_collection(
-        self, name: str, *, if_exists: bool = False
-    ) -> CollectionDeleteResult:
-        body = await self._arequest(
-            "DELETE", f"/v1/collections/{name}", params={"if_exists": if_exists}
-        )
+    async def adelete_collection(self, name: str, *, if_exists: bool = False) -> CollectionDeleteResult:
+        body = await self._arequest("DELETE", f"/v1/collections/{name}", params={"if_exists": if_exists})
         return self._model(CollectionDeleteResult, body, "delete collection")
 
     def list_documents(
@@ -417,44 +393,32 @@ class RetrieverServiceClient:
         params = {"limit": limit, "continuation_token": continuation_token}
         return self._model(
             DocumentPage,
-            self._request(
-                "GET", f"/v1/collections/{collection_name}/documents", params=params
-            ),
+            self._request("GET", f"/v1/collections/{collection_name}/documents", params=params),
             "list documents",
         )
 
-    async def alist_documents(
-        self, collection_name: str, **kwargs: Any
-    ) -> DocumentPage:
+    async def alist_documents(self, collection_name: str, **kwargs: Any) -> DocumentPage:
         params = {
             "limit": kwargs.get("limit", 100),
             "continuation_token": kwargs.get("continuation_token"),
         }
         return self._model(
             DocumentPage,
-            await self._arequest(
-                "GET", f"/v1/collections/{collection_name}/documents", params=params
-            ),
+            await self._arequest("GET", f"/v1/collections/{collection_name}/documents", params=params),
             "list documents",
         )
 
     def get_document(self, collection_name: str, document_id: str) -> DocumentInfo:
         return self._model(
             DocumentInfo,
-            self._request(
-                "GET", f"/v1/collections/{collection_name}/documents/{document_id}"
-            ),
+            self._request("GET", f"/v1/collections/{collection_name}/documents/{document_id}"),
             "get document",
         )
 
-    async def aget_document(
-        self, collection_name: str, document_id: str
-    ) -> DocumentInfo:
+    async def aget_document(self, collection_name: str, document_id: str) -> DocumentInfo:
         return self._model(
             DocumentInfo,
-            await self._arequest(
-                "GET", f"/v1/collections/{collection_name}/documents/{document_id}"
-            ),
+            await self._arequest("GET", f"/v1/collections/{collection_name}/documents/{document_id}"),
             "get document",
         )
 
@@ -506,9 +470,7 @@ class RetrieverServiceClient:
             "get job",
         )
 
-    def list_job_documents(
-        self, job_id: str, *, offset: int = 0, limit: int = 100
-    ) -> JobDocumentsPage:
+    def list_job_documents(self, job_id: str, *, offset: int = 0, limit: int = 100) -> JobDocumentsPage:
         return self._model(
             JobDocumentsPage,
             self._request(
@@ -519,9 +481,7 @@ class RetrieverServiceClient:
             "list job documents",
         )
 
-    async def alist_job_documents(
-        self, job_id: str, *, offset: int = 0, limit: int = 100
-    ) -> JobDocumentsPage:
+    async def alist_job_documents(self, job_id: str, *, offset: int = 0, limit: int = 100) -> JobDocumentsPage:
         return self._model(
             JobDocumentsPage,
             await self._arequest(
@@ -555,16 +515,12 @@ class RetrieverServiceClient:
             ) as client:
                 resp = client.post(f"{self._base_url}/v1/query", json=payload)
         except httpx.HTTPError as exc:
-            raise RetrieverServiceError(
-                f"Service query transport failure: {exc}"
-            ) from exc
+            raise RetrieverServiceError(f"Service query transport failure: {exc}") from exc
         self._raise_for_response(resp, "service query")
         try:
             body = resp.json()
         except ValueError as exc:
-            raise RetrieverServiceError(
-                "Service query returned malformed JSON"
-            ) from exc
+            raise RetrieverServiceError("Service query returned malformed JSON") from exc
 
         try:
             query_response = QueryResponse.model_validate(body)
@@ -573,9 +529,7 @@ class RetrieverServiceClient:
                 return [self._query_hit(hit) for hit in results[0]]
             return results
         except (ValidationError, ValueError) as exc:
-            raise RetrieverServiceError(
-                f"Service query returned invalid response: {exc}"
-            ) from exc
+            raise RetrieverServiceError(f"Service query returned invalid response: {exc}") from exc
 
     def _query_hit(self, hit: dict[str, Any]) -> QueryHit:
         return self._model(
@@ -605,9 +559,7 @@ class RetrieverServiceClient:
                 expected_results=len(query) if isinstance(query, list) else 1
             )
         except (ValidationError, ValueError) as exc:
-            raise RetrieverServiceError(
-                f"Service query returned invalid response: {exc}"
-            ) from exc
+            raise RetrieverServiceError(f"Service query returned invalid response: {exc}") from exc
         if collection_name and isinstance(query, str):
             return [self._query_hit(hit) for hit in parsed[0]]
         return parsed
@@ -654,9 +606,7 @@ class RetrieverServiceClient:
         try:
             resp = await client.post(url, json=payload)
         except httpx.HTTPError as exc:
-            raise RetrieverServiceError(
-                f"Job creation transport failure: {exc}"
-            ) from exc
+            raise RetrieverServiceError(f"Job creation transport failure: {exc}") from exc
         # A 404/410 here means the deployed service does not advertise
         # the job-scoped ingest API.  Surface a dedicated compatibility
         # error instead of a generic HTTPStatusError so callers see one
@@ -708,9 +658,7 @@ class RetrieverServiceClient:
         manifest = []
         for position, path in enumerate(paths):
             content_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
-            manifest_entry_id = hashlib.sha256(
-                f"{position}\0{path.name}\0{content_sha256}".encode("utf-8")
-            ).hexdigest()
+            manifest_entry_id = hashlib.sha256(f"{position}\0{path.name}\0{content_sha256}".encode("utf-8")).hexdigest()
             manifest.append(
                 {
                     "manifest_entry_id": manifest_entry_id,
@@ -718,9 +666,7 @@ class RetrieverServiceClient:
                     "content_sha256": content_sha256,
                 }
             )
-        async with httpx.AsyncClient(
-            timeout=timeout, limits=limits, headers=self._auth_headers
-        ) as client:
+        async with httpx.AsyncClient(timeout=timeout, limits=limits, headers=self._auth_headers) as client:
             created = await self._create_job(
                 client,
                 expected_documents=len(paths),
@@ -743,20 +689,13 @@ class RetrieverServiceClient:
                         manifest_entry_id=entry["manifest_entry_id"],
                     )
 
-            await asyncio.gather(
-                *(
-                    upload(path, entry)
-                    for path, entry in zip(paths, manifest, strict=True)
-                )
-            )
+            await asyncio.gather(*(upload(path, entry) for path, entry in zip(paths, manifest, strict=True)))
             resp = await client.get(f"{self._base_url}/v1/ingest/job/{created.job_id}")
             self._raise_for_response(resp, "get accepted job")
             try:
                 payload = resp.json()
             except ValueError as exc:
-                raise RetrieverServiceError(
-                    "Accepted job response was malformed JSON"
-                ) from exc
+                raise RetrieverServiceError("Accepted job response was malformed JSON") from exc
             return self._model(JobAggregateResponse, payload, "get accepted job")
 
     def submit_documents(
@@ -770,9 +709,7 @@ class RetrieverServiceClient:
             asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(self.asubmit_documents(collection_name, files, **kwargs))
-        raise RuntimeError(
-            "submit_documents cannot run inside an event loop; use asubmit_documents"
-        )
+        raise RuntimeError("submit_documents cannot run inside an event loop; use asubmit_documents")
 
     def replace_document(
         self,
@@ -847,22 +784,14 @@ class RetrieverServiceClient:
                     files={"file": (filename, file_bytes, "application/octet-stream")},
                     data={
                         "metadata": meta_json,
-                        **(
-                            {"manifest_entry_id": manifest_entry_id}
-                            if manifest_entry_id
-                            else {}
-                        ),
+                        **({"manifest_entry_id": manifest_entry_id} if manifest_entry_id else {}),
                     },
                 )
             except _TRANSIENT_ERRORS as exc:
                 transport_attempts += 1
                 if transport_attempts > 5:
-                    raise RetrieverServiceError(
-                        f"Upload of {filename} transport failure after retries: {exc}"
-                    ) from exc
-                delay = min(
-                    _DEFAULT_RETRY_AFTER * (2 ** (transport_attempts - 1)), 60.0
-                )
+                    raise RetrieverServiceError(f"Upload of {filename} transport failure after retries: {exc}") from exc
+                delay = min(_DEFAULT_RETRY_AFTER * (2 ** (transport_attempts - 1)), 60.0)
                 logger.debug(
                     "Transient %s uploading %s, retry in %.1fs",
                     type(exc).__name__,
@@ -874,9 +803,7 @@ class RetrieverServiceClient:
 
             if resp.status_code == 429:
                 delay = float(resp.headers.get("retry-after", _DEFAULT_RETRY_AFTER))
-                logger.debug(
-                    "429 for %s, retry in %.1fs (attempt %d)", filename, delay, attempt
-                )
+                logger.debug("429 for %s, retry in %.1fs (attempt %d)", filename, delay, attempt)
                 await asyncio.sleep(delay)
                 continue
 
@@ -899,13 +826,9 @@ class RetrieverServiceClient:
             try:
                 return resp.json()
             except ValueError as exc:
-                raise RetrieverServiceError(
-                    f"Upload of {filename} returned malformed JSON"
-                ) from exc
+                raise RetrieverServiceError(f"Upload of {filename} returned malformed JSON") from exc
 
-        raise RetrieverServiceError(
-            f"Upload of {filename} failed after {_MAX_UPLOAD_RETRIES} retries"
-        )
+        raise RetrieverServiceError(f"Upload of {filename} failed after {_MAX_UPLOAD_RETRIES} retries")
 
     # ------------------------------------------------------------------
     # SSE consumer
@@ -968,9 +891,7 @@ class RetrieverServiceClient:
         try:
             async with client.stream("GET", url) as response:
                 if response.status_code != 200:
-                    raise RuntimeError(
-                        f"SSE endpoint returned HTTP {response.status_code}"
-                    )
+                    raise RuntimeError(f"SSE endpoint returned HTTP {response.status_code}")
 
                 event_type = ""
                 data_buf = ""
@@ -1028,7 +949,14 @@ class RetrieverServiceClient:
                         if _is_done():
                             break
                     elif line.startswith(":"):
-                        if _is_done():
+                        if uploads_done.is_set():
+                            _reconcile()
+                            if pending:
+                                logger.info(
+                                    "SSE keepalive arrived with %d items pending "
+                                    "after uploads completed; switching to bulk poll",
+                                    len(pending),
+                                )
                             break
 
         except Exception as exc:
@@ -1065,9 +993,7 @@ class RetrieverServiceClient:
                 if consecutive_errors >= 10:
                     logger.error("Bulk poll: too many errors, giving up")
                     break
-                logger.warning(
-                    "Bulk poll error (%s), attempt %d", exc, consecutive_errors
-                )
+                logger.warning("Bulk poll error (%s), attempt %d", exc, consecutive_errors)
                 await asyncio.sleep(_BULK_POLL_INTERVAL_S * min(consecutive_errors, 6))
                 continue
 
@@ -1157,12 +1083,12 @@ class RetrieverServiceClient:
             async def _upload_one_file(fpath: Path) -> None:
                 async with upload_sem:
                     try:
-                        resp_json = await self._upload_one(
-                            client, fpath, job_id=job_id, pipeline_spec=pipeline_spec
-                        )
+                        resp_json = await self._upload_one(client, fpath, job_id=job_id, pipeline_spec=pipeline_spec)
                         doc_id = resp_json.get("document_id", "")
+                        tracking_id = resp_json.get("attempt_id") or doc_id
+                        if tracking_id:
+                            pending.add(tracking_id)
                         if doc_id:
-                            pending.add(doc_id)
                             document_ids.append(doc_id)
                             if on_file_submitted:
                                 on_file_submitted(fpath.name, doc_id)
@@ -1188,19 +1114,13 @@ class RetrieverServiceClient:
             if progress_ctx:
                 with progress_ctx:
                     sse_task = asyncio.create_task(
-                        self._consume_sse(
-                            client, pending, uploads_done, tracker, job_id=job_id
-                        )
+                        self._consume_sse(client, pending, uploads_done, tracker, job_id=job_id)
                     )
                     await asyncio.sleep(0.3)
                     await _upload_all()
                     await sse_task
             else:
-                sse_task = asyncio.create_task(
-                    self._consume_sse(
-                        client, pending, uploads_done, tracker, job_id=job_id
-                    )
-                )
+                sse_task = asyncio.create_task(self._consume_sse(client, pending, uploads_done, tracker, job_id=job_id))
                 await asyncio.sleep(0.3)
                 await _upload_all()
                 await sse_task
@@ -1280,12 +1200,12 @@ class RetrieverServiceClient:
             async def _upload_one_file(fpath: Path) -> None:
                 async with upload_sem:
                     try:
-                        resp_json = await self._upload_one(
-                            client, fpath, job_id=job_id, pipeline_spec=pipeline_spec
-                        )
+                        resp_json = await self._upload_one(client, fpath, job_id=job_id, pipeline_spec=pipeline_spec)
                         doc_id = resp_json.get("document_id", "")
+                        tracking_id = resp_json.get("attempt_id") or doc_id
+                        if tracking_id:
+                            pending.add(tracking_id)
                         if doc_id:
-                            pending.add(doc_id)
                             await event_queue.put(
                                 {
                                     "event": "upload_complete",

@@ -310,6 +310,17 @@ def test_service_routes_use_authorized_scope_not_raw_header() -> None:
         )
 
 
+def test_openapi_operation_ids_are_unique() -> None:
+    app = create_app(ServiceConfig())
+    operation_ids = [
+        operation["operationId"]
+        for path in app.openapi()["paths"].values()
+        for operation in path.values()
+        if isinstance(operation, dict) and "operationId" in operation
+    ]
+    assert len(operation_ids) == len(set(operation_ids))
+
+
 def test_sdk_replays_every_manifest_entry_after_idempotent_job_replay(tmp_path, monkeypatch) -> None:
     first = tmp_path / "first.txt"
     second = tmp_path / "second.txt"

@@ -33,33 +33,64 @@ async def _forward(request: Request, suffix: str) -> Response:
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.request(
-                request.method, target, content=await request.body(), params=request.query_params, headers=headers,
+                request.method,
+                target,
+                content=await request.body(),
+                params=request.query_params,
+                headers=headers,
             )
     except httpx.HTTPError as exc:
         raise HTTPException(502, f"Failed to reach VectorDB service: {type(exc).__name__}: {exc}") from exc
     return Response(
-        content=response.content, status_code=response.status_code,
+        content=response.content,
+        status_code=response.status_code,
         media_type=response.headers.get("content-type", "application/json"),
     )
 
 
-@router.api_route("/collections", methods=["GET", "POST"])
-async def collections_root(request: Request) -> Response:
+@router.get("/collections")
+async def list_collections(request: Request) -> Response:
+    """Forward a collection list request to VectorDB."""
     return await _forward(request, "collections")
 
 
-@router.api_route("/collections/{collection_name}", methods=["GET", "PATCH", "DELETE"])
-async def collection_item(request: Request, collection_name: str) -> Response:
+@router.post("/collections")
+async def create_collection(request: Request) -> Response:
+    """Forward a collection creation request to VectorDB."""
+    return await _forward(request, "collections")
+
+
+@router.get("/collections/{collection_name}")
+async def get_collection(request: Request, collection_name: str) -> Response:
+    """Forward a collection lookup request to VectorDB."""
+    return await _forward(request, f"collections/{collection_name}")
+
+
+@router.patch("/collections/{collection_name}")
+async def update_collection(request: Request, collection_name: str) -> Response:
+    """Forward a collection update request to VectorDB."""
+    return await _forward(request, f"collections/{collection_name}")
+
+
+@router.delete("/collections/{collection_name}")
+async def delete_collection(request: Request, collection_name: str) -> Response:
+    """Forward a collection deletion request to VectorDB."""
     return await _forward(request, f"collections/{collection_name}")
 
 
 @router.get("/collections/{collection_name}/documents")
 async def collection_documents(request: Request, collection_name: str) -> Response:
+    """Forward a collection document list request to VectorDB."""
     return await _forward(request, f"collections/{collection_name}/documents")
 
 
-@router.api_route(
-    "/collections/{collection_name}/documents/{document_id}", methods=["GET", "DELETE"],
-)
-async def collection_document(request: Request, collection_name: str, document_id: str) -> Response:
+@router.get("/collections/{collection_name}/documents/{document_id}")
+async def get_collection_document(request: Request, collection_name: str, document_id: str) -> Response:
+    """Forward a collection document lookup request to VectorDB."""
+    return await _forward(request, f"collections/{collection_name}/documents/{document_id}")
+
+
+@router.delete("/collections/{collection_name}/documents/{document_id}")
+async def delete_collection_document(request: Request, collection_name: str, document_id: str) -> Response:
+    """Forward a collection document deletion request to VectorDB."""
     return await _forward(request, f"collections/{collection_name}/documents/{document_id}")
