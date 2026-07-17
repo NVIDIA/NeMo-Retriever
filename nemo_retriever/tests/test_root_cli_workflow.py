@@ -1050,7 +1050,7 @@ def test_root_ingest_help_defaults_to_local_workflow(monkeypatch: pytest.MonkeyP
     )
 
     assert result.exit_code == 0
-    assert "Usage: retriever ingest [OPTIONS] DOCUMENTS..." in result.output
+    assert "Usage: retriever ingest [OPTIONS] {documents}..." in result.output
     assert "input formats, not commands" in result.output
     assert "CPU-only hosts use NVIDIA's hosted embedding endpoint" in result.output
     assert "retriever ingest batch --help" in result.output
@@ -1097,7 +1097,7 @@ def test_root_ingest_batch_help_remains_mode_specific(monkeypatch: pytest.Monkey
     result = RUNNER.invoke(cli_main.app, ["ingest", "batch", "--help"])
 
     assert result.exit_code == 0
-    assert "Usage: root ingest batch [OPTIONS] DOCUMENTS..." in result.output
+    assert "Usage: root ingest batch [OPTIONS] {documents}..." in result.output
     assert "--ray-address" in result.output
     assert "--pdf-extract-workers" in result.output
     assert "--lancedb-uri" in result.output
@@ -1109,14 +1109,14 @@ def test_root_ingest_local_help_uses_shared_graph_contract() -> None:
     result = RUNNER.invoke(cli_main.app, ["ingest", "local", "--help"], prog_name="retriever")
 
     assert result.exit_code == 0
-    assert "Usage: retriever ingest [OPTIONS] DOCUMENTS..." in result.output
+    assert "Usage: retriever ingest [OPTIONS] {documents}..." in result.output
     assert "retriever ingest local" not in result.output
     assert "--input-type" not in result.output
     assert "--run-mode" not in result.output
     assert "--service-url" not in result.output
     assert "--ray-address" in result.output
     assert "--profile" in result.output
-    assert "[auto|fast-text]" in result.output
+    assert "<auto|fast-text>" in result.output
     assert "--extract-images" in result.output
     assert "--use-page" not in result.output
     assert "--use-graphic" not in result.output
@@ -1170,7 +1170,7 @@ def test_root_ingest_service_help_hides_local_only_options() -> None:
     result = RUNNER.invoke(cli_main.app, ["ingest", "service", "--help"], env={"COLUMNS": "200"})
 
     assert result.exit_code == 0
-    assert "Usage: root ingest service [OPTIONS] DOCUMENTS..." in result.output
+    assert "Usage: root ingest service [OPTIONS] {documents}..." in result.output
     assert "--service-url" in result.output
     assert "--extract-images" in result.output
     assert "--embed-granular" in result.output
