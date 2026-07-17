@@ -51,9 +51,7 @@ def _install_upstream_ocr_v2_stub(monkeypatch: pytest.MonkeyPatch) -> list[dict[
             captured_kwargs.append(kwargs)
             if getattr(pipeline_mod, "_download_on_init", False):
                 repo_id = (
-                    "nvidia/nemotron-ocr-v1"
-                    if kwargs.get("lang") in {"v1", "legacy"}
-                    else "nvidia/nemotron-ocr-v2"
+                    "nvidia/nemotron-ocr-v1" if kwargs.get("lang") in {"v1", "legacy"} else "nvidia/nemotron-ocr-v2"
                 )
                 pipeline_mod.hf_hub_download(repo_id=repo_id, filename="checkpoints/detector.pth")
 
