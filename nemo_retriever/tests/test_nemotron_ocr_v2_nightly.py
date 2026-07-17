@@ -49,16 +49,27 @@ def _install_upstream_ocr_v2_stub(monkeypatch: pytest.MonkeyPatch) -> list[dict[
             if kwargs.get("lang") not in _WrapperOCRV2._VALID_LANG_SELECTORS:
                 raise ValueError(f"unsupported upstream lang selector: {kwargs.get('lang')!r}")
             captured_kwargs.append(kwargs)
+            if getattr(pipeline_mod, "_download_on_init", False):
+                repo_id = (
+                    "nvidia/nemotron-ocr-v1"
+                    if kwargs.get("lang") in {"v1", "legacy"}
+                    else "nvidia/nemotron-ocr-v2"
+                )
+                pipeline_mod.hf_hub_download(repo_id=repo_id, filename="checkpoints/detector.pth")
 
     nemotron_ocr_mod = ModuleType("nemotron_ocr")
     inference_mod = ModuleType("nemotron_ocr.inference")
+    pipeline_mod = ModuleType("nemotron_ocr.inference.pipeline")
     pipeline_v2_mod = ModuleType("nemotron_ocr.inference.pipeline_v2")
+    setattr(pipeline_mod, "hf_hub_download", lambda *args, **kwargs: "/unpatched/model.bin")
     pipeline_v2_mod.NemotronOCRV2 = _NemotronOCRV2
+    inference_mod.pipeline = pipeline_mod
     inference_mod.pipeline_v2 = pipeline_v2_mod
     nemotron_ocr_mod.inference = inference_mod
 
     monkeypatch.setitem(sys.modules, "nemotron_ocr", nemotron_ocr_mod)
     monkeypatch.setitem(sys.modules, "nemotron_ocr.inference", inference_mod)
+    monkeypatch.setitem(sys.modules, "nemotron_ocr.inference.pipeline", pipeline_mod)
     monkeypatch.setitem(sys.modules, "nemotron_ocr.inference.pipeline_v2", pipeline_v2_mod)
     monkeypatch.delenv("RETRIEVER_ENABLE_TORCH_TRT", raising=False)
 
@@ -150,7 +161,10 @@ def test_local_ocr_v2_wrapper_uses_original_namespace_and_package_lang_selectors
         encoding="utf-8"
     )
 
+    assert "from nemotron_ocr.inference import pipeline as _nemotron_ocr_pipeline" in source
     assert "from nemotron_ocr.inference import pipeline_v2" in source
+    assert "install_pinned_hf_hub_download(_nemotron_ocr_pipeline)" in source
+    assert "install_pinned_hf_hub_download(_nemotron_ocr_pipeline_v2)" not in source
     assert 'lang: str = "multi"' in source
     assert "_NEMOTRON_OCR_LANG_ALIASES" not in source
     assert "package_lang" not in source
@@ -212,6 +226,48 @@ def test_local_ocr_v2_wrapper_passes_package_lang_selector_with_model_dir(monkey
     NemotronOCRV2(model_dir="/models/ocr", lang="english")
 
     assert captured_kwargs == [{"model_dir": "/models/ocr", "lang": "english"}]
+
+
+@pytest.mark.parametrize(
+    ("selector", "repo_id", "revision"),
+    [
+        ("multi", "nvidia/nemotron-ocr-v2", "86cacb0467fa4f7ce54342fdb250825e0d928ae7"),
+        ("legacy", "nvidia/nemotron-ocr-v1", "8657d08d3279f4864002d5fd3fdcd47ad8c96bcb"),
+    ],
+)
+def test_local_ocr_v2_wrapper_patches_base_pipeline_downloads_with_registered_revision(
+    monkeypatch: pytest.MonkeyPatch,
+    selector: str,
+    repo_id: str,
+    revision: str,
+) -> None:
+    _install_ocr_import_stubs(monkeypatch)
+    _install_upstream_ocr_v2_stub(monkeypatch)
+
+    from nemo_retriever.models import hf_model_registry as registry
+    from nemo_retriever.models.local.nemotron_ocr_v2 import NemotronOCRV2
+
+    calls: list[dict[str, object]] = []
+
+    def fake_download(*args: object, **kwargs: object) -> str:
+        calls.append(kwargs)
+        return "/cache/model.bin"
+
+    monkeypatch.setattr(registry, "hf_hub_download", fake_download)
+    pipeline_mod = sys.modules["nemotron_ocr.inference.pipeline"]
+    pipeline_v2_mod = sys.modules["nemotron_ocr.inference.pipeline_v2"]
+    setattr(pipeline_mod, "_download_on_init", True)
+
+    NemotronOCRV2(lang=selector)
+
+    assert not hasattr(pipeline_v2_mod, "hf_hub_download")
+    assert calls == [
+        {
+            "repo_id": repo_id,
+            "filename": "checkpoints/detector.pth",
+            "revision": revision,
+        }
+    ]
 
 
 def test_huggingface_ocr_nightly_does_not_carry_namespace_patch_knobs() -> None:
