@@ -1,5 +1,7 @@
+name: ${NRL_COMPOSE_PROJECT_NAME:-nrl}
+
 services:
-  retriever:
+  gateway:
     image: ${NRL_IMAGE:-nvcr.io/nvidia/nemo-microservices/nrl-service:26.5.0}
     command:
       - retriever
@@ -21,6 +23,12 @@ services:
       - scope_tokens
       - internal_vdb_token
       - artifact_storage_options
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7670/v1/health')"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+      start_period: 5s
     depends_on:
       vectordb:
         condition: service_healthy

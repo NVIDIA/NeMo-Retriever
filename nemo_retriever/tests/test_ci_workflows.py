@@ -264,6 +264,21 @@ def test_dev_compose_helpers_are_feature_scoped():
     assert "nemo_retriever/dev/compose/neo4j.compose.yaml" in neo4j_setup
 
 
+def test_collection_management_compose_has_stable_names_and_readiness():
+    compose_path = REPO_ROOT / "nemo_retriever" / "dev" / "compose" / "collection-management.compose.yaml"
+    compose_text = compose_path.read_text(encoding="utf-8")
+    compose_data = yaml.safe_load(compose_text)
+
+    assert compose_data["name"] == "${NRL_COMPOSE_PROJECT_NAME:-nrl}"
+    assert set(compose_data["services"]) == {"gateway", "vectordb"}
+    assert "container_name" not in compose_text
+
+    gateway = compose_data["services"]["gateway"]
+    assert gateway["depends_on"]["vectordb"]["condition"] == "service_healthy"
+    assert "/v1/health" in gateway["healthcheck"]["test"][-1]
+    assert gateway["healthcheck"]["start_period"] == "5s"
+
+
 def test_service_images_own_collection_artifact_root():
     dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
     mkdir_command = "mkdir -p /etc/nemo-retriever /var/lib/nemo-retriever /data/artifacts"
