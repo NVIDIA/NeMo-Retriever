@@ -14,6 +14,8 @@ from __future__ import annotations
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
 
+from nemo_retriever.common.schemas.collections import DocumentId
+
 router = APIRouter(tags=["collections"])
 
 
@@ -85,12 +87,12 @@ async def collection_documents(request: Request, collection_name: str) -> Respon
 
 
 @router.get("/collections/{collection_name}/documents/{document_id}")
-async def get_collection_document(request: Request, collection_name: str, document_id: str) -> Response:
+async def get_collection_document(request: Request, collection_name: str, document_id: DocumentId) -> Response:
     """Forward a collection document lookup request to VectorDB."""
     return await _forward(request, f"collections/{collection_name}/documents/{document_id}")
 
 
 @router.delete("/collections/{collection_name}/documents/{document_id}")
-async def delete_collection_document(request: Request, collection_name: str, document_id: str) -> Response:
+async def delete_collection_document(request: Request, collection_name: str, document_id: DocumentId) -> Response:
     """Forward a collection document deletion request to VectorDB."""
     return await _forward(request, f"collections/{collection_name}/documents/{document_id}")

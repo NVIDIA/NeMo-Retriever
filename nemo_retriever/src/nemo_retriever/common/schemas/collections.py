@@ -11,17 +11,24 @@ or LanceDB-specific names.
 
 from __future__ import annotations
 
-from typing import Any, Literal
-
 from datetime import datetime, timezone
+from typing import Annotated, Any, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, StringConstraints, field_validator
 
 from nemo_retriever.common.schemas.base import RichModel
 
 CollectionStatus = Literal["active", "deleting"]
 IngestOperation = Literal["append", "replace"]
 DeleteStatus = Literal["deleting", "deleted"]
+DocumentId = Annotated[
+    str,
+    StringConstraints(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
+    ),
+]
 
 
 def _normalize_expires_at(value: str | None) -> str | None:
@@ -37,9 +44,7 @@ def _normalize_expires_at(value: str | None) -> str | None:
 
 
 class CollectionCreateRequest(RichModel):
-    name: str = Field(
-        min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
-    )
+    name: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
     description: str | None = Field(default=None, max_length=4096)
     metadata: dict[str, Any] = Field(default_factory=dict)
     expires_at: str | None = None
@@ -78,7 +83,7 @@ class CollectionPage(RichModel):
 
 
 class DocumentInfo(RichModel):
-    document_id: str
+    document_id: DocumentId
     collection_name: str
     scope: str
     filename: str
@@ -98,7 +103,7 @@ class DocumentPage(RichModel):
 
 
 class DocumentDeleteResult(RichModel):
-    document_id: str
+    document_id: DocumentId
     collection_name: str
     scope: str
     existed: bool
@@ -120,7 +125,7 @@ class QueryHit(RichModel):
     """Citation-ready hit returned to agentic applications."""
 
     chunk_id: str
-    document_id: str
+    document_id: DocumentId
     text: str
     score: float = Field(ge=0.0, le=1.0)
     filename: str

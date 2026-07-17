@@ -227,7 +227,7 @@ def _register_document_under_job(
 
     tracker = get_job_tracker()
     if tracker is None:
-        return
+        raise HTTPException(status_code=503, detail="Job tracker not available")
     try:
         return tracker.register_document_idempotent(
             document_id,
@@ -244,42 +244,24 @@ def _register_document_under_job(
     except JobFinalizedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except JobTrackerError as exc:
-        raise HTTPException(
-            status_code=getattr(exc, "status_code", 500), detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=getattr(exc, "status_code", 500), detail=str(exc)) from exc
 
 
-def _validate_manifest_entry(
-    job, manifest_entry_id: str | None, filename: str, content_sha256: str
-) -> None:
+def _validate_manifest_entry(job, manifest_entry_id: str | None, filename: str, content_sha256: str) -> None:
     """Bind an upload to exactly one immutable entry in its job manifest."""
     if not job.document_manifest:
         return
     if not manifest_entry_id:
-        raise HTTPException(
-            409, "manifest_entry_id is required for this idempotent job"
-        )
+        raise HTTPException(409, "manifest_entry_id is required for this idempotent job")
     entry = next(
-        (
-            item
-            for item in job.document_manifest
-            if item.get("manifest_entry_id") == manifest_entry_id
-        ),
+        (item for item in job.document_manifest if item.get("manifest_entry_id") == manifest_entry_id),
         None,
     )
-    if (
-        not entry
-        or entry.get("filename") != filename
-        or entry.get("content_sha256") != content_sha256
-    ):
-        raise HTTPException(
-            409, "Uploaded document does not match its job manifest entry"
-        )
+    if not entry or entry.get("filename") != filename or entry.get("content_sha256") != content_sha256:
+        raise HTTPException(409, "Uploaded document does not match its job manifest entry")
 
 
-def _validate_collection_pipeline_storage(
-    request: Request, job, spec: PipelineSpec | None
-) -> None:
+def _validate_collection_pipeline_storage(request: Request, job, spec: PipelineSpec | None) -> None:
     if not job.collection_name or spec is None:
         return
     if spec.vdb_upload_params is not None:
@@ -289,9 +271,7 @@ def _validate_collection_pipeline_storage(
         )
     if spec.store_params is None:
         return
-    root = (request.app.state.config.vectordb.collection_artifact_root or "").rstrip(
-        "/"
-    )
+    root = (request.app.state.config.vectordb.collection_artifact_root or "").rstrip("/")
     if not root:
         raise HTTPException(
             422,
@@ -299,9 +279,7 @@ def _validate_collection_pipeline_storage(
         )
     requested = str(spec.store_params.get("storage_uri") or "").rstrip("/")
     if requested and requested != root and not requested.startswith(root + "/"):
-        raise HTTPException(
-            422, "collection artifact destination must be beneath the configured root"
-        )
+        raise HTTPException(422, "collection artifact destination must be beneath the configured root")
 
 
 def _require_job(job_id: str, request: Request | None = None):
@@ -375,12 +353,7 @@ def _worker_result_url(
             status_code=400,
             detail="Completion callback has an invalid result worker IP",
         ) from exc
-    if (
-        worker_ip.is_unspecified
-        or worker_ip.is_multicast
-        or worker_ip.is_loopback
-        or worker_ip.is_link_local
-    ):
+    if worker_ip.is_unspecified or worker_ip.is_multicast or worker_ip.is_loopback or worker_ip.is_link_local:
         raise HTTPException(
             status_code=400,
             detail="Completion callback has an unroutable result worker IP",
@@ -400,9 +373,7 @@ def _worker_result_url(
     except ValueError:
         peer_ip = None
     if peer_ip is not None and not peer_ip.is_loopback and peer_ip != worker_ip:
-        raise HTTPException(
-            status_code=400, detail="Result worker IP does not match callback peer"
-        )
+        raise HTTPException(status_code=400, detail="Result worker IP does not match callback peer")
 
     host = f"[{worker_ip}]" if worker_ip.version == 6 else str(worker_ip)
     port = request.app.state.config.server.port
@@ -418,9 +389,7 @@ async def _pull_and_store_worker_result(
     """Copy rows from the exact completing worker into the gateway store."""
     url = _worker_result_url(request, document_id, worker_ip, callback_worker_ip)
     try:
-        async with httpx.AsyncClient(
-            timeout=10.0, headers=_internal_auth_headers(request)
-        ) as client:
+        async with httpx.AsyncClient(timeout=10.0, headers=_internal_auth_headers(request)) as client:
             response = await client.get(url)
     except httpx.HTTPError as exc:
         raise HTTPException(
@@ -442,11 +411,7 @@ async def _pull_and_store_worker_result(
             status_code=503,
             detail=f"Worker returned invalid result data for {document_id!r}",
         ) from exc
-    if (
-        not rows
-        or not isinstance(rows, list)
-        or not all(isinstance(row, dict) for row in rows)
-    ):
+    if not rows or not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
         raise HTTPException(
             status_code=503,
             detail=f"Worker returned invalid result data for {document_id!r}",
@@ -535,9 +500,7 @@ def _count_pdf_pages(file_bytes: bytes) -> int:
         doc.close()
         return n
     except Exception as exc:
-        logger.warning(
-            "Could not determine PDF page count; defaulting to 1 page: %s", exc
-        )
+        logger.warning("Could not determine PDF page count; defaulting to 1 page: %s", exc)
         return 1
 
 
@@ -586,9 +549,7 @@ def _build_policy(request: Request):  # -> PipelineOverridesPolicy
     return cfg.pipeline_overrides.to_policy(caption_enabled=caption_enabled)
 
 
-def _resolve_pipeline_spec(
-    request: Request, meta: IngestRequest
-) -> PipelineSpec | None:
+def _resolve_pipeline_spec(request: Request, meta: IngestRequest) -> PipelineSpec | None:
     """Validate ``meta.pipeline`` against the service's override policy.
 
     Returns ``None`` when the spec is missing or empty so the worker
@@ -665,9 +626,7 @@ def _safe_extract_trace_context(carrier: dict[str, str] | None) -> Any | None:
         return None
 
 
-def _trace_context_from_request_or_job(
-    request: Request, job_id: str | None
-) -> dict[str, str]:
+def _trace_context_from_request_or_job(request: Request, job_id: str | None) -> dict[str, str]:
     inbound_traceparent = request.headers.get("traceparent")
     if inbound_traceparent:
         carrier = {"traceparent": inbound_traceparent}
@@ -710,9 +669,7 @@ def _start_accept_span(request: Request, job_id: str, name: str):
 # ------------------------------------------------------------------
 
 
-def _aggregate_to_response(
-    agg, *, documents: list[dict[str, Any]] | None = None
-) -> JobAggregateResponse:
+def _aggregate_to_response(agg, *, documents: list[dict[str, Any]] | None = None) -> JobAggregateResponse:
     """Project a :class:`JobAggregate` to the wire response model."""
     return JobAggregateResponse(
         job_id=agg.job_id,
@@ -738,9 +695,7 @@ def _aggregate_to_response(
     status_code=201,
     summary="Create a new ingestion job aggregate",
 )
-async def create_job(
-    request: Request, response: Response, body: JobCreateRequest
-) -> JobCreatedResponse | Response:
+async def create_job(request: Request, response: Response, body: JobCreateRequest) -> JobCreatedResponse | Response:
     """Open a job that will receive ``expected_documents`` uploads.
 
     The server returns an opaque ``job_id`` the client uses for every
@@ -762,9 +717,7 @@ async def create_job(
     if body.collection_name:
         config = request.app.state.config
         if not config.vectordb.enabled:
-            raise HTTPException(
-                404, "VectorDB is not enabled in the service configuration"
-            )
+            raise HTTPException(404, "VectorDB is not enabled in the service configuration")
         target = f"{config.vectordb.vectordb_url.rstrip('/')}/v1/collections/{body.collection_name}"
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -776,16 +729,12 @@ async def create_job(
                     },
                 )
         except httpx.HTTPError as exc:
-            raise HTTPException(
-                502, "Failed to validate collection with VectorDB service"
-            ) from exc
+            raise HTTPException(502, "Failed to validate collection with VectorDB service") from exc
         if collection_response.status_code != 200:
             return Response(
                 content=collection_response.content,
                 status_code=collection_response.status_code,
-                media_type=collection_response.headers.get(
-                    "content-type", "application/json"
-                ),
+                media_type=collection_response.headers.get("content-type", "application/json"),
             )
         if collection_response.json().get("status") != "active":
             raise HTTPException(409, "Collection is not active")
@@ -801,23 +750,15 @@ async def create_job(
                         },
                     )
             except httpx.HTTPError as exc:
-                raise HTTPException(
-                    502, "Failed to validate replacement document"
-                ) from exc
+                raise HTTPException(502, "Failed to validate replacement document") from exc
             if document_response.status_code != 200:
                 return Response(
                     content=document_response.content,
                     status_code=document_response.status_code,
-                    media_type=document_response.headers.get(
-                        "content-type", "application/json"
-                    ),
+                    media_type=document_response.headers.get("content-type", "application/json"),
                 )
-    if body.operation == "replace" and (
-        body.expected_documents != 1 or not body.target_document_id
-    ):
-        raise HTTPException(
-            422, "replace requires exactly one document and target_document_id"
-        )
+    if body.operation == "replace" and (body.expected_documents != 1 or not body.target_document_id):
+        raise HTTPException(422, "replace requires exactly one document and target_document_id")
     fingerprint = hashlib.sha256(
         json.dumps(
             {
@@ -826,35 +767,12 @@ async def create_job(
                 "operation": body.operation,
                 "target_document_id": body.target_document_id,
                 "metadata": body.metadata,
-                "document_manifest": [
-                    entry.model_dump(mode="json") for entry in body.document_manifest
-                ],
+                "document_manifest": [entry.model_dump(mode="json") for entry in body.document_manifest],
             },
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
     ).hexdigest()
-    if body.idempotency_key:
-        try:
-            existing = tracker.get_idempotent_job(
-                scope, body.idempotency_key, fingerprint
-            )
-        except JobTrackerError as exc:
-            raise HTTPException(
-                status_code=getattr(exc, "status_code", 409), detail=str(exc)
-            ) from exc
-        if existing:
-            response.status_code = 200
-            return JobCreatedResponse(
-                job_id=existing.job_id,
-                expected_documents=existing.expected_documents,
-                status=existing.status.value,
-                created_at=existing.created_at,
-                label=existing.label,
-                trace_id=existing.trace_id,
-                collection_name=existing.collection_name,
-                operation=existing.operation,
-            )
     job_id = uuid.uuid4().hex
     trace_id: str | None = None
     inbound_trace_context = _trace_context_from_request_or_job(request, None)
@@ -884,18 +802,17 @@ async def create_job(
                 target_document_id=body.target_document_id,
                 idempotency_key=body.idempotency_key,
                 idempotency_fingerprint=fingerprint,
-                document_manifest=[
-                    entry.model_dump(mode="json") for entry in body.document_manifest
-                ],
+                document_manifest=[entry.model_dump(mode="json") for entry in body.document_manifest],
             )
     except JobTrackerError as exc:
-        raise HTTPException(
-            status_code=getattr(exc, "status_code", 500), detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=getattr(exc, "status_code", 500), detail=str(exc)) from exc
 
-    if trace_id:
+    created = agg.job_id == job_id
+    if not created:
+        response.status_code = 200
+    if created and trace_id:
         response.headers[tracing.TRACE_ID_HEADER] = trace_id
-    if (m := get_metrics()) is not None:
+    if created and (m := get_metrics()) is not None:
         m.record_request("/v1/ingest/job")
         m.record_job_created(job_id)
     return JobCreatedResponse(
@@ -1092,12 +1009,8 @@ async def submit_document_to_job(
     request: Request,
     job_id: str,
     file: UploadFile = File(..., description="The file to ingest"),
-    metadata: str = Form(
-        default="{}", description="JSON-encoded IngestRequest metadata"
-    ),
-    manifest_entry_id: str | None = Form(
-        default=None, description="Immutable entry ID from the job manifest"
-    ),
+    metadata: str = Form(default="{}", description="JSON-encoded IngestRequest metadata"),
+    manifest_entry_id: str | None = Form(default=None, description="Immutable entry ID from the job manifest"),
 ) -> IngestAccepted | Response:
     """General-purpose upload into a job.
 
@@ -1119,29 +1032,21 @@ async def submit_document_to_job(
     validated_spec = _resolve_pipeline_spec(request, meta)
     if not _is_worker(request):
         job_for_validation = _require_job(job_id, request)
-        _validate_collection_pipeline_storage(
-            request, job_for_validation, validated_spec
-        )
+        _validate_collection_pipeline_storage(request, job_for_validation, validated_spec)
 
     with _start_accept_span(request, job_id, "ingest.document.accept"):
         if _is_gateway(request):
-            classification = FileClassifier.classify(
-                file, filename_override=meta.filename or ""
-            )
+            classification = FileClassifier.classify(file, filename_override=meta.filename or "")
             enforce_media_dependencies(classification)
             file_size = _file_size_from_upload(file)
 
             file_bytes = await file.read()
-            route = _route_by_page_count(
-                file_bytes, meta, file_category=classification.category
-            )
+            route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
 
             job = _require_job(job_id, request)
             attempt_id = uuid.uuid4().hex
             content_sha256 = hashlib.sha256(file_bytes).hexdigest()
-            _validate_manifest_entry(
-                job, manifest_entry_id, file.filename or "", content_sha256
-            )
+            _validate_manifest_entry(job, manifest_entry_id, file.filename or "", content_sha256)
             stable_document_id = job.target_document_id or uuid.uuid4().hex
             now = datetime.now(timezone.utc).isoformat()
 
@@ -1179,9 +1084,7 @@ async def submit_document_to_job(
                 },
             )
 
-            _record_prometheus(
-                request, "/v1/ingest/job/document", "2xx", file_size=file_size
-            )
+            _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=file_size)
             if (m := get_metrics()) is not None:
                 m.record_request("/v1/ingest/job/document")
                 m.record_document_accepted(
@@ -1204,15 +1107,11 @@ async def submit_document_to_job(
             )
 
         # ── worker / standalone ──────────────────────────────────────
-        classification = FileClassifier.classify(
-            file, filename_override=meta.filename or ""
-        )
+        classification = FileClassifier.classify(file, filename_override=meta.filename or "")
         enforce_media_dependencies(classification)
 
         file_bytes = await file.read()
-        route = _route_by_page_count(
-            file_bytes, meta, file_category=classification.category
-        )
+        route = _route_by_page_count(file_bytes, meta, file_category=classification.category)
         content_sha256 = hashlib.sha256(file_bytes).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 
@@ -1221,18 +1120,14 @@ async def submit_document_to_job(
         gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
         local_job = None if gw_doc_id else _require_job(job_id, request)
         if local_job:
-            _validate_manifest_entry(
-                local_job, manifest_entry_id, file.filename or "", content_sha256
-            )
+            _validate_manifest_entry(local_job, manifest_entry_id, file.filename or "", content_sha256)
         attempt_id = gw_doc_id or uuid.uuid4().hex
         stable_document_id = request.headers.get(_GATEWAY_TARGET_DOCUMENT_HEADER)
         if local_job:
             stable_document_id = local_job.target_document_id or uuid.uuid4().hex
         stable_document_id = stable_document_id or attempt_id
 
-        worker_spec = (
-            _spec_from_gateway_header(request) if gw_doc_id else validated_spec
-        )
+        worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
 
         if not gw_callback_url:
             rec, created = _register_document_under_job(
@@ -1262,12 +1157,9 @@ async def submit_document_to_job(
                 callback_url=gw_callback_url,
                 callback_headers=_internal_auth_headers(request),
                 job_id=gw_job_id,
-                pipeline_spec=worker_spec.model_dump(mode="json")
-                if worker_spec is not None
-                else None,
+                pipeline_spec=(worker_spec.model_dump(mode="json") if worker_spec is not None else None),
                 retain_results=_work_item_retain_results(request, job_id=gw_job_id),
-                scope=request.headers.get(_GATEWAY_SCOPE_HEADER)
-                or (local_job.scope if local_job else "default"),
+                scope=request.headers.get(_GATEWAY_SCOPE_HEADER) or (local_job.scope if local_job else "default"),
                 collection_name=request.headers.get(_GATEWAY_COLLECTION_HEADER)
                 or (local_job.collection_name if local_job else None),
                 operation=request.headers.get(_GATEWAY_OPERATION_HEADER)
@@ -1277,9 +1169,7 @@ async def submit_document_to_job(
             ),
         )
 
-        _record_prometheus(
-            request, "/v1/ingest/job/document", "2xx", file_size=len(file_bytes)
-        )
+        _record_prometheus(request, "/v1/ingest/job/document", "2xx", file_size=len(file_bytes))
 
         if (m := get_metrics()) is not None:
             m.record_request("/v1/ingest/job/document")
@@ -1317,9 +1207,7 @@ async def submit_page_to_job(
         ...,
         description="Client-assigned ID grouping pages from the same source document",
     ),
-    page_number: int = Form(
-        ..., description="1-based page number within the source document"
-    ),
+    page_number: int = Form(..., description="1-based page number within the source document"),
     filename: str = Form(default="", description="Original source document filename"),
 ) -> PageIngestAccepted | Response:
     # Job lookup is gateway/standalone only (workers don't own the
@@ -1467,12 +1355,8 @@ async def submit_whole_document_to_job(
     request: Request,
     job_id: str,
     file: UploadFile = File(..., description="The full document to ingest"),
-    metadata: str = Form(
-        default="{}", description="JSON-encoded IngestRequest metadata"
-    ),
-    manifest_entry_id: str | None = Form(
-        default=None, description="Immutable entry ID from the job manifest"
-    ),
+    metadata: str = Form(default="{}", description="JSON-encoded IngestRequest metadata"),
+    manifest_entry_id: str | None = Form(default=None, description="Immutable entry ID from the job manifest"),
 ) -> DocumentIngestAccepted | Response:
     try:
         meta = IngestRequest(**json.loads(metadata))
@@ -1486,9 +1370,7 @@ async def submit_whole_document_to_job(
     _check_upload_size(file, request)
     validated_spec = _resolve_pipeline_spec(request, meta)
     if not _is_worker(request):
-        _validate_collection_pipeline_storage(
-            request, _require_job(job_id, request), validated_spec
-        )
+        _validate_collection_pipeline_storage(request, _require_job(job_id, request), validated_spec)
 
     with _start_accept_span(request, job_id, "ingest.whole.accept"):
         if _is_gateway(request):
@@ -1501,9 +1383,7 @@ async def submit_whole_document_to_job(
             attempt_id = uuid.uuid4().hex
             file_bytes = await file.read()
             content_sha256 = hashlib.sha256(file_bytes).hexdigest()
-            _validate_manifest_entry(
-                job, manifest_entry_id, file.filename or "", content_sha256
-            )
+            _validate_manifest_entry(job, manifest_entry_id, file.filename or "", content_sha256)
             stable_document_id = job.target_document_id or uuid.uuid4().hex
             now = datetime.now(timezone.utc).isoformat()
 
@@ -1543,9 +1423,7 @@ async def submit_whole_document_to_job(
                     },
                 )
 
-            _record_prometheus(
-                request, "/v1/ingest/job/whole", "2xx", file_size=file_size
-            )
+            _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=file_size)
             if (m := get_metrics()) is not None:
                 m.record_request("/v1/ingest/job/whole")
                 m.record_document_accepted(
@@ -1570,9 +1448,7 @@ async def submit_whole_document_to_job(
 
         # ── worker / standalone ──────────────────────────────────────
         dry_run = _is_dry_run(request)
-        classification = FileClassifier.classify(
-            file, filename_override=meta.filename or ""
-        )
+        classification = FileClassifier.classify(file, filename_override=meta.filename or "")
         enforce_media_dependencies(classification)
 
         file_bytes = await file.read()
@@ -1584,18 +1460,14 @@ async def submit_whole_document_to_job(
         gw_job_id = request.headers.get(_GATEWAY_JOB_ID_HEADER) or job_id
         local_job = None if gw_doc_id else _require_job(job_id, request)
         if local_job:
-            _validate_manifest_entry(
-                local_job, manifest_entry_id, file.filename or "", content_sha256
-            )
+            _validate_manifest_entry(local_job, manifest_entry_id, file.filename or "", content_sha256)
         attempt_id = gw_doc_id or uuid.uuid4().hex
         stable_document_id = request.headers.get(_GATEWAY_TARGET_DOCUMENT_HEADER)
         if local_job:
             stable_document_id = local_job.target_document_id or uuid.uuid4().hex
         stable_document_id = stable_document_id or attempt_id
 
-        worker_spec = (
-            _spec_from_gateway_header(request) if gw_doc_id else validated_spec
-        )
+        worker_spec = _spec_from_gateway_header(request) if gw_doc_id else validated_spec
 
         if not dry_run:
             if not gw_callback_url:
@@ -1626,12 +1498,9 @@ async def submit_whole_document_to_job(
                     callback_url=gw_callback_url,
                     callback_headers=_internal_auth_headers(request),
                     job_id=gw_job_id,
-                    pipeline_spec=worker_spec.model_dump(mode="json")
-                    if worker_spec is not None
-                    else None,
+                    pipeline_spec=(worker_spec.model_dump(mode="json") if worker_spec is not None else None),
                     retain_results=_work_item_retain_results(request, job_id=gw_job_id),
-                    scope=request.headers.get(_GATEWAY_SCOPE_HEADER)
-                    or (local_job.scope if local_job else "default"),
+                    scope=request.headers.get(_GATEWAY_SCOPE_HEADER) or (local_job.scope if local_job else "default"),
                     collection_name=request.headers.get(_GATEWAY_COLLECTION_HEADER)
                     or (local_job.collection_name if local_job else None),
                     operation=request.headers.get(_GATEWAY_OPERATION_HEADER)
@@ -1641,9 +1510,7 @@ async def submit_whole_document_to_job(
                 ),
             )
 
-        _record_prometheus(
-            request, "/v1/ingest/job/whole", "2xx", file_size=len(file_bytes)
-        )
+        _record_prometheus(request, "/v1/ingest/job/whole", "2xx", file_size=len(file_bytes))
 
         if (m := get_metrics()) is not None:
             m.record_request("/v1/ingest/job/whole")
@@ -1692,9 +1559,7 @@ async def _status_response(request: Request, item_id: str) -> JSONResponse:
         )
     rec = tracker.get_document(item_id)
     if rec is None:
-        raise HTTPException(
-            status_code=404, detail=f"No tracked document with id={item_id!r}"
-        )
+        raise HTTPException(status_code=404, detail=f"No tracked document with id={item_id!r}")
     _require_job(rec.job_id, request)
 
     is_terminal = rec.status in (DocumentStatus.COMPLETED, DocumentStatus.FAILED)
@@ -1733,9 +1598,7 @@ async def _status_response(request: Request, item_id: str) -> JSONResponse:
 )
 async def ingest_sidecar(
     request: Request,
-    file: UploadFile = File(
-        ..., description="Sidecar metadata payload (csv / json / parquet)."
-    ),
+    file: UploadFile = File(..., description="Sidecar metadata payload (csv / json / parquet)."),
     ttl_s: float = Form(
         default=3600.0,
         description="Time-to-live in seconds; the sidecar auto-evicts after this window.",
@@ -1795,11 +1658,7 @@ async def ingest_sidecar(
 
     # Owner-token scoping: use the bearer token when auth is enabled.
     auth_header = request.headers.get("Authorization", "")
-    owner_token = (
-        auth_header.split(" ", 1)[1].strip()
-        if auth_header.lower().startswith("bearer ")
-        else None
-    )
+    owner_token = auth_header.split(" ", 1)[1].strip() if auth_header.lower().startswith("bearer ") else None
 
     try:
         entry = store.put(
@@ -1907,9 +1766,7 @@ async def pipeline_config(request: Request):
         for pool_type in (PoolType.REALTIME, PoolType.BATCH):
             label = pool_type.value
             try:
-                resp = await proxy.forward_get(
-                    request, pool_type, "/v1/ingest/pipeline-config"
-                )
+                resp = await proxy.forward_get(request, pool_type, "/v1/ingest/pipeline-config")
                 if resp.status_code == 200:
                     aggregated[label] = json.loads(resp.body)
                 else:
@@ -1953,11 +1810,7 @@ def _text_from_hit(hit: dict[str, Any]) -> str:
 
 
 def _metadata_from_hit(hit: dict[str, Any]) -> dict[str, Any]:
-    return {
-        k: v
-        for k, v in hit.items()
-        if k not in {"text", "content", "chunk", "page_content", "vector"}
-    }
+    return {k: v for k, v in hit.items() if k not in {"text", "content", "chunk", "page_content", "vector"}}
 
 
 @router.post(
@@ -1965,9 +1818,7 @@ def _metadata_from_hit(hit: dict[str, Any]) -> dict[str, Any]:
     response_model=AnswerResult,
     summary="Search ingested documents and generate an answer",
 )
-async def answer(
-    req: ServiceAnswerRequest, request: Request
-) -> Response | AnswerResult:
+async def answer(req: ServiceAnswerRequest, request: Request) -> Response | AnswerResult:
     """Retrieve context from VectorDB and answer with the configured LLM."""
     import httpx
 
@@ -2068,9 +1919,7 @@ async def answer(
         **generate_kwargs,
     )
     if gen.error:
-        logger.error(
-            "LLM answer generation failed for model %s: %s", gen.model, gen.error
-        )
+        logger.error("LLM answer generation failed for model %s: %s", gen.model, gen.error)
         raise HTTPException(
             status_code=502,
             detail=f"LLM answer generation failed: {gen.error}",
@@ -2241,8 +2090,7 @@ async def job_callback(request: Request) -> JSONResponse:
 
     if body.get("result_data") is not None:
         logger.warning(
-            "Ignoring inline result_data on internal callback for %s "
-            "(%d row(s)); workers must store rows locally.",
+            "Ignoring inline result_data on internal callback for %s " "(%d row(s)); workers must store rows locally.",
             item_id,
             len(body.get("result_data") or []),
         )
@@ -2275,11 +2123,7 @@ async def job_callback(request: Request) -> JSONResponse:
                 status_code=410,
                 detail=f"Gateway has no tracked document {item_id!r} for retained result handoff",
             )
-        if (
-            pre_rec is not None
-            and result_rows
-            and tracker.should_retain_results(pre_rec.job_id)
-        ):
+        if pre_rec is not None and result_rows and tracker.should_retain_results(pre_rec.job_id):
             try:
                 retained_rows = await asyncio.to_thread(get_result_data, item_id)
             except ResultStoreTemporarilyUnavailable as exc:
@@ -2481,9 +2325,7 @@ async def ingest_job_events(request: Request, job_id: str) -> StreamingResponse:
                     )
                     break
                 try:
-                    event = await asyncio.wait_for(
-                        queue.get(), timeout=SSE_KEEPALIVE_TIMEOUT_S
-                    )
+                    event = await asyncio.wait_for(queue.get(), timeout=SSE_KEEPALIVE_TIMEOUT_S)
                     live_count += 1
                     yield f"event: {event.get('type', 'status')}\ndata: {json.dumps(event)}\n\n"
                 except asyncio.TimeoutError:
@@ -2505,9 +2347,7 @@ async def ingest_job_events(request: Request, job_id: str) -> StreamingResponse:
     )
 
 
-def _snapshot_terminal_jobs(
-    tracker: Any, *, job_id: str | None = None
-) -> list[dict[str, Any]]:
+def _snapshot_terminal_jobs(tracker: Any, *, job_id: str | None = None) -> list[dict[str, Any]]:
     """Return already-terminal documents so SSE clients get caught up.
 
     If *job_id* is supplied, only documents belonging to that job are
@@ -2585,9 +2425,7 @@ async def ingest_status_batch(request: Request) -> JSONResponse:
             }
 
     terminal_count = sum(
-        1
-        for r in results.values()
-        if r["status"] in (DocumentStatus.COMPLETED.value, DocumentStatus.FAILED.value)
+        1 for r in results.values() if r["status"] in (DocumentStatus.COMPLETED.value, DocumentStatus.FAILED.value)
     )
     return JSONResponse(
         content={

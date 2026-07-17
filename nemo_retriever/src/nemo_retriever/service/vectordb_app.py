@@ -54,6 +54,7 @@ from nemo_retriever.common.schemas.collections import (
     CollectionInfo,
     CollectionPage,
     CollectionUpdateRequest,
+    DocumentId,
     DocumentDeleteResult,
     DocumentInfo,
     DocumentPage,
@@ -121,9 +122,7 @@ def _cursor(resource: str, scope: str, collection: str | None, last: list[str]) 
         "last": last,
     }
     return (
-        base64.urlsafe_b64encode(
-            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-        )
+        base64.urlsafe_b64encode(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode())
         .decode()
         .rstrip("=")
     )
@@ -139,9 +138,7 @@ def _decode_cursor(
     if not token:
         return None
     try:
-        payload = json.loads(
-            base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode()
-        )
+        payload = json.loads(base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode())
     except Exception as exc:
         raise HTTPException(422, "Invalid continuation token") from exc
     if (
@@ -152,9 +149,7 @@ def _decode_cursor(
         or payload.get("collection") != collection
         or not isinstance(payload.get("last"), list)
     ):
-        raise HTTPException(
-            422, "Continuation token does not match this resource context"
-        )
+        raise HTTPException(422, "Continuation token does not match this resource context")
     return [str(value) for value in payload["last"]]
 
 
@@ -231,12 +226,8 @@ class VectorDBState:
         self.hf_cache_dir = hf_cache_dir
         self.device = device
         self.gpu_memory_utilization = gpu_memory_utilization
-        self.collection_artifact_root = (collection_artifact_root or "").rstrip(
-            "/"
-        ) or None
-        self.artifact_storage_options = self._load_storage_options(
-            artifact_storage_options_file
-        )
+        self.collection_artifact_root = (collection_artifact_root or "").rstrip("/") or None
+        self.artifact_storage_options = self._load_storage_options(artifact_storage_options_file)
         self.expiration_cleanup_enabled = expiration_cleanup_enabled
         self.reconciliation_successes = 0
         self.reconciliation_failures = 0
@@ -250,13 +241,9 @@ class VectorDBState:
         try:
             self._db.open_table(table_name)
             self._table_exists = True
-            logger.info(
-                "Opened existing LanceDB table '%s' at %s", table_name, lancedb_uri
-            )
+            logger.info("Opened existing LanceDB table '%s' at %s", table_name, lancedb_uri)
         except Exception:
-            logger.info(
-                "LanceDB table '%s' does not exist yet at %s", table_name, lancedb_uri
-            )
+            logger.info("LanceDB table '%s' does not exist yet at %s", table_name, lancedb_uri)
         self._ensure_catalogs()
 
     @staticmethod
@@ -266,13 +253,9 @@ class VectorDBState:
         try:
             payload = json.loads(Path(path).read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            raise RuntimeError(
-                f"Unable to load artifact storage-options secret file: {exc}"
-            ) from exc
+            raise RuntimeError(f"Unable to load artifact storage-options secret file: {exc}") from exc
         if not isinstance(payload, dict):
-            raise RuntimeError(
-                "artifact storage-options secret file must contain a JSON object"
-            )
+            raise RuntimeError("artifact storage-options secret file must contain a JSON object")
         return payload
 
     def _ensure_catalogs(self) -> None:
@@ -335,9 +318,7 @@ class VectorDBState:
             missing = [field for field in schema if field.name not in existing]
             if missing:
                 table.add_columns(missing)
-                logger.info(
-                    "Migrated %s catalog with %d additive column(s)", name, len(missing)
-                )
+                logger.info("Migrated %s catalog with %d additive column(s)", name, len(missing))
             index_columns = (
                 ("scope", "name", "status", "expires_at")
                 if name == _COLLECTIONS_TABLE
@@ -369,9 +350,7 @@ class VectorDBState:
             self._opened_tables[table_name] = table
         return table
 
-    def _collection_row(
-        self, scope: str, name: str, *, active: bool = False
-    ) -> dict[str, Any] | None:
+    def _collection_row(self, scope: str, name: str, *, active: bool = False) -> dict[str, Any] | None:
         where = f"scope = {_quoted(scope)} AND name = {_quoted(name)}"
         rows = self._rows(_COLLECTIONS_TABLE, where)
         row = rows[0] if rows else None
@@ -400,9 +379,7 @@ class VectorDBState:
     def _document_info(row: dict[str, Any]) -> DocumentInfo:
         return DocumentInfo(**{k: row.get(k) for k in DocumentInfo.model_fields})
 
-    def create_collection(
-        self, scope: str, req: CollectionCreateRequest
-    ) -> CollectionInfo:
+    def create_collection(self, scope: str, req: CollectionCreateRequest) -> CollectionInfo:
         with self._write_lock:
             if self._collection_row(scope, req.name):
                 raise HTTPException(409, f"Collection {req.name!r} already exists")
@@ -433,31 +410,19 @@ class VectorDBState:
             raise HTTPException(404, "Collection not found")
         return self._collection_info(row)
 
-    def list_collections(
-        self, scope: str, limit: int, token: str | None
-    ) -> CollectionPage:
+    def list_collections(self, scope: str, limit: int, token: str | None) -> CollectionPage:
         rows = sorted(
             self._rows(_COLLECTIONS_TABLE, f"scope = {_quoted(scope)}"),
             key=lambda r: r["name"],
         )
-        last = _decode_cursor(
-            token, resource="collections", scope=scope, collection=None
-        )
+        last = _decode_cursor(token, resource="collections", scope=scope, collection=None)
         if last:
             rows = [row for row in rows if row["name"] > last[0]]
         page = rows[:limit]
-        next_token = (
-            _cursor("collections", scope, None, [page[-1]["name"]])
-            if len(rows) > limit and page
-            else None
-        )
-        return CollectionPage(
-            items=[self._collection_info(r) for r in page], next_token=next_token
-        )
+        next_token = _cursor("collections", scope, None, [page[-1]["name"]]) if len(rows) > limit and page else None
+        return CollectionPage(items=[self._collection_info(r) for r in page], next_token=next_token)
 
-    def update_collection(
-        self, scope: str, name: str, req: CollectionUpdateRequest
-    ) -> CollectionInfo:
+    def update_collection(self, scope: str, name: str, req: CollectionUpdateRequest) -> CollectionInfo:
         with self._write_lock:
             old = self._collection_row(scope, name, active=True)
             if not old:
@@ -465,9 +430,7 @@ class VectorDBState:
             update = req.model_dump(exclude_unset=True)
             old["description"] = update.get("description", old["description"]) or ""
             if "metadata" in update:
-                old["metadata_json"] = json.dumps(
-                    update["metadata"] or {}, sort_keys=True
-                )
+                old["metadata_json"] = json.dumps(update["metadata"] or {}, sort_keys=True)
             old["expires_at"] = update.get("expires_at", old["expires_at"]) or ""
             old["updated_at"] = _now()
             (
@@ -492,18 +455,14 @@ class VectorDBState:
             return None
         from urllib.parse import quote
 
-        return "/".join(
-            (self.collection_artifact_root, quote(scope, safe=""), quote(name, safe=""))
-        )
+        return "/".join((self.collection_artifact_root, quote(scope, safe=""), quote(name, safe="")))
 
     def _delete_owned_artifacts(self, prefix: str | None) -> None:
         if not prefix or not self.collection_artifact_root:
             return
         controlled = self.collection_artifact_root.rstrip("/")
         if prefix != controlled and not prefix.startswith(controlled + "/"):
-            logger.warning(
-                "Refused cleanup for artifact prefix outside the configured root"
-            )
+            logger.warning("Refused cleanup for artifact prefix outside the configured root")
             return
         from fsspec.core import url_to_fs
 
@@ -516,9 +475,7 @@ class VectorDBState:
         delay = min(3600, 2 ** min(max(retry_count, 1), 12))
         return (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
 
-    def _schedule_collection_retry(
-        self, row: dict[str, Any], phase: str, exc: Exception
-    ) -> None:
+    def _schedule_collection_retry(self, row: dict[str, Any], phase: str, exc: Exception) -> None:
         retries = int(row.get("retry_count") or 0) + 1
         row.update(
             {
@@ -542,9 +499,7 @@ class VectorDBState:
                 row["updated_at"] = _now()
                 self._persist_collection_row(row)
             if phase == "delete_artifacts":
-                self._delete_owned_artifacts(
-                    self._collection_artifact_prefix(row["scope"], row["name"])
-                )
+                self._delete_owned_artifacts(self._collection_artifact_prefix(row["scope"], row["name"]))
                 row["deletion_phase"] = phase = "delete_catalog"
                 row["updated_at"] = _now()
                 self._persist_collection_row(row)
@@ -562,9 +517,7 @@ class VectorDBState:
             self._schedule_collection_retry(row, phase, exc)
             return False
 
-    def delete_collection(
-        self, scope: str, name: str, if_exists: bool
-    ) -> CollectionDeleteResult:
+    def delete_collection(self, scope: str, name: str, if_exists: bool) -> CollectionDeleteResult:
         with self._write_lock:
             row = self._collection_row(scope, name)
             if not row:
@@ -667,9 +620,11 @@ class VectorDBState:
                             "pending_document_version": version,
                             "pending_artifact_prefixes_json": json.dumps(
                                 {
-                                    "old": [marker.get("current_artifact_prefix")]
-                                    if marker.get("current_artifact_prefix")
-                                    else [],
+                                    "old": (
+                                        [marker.get("current_artifact_prefix")]
+                                        if marker.get("current_artifact_prefix")
+                                        else []
+                                    ),
                                     "new": artifact_prefix or "",
                                 }
                             ),
@@ -684,21 +639,13 @@ class VectorDBState:
                         .when_matched_update_all()
                         .execute([marker])
                     )
-            table_exists = (
-                self._table_exists
-                if not collection_mode
-                else self._has_table(table_name)
-            )
+            table_exists = self._table_exists if not collection_mode else self._has_table(table_name)
             if not table_exists:
                 dim = infer_vector_dim(rows)
                 if dim == 0:
-                    logger.warning(
-                        "Cannot infer vector dimension from rows; skipping write"
-                    )
+                    logger.warning("Cannot infer vector dimension from rows; skipping write")
                     return 0
-                schema = lancedb_schema(
-                    vector_dim=dim, collection_managed=collection_mode
-                )
+                schema = lancedb_schema(vector_dim=dim, collection_managed=collection_mode)
                 table = create_or_append_lancedb_table(
                     self._db,
                     table_name,
@@ -761,9 +708,7 @@ class VectorDBState:
                         if operation == "replace" and existing
                         else "{}"
                     ),
-                    "recovery_state": "cleanup"
-                    if operation == "replace" and existing
-                    else "",
+                    "recovery_state": ("cleanup" if operation == "replace" and existing else ""),
                 }
                 self._persist_document_row(doc)
                 if doc["recovery_state"] == "cleanup":
@@ -771,9 +716,7 @@ class VectorDBState:
 
         return len(rows)
 
-    def total_rows(
-        self, *, scope: str | None = None, collection_name: str | None = None
-    ) -> int:
+    def total_rows(self, *, scope: str | None = None, collection_name: str | None = None) -> int:
         table_name = self.table_name
         exists = self._table_exists
         if collection_name:
@@ -814,26 +757,18 @@ class VectorDBState:
 
         return normalize_retrieval_results(raw_results)
 
-    def list_documents(
-        self, scope: str, collection: str, limit: int, token: str | None
-    ) -> DocumentPage:
+    def list_documents(self, scope: str, collection: str, limit: int, token: str | None) -> DocumentPage:
         self._resolved_table(scope, collection)
         where = f"scope = {_quoted(scope)} AND collection_name = {_quoted(collection)}"
         rows = sorted(
             self._rows(_DOCUMENTS_TABLE, where),
             key=lambda r: (r["created_at"], r["document_id"]),
         )
-        last = _decode_cursor(
-            token, resource="documents", scope=scope, collection=collection
-        )
+        last = _decode_cursor(token, resource="documents", scope=scope, collection=collection)
         if last:
             if len(last) != 2:
                 raise HTTPException(422, "Invalid document continuation token")
-            rows = [
-                row
-                for row in rows
-                if (row["created_at"], row["document_id"]) > (last[0], last[1])
-            ]
+            rows = [row for row in rows if (row["created_at"], row["document_id"]) > (last[0], last[1])]
         page = rows[:limit]
         return DocumentPage(
             items=[self._document_info(r) for r in page],
@@ -849,9 +784,7 @@ class VectorDBState:
             ),
         )
 
-    def get_document(
-        self, scope: str, collection: str, document_id: str
-    ) -> DocumentInfo:
+    def get_document(self, scope: str, collection: str, document_id: str) -> DocumentInfo:
         self._resolved_table(scope, collection)
         where = (
             f"scope = {_quoted(scope)} AND collection_name = {_quoted(collection)} "
@@ -879,9 +812,7 @@ class VectorDBState:
             return {}
         return payload if isinstance(payload, dict) else {}
 
-    def _reconcile_document_row_locked(
-        self, row: dict[str, Any], table_name: str
-    ) -> bool:
+    def _reconcile_document_row_locked(self, row: dict[str, Any], table_name: str) -> bool:
         state = str(row.get("recovery_state") or "")
         try:
             if state == "replacing":
@@ -893,9 +824,7 @@ class VectorDBState:
                         f"document_id = {_quoted(row['document_id'])}",
                         ["document_version"],
                     )
-                    versions = {
-                        str(chunk.get("document_version") or "") for chunk in chunks
-                    }
+                    versions = {str(chunk.get("document_version") or "") for chunk in chunks}
                 artifacts = self._artifact_recovery_payload(row)
                 if pending and pending in versions:
                     row.update(
@@ -914,9 +843,7 @@ class VectorDBState:
                     self._persist_document_row(row)
                     state = "cleanup"
                 else:
-                    self._delete_owned_artifacts(
-                        str(artifacts.get("new") or "") or None
-                    )
+                    self._delete_owned_artifacts(str(artifacts.get("new") or "") or None)
                     row.update(
                         {
                             "pending_document_version": "",
@@ -947,12 +874,8 @@ class VectorDBState:
                 return True
             if state == "deleting_chunks":
                 if self._has_table(table_name):
-                    self._open_table(table_name).delete(
-                        f"document_id = {_quoted(row['document_id'])}"
-                    )
-                row.update(
-                    {"recovery_state": "deleting_artifacts", "updated_at": _now()}
-                )
+                    self._open_table(table_name).delete(f"document_id = {_quoted(row['document_id'])}")
+                row.update({"recovery_state": "deleting_artifacts", "updated_at": _now()})
                 self._persist_document_row(row)
                 state = "deleting_artifacts"
             if state == "deleting_artifacts":
@@ -973,9 +896,7 @@ class VectorDBState:
             logger.exception("Document reconciliation paused in state %s", state)
             return False
 
-    def delete_document(
-        self, scope: str, collection: str, document_id: str, if_exists: bool
-    ) -> DocumentDeleteResult:
+    def delete_document(self, scope: str, collection: str, document_id: str, if_exists: bool) -> DocumentDeleteResult:
         table_name = self._resolved_table(scope, collection)
         try:
             self.get_document(scope, collection, document_id)
@@ -1035,9 +956,7 @@ class VectorDBState:
                 collection = self._collection_row(row["scope"], row["collection_name"])
                 if not collection:
                     continue
-                if self._reconcile_document_row_locked(
-                    row, collection["physical_table"]
-                ):
+                if self._reconcile_document_row_locked(row, collection["physical_table"]):
                     successes += 1
                 else:
                     failures += 1
@@ -1078,31 +997,21 @@ class VectorDBState:
 
     def operational_health(self) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
-        collections = self._rows(
-            _COLLECTIONS_TABLE, columns=["status", "expires_at", "delete_started_at"]
-        )
-        documents = self._rows(
-            _DOCUMENTS_TABLE, columns=["recovery_state", "updated_at"]
-        )
+        collections = self._rows(_COLLECTIONS_TABLE, columns=["status", "expires_at", "delete_started_at"])
+        documents = self._rows(_DOCUMENTS_TABLE, columns=["recovery_state", "updated_at"])
         active = sum(row.get("status") == "active" for row in collections)
         deleting = sum(row.get("status") == "deleting" for row in collections)
         expired = sum(
-            bool(row.get("expires_at"))
-            and datetime.fromisoformat(str(row["expires_at"])) <= now
-            for row in collections
+            bool(row.get("expires_at")) and datetime.fromisoformat(str(row["expires_at"])) <= now for row in collections
         )
         pending_times: list[datetime] = []
         for row in collections:
             if row.get("status") == "deleting" and row.get("delete_started_at"):
-                pending_times.append(
-                    datetime.fromisoformat(str(row["delete_started_at"]))
-                )
+                pending_times.append(datetime.fromisoformat(str(row["delete_started_at"])))
         for row in documents:
             if row.get("recovery_state") and row.get("updated_at"):
                 pending_times.append(datetime.fromisoformat(str(row["updated_at"])))
-        oldest_age = max(
-            ((now - started).total_seconds() for started in pending_times), default=0.0
-        )
+        oldest_age = max(((now - started).total_seconds() for started in pending_times), default=0.0)
         return {
             "catalog": {"healthy": True, "schema_version": _CATALOG_SCHEMA_VERSION},
             "collections": {"active": active, "deleting": deleting, "expired": expired},
@@ -1150,9 +1059,7 @@ class VectorDBState:
                 embedder = self._get_local_embedder()
                 tensor = embedder.embed_queries(texts)
             return _tensor_to_embedding_rows(tensor)
-        raise RuntimeError(
-            "No embedding backend configured (remote endpoint or --local-embed)."
-        )
+        raise RuntimeError("No embedding backend configured (remote endpoint or --local-embed).")
 
 
 # ── FastAPI app ──────────────────────────────────────────────────────
@@ -1232,9 +1139,7 @@ def create_vectordb_app(
                 await asyncio.sleep(reconciliation_interval_seconds)
 
         reconciliation_task = (
-            asyncio.create_task(reconciliation_loop())
-            if reconciliation_interval_seconds > 0
-            else None
+            asyncio.create_task(reconciliation_loop()) if reconciliation_interval_seconds > 0 else None
         )
         try:
             yield
@@ -1334,13 +1239,9 @@ def create_vectordb_app(
             "Open collection-table cache size",
             registry=registry,
         ).set(health["open_table_cache_count"])
-        return Response(
-            generate_latest(registry), media_type="text/plain; version=0.0.4"
-        )
+        return Response(generate_latest(registry), media_type="text/plain; version=0.0.4")
 
-    @app.post(
-        "/internal/vectordb/write", response_model=WriteResponse, tags=["internal"]
-    )
+    @app.post("/internal/vectordb/write", response_model=WriteResponse, tags=["internal"])
     async def write(req: WriteRequest) -> WriteResponse:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
@@ -1358,9 +1259,7 @@ def create_vectordb_app(
         )
         return WriteResponse(
             written=written,
-            total_rows=_state.total_rows(
-                scope=req.scope, collection_name=req.collection_name
-            ),
+            total_rows=_state.total_rows(scope=req.scope, collection_name=req.collection_name),
         )
 
     def _scope(value: str | None) -> str:
@@ -1372,14 +1271,10 @@ def create_vectordb_app(
         status_code=201,
         tags=["collections"],
     )
-    async def create_collection(
-        req: CollectionCreateRequest, x_nrl_scope: str | None = Header(None)
-    ) -> CollectionInfo:
+    async def create_collection(req: CollectionCreateRequest, x_nrl_scope: str | None = Header(None)) -> CollectionInfo:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
-        return await asyncio.to_thread(
-            _state.create_collection, _scope(x_nrl_scope), req
-        )
+        return await asyncio.to_thread(_state.create_collection, _scope(x_nrl_scope), req)
 
     @app.get("/v1/collections", response_model=CollectionPage, tags=["collections"])
     async def list_collections(
@@ -1389,23 +1284,15 @@ def create_vectordb_app(
     ) -> CollectionPage:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
-        return await asyncio.to_thread(
-            _state.list_collections, _scope(x_nrl_scope), limit, continuation_token
-        )
+        return await asyncio.to_thread(_state.list_collections, _scope(x_nrl_scope), limit, continuation_token)
 
-    @app.get(
-        "/v1/collections/{name}", response_model=CollectionInfo, tags=["collections"]
-    )
-    async def get_collection(
-        name: str, x_nrl_scope: str | None = Header(None)
-    ) -> CollectionInfo:
+    @app.get("/v1/collections/{name}", response_model=CollectionInfo, tags=["collections"])
+    async def get_collection(name: str, x_nrl_scope: str | None = Header(None)) -> CollectionInfo:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
         return await asyncio.to_thread(_state.get_collection, _scope(x_nrl_scope), name)
 
-    @app.patch(
-        "/v1/collections/{name}", response_model=CollectionInfo, tags=["collections"]
-    )
+    @app.patch("/v1/collections/{name}", response_model=CollectionInfo, tags=["collections"])
     async def update_collection(
         name: str,
         req: CollectionUpdateRequest,
@@ -1413,9 +1300,7 @@ def create_vectordb_app(
     ) -> CollectionInfo:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
-        return await asyncio.to_thread(
-            _state.update_collection, _scope(x_nrl_scope), name, req
-        )
+        return await asyncio.to_thread(_state.update_collection, _scope(x_nrl_scope), name, req)
 
     @app.delete(
         "/v1/collections/{name}",
@@ -1430,9 +1315,7 @@ def create_vectordb_app(
     ) -> CollectionDeleteResult:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
-        result = await asyncio.to_thread(
-            _state.delete_collection, _scope(x_nrl_scope), name, if_exists
-        )
+        result = await asyncio.to_thread(_state.delete_collection, _scope(x_nrl_scope), name, if_exists)
         response.status_code = 202 if result.cleanup_pending else 200
         return result
 
@@ -1449,23 +1332,17 @@ def create_vectordb_app(
     ) -> DocumentPage:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
-        return await asyncio.to_thread(
-            _state.list_documents, _scope(x_nrl_scope), name, limit, continuation_token
-        )
+        return await asyncio.to_thread(_state.list_documents, _scope(x_nrl_scope), name, limit, continuation_token)
 
     @app.get(
         "/v1/collections/{name}/documents/{document_id}",
         response_model=DocumentInfo,
         tags=["collections"],
     )
-    async def get_document(
-        name: str, document_id: str, x_nrl_scope: str | None = Header(None)
-    ) -> DocumentInfo:
+    async def get_document(name: str, document_id: DocumentId, x_nrl_scope: str | None = Header(None)) -> DocumentInfo:
         if _state is None:
             raise HTTPException(503, "VectorDB not initialised")
-        return await asyncio.to_thread(
-            _state.get_document, _scope(x_nrl_scope), name, document_id
-        )
+        return await asyncio.to_thread(_state.get_document, _scope(x_nrl_scope), name, document_id)
 
     @app.delete(
         "/v1/collections/{name}/documents/{document_id}",
@@ -1475,7 +1352,7 @@ def create_vectordb_app(
     async def delete_document(
         response: Response,
         name: str,
-        document_id: str,
+        document_id: DocumentId,
         if_exists: bool = False,
         x_nrl_scope: str | None = Header(None),
     ) -> DocumentDeleteResult:
@@ -1535,15 +1412,10 @@ def create_vectordb_app(
 
         if req.format == "evidence":
             return EvidenceQueryResponse(
-                results=[
-                    EvidenceResult(**build_evidence_result(hits, _QUERY_STRATEGIES))
-                    for hits in hits_per_query
-                ]
+                results=[EvidenceResult(**build_evidence_result(hits, _QUERY_STRATEGIES)) for hits in hits_per_query]
             )
 
-        return QueryResponse(
-            results=[QueryResult(hits=hits) for hits in hits_per_query]
-        )
+        return QueryResponse(results=[QueryResult(hits=hits) for hits in hits_per_query])
 
     return app
 
@@ -1553,20 +1425,12 @@ def create_vectordb_app(
 
 def main() -> None:
     internal_token = os.environ.get("NRL_INTERNAL_VDB_TOKEN", "")
-    if not internal_token and (
-        token_file := os.environ.get("NRL_INTERNAL_VDB_TOKEN_FILE")
-    ):
+    if not internal_token and (token_file := os.environ.get("NRL_INTERNAL_VDB_TOKEN_FILE")):
         internal_token = Path(token_file).read_text(encoding="utf-8").strip()
     parser = argparse.ArgumentParser(description="NeMo Retriever VectorDB service")
-    parser.add_argument(
-        "--lancedb-uri", default="/data/vectordb", help="LanceDB directory"
-    )
-    parser.add_argument(
-        "--table-name", default="nemo_retriever", help="LanceDB table name"
-    )
-    parser.add_argument(
-        "--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL"
-    )
+    parser.add_argument("--lancedb-uri", default="/data/vectordb", help="LanceDB directory")
+    parser.add_argument("--table-name", default="nemo_retriever", help="LanceDB table name")
+    parser.add_argument("--embed-endpoint", default="", help="Remote NIM/OpenAI-compatible embed URL")
     parser.add_argument("--embed-model", default="nvidia/llama-nemotron-embed-vl-1b-v2")
     parser.add_argument(
         "--embed-model-provider-prefix",
@@ -1609,12 +1473,8 @@ def main() -> None:
         choices=("hf", "vllm"),
         help="Backend for --local-embed (default: hf).",
     )
-    parser.add_argument(
-        "--hf-cache-dir", default="", help="Hugging Face model cache directory"
-    )
-    parser.add_argument(
-        "--device", default="", help="Torch device for --local-embed (e.g. cuda:0)"
-    )
+    parser.add_argument("--hf-cache-dir", default="", help="Hugging Face model cache directory")
+    parser.add_argument("--device", default="", help="Torch device for --local-embed (e.g. cuda:0)")
     parser.add_argument(
         "--gpu-memory-utilization",
         type=float,

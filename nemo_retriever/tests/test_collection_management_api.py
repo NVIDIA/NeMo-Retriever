@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -170,6 +171,34 @@ def test_idempotency_replay_and_conflict() -> None:
         pass
     else:
         raise AssertionError("conflicting idempotency payload must fail")
+
+
+def test_idempotent_job_registration_is_atomic() -> None:
+    tracker = JobTracker()
+
+    def register(index: int) -> str:
+        return tracker.register_job(
+            f"job-{index}",
+            expected_documents=1,
+            scope="workspace",
+            idempotency_key="request",
+            idempotency_fingerprint="same",
+        ).job_id
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        job_ids = list(executor.map(register, range(8)))
+
+    assert len(set(job_ids)) == 1
+    assert len(tracker.all_jobs()) == 1
+
+
+def test_target_document_id_rejects_query_metacharacters() -> None:
+    with pytest.raises(ValueError, match="target_document_id"):
+        JobCreateRequest(
+            expected_documents=1,
+            operation="replace",
+            target_document_id="doc' OR 1=1 --",
+        )
 
 
 def test_manifest_entry_replay_is_capacity_neutral_and_identity_stable() -> None:

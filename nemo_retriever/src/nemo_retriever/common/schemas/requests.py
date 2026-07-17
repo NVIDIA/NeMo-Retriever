@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import Field, model_validator
 
 from nemo_retriever.common.schemas.base import RichModel
+from nemo_retriever.common.schemas.collections import DocumentId, IngestOperation
 from nemo_retriever.common.schemas.pipeline_spec import PipelineSpec
 
 
@@ -64,8 +65,8 @@ class JobCreateRequest(RichModel):
         ),
     )
     collection_name: str | None = Field(default=None, min_length=1, max_length=128)
-    operation: str = Field(default="append", pattern=r"^(append|replace)$")
-    target_document_id: str | None = None
+    operation: IngestOperation = "append"
+    target_document_id: DocumentId | None = None
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=256)
     document_manifest: list[DocumentManifestEntry] = Field(default_factory=list)
 
@@ -74,8 +75,15 @@ class JobCreateRequest(RichModel):
     def _reject_raw_storage_keys(cls, value: Any) -> Any:
         if isinstance(value, dict):
             raw_keys = {
-                "table_name", "table", "physical_table", "lancedb_uri", "lance_uri",
-                "uri", "table_path", "database_uri", "vdb_uri",
+                "table_name",
+                "table",
+                "physical_table",
+                "lancedb_uri",
+                "lance_uri",
+                "uri",
+                "table_path",
+                "database_uri",
+                "vdb_uri",
             }
             supplied = sorted(raw_keys.intersection(value))
             if supplied:

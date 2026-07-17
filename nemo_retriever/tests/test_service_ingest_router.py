@@ -23,6 +23,7 @@ import re
 from typing import Any
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExportResult
 
@@ -91,9 +92,7 @@ def app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: list[Wor
 
 
 @pytest.fixture
-def traced_app_with_stub_pool(
-    monkeypatch: pytest.MonkeyPatch, captured_items: list[WorkItem]
-):
+def traced_app_with_stub_pool(monkeypatch: pytest.MonkeyPatch, captured_items: list[WorkItem]):
     """Build a traced standalone app with in-memory span export."""
     from nemo_retriever.service.tracing import _reset_tracing_for_tests
 
@@ -106,9 +105,7 @@ def traced_app_with_stub_pool(
         "nemo_retriever.service.tracing.OTLPSpanExporter",
         lambda *args, **kwargs: _CollectingExporter(exported),
     )
-    monkeypatch.setattr(
-        "nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor
-    )
+    monkeypatch.setattr("nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor)
 
     async def _stub_work(item: WorkItem) -> tuple[int, list[dict[str, Any]]]:
         captured_items.append(item)
@@ -156,9 +153,7 @@ def traced_gateway_app(monkeypatch: pytest.MonkeyPatch):
         "nemo_retriever.service.tracing.OTLPSpanExporter",
         lambda *args, **kwargs: _CollectingExporter(exported),
     )
-    monkeypatch.setattr(
-        "nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor
-    )
+    monkeypatch.setattr("nemo_retriever.service.tracing.BatchSpanProcessor", SimpleSpanProcessor)
 
     cfg = ServiceConfig(mode="gateway")
     try:
@@ -245,9 +240,7 @@ def test_ingest_rejects_trust_sensitive_override(
     app_with_stub_pool: TestClient,
 ) -> None:
     job_id = create_test_job(app_with_stub_pool)
-    metadata = {
-        "pipeline": {"extract_params": {"page_elements_invoke_url": "http://attacker/"}}
-    }
+    metadata = {"pipeline": {"extract_params": {"page_elements_invoke_url": "http://attacker/"}}}
     resp = app_with_stub_pool.post(
         f"/v1/ingest/job/{job_id}/document",
         files={"file": ("doc.pdf", _make_pdf_bytes(), "application/pdf")},
@@ -532,8 +525,7 @@ def test_job_upload_routes_emit_accept_spans(
     accept_spans = {
         span.name: span
         for span in exported_spans
-        if span.name
-        in {"ingest.document.accept", "ingest.page.accept", "ingest.whole.accept"}
+        if span.name in {"ingest.document.accept", "ingest.page.accept", "ingest.whole.accept"}
     }
     for span in accept_spans.values():
         attrs = dict(span.attributes)
@@ -561,9 +553,7 @@ def test_job_upload_accept_span_uses_job_trace_when_request_has_no_traceparent(
     assert upload_resp.status_code == 202, upload_resp.text
     _wait_for_items(captured_items, 1)
 
-    accept_span = next(
-        span for span in exported_spans if span.name == "ingest.document.accept"
-    )
+    accept_span = next(span for span in exported_spans if span.name == "ingest.document.accept")
     assert f"{accept_span.context.trace_id:032x}" == job_trace_id
     assert captured_items[0].trace_context["traceparent"].split("-")[1] == job_trace_id
 
@@ -594,14 +584,10 @@ def test_job_upload_accept_span_prefers_inbound_traceparent_over_job_trace(
     assert upload_resp.status_code == 202, upload_resp.text
     _wait_for_items(captured_items, 1)
 
-    accept_span = next(
-        span for span in exported_spans if span.name == "ingest.document.accept"
-    )
+    accept_span = next(span for span in exported_spans if span.name == "ingest.document.accept")
     assert f"{accept_span.context.trace_id:032x}" == inbound_trace_id
     assert f"{accept_span.context.trace_id:032x}" != job_trace_id
-    assert (
-        captured_items[0].trace_context["traceparent"].split("-")[1] == inbound_trace_id
-    )
+    assert captured_items[0].trace_context["traceparent"].split("-")[1] == inbound_trace_id
 
 
 def test_dashboard_job_views_include_trace_id(
@@ -762,9 +748,7 @@ def test_collection_whole_propagates_server_storage_context(
     assert item.id == response.json()["attempt_id"]
 
 
-def test_upload_beyond_capacity_returns_409(
-    app_with_stub_pool: TestClient, captured_items: list[WorkItem]
-) -> None:
+def test_upload_beyond_capacity_returns_409(app_with_stub_pool: TestClient, captured_items: list[WorkItem]) -> None:
     """The (expected_documents + 1)th upload must be rejected with 409."""
     job_id = create_test_job(app_with_stub_pool, expected_documents=1)
     first = app_with_stub_pool.post(
@@ -792,3 +776,21 @@ def test_pipeline_config_endpoint_reports_allowed_overrides(
     assert body["allowed_overrides"]["mode"] == "allow_list"
     assert "dpi" in body["allowed_overrides"]["allowed_extract_keys"]
     assert "ocr_invoke_url" in body["allowed_overrides"]["denied_key_substrings"]
+
+
+def test_document_registration_returns_503_if_tracker_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from nemo_retriever.service.routers import ingest
+
+    monkeypatch.setattr(ingest, "get_job_tracker", lambda: None)
+
+    with pytest.raises(HTTPException) as exc_info:
+        ingest._register_document_under_job(
+            document_id="attempt",
+            job_id="job",
+            filename="document.pdf",
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "Job tracker not available"

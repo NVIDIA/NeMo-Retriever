@@ -315,12 +315,19 @@ class RetrieverServiceClient:
             "create collection",
         )
 
-    async def acreate_collection(self, name: str, **kwargs: Any) -> CollectionInfo:
+    async def acreate_collection(
+        self,
+        name: str,
+        *,
+        description: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        expires_at: str | None = None,
+    ) -> CollectionInfo:
         body = {
             "name": name,
-            "description": kwargs.get("description"),
-            "metadata": kwargs.get("metadata") or {},
-            "expires_at": kwargs.get("expires_at"),
+            "description": description,
+            "metadata": metadata or {},
+            "expires_at": expires_at,
         }
         return self._model(
             CollectionInfo,
@@ -350,10 +357,15 @@ class RetrieverServiceClient:
             "list collections",
         )
 
-    async def alist_collections(self, **kwargs: Any) -> CollectionPage:
+    async def alist_collections(
+        self,
+        *,
+        limit: int = 100,
+        continuation_token: str | None = None,
+    ) -> CollectionPage:
         params = {
-            "limit": kwargs.get("limit", 100),
-            "continuation_token": kwargs.get("continuation_token"),
+            "limit": limit,
+            "continuation_token": continuation_token,
         }
         return self._model(
             CollectionPage,
@@ -397,10 +409,16 @@ class RetrieverServiceClient:
             "list documents",
         )
 
-    async def alist_documents(self, collection_name: str, **kwargs: Any) -> DocumentPage:
+    async def alist_documents(
+        self,
+        collection_name: str,
+        *,
+        limit: int = 100,
+        continuation_token: str | None = None,
+    ) -> DocumentPage:
         params = {
-            "limit": kwargs.get("limit", 100),
-            "continuation_token": kwargs.get("continuation_token"),
+            "limit": limit,
+            "continuation_token": continuation_token,
         }
         return self._model(
             DocumentPage,

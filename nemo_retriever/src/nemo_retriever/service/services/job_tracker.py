@@ -310,6 +310,15 @@ class JobTracker:
         with self._lock:
             now = datetime.now(timezone.utc)
             self._evict_locked(now=now)
+            if idempotency_key and idempotency_fingerprint:
+                entry = self._idempotency.get((scope, idempotency_key))
+                if entry:
+                    existing_job_id, previous_fingerprint = entry
+                    if previous_fingerprint != idempotency_fingerprint:
+                        raise JobFullError("Idempotency key was already used with a different request payload")
+                    existing = self._get_live_job_locked(existing_job_id, now=now)
+                    if existing is not None:
+                        return existing.model_copy(deep=True)
             if job_id in self._jobs:
                 raise JobTrackerError(f"Job {job_id!r} already exists")
             if len(self._jobs) >= self._max_jobs:
@@ -340,7 +349,10 @@ class JobTracker:
             agg.counts[DocumentStatus.PENDING.value] = 0
             self._jobs[job_id] = agg
             if idempotency_key and idempotency_fingerprint:
-                self._idempotency[(scope, idempotency_key)] = (job_id, idempotency_fingerprint)
+                self._idempotency[(scope, idempotency_key)] = (
+                    job_id,
+                    idempotency_fingerprint,
+                )
         logger.info(
             "Job registered: %s (expected_documents=%d, label=%r)",
             job_id,
@@ -457,9 +469,7 @@ class JobTracker:
                 if existing_attempt:
                     existing = self._documents[existing_attempt]
                     if existing.filename != filename or existing.content_sha256 != content_sha256:
-                        raise JobFullError(
-                            "Manifest entry was already accepted with different filename or content"
-                        )
+                        raise JobFullError("Manifest entry was already accepted with different filename or content")
                     return existing.model_copy(deep=True), False
             if agg.status in _JOB_TERMINAL:
                 raise JobFinalizedError(
@@ -606,7 +616,7 @@ class JobTracker:
                     "JobTracker.%s: no record of document %r — callback dropped (likely "
                     "gateway-pod restart between upload acceptance and worker callback); "
                     "client may hang waiting for an SSE event that will never arrive",
-                    "mark_failed" if new_status == DocumentStatus.FAILED else "mark_completed",
+                    ("mark_failed" if new_status == DocumentStatus.FAILED else "mark_completed"),
                     document_id,
                 )
                 return MarkOutcome.UNKNOWN_DOCUMENT
