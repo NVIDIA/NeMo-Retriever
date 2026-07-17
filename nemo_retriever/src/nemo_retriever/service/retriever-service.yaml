@@ -102,6 +102,20 @@ pipeline:
   batch_workers: 16
   batch_queue_size: 4096
 
+# Dedicated LanceDB pod used by standalone/gateway modes for /v1/query.
+# Workers POST embedding rows to vectordb_url; the gateway proxies queries.
+vectordb:
+  enabled: false
+  lancedb_uri: "/data/vectordb"
+  table_name: "nemo_retriever"
+  embed_model: "nvidia/llama-nemotron-embed-vl-1b-v2"
+  embed_model_provider_prefix: null
+  # /v1/query auto-detects retrieval from the table's own indexes: a table with
+  # both a vector column and an FTS/BM25 index runs hybrid, a vector-only table
+  # runs dense. The FTS index must be built at ingestion time; the service never
+  # mutates the table at query time.
+  vectordb_url: "http://nemo-retriever-vectordb:7671"
+
 resources:
   max_memory_mb: null
   max_cpu_cores: null
