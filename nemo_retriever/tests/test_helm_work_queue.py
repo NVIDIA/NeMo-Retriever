@@ -30,7 +30,7 @@ def test_split_work_queue_identity_spool_and_gateway_url() -> None:
         assert env["POD_IP"]["valueFrom"]["fieldRef"]["fieldPath"] == "status.podIP"
         if component == "gateway":
             tmp = next(item for item in pod_spec["volumes"] if item["name"] == "tmp")
-            assert tmp["emptyDir"]["sizeLimit"] == "20Gi"
+            assert tmp["emptyDir"]["sizeLimit"] == "21474836480"
 
     configmaps = [document for document in documents if document.get("kind") == "ConfigMap"]
     service_configs = [
@@ -42,6 +42,22 @@ def test_split_work_queue_identity_spool_and_gateway_url() -> None:
     assert all(
         'gateway_url: "http://shared-results-test-nemo-retriever-gateway:7670"' in cfg for cfg in service_configs
     )
+
+
+def test_split_gateway_spool_size_limit_preserves_sub_gib_bytes() -> None:
+    documents = _render(
+        "--set",
+        "topology.mode=split",
+        "--set",
+        "serviceConfig.workQueue.spoolLimitBytes=536870912",
+    )
+    gateway = next(
+        item
+        for item in _service_deployments(documents)
+        if item["metadata"]["labels"]["app.kubernetes.io/component"] == "gateway"
+    )
+    tmp = next(item for item in gateway["spec"]["template"]["spec"]["volumes"] if item["name"] == "tmp")
+    assert tmp["emptyDir"]["sizeLimit"] == "536870912"
 
 
 def test_hpa_uses_central_gateway_backlog_average_value() -> None:

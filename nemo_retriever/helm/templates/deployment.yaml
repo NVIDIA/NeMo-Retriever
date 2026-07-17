@@ -366,7 +366,7 @@ spec:
         - name: tmp
           emptyDir:
             {{- if eq $role "gateway" }}
-            sizeLimit: {{ div $.Values.serviceConfig.workQueue.spoolLimitBytes 1073741824 }}Gi
+            sizeLimit: {{ int64 $.Values.serviceConfig.workQueue.spoolLimitBytes | quote }}
             {{- end }}
         {{- if and $.Values.persistence.enabled (eq $role "gateway") }}
         - name: data
