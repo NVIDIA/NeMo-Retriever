@@ -141,9 +141,9 @@ Cat is the animal whose activity (jumping onto a laptop) matches the location of
 
 - **[Official Documentation](https://docs.nvidia.com/nemo/retriever/extraction/)** - Complete user guides, API references, and deployment instructions
 - **[Getting Started Guide](https://docs.nvidia.com/nemo/retriever/extraction/overview/)** - Overview and prerequisites for production deployments
-- **[Benchmarking Guide](https://docs.nvidia.com/nemo/retriever/extraction/benchmarking/)** - Performance testing and recall evaluation framework
-- **[MIG Deployment](https://docs.nvidia.com/nemo/retriever/extraction/mig-benchmarking/)** - Multi-Instance GPU configurations for Kubernetes
-- **[API Documentation](https://docs.nvidia.com/nemo/retriever/extraction/api/)** - Python client and API reference
+- **[Benchmarking Guide](nemo_retriever/docs/cli/benchmarking.md)** - Performance testing and recall evaluation framework
+- **[MIG Deployment](nemo_retriever/helm/README.md)** - Multi-Instance GPU configurations for Kubernetes
+- **[API Documentation](docs/docs/extraction/nemo-retriever-api-reference.md)** - Python client and API reference
 
 ## Notices
 
@@ -168,7 +168,7 @@ https://pypi.org/project/pdfservices-sdk/
     [request access](https://huggingface.co/meta-llama/Llama-3.2-1B) and set `HF_ACCESS_TOKEN` to your HuggingFace 
     access token in order to use it.
 
-Before contributing to this project, please review our [Contributor Guide](contributing.md).
+Before contributing to this project, please review our [Contributor Guide](CONTRIBUTING.md).
 
 ## Security Considerations
 

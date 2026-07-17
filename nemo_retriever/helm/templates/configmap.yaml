@@ -52,6 +52,14 @@ inherits the NIMService resource name, so the mapping is fixed:
 {{- end -}}
 
 {{- define "nemo-retriever.configBody" -}}
+{{- $rawMaxUploadBytes := .Values.serviceConfig.resources.maxUploadBytes -}}
+{{- $maxUploadBytes := toString $rawMaxUploadBytes -}}
+{{- if kindIs "float64" $rawMaxUploadBytes -}}
+{{- $maxUploadBytes = printf "%.0f" $rawMaxUploadBytes -}}
+{{- end -}}
+{{- if or (not (regexMatch "^[1-9][0-9]*$" $maxUploadBytes)) (and (kindIs "float64" $rawMaxUploadBytes) (ne $rawMaxUploadBytes (float64 $maxUploadBytes))) -}}
+{{- fail "serviceConfig.resources.maxUploadBytes must be a positive integer" -}}
+{{- end -}}
 server:
   host: {{ .Values.serviceConfig.server.host | quote }}
   port: {{ .Values.serviceConfig.server.port }}
@@ -139,6 +147,7 @@ resources:
   max_memory_mb: {{ .Values.serviceConfig.resources.maxMemoryMb | default "null" }}
   max_cpu_cores: {{ .Values.serviceConfig.resources.maxCpuCores | default "null" }}
   gpu_devices: {{ toJson .Values.serviceConfig.resources.gpuDevices }}
+  max_upload_bytes: {{ $maxUploadBytes }}
 
 auth:
   api_token: {{ .Values.serviceConfig.auth.apiToken | default "null" }}
