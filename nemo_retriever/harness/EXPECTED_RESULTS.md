@@ -108,19 +108,19 @@ retriever harness run-files \
   nemo_retriever/harness/runfiles/bo767_beir.json
 ```
 
-Recent observed `bo767_beir` metrics on H100 batch execution:
+Observed `bo767_beir` metrics on an eight-H100 80GB HBM3 host:
 
-- `rows_processed`: `79230`
-- `ingest_secs`: about `2563`
-- `pages_per_sec_ingest`: about `21.35`
-- `query_latency_p50_ms`: about `1100`
-- `query_latency_p95_ms`: about `1171`
-- `recall_5`: about `0.849`
-- `recall_10`: about `0.896`
-- `ndcg_10`: about `0.750`
+| Configuration | Workload GPUs | Rows | Ingest seconds | Pages/s | Recall@5 | Recall@10 | nDCG@10 |
+|---------------|---------------|------|----------------|---------|----------|-----------|---------|
+| Automatic batch | 1 | 79229 | 1594.339 | 34.328 | 0.848638 | 0.897074 | 0.750110 |
+| Automatic batch | 8 | 79230 | 764.946 | 71.548 | 0.849647 | 0.895055 | 0.748583 |
+| Legacy worker-capped batch | 8 visible, effectively 1 used | 79230 | about 2265 | about 24.16 | 0.850656 | 0.896065 | 0.751507 |
 
-The checked-in BO767 runfile includes conservative batch worker and batch-size
-overrides matching the observed successful run.
+The checked-in BO767 runfile leaves worker counts and batch sizes automatic so
+the batch planner can scale to the GPUs available to the workload. Do not use
+the legacy worker-capped result as evidence of eight-GPU scaling. The automatic
+one- and eight-GPU runs differed by one output row; keep quality and row counts
+visible when comparing performance results.
 
 ## FinanceBench
 

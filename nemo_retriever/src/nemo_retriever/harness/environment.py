@@ -14,6 +14,7 @@ from typing import Any
 from nemo_retriever.harness.artifacts import last_commit
 
 _RECORDED_RUNTIME_ENV_KEYS = (
+    "CUDA_VISIBLE_DEVICES",
     "CUDA_HOME",
     "HF_HOME",
     "HF_HUB_CACHE",
@@ -25,6 +26,19 @@ _RECORDED_RUNTIME_ENV_KEYS = (
     "VLLM_MOE_USE_DEEP_GEMM",
     "VLLM_USE_DEEP_GEMM",
 )
+
+
+def _workload_gpu_count(physical_gpu_count: int | None) -> int | None:
+    visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible_devices is None:
+        return physical_gpu_count
+
+    normalized = visible_devices.strip().lower()
+    if normalized in {"", "-1", "none", "void"}:
+        return 0
+    if normalized == "all":
+        return physical_gpu_count
+    return len([device for device in visible_devices.split(",") if device.strip()])
 
 
 def _safe_package_version() -> str:
@@ -85,6 +99,7 @@ def collect_environment() -> dict[str, Any]:
         "platform": platform.platform(),
         "host": socket.gethostname(),
         "gpu_count": gpu_count,
+        "workload_gpu_count": _workload_gpu_count(gpu_count),
         "gpu_sku": gpu_sku,
         "cuda_driver": cuda_driver,
         "ray_version": ray_version,

@@ -405,6 +405,7 @@ def test_environment_records_relevant_runtime_flags_without_credentials(monkeypa
 
 
 def test_environment_records_gpu_sku_count_and_driver(monkeypatch):
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
     monkeypatch.setattr(
         harness_environment.subprocess,
         "run",
@@ -419,4 +420,24 @@ def test_environment_records_gpu_sku_count_and_driver(monkeypatch):
 
     assert payload["gpu_sku"] == "NVIDIA H100 NVL"
     assert payload["gpu_count"] == 2
+    assert payload["workload_gpu_count"] == 2
     assert payload["cuda_driver"] == "580.159.03"
+
+
+def test_environment_distinguishes_physical_and_workload_gpu_counts(monkeypatch):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "2,5")
+    monkeypatch.setattr(
+        harness_environment.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout="".join("NVIDIA H100 80GB HBM3, 580.159.03\n" for _ in range(8)),
+            stderr="",
+        ),
+    )
+
+    payload = collect_environment()
+
+    assert payload["gpu_count"] == 8
+    assert payload["workload_gpu_count"] == 2
+    assert payload["runtime_environment"]["CUDA_VISIBLE_DEVICES"] == "2,5"

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -367,7 +368,10 @@ def post_slack_command(
             "metric_keys": metric_keys or DEFAULT_SLACK_METRIC_KEYS,
             "post_artifact_paths": post_artifact_paths,
         }
-        baselines = load_baselines(baseline_file) if baseline_file is not None else None
+        reference_file = baseline_file
+        if reference_file is None and (configured_reference := os.environ.get("RETRIEVER_HARNESS_REFERENCE_FILE")):
+            reference_file = Path(configured_reference)
+        baselines = load_baselines(reference_file) if reference_file is not None else None
         payload = build_slack_payload(report, slack_config, baselines=baselines)
         if not preview:
             post_slack_payload(payload, resolve_slack_webhook_url())

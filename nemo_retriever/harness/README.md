@@ -272,9 +272,12 @@ writes local artifacts and never contacts Slack. `post-slack` reads an existing
 session or run artifact, builds a summary, and sends that summary without
 rerunning ingestion or queries.
 
-Each new run records both `gpu_sku` (from `nvidia-smi`) and `gpu_count` in
-`environment.json`; Slack reports show both values. This matters when results
-move between materially different products within one GPU family.
+Each new run records `gpu_sku` and `gpu_count` from the physical inventory
+reported by `nvidia-smi`. It separately records `workload_gpu_count`, the number
+of GPUs available to that process after an explicit `CUDA_VISIBLE_DEVICES`
+constraint. Slack labels these as physical inventory versus GPUs available to
+the workload, so a partition of a larger host is not mistaken for the whole
+machine.
 
 This separation lets you inspect a completed session before reporting it and
 reuse the same artifacts when report formatting changes.
@@ -292,10 +295,18 @@ uv run --project nemo_retriever retriever harness post-slack \
 The JSON file uses `schema_version: 1` and a non-empty `baselines` list. Each
 entry has `name`, `dataset`, numeric `metrics`, and optional `environment`,
 `comparability`, `notes`, and `source` objects. Baselines match report runs by
-dataset. Keep confidential references outside the repository: the harness reads
+dataset. When baseline `environment` includes `workload_gpu_count`, comparison
+tables are limited to current runs with the same workload GPU count. Keep
+confidential references outside the repository: the harness reads
 the file only while rendering the report and does not copy it into artifacts.
 The selected reference values and notes do appear in the resulting Slack
 payload, so post only to an approved destination.
+
+For a recurring nightly, set `RETRIEVER_HARNESS_REFERENCE_FILE` in the
+permissions-restricted nightly environment. `post-slack` automatically reads
+that file whenever `--baseline-file` is omitted, so each completed nightly
+report includes the current reference comparison without changing the
+runfiles or launcher command.
 
 ### Prerequisites
 
@@ -341,6 +352,11 @@ eight-domain suite also reports macro averages across the seven English
 datasets and across all datasets. Per-domain timing and other metadata remain
 available in the session artifacts. This format also applies when previewing or
 reposting completed artifacts; reporting never reruns ingestion or queries.
+
+When two successful artifacts for the same dataset have different
+`workload_gpu_count` values, passing both run directories to `post-slack` adds a
+separate automatic GPU-scaling table. It shows ingest time, pages/sec, and
+retrieval quality side by side for the smallest and largest workload GPU counts.
 
 ### Preview Report Formatting
 

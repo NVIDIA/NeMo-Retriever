@@ -15,6 +15,9 @@ _BLANK_ROW = [
     {"type": "rich_text", "elements": [{"type": "rich_text_section", "elements": [{"type": "text", "text": " "}]}]},
 ]
 METRIC_LABELS = {
+    "gpu_sku": "physical GPU SKU",
+    "gpu_count": "physical GPU count",
+    "workload_gpu_count": "GPUs available to workload",
     "files": "files",
     "pages_per_sec_ingest": "pages/s",
     "ingest_secs": "ingest_s",
@@ -488,6 +491,87 @@ def _format_percent_delta(current: Any, baseline: Any) -> str:
     return f"{((current_value - baseline_value) / abs(baseline_value)) * 100:+.1f}%"
 
 
+def _gpu_count(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        count = int(value)
+    except (TypeError, ValueError):
+        return None
+    return count if count >= 0 else None
+
+
+def _run_display_label(run: HarnessRunReport, repeated_datasets: set[str]) -> str:
+    if run.dataset not in repeated_datasets:
+        return run.dataset
+    workload_gpu_count = _gpu_count(run.run_metadata.get("workload_gpu_count"))
+    if workload_gpu_count is None:
+        return run.run_name
+    gpu_label = "GPU" if workload_gpu_count == 1 else "GPUs"
+    return f"{run.dataset} ({workload_gpu_count} workload {gpu_label})"
+
+
+def _gpu_scaling_blocks(report: HarnessSessionReport) -> list[dict[str, Any]]:
+    runs_by_dataset: dict[str, dict[int, list[HarnessRunReport]]] = {}
+    for run in report.results:
+        workload_gpu_count = _gpu_count(run.run_metadata.get("workload_gpu_count"))
+        if not run.success or workload_gpu_count is None:
+            continue
+        runs_by_dataset.setdefault(run.dataset, {}).setdefault(workload_gpu_count, []).append(run)
+
+    blocks: list[dict[str, Any]] = []
+    for dataset, runs_by_count in runs_by_dataset.items():
+        if len(runs_by_count) < 2 or any(len(runs) != 1 for runs in runs_by_count.values()):
+            continue
+        lower_count = min(runs_by_count)
+        upper_count = max(runs_by_count)
+        lower_run = runs_by_count[lower_count][0]
+        upper_run = runs_by_count[upper_count][0]
+        lower_label = f"{lower_count} GPU" if lower_count == 1 else f"{lower_count} GPUs"
+        upper_label = f"{upper_count} GPU" if upper_count == 1 else f"{upper_count} GPUs"
+        rows = [_four_column_row("METRIC", lower_label, upper_label, f"{upper_count} VS {lower_count}", bold=True)]
+        for key in ("gpu_sku", "gpu_count", "workload_gpu_count"):
+            lower_value = lower_run.run_metadata.get(key)
+            upper_value = upper_run.run_metadata.get(key)
+            if lower_value is None and upper_value is None:
+                continue
+            delta = _format_percent_delta(upper_value, lower_value) if key == "workload_gpu_count" else "N/A"
+            rows.append(
+                _four_column_row(
+                    _format_metric_label(key),
+                    _format_metric_value(key, lower_value),
+                    _format_metric_value(key, upper_value),
+                    delta,
+                )
+            )
+        for metric_name in ("ingest_secs", "pages_per_sec_ingest", "recall_5", "recall_10", "ndcg_10"):
+            lower_value = lower_run.metrics.get(metric_name)
+            upper_value = upper_run.metrics.get(metric_name)
+            if lower_value is None and upper_value is None:
+                continue
+            rows.append(
+                _four_column_row(
+                    _format_metric_label(metric_name),
+                    _format_metric_value(metric_name, lower_value),
+                    _format_metric_value(metric_name, upper_value),
+                    _format_percent_delta(upper_value, lower_value),
+                )
+            )
+        context = (
+            f"*Automatic GPU scaling — {dataset}*\n"
+            "Same benchmark and automatic runfile; comparing "
+            f"{lower_count} to {upper_count} GPUs available to the workload."
+        )
+        blocks.extend(
+            [
+                {"type": "divider"},
+                {"type": "section", "text": {"type": "mrkdwn", "text": context}},
+                {"type": "table", "rows": rows[:MAX_SLACK_TABLE_ROWS]},
+            ]
+        )
+    return blocks
+
+
 def _baseline_comparison_blocks(
     report: HarnessSessionReport,
     baselines: list[HarnessBaseline],
@@ -495,9 +579,16 @@ def _baseline_comparison_blocks(
     blocks: list[dict[str, Any]] = []
     for baseline in baselines:
         matching_runs = [run for run in report.results if run.dataset == baseline.dataset]
+        baseline_workload_gpu_count = _gpu_count(baseline.environment.get("workload_gpu_count"))
+        if baseline_workload_gpu_count is not None:
+            matching_runs = [
+                run
+                for run in matching_runs
+                if _gpu_count(run.run_metadata.get("workload_gpu_count")) == baseline_workload_gpu_count
+            ]
         for run in matching_runs:
-            rows = [_four_column_row("METRIC", "CURRENT", "BASELINE", "DELTA", bold=True)]
-            for key in ("gpu_sku", "gpu_count"):
+            rows = [_four_column_row("METRIC", "CURRENT", baseline.name.upper(), "DELTA", bold=True)]
+            for key in ("gpu_sku", "gpu_count", "workload_gpu_count"):
                 current_value = run.run_metadata.get(key)
                 baseline_value = baseline.environment.get(key)
                 if current_value is None and baseline_value is None:
@@ -522,8 +613,7 @@ def _baseline_comparison_blocks(
                 )
 
             context = [
-                f"*Baseline comparison — {run.dataset}*",
-                f"Reference: {baseline.name}",
+                f"*{baseline.name} comparison — {run.dataset}*",
                 f"Comparability: {baseline.comparability.replace('_', ' ')}",
             ]
             if baseline.notes:
@@ -549,6 +639,9 @@ def build_slack_payload(
     vidore_v3_runs = _vidore_v3_runs(report.results)
     vidore_v3_datasets = {run.dataset for run in vidore_v3_runs}
     detailed_runs = [run for run in report.results if run.dataset not in vidore_v3_datasets]
+    repeated_datasets = {
+        run.dataset for run in detailed_runs if sum(item.dataset == run.dataset for item in detailed_runs) > 1
+    }
     passed_count = sum(1 for run in report.results if run.success)
     total_count = len(report.results)
     if report.dry_run:
@@ -557,13 +650,11 @@ def build_slack_payload(
         overall_status = f"PASS ({passed_count}/{total_count})"
     else:
         overall_status = f"FAIL ({passed_count}/{total_count} passed)"
-    first_metadata = next((run.run_metadata for run in report.results if run.run_metadata), {})
-
     rows: list[list[dict[str, Any]]] = []
     rows.append(_two_column_row_bold("OVERALL STATUS", overall_status))
     for run in detailed_runs:
         run_status = "DRY RUN" if report.dry_run else "PASS" if run.success else "FAIL"
-        rows.append(_two_column_row_bold(f"-    {run.dataset}", run_status))
+        rows.append(_two_column_row_bold(f"-    {_run_display_label(run, repeated_datasets)}", run_status))
     if vidore_v3_runs:
         rows.append(
             _two_column_row_bold(
@@ -579,16 +670,28 @@ def build_slack_payload(
         rows.append(_two_column_row("-    session_dir", str(report.session_dir)))
     if report.latest_commit:
         rows.append(_two_column_row("-    git_commit", report.latest_commit))
-    for key in ["host", "gpu_sku", "gpu_count", "cuda_driver", "ray_version", "python_version"]:
-        if key not in first_metadata or first_metadata[key] is None:
+    for key in [
+        "host",
+        "gpu_sku",
+        "gpu_count",
+        "workload_gpu_count",
+        "cuda_driver",
+        "ray_version",
+        "python_version",
+    ]:
+        metadata_values = list(
+            dict.fromkeys(run.run_metadata.get(key) for run in report.results if run.run_metadata.get(key) is not None)
+        )
+        if not metadata_values:
             continue
-        rows.append(_two_column_row(f"-    {key}", _format_metric_value(key, first_metadata[key])))
+        formatted_value = ", ".join(_format_metric_value(key, value) for value in metadata_values)
+        rows.append(_two_column_row(f"-    {_format_metric_label(key)}", formatted_value))
 
     rows.append(_BLANK_ROW)
     rows.append(_two_column_row_bold("RESULTS", " "))
     for run in detailed_runs:
         run_status = "DRY RUN" if report.dry_run else "PASS" if run.success else "FAIL"
-        rows.append(_two_column_row_bold(run.dataset, run_status))
+        rows.append(_two_column_row_bold(_run_display_label(run, repeated_datasets), run_status))
         if not run.success and run.return_code is not None:
             rows.append(_two_column_row("-    return_code", str(run.return_code)))
         for metric_name in _select_metric_names(run.metrics, metric_keys):
@@ -668,6 +771,7 @@ def build_slack_payload(
                 {"type": "table", "rows": _vidore_v3_accuracy_rows(vidore_v3_runs)},
             ]
         )
+    blocks.extend(_gpu_scaling_blocks(report))
     blocks.extend(_baseline_comparison_blocks(report, baselines or []))
 
     return {
