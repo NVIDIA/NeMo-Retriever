@@ -390,7 +390,8 @@ class WorkBroker:
             pass
 
     def claim_payload(self, record: WorkRecord, *, base_url: str) -> dict[str, Any]:
-        assert record.lease is not None
+        if record.lease is None:
+            raise StaleLease(f"Lease for work {record.work_id!r} has been superseded")
         lease = record.lease
         return {
             "work_id": record.work_id,

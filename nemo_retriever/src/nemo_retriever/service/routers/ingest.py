@@ -1846,7 +1846,13 @@ async def job_callback(request: Request) -> JSONResponse:
         sub_count,
     )
     if broker is not None and lease_record is not None:
-        await broker.acknowledge(item_id, body["lease_id"], int(body["lease_generation"]))
+        try:
+            await broker.acknowledge(item_id, body["lease_id"], int(body["lease_generation"]))
+        except StaleLease:
+            logger.warning(
+                "Work lease for %s was already superseded at acknowledge; tracker already updated",
+                item_id,
+            )
     return JSONResponse(content={"ok": True})
 
 

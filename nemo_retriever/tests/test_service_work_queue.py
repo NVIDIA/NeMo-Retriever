@@ -84,6 +84,18 @@ async def test_fifo_spool_integrity_and_ack_cleanup(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_claim_payload_rejects_unleased_record(tmp_path):
+    broker = WorkBroker(_config(tmp_path), PipelinePoolConfig(batch_queue_size=1))
+    await broker.start()
+    try:
+        record = await _enqueue(broker, "unleased")
+        with pytest.raises(StaleLease):
+            broker.claim_payload(record, base_url="http://gateway")
+    finally:
+        await broker.shutdown()
+
+
+@pytest.mark.anyio
 async def test_item_and_shared_byte_limits_leave_no_partial_spool(tmp_path):
     broker = WorkBroker(
         _config(tmp_path, spool_limit_bytes=5),
@@ -284,6 +296,58 @@ def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypat
             },
         )
         assert stale.status_code == 409
+
+
+def test_gateway_callback_treats_stale_acknowledge_as_idempotent(tmp_path, monkeypatch):
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    monkeypatch.setenv("NEMO_RETRIEVER_RESULTS_DIR", str(results_dir))
+    config = ServiceConfig(
+        mode="gateway",
+        logging=LoggingConfig(file=str(tmp_path / "service.log")),
+        mcp=MCPConfig(enabled=False),
+        pipeline=PipelinePoolConfig(realtime_queue_size=2, batch_queue_size=2),
+        work_queue=_config(tmp_path / "spool", gateway_url="http://testserver"),
+    )
+
+    with TestClient(create_app(config)) as client:
+        created = client.post("/v1/ingest/job", json={"expected_documents": 1})
+        assert created.status_code == 201
+        job_id = created.json()["job_id"]
+        accepted = client.post(
+            f"/v1/ingest/job/{job_id}/whole",
+            files={"file": ("document.txt", b"hello gateway", "text/plain")},
+            data={"metadata": "{}"},
+        )
+        assert accepted.status_code == 202
+        document_id = accepted.json()["document_id"]
+        claim = client.post(
+            "/v1/internal/work/claim",
+            json={"pool": "batch", "worker_uid": "pod-uid"},
+        ).json()
+
+        broker = get_work_broker()
+        assert broker is not None
+
+        async def stale_acknowledge(*_args, **_kwargs):
+            raise StaleLease("lease expired during callback")
+
+        monkeypatch.setattr(broker, "acknowledge", stale_acknowledge)
+        callback = client.post(
+            "/v1/internal/job-callback",
+            json={
+                "id": document_id,
+                "status": "completed",
+                "result_rows": 0,
+                "lease_id": claim["lease_id"],
+                "lease_generation": claim["lease_generation"],
+            },
+        )
+
+        assert callback.status_code == 200
+        completed = client.get(f"/v1/ingest/job/{job_id}/document/{document_id}")
+        assert completed.status_code == 200
+        assert completed.json()["status"] == "completed"
 
 
 def test_internal_work_endpoints_require_configured_service_auth(tmp_path):
