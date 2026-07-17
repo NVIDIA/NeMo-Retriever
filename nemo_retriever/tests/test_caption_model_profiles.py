@@ -32,6 +32,7 @@ def test_canonical_caption_defaults_are_omni():
     assert DEFAULT_LOCAL_CAPTION_MODEL_ID == OMNI_BF16
     assert DEFAULT_REMOTE_CAPTION_MODEL_ID == OMNI_REMOTE
     assert CaptionParams().model_name == OMNI_BF16
+    assert "approximately 62 GiB" in CaptionParams.model_json_schema()["properties"]["model_name"]["description"]
 
 
 _LOCAL_CAPTIONER_NEMO_IMPORT_MODULES = (

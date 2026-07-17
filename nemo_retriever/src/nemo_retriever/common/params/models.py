@@ -966,7 +966,13 @@ class TextGenerationParams(_ParamsModel):
 
 class CaptionParams(LLMInferenceParams):
     endpoint_url: Optional[str] = None
-    model_name: str = DEFAULT_LOCAL_CAPTION_MODEL_ID
+    model_name: str = Field(
+        default=DEFAULT_LOCAL_CAPTION_MODEL_ID,
+        description=(
+            "Caption model identifier. The default local BF16 checkpoint has approximately 62 GiB of weights; "
+            "set this explicitly to select a smaller local model or an API model for a remote endpoint."
+        ),
+    )
     api_key: Optional[str] = None
     prompt: str = "Caption the content of this image:"
     system_prompt: Optional[str] = "/no_think"
