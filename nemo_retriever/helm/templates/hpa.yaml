@@ -96,7 +96,7 @@ spec:
 {{- if hasKey $legacyQueue "enabled" }}{{- $queueEnabled = $legacyQueue.enabled }}{{- end }}
 {{- if hasKey $legacyQueue "target" }}
 {{- $legacyTarget := printf "%v" $legacyQueue.target }}
-{{- if regexMatch "^0?\\." $legacyTarget }}
+{{- if or (regexMatch "^0?\\." $legacyTarget) (regexMatch "^[0-9]+m$" $legacyTarget) }}
 {{- $legacyFractional = true }}
 {{- $queueTarget = ($queueMetric.target | default "1") }}
 {{- else }}

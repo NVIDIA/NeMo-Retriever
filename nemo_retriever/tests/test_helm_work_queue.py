@@ -120,14 +120,15 @@ def test_persistence_disabled_preserves_ephemeral_scheduler_spool() -> None:
     assert all("persistence_enabled" not in config for config in configs)
 
 
-def test_legacy_queue_keys_override_defaults_and_annotate_fractional_substitution() -> None:
+@pytest.mark.parametrize("legacy_target", ["0.5", "500m"])
+def test_legacy_queue_keys_override_defaults_and_annotate_fractional_substitution(legacy_target: str) -> None:
     documents = _render(
         "--set",
         "topology.mode=split",
         "--set",
         "topology.realtime.hpa.metrics.queueDepthRatio.enabled=true",
         "--set",
-        "topology.realtime.hpa.metrics.queueDepthRatio.target=0.5",
+        f"topology.realtime.hpa.metrics.queueDepthRatio.target={legacy_target}",
         "--set",
         "autoscaling.queueDepth.prometheusAdapter.queueDepthRatioMetric=legacy_demand",
     )
