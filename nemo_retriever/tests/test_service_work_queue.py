@@ -28,7 +28,7 @@ from nemo_retriever.service.services.job_tracker import (
     shutdown_job_tracker,
 )
 from nemo_retriever.service.services.pipeline_pool import PoolType, WorkItem, _Pool
-from nemo_retriever.service.services.prometheus import WORK_QUEUE_CLAIMS
+from nemo_retriever.service.services.prometheus import POOL_ACTIVE_SLOTS, WORK_QUEUE_CLAIMS
 from nemo_retriever.service.services.work_queue import (
     GatewayWorkClient,
     StaleLease,
@@ -205,7 +205,12 @@ class _BlockingPullClient:
     async def claim(self):
         self.claim_count += 1
         if self.claim_count <= 2:
-            return WorkItem(id=f"work-{self.claim_count}", payload=b"x")
+            return WorkItem(
+                id=f"work-{self.claim_count}",
+                payload=b"x",
+                lease_id=f"lease-{self.claim_count}",
+                lease_generation=1,
+            )
         await self._blocked.wait()
 
     async def close(self):
@@ -230,6 +235,18 @@ async def test_gateway_work_client_heartbeat_reports_network_failure(tmp_path, c
 
 
 @pytest.mark.anyio
+async def test_gateway_work_client_release_reports_network_failure(tmp_path, caplog):
+    client = GatewayWorkClient(_config(tmp_path), pool=PoolType.BATCH, headers={})
+    client._client = _FailingHeartbeatClient()
+    claim = {"work_id": "work", "lease_id": "lease", "lease_generation": 1}
+
+    with caplog.at_level(logging.WARNING, logger="nemo_retriever.service.services.work_queue"):
+        await client.release(claim, reason="payload_fetch")
+
+    assert "Release request failed for work work" in caplog.text
+
+
+@pytest.mark.anyio
 async def test_execution_slots_make_at_most_one_claim_each():
     client = _BlockingPullClient()
     processing = asyncio.Event()
@@ -248,8 +265,10 @@ async def test_execution_slots_make_at_most_one_claim_each():
         await asyncio.wait_for(processing.wait(), timeout=1)
         assert client.claim_count == 2
         assert pool.queue_depth == 0
+        assert POOL_ACTIVE_SLOTS.labels(pool="batch")._value.get() == 2
     finally:
         await pool.shutdown()
+    assert POOL_ACTIVE_SLOTS.labels(pool="batch")._value.get() == 0
 
 
 def test_gateway_upload_claim_payload_and_callback_lifecycle(tmp_path, monkeypatch):

@@ -698,6 +698,7 @@ class _Pool:
         POOL_QUEUE_DEPTH.labels(pool=self._name).set(0)
         POOL_QUEUE_DEPTH_RATIO.labels(pool=self._name).set(0.0)
         POOL_DEFERRED_CALLBACKS.labels(pool=self._name).set(0)
+        POOL_ACTIVE_SLOTS.labels(pool=self._name).set(0)
         logger.info("Pool '%s' shut down (processed=%d)", self._name, self._processed)
 
     def stats(self) -> dict[str, Any]:

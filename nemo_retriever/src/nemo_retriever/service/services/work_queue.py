@@ -510,15 +510,20 @@ class GatewayWorkClient:
         return True
 
     async def release(self, claim: Mapping[str, Any], *, reason: str = "release") -> None:
+        import httpx
+
         client = await self._http()
-        await client.post(
-            f"/v1/internal/work/{quote(str(claim['work_id']), safe='')}/release",
-            json={
-                "lease_id": claim["lease_id"],
-                "lease_generation": claim["lease_generation"],
-                "reason": reason,
-            },
-        )
+        try:
+            await client.post(
+                f"/v1/internal/work/{quote(str(claim['work_id']), safe='')}/release",
+                json={
+                    "lease_id": claim["lease_id"],
+                    "lease_generation": claim["lease_generation"],
+                    "reason": reason,
+                },
+            )
+        except httpx.HTTPError:
+            logger.warning("Release request failed for work %s", claim["work_id"], exc_info=True)
 
 
 _instance: WorkBroker | None = None
