@@ -414,6 +414,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         reasoning_effort: Optional[str] = None,
         backend_top_k: Optional[int] = None,
         temperature: float = 0.0,
+        chat_completion_fn: Optional[Callable[..., Dict[str, Any]]] = None,
     ) -> None:
         super().__init__()
         self._invoke_url = invoke_url or self._NVIDIA_BUILD_ENDPOINT
@@ -432,6 +433,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         self._reasoning_effort = reasoning_effort
         self._backend_top_k = backend_top_k
         self._temperature = temperature
+        self._chat_completion_fn = chat_completion_fn
 
     def _build_extra_body(self) -> Optional[Dict[str, Any]]:
         """Assemble per-call extra payload fields (parallel_tool_calls, reasoning_effort)."""
@@ -574,7 +576,8 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
         for _step in range(self._max_steps):
             logger.info("ReActAgentOperator: query=%s step=%d begin seen_docs=%d", query_id, _step, len(seen_doc_ids))
             try:
-                response = invoke_chat_completion_step(
+                chat_completion_fn = self._chat_completion_fn or invoke_chat_completion_step
+                response = chat_completion_fn(
                     invoke_url=self._invoke_url,
                     messages=messages,
                     model=self._llm_model,
@@ -740,7 +743,7 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
                         _step,
                         _preview_text(fn_args.get("message")),
                     )
-                    validation_error = self._validate_final_results_args(fn_args)
+                    validation_error = self._validate_final_results_args(fn_args, valid_doc_ids=seen_doc_ids)
                     if validation_error is None:
                         final_doc_ids = list(raw_ids)
                         tool_messages.append(
@@ -845,7 +848,12 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
 
         return results
 
-    def _validate_final_results_args(self, fn_args: Dict[str, Any]) -> Optional[str]:
+    def _validate_final_results_args(
+        self,
+        fn_args: Dict[str, Any],
+        *,
+        valid_doc_ids: Optional[set[str]] = None,
+    ) -> Optional[str]:
         """Validate final_results tool args outside the prompt/schema."""
         message = fn_args.get("message")
         if not isinstance(message, str):
@@ -868,6 +876,12 @@ class ReActAgentOperator(AbstractOperator, CPUOperator):
             return (
                 f"`search_successful` must be one of `true`, `false`, or `partial`. Got `{search_successful}` instead."
             )
+
+        if valid_doc_ids is not None:
+            invalid_doc_ids = [doc_id for doc_id in doc_ids if doc_id not in valid_doc_ids]
+            if invalid_doc_ids:
+                preview = invalid_doc_ids[:_LOG_DOC_ID_LIMIT]
+                return f"`doc_ids` contains IDs that were not retrieved: {preview}."
 
         if self._enforce_top_k and len(doc_ids) != self._target_top_k:
             return (

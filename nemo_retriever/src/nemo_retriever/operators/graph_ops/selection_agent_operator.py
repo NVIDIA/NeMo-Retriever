@@ -11,7 +11,7 @@ import logging
 import os
 
 import requests
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -201,6 +201,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         base_url: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
         temperature: float = 0.0,
+        chat_completion_fn: Optional[Callable[..., Dict[str, Any]]] = None,
     ) -> None:
         super().__init__()
         self._reasoning_effort = reasoning_effort
@@ -214,6 +215,7 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
         self._system_prompt_override = system_prompt_override
         self._text_truncation = text_truncation
         self._parallel_tool_calls = parallel_tool_calls
+        self._chat_completion_fn = chat_completion_fn
 
         if invoke_url is not None:
             self._invoke_url = invoke_url
@@ -494,7 +496,8 @@ class SelectionAgentOperator(AbstractOperator, CPUOperator):
                 feasible_k,
             )
             try:
-                response = invoke_chat_completion_step(
+                chat_completion_fn = self._chat_completion_fn or invoke_chat_completion_step
+                response = chat_completion_fn(
                     invoke_url=self._invoke_url,
                     messages=messages,
                     model=self._llm_model,

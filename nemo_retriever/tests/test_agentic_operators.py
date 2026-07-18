@@ -219,6 +219,31 @@ class TestSelectionAgentOperator:
         assert mock_step.call_count == 2
 
     @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
+    def test_injected_chat_completion_fn_replaces_http_call(self, mock_step):
+        from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
+
+        local_chat = MagicMock(
+            return_value=_make_tool_call_response(
+                "log_selected_documents",
+                {"doc_ids": ["d1"], "message": "d1 is best"},
+            )
+        )
+
+        op = SelectionAgentOperator(
+            llm_model="test-model",
+            invoke_url="http://localhost/v1/chat/completions",
+            top_k=1,
+            max_tokens=234,
+            chat_completion_fn=local_chat,
+        )
+        result = op.run(self._make_input())
+
+        mock_step.assert_not_called()
+        assert local_chat.call_count == 1
+        assert local_chat.call_args.kwargs["max_tokens"] == 234
+        assert result["doc_id"].tolist() == ["d1"]
+
+    @patch("nemo_retriever.operators.graph_ops.selection_agent_operator.invoke_chat_completion_step")
     def test_extended_relevance_in_prompt(self, mock_step):
         from nemo_retriever.operators.graph_ops.selection_agent_operator import SelectionAgentOperator
 
@@ -370,6 +395,35 @@ class TestReActAgentOperator:
         assert "d1" in result["doc_id"].values
 
     @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
+    def test_injected_chat_completion_fn_replaces_http_call(self, mock_step):
+        from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
+
+        local_chat = MagicMock(
+            return_value=_make_tool_call_response(
+                "final_results",
+                {"doc_ids": ["d1"], "message": "ok", "search_successful": "true"},
+            )
+        )
+        retriever = MagicMock(return_value=[{"doc_id": "d1", "text": "monetary policy"}])
+
+        op = ReActAgentOperator(
+            invoke_url="http://localhost/v1/chat/completions",
+            llm_model="test-model",
+            retriever_fn=retriever,
+            user_msg_type="with_results",
+            target_top_k=1,
+            max_tokens=123,
+            chat_completion_fn=local_chat,
+        )
+
+        result = op.run(self._make_input())
+
+        mock_step.assert_not_called()
+        assert local_chat.call_count == 1
+        assert local_chat.call_args.kwargs["max_tokens"] == 123
+        assert result[result["doc_id"] == "d1"]["is_final_result"].astype(bool).any()
+
+    @patch("nemo_retriever.operators.graph_ops.react_agent_operator.invoke_chat_completion_step")
     def test_with_results_mode_initial_retrieval(self, mock_step):
         from nemo_retriever.operators.graph_ops.react_agent_operator import ReActAgentOperator
 
@@ -431,6 +485,7 @@ class TestReActAgentOperator:
             ({"doc_ids": [""], "message": "empty-string id", "search_successful": "true"}, 1, False),
             ({"doc_ids": ["  "], "message": "whitespace id", "search_successful": "true"}, 1, False),
             ({"doc_ids": ["d1"], "message": "wrong count", "search_successful": "true"}, 2, True),
+            ({"doc_ids": ["missing"], "message": "hallucinated id", "search_successful": "true"}, 1, False),
             ({"doc_ids": ["d1"], "message": "bad status", "search_successful": "yes"}, 1, False),
         ],
     )

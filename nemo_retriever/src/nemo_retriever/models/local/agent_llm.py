@@ -1,0 +1,593 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.
+# All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import random
+import string
+import threading
+from copy import deepcopy
+from dataclasses import dataclass, field
+from typing import Any, Mapping, Optional, Sequence
+
+from nemo_retriever.models.hf_cache import configure_global_hf_cache_base
+from nemo_retriever.models.hf_model_registry import get_hf_revision
+from nemo_retriever.models.model import BaseModel, ModelRunMode
+
+logger = logging.getLogger(__name__)
+
+_DEFAULT_MAX_TOKENS = 512
+_LOCAL_AGENT_LLM_CACHE: dict[tuple[Any, ...], "VLLMAgentChatLLM"] = {}
+_LOCAL_AGENT_LLM_CACHE_LOCK = threading.Lock()
+
+
+@dataclass(frozen=True)
+class AgentLLMProfile:
+    """Metadata for local agent LLMs with known offline tool-call behavior."""
+
+    model_id: str
+    aliases: tuple[str, ...] = ()
+    engine_kwargs: Mapping[str, Any] = field(default_factory=dict)
+    request_extras: Mapping[str, Any] = field(default_factory=dict)
+    tool_call_parser: str = "json"
+    tool_prompt_format: str = "none"
+    pass_tools_to_chat_template: bool = True
+
+    def engine_kwargs_for_local(self) -> dict[str, Any]:
+        return _mutable_copy(self.engine_kwargs)
+
+    def request_extras_for_local(self) -> dict[str, Any]:
+        return _mutable_copy(self.request_extras)
+
+
+def _mutable_copy(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _mutable_copy(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_mutable_copy(item) for item in value]
+    return deepcopy(value)
+
+
+def _normalize_name(name: str) -> str:
+    return name.strip().casefold()
+
+
+_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS = {"chat_template_kwargs": {"tools_in_user_message": True}}
+
+_AGENT_LLM_PROFILES: tuple[AgentLLMProfile, ...] = (
+    AgentLLMProfile(
+        model_id="nvidia/Llama-3.1-Nemotron-Nano-8B-v1",
+        aliases=(
+            "llama-3.1-nemotron-nano-8b-v1",
+            "nemotron-nano-8b",
+            "nemotron-8b",
+            "nvidia/llama-3.1-nemotron-nano-8b-v1",
+        ),
+        request_extras=_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS,
+        tool_prompt_format="json",
+    ),
+    AgentLLMProfile(
+        model_id="nvidia/Llama-3_3-Nemotron-Super-49B-v1",
+        aliases=(
+            "llama-3.3-nemotron-super-49b-v1",
+            "nemotron-super-49b",
+            "super-49b",
+            "nvidia/llama-3.3-nemotron-super-49b-v1",
+            "nvidia/llama-3_3-nemotron-super-49b-v1",
+        ),
+        request_extras=_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS,
+        tool_prompt_format="json",
+    ),
+)
+
+_PROFILE_LOOKUP: dict[str, AgentLLMProfile] = {}
+for _profile in _AGENT_LLM_PROFILES:
+    _PROFILE_LOOKUP[_normalize_name(_profile.model_id)] = _profile
+    for _alias in _profile.aliases:
+        _PROFILE_LOOKUP[_normalize_name(_alias)] = _profile
+
+
+def _supported_agent_llm_names() -> str:
+    names: list[str] = []
+    for profile in _AGENT_LLM_PROFILES:
+        names.append(profile.model_id)
+        names.extend(profile.aliases)
+    return ", ".join(sorted(names))
+
+
+def get_agent_llm_profile(name: str) -> AgentLLMProfile | None:
+    """Return a supported local agent LLM profile, or ``None`` when unsupported."""
+
+    return _PROFILE_LOOKUP.get(_normalize_name(name))
+
+
+def resolve_agent_llm_model_name(name: str) -> str:
+    """Resolve a local agent LLM alias to its Hugging Face model ID."""
+
+    profile = get_agent_llm_profile(name)
+    return profile.model_id if profile is not None else name
+
+
+class VLLMAgentChatLLM(BaseModel):
+    """In-process vLLM chat-completions adapter for agentic retrieval.
+
+    The public call signature mirrors ``invoke_chat_completion_step`` and returns
+    an OpenAI-compatible response dict. This lets the existing ReAct and
+    selection agents consume local GPU inference without changing their loop
+    semantics.
+    """
+
+    def __init__(
+        self,
+        model_path: str,
+        *,
+        device: Optional[str] = None,
+        hf_cache_dir: Optional[str] = None,
+        gpu_memory_utilization: float = 0.8,
+        tensor_parallel_size: int = 1,
+        max_model_len: Optional[int] = None,
+        max_num_seqs: Optional[int] = None,
+        max_tokens: int = _DEFAULT_MAX_TOKENS,
+        tool_call_parser: Optional[str] = None,
+    ) -> None:
+        super().__init__()
+
+        profile = get_agent_llm_profile(model_path)
+        if profile is None:
+            raise ValueError(
+                f"Unsupported local agent LLM model {model_path!r}. "
+                f"Supported models and aliases: {_supported_agent_llm_names()}."
+            )
+
+        model_path = profile.model_id
+        cuda_visible_devices = _cuda_visible_devices_from_device(device)
+        if cuda_visible_devices is not None:
+            os.environ["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
+
+        try:
+            from vllm import LLM, SamplingParams  # noqa: F401
+        except ImportError as e:
+            raise ImportError(
+                'Local agentic LLM inference requires vLLM. Install with: pip install "nemo-retriever[local]"'
+            ) from e
+
+        _raise_if_cuda_unavailable()
+        self._model_path = model_path
+        self._max_tokens = int(max_tokens)
+        self._tool_call_parser = (tool_call_parser or profile.tool_call_parser or "json").strip().lower()
+        self._request_extras = profile.request_extras_for_local()
+        self._tool_prompt_format = profile.tool_prompt_format
+        self._pass_tools_to_chat_template = profile.pass_tools_to_chat_template
+        self._lock = threading.Lock()
+
+        configure_global_hf_cache_base(hf_cache_dir)
+        revision = get_hf_revision(model_path, strict=False)
+
+        engine_kwargs = profile.engine_kwargs_for_local()
+        if max_model_len is not None:
+            engine_kwargs["max_model_len"] = int(max_model_len)
+        if max_num_seqs is not None:
+            engine_kwargs["max_num_seqs"] = int(max_num_seqs)
+
+        self._sampling_params_cls = SamplingParams
+        self._llm: Any | None = LLM(
+            model=model_path,
+            revision=revision,
+            trust_remote_code=True,
+            tensor_parallel_size=int(tensor_parallel_size),
+            gpu_memory_utilization=float(gpu_memory_utilization),
+            **engine_kwargs,
+        )
+
+    def __call__(
+        self,
+        *,
+        invoke_url: Optional[str] = None,
+        messages: list[dict[str, Any]],
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        tools: Optional[list[dict[str, Any]]] = None,
+        tool_choice: str | dict[str, Any] = "auto",
+        timeout_s: float = 120.0,
+        temperature: float = 0.0,
+        max_tokens: Optional[int] = None,
+        extra_body: Optional[dict[str, Any]] = None,
+        max_retries: int = 10,
+        max_429_retries: int = 5,
+    ) -> dict[str, Any]:
+        _ = (invoke_url, api_key, timeout_s, max_retries, max_429_retries)
+        if model and model != self._model_path:
+            logger.debug("Ignoring per-call model=%r for local agent LLM already loaded as %r", model, self._model_path)
+
+        sampling_params = self._sampling_params_cls(
+            temperature=float(temperature),
+            max_tokens=int(max_tokens) if max_tokens is not None else self._max_tokens,
+        )
+        chat_kwargs = self._build_chat_kwargs(extra_body)
+        active_tools = tools if tools and tool_choice != "none" else None
+        if active_tools and self._pass_tools_to_chat_template:
+            chat_kwargs["tools"] = active_tools
+
+        local_messages = self._normalize_messages(messages, tools=active_tools)
+        with self._lock:
+            self._require_loaded()
+            outputs = self._llm.chat(local_messages, sampling_params=sampling_params, **chat_kwargs)
+
+        request_output = outputs[0]
+        completion = request_output.outputs[0]
+        text = str(getattr(completion, "text", "") or "").strip()
+        tool_calls = _tool_calls_from_completion(completion) or parse_tool_calls_from_text(
+            text,
+            parser=self._tool_call_parser,
+        )
+        finish_reason = "tool_calls" if tool_calls else str(getattr(completion, "finish_reason", None) or "stop")
+
+        message: dict[str, Any] = {"role": "assistant"}
+        if tool_calls:
+            message["content"] = None
+            message["tool_calls"] = tool_calls
+        else:
+            message["content"] = text
+
+        return {
+            "id": _new_response_id(),
+            "object": "chat.completion",
+            "model": self._model_path,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": message,
+                    "finish_reason": finish_reason,
+                }
+            ],
+            "usage": _usage_from_outputs(request_output, completion),
+        }
+
+    def _build_chat_kwargs(self, extra_body: Optional[dict[str, Any]]) -> dict[str, Any]:
+        chat_kwargs = _mutable_copy(self._request_extras)
+        for key, value in (extra_body or {}).items():
+            if key in {"parallel_tool_calls", "reasoning_effort"}:
+                continue
+            chat_kwargs[key] = value
+        chat_kwargs.setdefault("use_tqdm", False)
+        return chat_kwargs
+
+    def _normalize_messages(
+        self,
+        messages: Sequence[dict[str, Any]],
+        *,
+        tools: Optional[Sequence[dict[str, Any]]] = None,
+    ) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        tool_prompt = _json_tool_prompt(tools) if tools and self._tool_prompt_format == "json" else None
+        for idx, message in enumerate(messages):
+            msg = dict(message)
+            content = msg.get("content")
+            if isinstance(content, list):
+                msg["content"] = _flatten_text_content(content)
+            if tool_prompt and idx == 0 and msg.get("role") == "system":
+                msg["content"] = f"{tool_prompt}\n\n{msg.get('content') or ''}"
+                tool_prompt = None
+            normalized.append(msg)
+        if tool_prompt:
+            normalized.insert(0, {"role": "system", "content": tool_prompt})
+        return _collapse_consecutive_tool_messages(normalized)
+
+    def unload(self) -> None:
+        """Release GPU memory held by the local vLLM engine."""
+
+        with self._lock:
+            if self._llm is None:
+                return
+            del self._llm
+            self._llm = None
+
+        try:
+            import torch
+        except ImportError:
+            return
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    def _require_loaded(self) -> None:
+        if self._llm is None:
+            raise RuntimeError(
+                "VLLMAgentChatLLM has been unloaded; create a new local agent LLM before generating responses."
+            )
+
+    @property
+    def model_name(self) -> str:
+        return self._model_path
+
+    @property
+    def model_type(self) -> str:
+        return "agent-chat-llm"
+
+    @property
+    def model_runmode(self) -> ModelRunMode:
+        return "local"
+
+    @property
+    def input(self) -> Any:
+        return {"type": "chat_messages", "format": "openai_chat_completions"}
+
+    @property
+    def output(self) -> Any:
+        return {"type": "chat_completion", "format": "openai_compatible"}
+
+    @property
+    def input_batch_size(self) -> int:
+        return 1
+
+
+def _cuda_visible_devices_from_device(device: Optional[str]) -> str | None:
+    if device is None:
+        return None
+    normalized = str(device).strip()
+    if not normalized:
+        return None
+    if normalized.casefold() == "cpu":
+        raise ValueError(
+            "The local agent LLM vLLM backend requires CUDA. Pass GPU ids such as '0' or '0,1', "
+            "or use llm_backend='openai_compatible' for a remote endpoint."
+        )
+    return normalized.split(":", 1)[1] if normalized.startswith("cuda:") else normalized
+
+
+def _raise_if_cuda_unavailable() -> None:
+    try:
+        import torch
+    except ImportError:
+        return
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "The local agent LLM vLLM backend requires CUDA, but torch reports no available CUDA device. "
+            "Run on a GPU host or use llm_backend='openai_compatible' for a remote endpoint."
+        )
+
+
+def create_cached_vllm_agent_chat_llm(
+    model_name: str,
+    *,
+    device: Optional[str] = None,
+    hf_cache_dir: Optional[str] = None,
+    gpu_memory_utilization: float = 0.8,
+    tensor_parallel_size: int = 1,
+    max_model_len: Optional[int] = None,
+    max_num_seqs: Optional[int] = None,
+    tool_call_parser: Optional[str] = None,
+) -> VLLMAgentChatLLM:
+    """Create or reuse a local agent LLM keyed by heavyweight load settings."""
+
+    key = (
+        resolve_agent_llm_model_name(model_name),
+        device,
+        hf_cache_dir,
+        float(gpu_memory_utilization),
+        int(tensor_parallel_size),
+        int(max_model_len) if max_model_len is not None else None,
+        int(max_num_seqs) if max_num_seqs is not None else None,
+        (tool_call_parser or "").strip().lower() or None,
+    )
+    with _LOCAL_AGENT_LLM_CACHE_LOCK:
+        cached = _LOCAL_AGENT_LLM_CACHE.get(key)
+        if cached is None or cached._llm is None:
+            cached = VLLMAgentChatLLM(
+                model_path=model_name,
+                device=device,
+                hf_cache_dir=hf_cache_dir,
+                gpu_memory_utilization=gpu_memory_utilization,
+                tensor_parallel_size=tensor_parallel_size,
+                max_model_len=max_model_len,
+                max_num_seqs=max_num_seqs,
+                tool_call_parser=tool_call_parser,
+            )
+            _LOCAL_AGENT_LLM_CACHE[key] = cached
+        return cached
+
+
+def unload_cached_vllm_agent_chat_llms() -> None:
+    """Unload and forget all cached local agent vLLM engines."""
+
+    with _LOCAL_AGENT_LLM_CACHE_LOCK:
+        cached_models = list(_LOCAL_AGENT_LLM_CACHE.values())
+        _LOCAL_AGENT_LLM_CACHE.clear()
+
+    for model in cached_models:
+        model.unload()
+
+
+def parse_tool_calls_from_text(text: str, *, parser: str = "json") -> list[dict[str, Any]]:
+    """Parse common offline tool-call JSON into OpenAI ``tool_calls`` shape."""
+
+    if parser not in {"auto", "json"}:
+        raise ValueError(f"Unsupported local tool-call parser {parser!r}; supported parsers: auto, json")
+    payload = _load_json_payload(text)
+    if payload is None:
+        return []
+    return _coerce_tool_calls(payload)
+
+
+def _load_json_payload(text: str) -> Any | None:
+    cleaned = _strip_code_fence(str(text or "").strip())
+    if not cleaned:
+        return None
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    decoder = json.JSONDecoder()
+    starts = [idx for idx, ch in enumerate(cleaned) if ch in "[{"]
+    for start in starts:
+        try:
+            value, _end = decoder.raw_decode(cleaned[start:])
+        except json.JSONDecodeError:
+            continue
+        return value
+    return None
+
+
+def _strip_code_fence(text: str) -> str:
+    if not text.startswith("```"):
+        return text
+    lines = text.splitlines()
+    if len(lines) >= 2 and lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1]).strip()
+    return text
+
+
+def _coerce_tool_calls(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, Mapping) and "tool_calls" in payload:
+        return _coerce_tool_calls(payload.get("tool_calls"))
+    if isinstance(payload, Mapping):
+        call = _coerce_single_tool_call(payload)
+        return [call] if call is not None else []
+    if isinstance(payload, list):
+        calls: list[dict[str, Any]] = []
+        for item in payload:
+            call = _coerce_single_tool_call(item)
+            if call is not None:
+                calls.append(call)
+        return calls
+    return []
+
+
+def _coerce_single_tool_call(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, Mapping):
+        return None
+
+    if isinstance(item.get("function"), Mapping):
+        function = dict(item["function"])
+        name = function.get("name")
+        arguments = function.get("arguments", {})
+    else:
+        name = item.get("name") or item.get("tool_name")
+        arguments = item.get("arguments", item.get("parameters", {}))
+
+    if not name:
+        return None
+
+    return {
+        "id": str(item.get("id") or _new_tool_call_id()),
+        "type": "function",
+        "function": {
+            "name": str(name),
+            "arguments": _arguments_to_json_string(arguments),
+        },
+    }
+
+
+def _arguments_to_json_string(arguments: Any) -> str:
+    if isinstance(arguments, str):
+        try:
+            json.loads(arguments)
+        except json.JSONDecodeError:
+            return json.dumps(arguments)
+        return arguments
+    return json.dumps(arguments or {})
+
+
+def _tool_calls_from_completion(completion: Any) -> list[dict[str, Any]]:
+    for attr in ("tool_calls", "tool_call"):
+        value = getattr(completion, attr, None)
+        if value:
+            return _coerce_tool_calls(value)
+    return []
+
+
+def _usage_from_outputs(request_output: Any, completion: Any) -> dict[str, int]:
+    prompt_tokens = len(getattr(request_output, "prompt_token_ids", None) or [])
+    completion_tokens = len(getattr(completion, "token_ids", None) or [])
+    usage: dict[str, int] = {}
+    if prompt_tokens:
+        usage["prompt_tokens"] = prompt_tokens
+    if completion_tokens:
+        usage["completion_tokens"] = completion_tokens
+    if usage:
+        usage["total_tokens"] = prompt_tokens + completion_tokens
+    return usage
+
+
+def _flatten_text_content(content: Sequence[Any]) -> str:
+    parts: list[str] = []
+    for item in content:
+        if isinstance(item, Mapping):
+            if item.get("type") == "text":
+                parts.append(str(item.get("text", "")))
+            else:
+                parts.append(json.dumps(item))
+        else:
+            parts.append(str(item))
+    return "\n\n".join(part for part in parts if part)
+
+
+def _collapse_consecutive_tool_messages(messages: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Merge parallel OpenAI tool results into one turn for local chat templates.
+
+    Llama-family chat templates used by Nemotron require user/tool and
+    assistant roles to alternate. The agent may execute multiple OpenAI tool
+    calls from one assistant response, which creates consecutive ``tool`` turns.
+    Collapsing them keeps the transcript semantically equivalent for local
+    generation without changing the operator contract.
+    """
+
+    collapsed: list[dict[str, Any]] = []
+    tool_names_by_id: dict[str, str] = {}
+
+    for message in messages:
+        msg = dict(message)
+        if msg.get("role") == "assistant":
+            for tool_call in msg.get("tool_calls") or []:
+                if not isinstance(tool_call, Mapping):
+                    continue
+                tool_call_id = str(tool_call.get("id") or "")
+                function = tool_call.get("function") or {}
+                if tool_call_id and isinstance(function, Mapping):
+                    tool_names_by_id[tool_call_id] = str(function.get("name") or "tool")
+
+        if msg.get("role") != "tool":
+            collapsed.append(msg)
+            continue
+
+        msg["content"] = _format_tool_message_content(msg, tool_names_by_id)
+        if collapsed and collapsed[-1].get("role") == "tool":
+            previous = str(collapsed[-1].get("content") or "")
+            current = str(msg.get("content") or "")
+            collapsed[-1]["content"] = "\n\n".join(part for part in (previous, current) if part)
+            continue
+        collapsed.append(msg)
+
+    return collapsed
+
+
+def _format_tool_message_content(message: Mapping[str, Any], tool_names_by_id: Mapping[str, str]) -> str:
+    tool_call_id = str(message.get("tool_call_id") or "")
+    tool_name = tool_names_by_id.get(tool_call_id, "tool")
+    content = str(message.get("content") or "")
+    if tool_call_id:
+        return f"Tool result for {tool_name} ({tool_call_id}):\n{content}"
+    return f"Tool result for {tool_name}:\n{content}"
+
+
+def _json_tool_prompt(tools: Sequence[Mapping[str, Any]]) -> str:
+    return (
+        "You have access to the following tools. Your entire response must be a JSON array of one or more tool calls. "
+        "Each item must be shaped as "
+        '{"name": "tool_name", "arguments": {"arg_name": "arg_value"}}. '
+        "Use only the listed tool names. Do not include prose, markdown, or text outside the JSON array.\n"
+        f"<AVAILABLE_TOOLS>{json.dumps(list(tools), ensure_ascii=False)}</AVAILABLE_TOOLS>"
+    )
+
+
+def _new_tool_call_id() -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(random.SystemRandom().choice(alphabet) for _ in range(9))
+
+
+def _new_response_id() -> str:
+    return "chatcmpl_" + _new_tool_call_id()

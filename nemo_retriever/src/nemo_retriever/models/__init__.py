@@ -258,3 +258,44 @@ def create_local_reranker(
         device=device,
         hf_cache_dir=hf_cache_dir,
     )
+
+
+_LOCAL_AGENT_LLM_BACKENDS = frozenset({"vllm"})
+
+
+def create_local_agent_llm(
+    model_name: str,
+    *,
+    backend: str = "vllm",
+    device: str | None = None,
+    hf_cache_dir: str | None = None,
+    gpu_memory_utilization: float = 0.8,
+    tensor_parallel_size: int = 1,
+    max_model_len: int | None = None,
+    max_num_seqs: int | None = None,
+    tool_call_parser: str | None = None,
+) -> Any:
+    """Create a cached local agent LLM chat-completion callable.
+
+    The callable mirrors ``invoke_chat_completion_step`` and returns an
+    OpenAI-compatible chat-completions response dict. V1 supports the in-process
+    vLLM backend and uses model/profile-specific tool-call normalization where
+    known.
+    """
+
+    b = normalize_backend(backend, _LOCAL_AGENT_LLM_BACKENDS, field_name="backend", default="vllm")
+    if b == "vllm":
+        from nemo_retriever.models.local.agent_llm import create_cached_vllm_agent_chat_llm
+
+        return create_cached_vllm_agent_chat_llm(
+            model_name,
+            device=device,
+            hf_cache_dir=hf_cache_dir,
+            gpu_memory_utilization=gpu_memory_utilization,
+            tensor_parallel_size=tensor_parallel_size,
+            max_model_len=max_model_len,
+            max_num_seqs=max_num_seqs,
+            tool_call_parser=tool_call_parser,
+        )
+
+    raise ValueError(f"Unsupported local agent LLM backend {backend!r}")

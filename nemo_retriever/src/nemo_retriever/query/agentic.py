@@ -12,6 +12,7 @@ the standard retrieval path.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -55,6 +56,11 @@ AGENTIC_PARALLEL_TOOL_CALLS = False
 AGENTIC_RRF_K = 60
 AGENTIC_REACT_MAX_STEPS = 50
 AGENTIC_TEMPERATURE = 0.0  # agent LLM sampling temperature (0.0 = greedy)
+AGENTIC_MAX_TOKENS: Optional[int] = None
+AGENTIC_LLM_BACKEND = "openai_compatible"
+AGENTIC_LLM_BACKENDS = frozenset({"openai_compatible", "in_process"})
+AGENTIC_LOCAL_LLM_BACKEND = "vllm"
+AGENTIC_LOCAL_LLM_BACKENDS = frozenset({"vllm"})
 
 
 class AgenticQueryInputOperator(AbstractOperator):
@@ -137,8 +143,17 @@ class AgenticRetrievalConfig:
     reranker_api_key: str = ""
     local_reranker_backend: str = "vllm"
     embed_modality: str = "text"
+    llm_backend: str = AGENTIC_LLM_BACKEND
     llm_model: str = ""
     invoke_url: Optional[str] = None
+    local_llm_backend: str = AGENTIC_LOCAL_LLM_BACKEND
+    local_hf_cache_dir: Optional[str] = None
+    local_device: Optional[str] = None
+    local_gpu_memory_utilization: float = 0.8
+    local_tensor_parallel_size: int = 1
+    local_max_model_len: Optional[int] = None
+    local_max_num_seqs: Optional[int] = None
+    local_tool_call_parser: Optional[str] = None
     api_key: Optional[str] = None
     react_max_steps: int = AGENTIC_REACT_MAX_STEPS
     text_truncation: int = AGENTIC_TEXT_TRUNCATION
@@ -150,14 +165,41 @@ class AgenticRetrievalConfig:
     backend_top_k: int = AGENTIC_BACKEND_TOP_K
     # Sampling temperature sent on every agent LLM call (0.0 = greedy).
     temperature: float = AGENTIC_TEMPERATURE
+    # Optional upper bound on tokens in each agent LLM response.
+    max_tokens: Optional[int] = AGENTIC_MAX_TOKENS
     # Final number of documents the agent targets/selects and the pipeline returns.
     # Drives the ReAct target, the RRF/selection cut, and the per-hop fetch depth
     # (which is raised to at least this). Defaults to 10.
     top_k: int = AGENTIC_TARGET_TOP_K
+    # When true, ReAct final_results must contain exactly top_k doc IDs. Keep this
+    # strict by default for existing eval behavior, but allow local/smaller LLMs to
+    # return partial final_results when explicitly requested.
+    enforce_top_k: bool = True
 
     def __post_init__(self) -> None:
+        llm_backend = _normalize_agentic_choice(
+            self.llm_backend,
+            AGENTIC_LLM_BACKENDS,
+            field_name="llm_backend",
+            default=AGENTIC_LLM_BACKEND,
+        )
+        object.__setattr__(self, "llm_backend", llm_backend)
+
+        local_llm_backend = _normalize_agentic_choice(
+            self.local_llm_backend,
+            AGENTIC_LOCAL_LLM_BACKENDS,
+            field_name="local_llm_backend",
+            default=AGENTIC_LOCAL_LLM_BACKEND,
+        )
+        object.__setattr__(self, "local_llm_backend", local_llm_backend)
+
         if self.llm_model is None or not str(self.llm_model).strip():
             raise ValueError("Agentic retrieval requires a non-empty llm_model.")
+        object.__setattr__(
+            self,
+            "enforce_top_k",
+            _agentic_bool_value(self.enforce_top_k, field_name="enforce_top_k"),
+        )
         for field_name, value, min_value in (
             ("react_max_steps", self.react_max_steps, 1),
             ("text_truncation", self.text_truncation, 0),
@@ -178,14 +220,105 @@ class AgenticRetrievalConfig:
             raise ValueError(backend_error)
         object.__setattr__(self, "backend_top_k", agentic_int_value(self.backend_top_k, field_name="backend_top_k"))
 
+        local_tp_error = agentic_int_min_error(
+            self.local_tensor_parallel_size, field_name="local_tensor_parallel_size", min_value=1
+        )
+        if local_tp_error:
+            raise ValueError(local_tp_error)
+        object.__setattr__(
+            self,
+            "local_tensor_parallel_size",
+            agentic_int_value(self.local_tensor_parallel_size, field_name="local_tensor_parallel_size"),
+        )
+
+        for field_name in ("local_max_model_len", "local_max_num_seqs", "max_tokens"):
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            integer_error = agentic_int_min_error(value, field_name=field_name, min_value=1)
+            if integer_error:
+                raise ValueError(integer_error)
+            object.__setattr__(self, field_name, agentic_int_value(value, field_name=field_name))
+
+        local_gpu_memory_utilization = _agentic_float_range_value(
+            self.local_gpu_memory_utilization,
+            field_name="local_gpu_memory_utilization",
+            min_value=0.0,
+            max_value=1.0,
+            min_exclusive=True,
+        )
+        object.__setattr__(self, "local_gpu_memory_utilization", local_gpu_memory_utilization)
+
+        temperature_invoke_url = self.invoke_url if self.llm_backend == "openai_compatible" else "local://in-process"
         temperature_error = agentic_temperature_error(
             self.temperature,
-            invoke_url=self.invoke_url,
+            invoke_url=temperature_invoke_url,
             field_name="temperature",
         )
         if temperature_error:
             raise ValueError(temperature_error)
         object.__setattr__(self, "temperature", float(self.temperature))
+
+
+def _normalize_agentic_choice(value: object, valid: frozenset[str], *, field_name: str, default: str) -> str:
+    normalized = str(value or default).strip().lower()
+    if normalized not in valid:
+        raise ValueError(f"{field_name} must be one of {sorted(valid)}; got {value!r}")
+    return normalized
+
+
+def _agentic_bool_value(value: object, *, field_name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off"}:
+            return False
+    raise ValueError(f"{field_name} must be a boolean")
+
+
+def _agentic_float_range_value(
+    value: object,
+    *,
+    field_name: str,
+    min_value: float,
+    max_value: float,
+    min_exclusive: bool = False,
+) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be a number") from None
+    if not math.isfinite(parsed):
+        raise ValueError(f"{field_name} must be finite")
+    if parsed > max_value or (parsed <= min_value if min_exclusive else parsed < min_value):
+        operator = ">" if min_exclusive else ">="
+        raise ValueError(f"{field_name} must be {operator} {min_value} and <= {max_value}")
+    return parsed
+
+
+def _build_agent_chat_completion_fn(cfg: AgenticRetrievalConfig) -> Any | None:
+    if cfg.llm_backend == "openai_compatible":
+        return None
+
+    if cfg.llm_backend == "in_process":
+        from nemo_retriever.models import create_local_agent_llm
+
+        return create_local_agent_llm(
+            str(cfg.llm_model),
+            backend=str(cfg.local_llm_backend),
+            device=_none_if_empty(cfg.local_device),
+            hf_cache_dir=_none_if_empty(cfg.local_hf_cache_dir),
+            gpu_memory_utilization=float(cfg.local_gpu_memory_utilization),
+            tensor_parallel_size=int(cfg.local_tensor_parallel_size),
+            max_model_len=cfg.local_max_model_len,
+            max_num_seqs=cfg.local_max_num_seqs,
+            tool_call_parser=cfg.local_tool_call_parser,
+        )
+
+    raise ValueError(f"Unsupported agentic llm_backend {cfg.llm_backend!r}")
 
 
 class AgenticRetriever:
@@ -230,6 +363,15 @@ class AgenticRetriever:
             },
         )
         self._lock = threading.Lock()
+        self._chat_completion_fn: Any | None = None
+
+    def _get_chat_completion_fn(self) -> Any | None:
+        if self._cfg.llm_backend == "openai_compatible":
+            return None
+        with self._lock:
+            if self._chat_completion_fn is None:
+                self._chat_completion_fn = _build_agent_chat_completion_fn(self._cfg)
+            return self._chat_completion_fn
 
     def retrieve(self, query_ids: Sequence[str], query_texts: Sequence[str]) -> pd.DataFrame:
         """Return selected ranked documents for each query.
@@ -250,6 +392,7 @@ class AgenticRetriever:
         # small top_k.
         target_top_k = int(self._cfg.top_k)
         per_hop_top_k = max(AGENTIC_RETRIEVER_TOP_K, target_top_k)
+        chat_completion_fn = self._get_chat_completion_fn()
 
         pipeline = (
             AgenticQueryInputOperator()
@@ -267,7 +410,10 @@ class AgenticRetriever:
                 num_concurrent=int(self._cfg.num_concurrent),
                 reasoning_effort=self._cfg.reasoning_effort,
                 backend_top_k=self._cfg.backend_top_k,
+                enforce_top_k=bool(self._cfg.enforce_top_k),
                 temperature=float(self._cfg.temperature),
+                max_tokens=self._cfg.max_tokens,
+                chat_completion_fn=chat_completion_fn,
             )
             >> RRFAggregatorOperator(k=AGENTIC_RRF_K)
             >> SelectionAgentOperator(
@@ -280,6 +426,8 @@ class AgenticRetriever:
                 text_truncation=int(self._cfg.text_truncation),
                 reasoning_effort=self._cfg.reasoning_effort,
                 temperature=float(self._cfg.temperature),
+                max_tokens=self._cfg.max_tokens,
+                chat_completion_fn=chat_completion_fn,
             )
             >> AgenticSelectionOutputOperator()
         )
