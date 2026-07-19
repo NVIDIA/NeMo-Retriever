@@ -519,9 +519,9 @@ def test_graph_ingestor_raises_for_explicit_remote_stage_errors() -> None:
     ).extract(
         page_elements_invoke_url="http://127.0.0.1:1/v1/nonexistent",
         extract_text=False,
-        extract_images=True,
+        extract_images=False,
         extract_tables=False,
-        extract_charts=False,
+        extract_charts=True,
         extract_infographics=False,
         inference_batch_size=1,
         remote_retry=RemoteRetryParams(
@@ -547,9 +547,9 @@ def test_graph_ingestor_collect_policy_returns_explicit_remote_stage_errors() ->
         .extract(
             page_elements_invoke_url="http://127.0.0.1:1/v1/nonexistent",
             extract_text=False,
-            extract_images=True,
+            extract_images=False,
             extract_tables=False,
-            extract_charts=False,
+            extract_charts=True,
             extract_infographics=False,
             inference_batch_size=1,
             remote_retry=RemoteRetryParams(

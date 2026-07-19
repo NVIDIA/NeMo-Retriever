@@ -96,7 +96,6 @@ service = [
   # Remote answer generation client used by serviceConfig.llm and /v1/answer
   "litellm>=1.86.0,<2",
   # Lightweight utilities used by pipeline operators
-  "glom",
   "easydict",
   "addict",
   "scikit-learn>=1.6.0",
@@ -111,7 +110,6 @@ service = [
 # ── Local model inference (GPU assumed; torch resolves to CUDA on Linux) ─────
 # Stable Nemotron extraction package selection for published local installs.
 local = [
-  "glom",
   "transformers>=4.57.6,<5",
   "tokenizers>=0.21.1",
   "accelerate==1.12.0",
