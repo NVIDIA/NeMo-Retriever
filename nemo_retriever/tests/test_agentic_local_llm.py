@@ -74,6 +74,25 @@ def test_parse_tool_call_output_from_code_fence() -> None:
     assert json.loads(calls[0]["function"]["arguments"]) == {"thought": "compare docs"}
 
 
+def test_parse_tool_call_output_ignores_echoed_tool_schema() -> None:
+    from nemo_retriever.models.local.agent_llm import parse_tool_calls_from_text
+
+    echoed_schema = json.dumps(
+        [
+            {
+                "type": "function",
+                "function": {
+                    "name": "retrieve",
+                    "description": "Retrieve documents.",
+                    "parameters": {"type": "object"},
+                },
+            }
+        ]
+    )
+
+    assert parse_tool_calls_from_text(echoed_schema) == []
+
+
 def test_parse_plain_text_returns_no_tool_calls() -> None:
     from nemo_retriever.models.local.agent_llm import parse_tool_calls_from_text
 

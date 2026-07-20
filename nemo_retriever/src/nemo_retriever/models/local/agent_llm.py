@@ -7,9 +7,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-import random
-import string
 import threading
+import uuid
 from copy import deepcopy
 from typing import Any, Mapping, Optional, Sequence
 
@@ -60,22 +59,10 @@ _SUPPORTED_AGENT_LLM_NAMES = tuple(
 _NEMOTRON_JSON_TOOL_PROMPT_EXTRAS = {"chat_template_kwargs": {"tools_in_user_message": True}}
 
 
-def _mutable_copy(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {key: _mutable_copy(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [_mutable_copy(item) for item in value]
-    return deepcopy(value)
-
-
 def supported_agent_llm_names() -> tuple[str, ...]:
     """Return supported local agent LLM model IDs and aliases."""
 
     return _SUPPORTED_AGENT_LLM_NAMES
-
-
-def _supported_agent_llm_names_for_error() -> str:
-    return ", ".join(supported_agent_llm_names())
 
 
 def is_supported_agent_llm_model(name: str) -> bool:
@@ -113,16 +100,16 @@ class VLLMAgentChatLLM(BaseModel):
     ) -> None:
         super().__init__()
 
-        resolved_model_path = resolve_agent_llm_model_name(model_path)
-        if resolved_model_path == model_path and not is_supported_agent_llm_model(model_path):
+        requested_model_path = model_path
+        model_path = resolve_agent_llm_model_name(requested_model_path)
+        if not is_supported_agent_llm_model(model_path):
             raise ValueError(
-                f"Unsupported local agent LLM model {model_path!r}. "
+                f"Unsupported local agent LLM model {requested_model_path!r}. "
                 "Custom in-process agent LLMs are not supported yet. "
                 "Use llm_backend='openai_compatible' with invoke_url for a custom/self-hosted endpoint, "
-                f"or choose one of: {_supported_agent_llm_names_for_error()}."
+                f"or choose one of: {', '.join(supported_agent_llm_names())}."
             )
 
-        model_path = resolved_model_path
         cuda_visible_devices = _cuda_visible_devices_from_device(device)
         if cuda_visible_devices is not None:
             os.environ["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
@@ -137,7 +124,7 @@ class VLLMAgentChatLLM(BaseModel):
         _raise_if_cuda_unavailable()
         self._model_path = model_path
         self._max_tokens = int(max_tokens)
-        self._request_extras = _mutable_copy(_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS)
+        self._request_extras = deepcopy(_NEMOTRON_JSON_TOOL_PROMPT_EXTRAS)
         self._lock = threading.Lock()
 
         configure_global_hf_cache_base(hf_cache_dir)
@@ -221,7 +208,7 @@ class VLLMAgentChatLLM(BaseModel):
         }
 
     def _build_chat_kwargs(self, extra_body: Optional[dict[str, Any]]) -> dict[str, Any]:
-        chat_kwargs = _mutable_copy(self._request_extras)
+        chat_kwargs = deepcopy(self._request_extras)
         for key, value in (extra_body or {}).items():
             if key in {"parallel_tool_calls", "reasoning_effort"}:
                 continue
@@ -431,11 +418,18 @@ def _coerce_single_tool_call(item: Any) -> dict[str, Any] | None:
 
     if isinstance(item.get("function"), Mapping):
         function = dict(item["function"])
+        if "arguments" not in function:
+            return None
         name = function.get("name")
-        arguments = function.get("arguments", {})
+        arguments = function.get("arguments")
     else:
         name = item.get("name") or item.get("tool_name")
-        arguments = item.get("arguments", item.get("parameters", {}))
+        if "arguments" in item:
+            arguments = item.get("arguments")
+        elif "parameters" in item:
+            arguments = item.get("parameters")
+        else:
+            return None
 
     if not name:
         return None
@@ -457,7 +451,7 @@ def _arguments_to_json_string(arguments: Any) -> str:
         except json.JSONDecodeError:
             return json.dumps(arguments)
         return arguments
-    return json.dumps(arguments or {})
+    return json.dumps(arguments if arguments is not None else {})
 
 
 def _tool_calls_from_completion(completion: Any) -> list[dict[str, Any]]:
@@ -553,9 +547,8 @@ def _json_tool_prompt(tools: Sequence[Mapping[str, Any]]) -> str:
 
 
 def _new_tool_call_id() -> str:
-    alphabet = string.ascii_letters + string.digits
-    return "".join(random.SystemRandom().choice(alphabet) for _ in range(9))
+    return f"call_{uuid.uuid4().hex[:12]}"
 
 
 def _new_response_id() -> str:
-    return "chatcmpl_" + _new_tool_call_id()
+    return f"chatcmpl_{uuid.uuid4().hex[:12]}"

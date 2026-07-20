@@ -233,8 +233,6 @@ Agentic-only knobs (apply only with `--agentic`):
 - `--agentic-react-max-steps` (default `50`) — maximum ReAct loop iterations.
 - `--agentic-text-truncation` (default `0`) — max characters of each candidate
   shown to the agent; `0` disables truncation.
-- `--agentic-temperature` (default `0.0`) — sampling temperature for agentic LLM
-  calls (`0.0` = greedy).
 
 <!-- --8<-- [end:quickstart] -->
 

@@ -210,14 +210,6 @@ AgenticTextTruncationOption = Annotated[
         help="Max characters of each candidate shown to the agent; 0 disables truncation.",
     ),
 ]
-AgenticTemperatureOption = Annotated[
-    float,
-    typer.Option(
-        "--agentic-temperature",
-        min=0.0,
-        help="Sampling temperature for agentic LLM calls (0.0 = greedy).",
-    ),
-]
 ServiceUrlOption = Annotated[
     str,
     typer.Option("--service-url", help="Base URL of the retriever service."),
