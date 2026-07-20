@@ -5,7 +5,7 @@
 
 Reuses the existing evaluation logic from ``nemo_retriever.recall.beir`` and
 prints the standard run summary via
-``nemo_retriever.common.detection_summary.print_run_summary``.
+``nemo_retriever.tools.recall.core.print_run_summary``.
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ class BEIREvaluatorActor:
         """
         from nemo_retriever.models import resolve_embed_model
         from nemo_retriever.tools.recall.beir import BeirConfig, evaluate_lancedb_beir
-        from nemo_retriever.common.detection_summary import print_run_summary
+        from nemo_retriever.tools.recall.core import print_run_summary
 
         resolved_model = resolve_embed_model(self.embedding_model)
 

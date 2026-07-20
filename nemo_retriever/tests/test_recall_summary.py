@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from nemo_retriever.common.detection_summary import print_run_summary
+from nemo_retriever.tools.recall.core import print_run_summary
 
 
 def test_print_run_summary_sorts_evaluation_metrics_by_numeric_k(capsys) -> None:

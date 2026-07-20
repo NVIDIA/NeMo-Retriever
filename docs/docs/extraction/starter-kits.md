@@ -15,9 +15,10 @@ To get started with the basics, try one of the following guides or notebooks:
 - [Adding Custom Metadata for Filtered Search/Retrieval](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/nemo_retriever_retriever_query_metadata_filter.ipynb) — also summarized on [Vector databases — Metadata and filtering](vdbs.md#metadata-and-filtering)
 
 
-For more advanced scenarios, try one of the following notebooks:
+For more advanced scenarios, try one of the following guides or notebooks:
 
 - [Build a Custom Vector Database Operator](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/building_vdb_operator.ipynb)
 - [Try Enterprise RAG Blueprint](https://build.nvidia.com/nvidia/multimodal-pdf-data-extraction-for-enterprise-rag)
+- [Evaluate BO767 retrieval with the Retriever harness](https://github.com/NVIDIA/NeMo-Retriever/blob/main/evaluation/bo767_recall.md)
 - [Multimodal RAG with LangChain](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/langchain_multimodal_rag.ipynb)
 - [Multimodal RAG with LlamaIndex](https://github.com/NVIDIA/NeMo-Retriever/blob/main/examples/llama_index_multimodal_rag.ipynb)

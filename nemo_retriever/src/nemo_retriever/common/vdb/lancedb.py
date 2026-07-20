@@ -155,6 +155,12 @@ def _table_schema(table: Any) -> pa.Schema:
     return schema() if callable(schema) else schema
 
 
+def lancedb_row_count(uri: str, table_name: str) -> int:
+    """Return the number of rows in a LanceDB table."""
+    table = lancedb.connect(uri).open_table(table_name)
+    return int(table.count_rows())
+
+
 def _validate_append_schema(table: Any, expected_schema: pa.Schema, *, table_name: str, uri: str) -> None:
     """Fail before append when an existing table cannot accept this writer's rows."""
     existing_schema = _table_schema(table)
