@@ -188,6 +188,30 @@ def _validate_append_schema(table: Any, expected_schema: pa.Schema, *, table_nam
             )
 
 
+def _validate_append_embedding_model(
+    table: Any,
+    embedding_model_name: str | None,
+    *,
+    table_name: str,
+    uri: str,
+) -> None:
+    """Reject appends that would mix known embedding models in one table."""
+    if not embedding_model_name:
+        return
+
+    metadata = _table_schema(table).metadata or {}
+    stored_value = metadata.get(_EMBEDDING_MODEL_METADATA_KEY)
+    if stored_value is None:
+        return
+
+    stored_model = stored_value.decode("utf-8", errors="replace").strip()
+    if stored_model and stored_model != embedding_model_name:
+        raise ValueError(
+            f"LanceDB table {table_name!r} at {uri!r} uses embedding model {stored_model!r}; "
+            f"cannot append vectors from {embedding_model_name!r}. Use the table model or overwrite the table."
+        )
+
+
 def _is_missing_lancedb_table_error(exc: ValueError) -> bool:
     return "was not found" in str(exc)
 
@@ -539,6 +563,12 @@ class LanceDB(VDB):
             else:
                 _validate_append_schema(table, schema, table_name=table_name, uri=self.uri)
                 if results:
+                    _validate_append_embedding_model(
+                        table,
+                        self.embedding_model_name,
+                        table_name=table_name,
+                        uri=self.uri,
+                    )
                     existing_rows = int(table.count_rows())
                     logger.warning(
                         "Appending %d row(s) to existing LanceDB table %r at %s "
