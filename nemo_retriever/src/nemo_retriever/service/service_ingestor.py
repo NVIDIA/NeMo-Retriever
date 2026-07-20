@@ -92,6 +92,7 @@ from nemo_retriever.common.params import (
     VdbUploadParams,
     WebhookParams,
 )
+from nemo_retriever.common.vdb.factory import extract_vdb_connection_uri
 
 logger = logging.getLogger(__name__)
 
@@ -784,10 +785,14 @@ class ServiceIngestor(ingestor):
         )
 
     def vdb_upload(self, params: Any = None, **kwargs: Any) -> "ServiceIngestor":
-        """Record a vector-DB upload sink targeting a remote LanceDB URI.
+        """Record a vector-DB upload sink targeting a remote backend URI.
 
-        ``vdb_kwargs.lancedb_uri`` must be a non-local URI matching the
-        server's ``sinks.vdb_uri_schemes`` allowlist.
+        ``vdb_kwargs`` must include a remote connection URI (``uri``,
+        ``lancedb_uri``, ``host``, ``url``, or ``endpoint_url``) matching
+        the server's ``sinks.vdb_uri_schemes`` allowlist. ``vdb_op`` selects
+        the backend registered on the worker (built-in ``lancedb`` or a
+        package registered via the ``nemo_retriever.vdb_operators`` entry-point
+        group) and must appear in ``pipeline_overrides.allowed_vdb_ops``.
 
         Sidecar metadata (``meta_dataframe`` + ``meta_source_field`` +
         ``meta_fields``) is uploaded eagerly via ``POST /v1/ingest/sidecar``
@@ -817,10 +822,9 @@ class ServiceIngestor(ingestor):
             params_dict["meta_join_key"] = meta_join
 
         vdb_kwargs = params_dict.get("vdb_kwargs") or {}
-        if vdb_kwargs:
-            uri = vdb_kwargs.get("lancedb_uri") or vdb_kwargs.get("uri")
-            if uri is not None:
-                _require_remote_uri(uri, "vdb_upload", "vdb_kwargs.lancedb_uri")
+        uri = extract_vdb_connection_uri(vdb_kwargs)
+        if uri is not None:
+            _require_remote_uri(uri, "vdb_upload", "vdb_kwargs connection URI")
         self._pipeline_spec["vdb_upload_params"] = params_dict
         return self
 

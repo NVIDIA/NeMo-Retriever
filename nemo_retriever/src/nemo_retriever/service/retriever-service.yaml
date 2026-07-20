@@ -185,6 +185,9 @@ pipeline_overrides:
   # extra_caption_keys only has effect when nim_endpoints.caption_invoke_url
   # is set above — without an endpoint, the caption stage is rejected entirely.
   extra_caption_keys: []
+  # vdb_op keys clients may pass to .vdb_upload(...) (worker must register
+  # the backend via nemo_retriever.vdb_operators entry points or built-ins).
+  allowed_vdb_ops: [lancedb]
   sinks:
     storage_uri_schemes: []      # e.g. ["s3://", "gs://", "azure://"]
     webhook_url_prefixes: []     # e.g. ["https://hooks.example.com/"]
