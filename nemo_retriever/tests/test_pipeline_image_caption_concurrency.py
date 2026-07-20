@@ -57,6 +57,8 @@ from typing import Any
 import pytest
 import yaml
 
+from nemo_retriever.common.modality.caption.model_profiles import DEFAULT_REMOTE_CAPTION_MODEL_ID
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = REPO_ROOT / "config"
@@ -87,6 +89,9 @@ _MIN_STATIC_REPLICAS = 2
 # free to cap at less than the shipped 8 if their VLM is tightly
 # provisioned.
 _MIN_MAX_REPLICAS = 4
+
+_CANONICAL_REMOTE_CAPTION_MODEL = DEFAULT_REMOTE_CAPTION_MODEL_ID
+_CAPTION_MODEL_ENV_EXPRESSION = f'$VLM_CAPTION_MODEL_NAME|"{_CANONICAL_REMOTE_CAPTION_MODEL}"'
 
 
 # ---------------------------------------------------------------------
@@ -156,6 +161,21 @@ def _replica_value(stage: dict[str, Any], slot: str) -> int:
 # ---------------------------------------------------------------------
 # Per-pipeline assertions
 # ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "yaml_name, yaml_path",
+    sorted(_PIPELINE_YAMLS.items()),
+    ids=sorted(_PIPELINE_YAMLS.keys()),
+)
+def test_image_caption_uses_canonical_remote_model_with_env_override(yaml_name: str, yaml_path: Path) -> None:
+    pipeline = _load_pipeline(yaml_path)
+    stage = _find_stage(pipeline, _STAGE_NAME)
+
+    assert stage["config"]["model_name"] == _CAPTION_MODEL_ENV_EXPRESSION, (
+        f"{yaml_name}: keep VLM_CAPTION_MODEL_NAME as the highest-precedence override "
+        f"and use {_CANONICAL_REMOTE_CAPTION_MODEL!r} as the shipped fallback."
+    )
 
 
 @pytest.mark.parametrize(
