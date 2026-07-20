@@ -190,12 +190,6 @@ when you want a custom model or a separately hosted OpenAI-compatible endpoint.
 retriever query "how does the ingestion pipeline handle tables?" \
   --agentic
 
-# larger supported local profile
-retriever query "how does the ingestion pipeline handle tables?" \
-  --agentic \
-  --agentic-llm-model super-49b \
-  --agentic-local-tensor-parallel-size 2
-
 # custom/self-hosted model through an OpenAI-compatible endpoint
 retriever query "summarize the deployment options" \
   --agentic \
@@ -232,16 +226,6 @@ Agentic-only knobs (apply only with `--agentic`):
   when using `openai_compatible`.
 - `--agentic-invoke-url` — OpenAI-compatible chat-completions endpoint for the
   agent LLM; used only with `--agentic-llm-backend openai_compatible`.
-- `--agentic-local-llm-backend` (default `vllm`) — local runtime for in-process
-  agent LLMs. Other local runtimes are not supported yet.
-- `--agentic-local-device` — CUDA device ids for local vLLM, for example `0`,
-  `cuda:0`, or `0,1`.
-- `--agentic-local-gpu-memory-utilization` (default `0.8`) — vLLM GPU memory
-  utilization for the local agent LLM.
-- `--agentic-local-tensor-parallel-size` (default `1`) — tensor parallel size for
-  local vLLM.
-- `--agentic-local-max-model-len` and `--agentic-local-max-num-seqs` — optional
-  vLLM engine overrides for the local agent LLM.
 - `--agentic-reasoning-effort` (default `high`) — `reasoning_effort` forwarded on
   OpenAI-compatible agentic LLM calls; ignored by the local adapter.
 - `--agentic-backend-top-k` (default `20`) — candidates pulled from the vector DB

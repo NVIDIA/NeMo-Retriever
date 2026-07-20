@@ -43,9 +43,6 @@ def test_query_override_paths_include_agentic_fields() -> None:
         "query.agentic_llm_model",
         "query.agentic_llm_backend",
         "query.agentic_invoke_url",
-        "query.agentic_local_llm_backend",
-        "query.agentic_local_hf_cache_dir",
-        "query.agentic_local_device",
         "query.agentic_local_gpu_memory_utilization",
         "query.agentic_local_tensor_parallel_size",
         "query.agentic_local_max_model_len",
@@ -69,9 +66,6 @@ def test_build_query_request_populates_agentic() -> None:
                 "agentic_llm_model": "test-model",
                 "agentic_llm_backend": "openai_compatible",
                 "agentic_invoke_url": "https://example.invalid/v1",
-                "agentic_local_llm_backend": "vllm",
-                "agentic_local_hf_cache_dir": "/tmp/hf",
-                "agentic_local_device": "0",
                 "agentic_local_gpu_memory_utilization": 0.6,
                 "agentic_local_tensor_parallel_size": 2,
                 "agentic_local_max_model_len": 8192,
@@ -92,8 +86,6 @@ def test_build_query_request_populates_agentic() -> None:
     assert agentic.llm_backend == "openai_compatible"
     assert agentic.invoke_url == "https://example.invalid/v1"
     assert agentic.local_llm_backend == "vllm"
-    assert agentic.local_hf_cache_dir == "/tmp/hf"
-    assert agentic.local_device == "0"
     assert agentic.local_gpu_memory_utilization == pytest.approx(0.6)
     assert agentic.local_tensor_parallel_size == 2
     assert agentic.local_max_model_len == 8192

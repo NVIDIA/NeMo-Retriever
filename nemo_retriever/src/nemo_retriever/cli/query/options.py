@@ -179,39 +179,6 @@ AgenticInvokeUrlOption = Annotated[
         help="OpenAI-compatible chat-completions endpoint for the agent LLM (agentic mode).",
     ),
 ]
-AgenticLocalLlmBackendOption = Annotated[
-    str,
-    typer.Option("--agentic-local-llm-backend", help="Local in-process agent LLM runtime. Currently only vllm."),
-]
-AgenticLocalHfCacheDirOption = Annotated[
-    str | None,
-    typer.Option("--agentic-local-hf-cache-dir", help="Hugging Face cache directory for local agent LLM weights."),
-]
-AgenticLocalDeviceOption = Annotated[
-    str | None,
-    typer.Option("--agentic-local-device", help="CUDA device ids for local vLLM, e.g. 0, cuda:0, or 0,1."),
-]
-AgenticLocalGpuMemoryUtilizationOption = Annotated[
-    float,
-    typer.Option(
-        "--agentic-local-gpu-memory-utilization",
-        min=0.0,
-        max=1.0,
-        help="Fraction of GPU memory reserved by local vLLM for the agent LLM.",
-    ),
-]
-AgenticLocalTensorParallelSizeOption = Annotated[
-    int,
-    typer.Option("--agentic-local-tensor-parallel-size", min=1, help="Tensor parallel size for local vLLM."),
-]
-AgenticLocalMaxModelLenOption = Annotated[
-    int | None,
-    typer.Option("--agentic-local-max-model-len", min=1, help="Optional local vLLM max_model_len override."),
-]
-AgenticLocalMaxNumSeqsOption = Annotated[
-    int | None,
-    typer.Option("--agentic-local-max-num-seqs", min=1, help="Optional local vLLM max_num_seqs override."),
-]
 AgenticReasoningEffortOption = Annotated[
     str | None,
     typer.Option(

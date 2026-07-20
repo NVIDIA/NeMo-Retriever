@@ -98,13 +98,12 @@ Useful agentic query overrides:
   when using `openai_compatible`.
 - `query.agentic_invoke_url` — OpenAI-compatible chat-completions endpoint; used
   only with `query.agentic_llm_backend=openai_compatible`.
-- `query.agentic_local_llm_backend` — local runtime for in-process agent LLMs;
-  currently only `vllm` is supported.
-- `query.agentic_local_hf_cache_dir`, `query.agentic_local_device`,
-  `query.agentic_local_gpu_memory_utilization`,
+- `query.agentic_local_gpu_memory_utilization`,
   `query.agentic_local_tensor_parallel_size`, `query.agentic_local_max_model_len`,
-  and `query.agentic_local_max_num_seqs` — local vLLM loading and scheduling
-  controls.
+  and `query.agentic_local_max_num_seqs` — harness-only local vLLM resource and
+  scheduling controls for benchmark runs. Use environment variables such as
+  `CUDA_VISIBLE_DEVICES` and the standard Hugging Face cache environment for
+  placement and model cache control.
 - `query.agentic_backend_top_k` — backend candidate pool per ReAct retrieval
   call. Must be at least the final requested metric depth (`max(evaluation.ks)`).
 - `query.agentic_react_max_steps` — maximum ReAct loop iterations per query
